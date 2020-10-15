@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+option go_package = "github.com/webitel/storage/grpc_api/storage";
+
+package storage;
+
+service FileService {
+    rpc UploadFile (stream UploadFileRequest) returns (UploadFileResponse) {}
+}
+
+message UploadFileRequest {
+
+    message Metadata {
+        int64 domain_id = 1;
+        string name = 2;
+        string mime_type = 3;
+        string uuid = 4;
+    }
+
+    oneof data {
+        Metadata metadata = 1;
+        bytes chunk = 2;
+    };
+
+}
+
+message UploadFileResponse {
+    enum UploadStatusCode {
+        Unknown = 0;
+        Ok = 1;
+        Failed = 2;
+    }
+
+    int64 file_id = 1;
+    UploadStatusCode code = 2;
+}

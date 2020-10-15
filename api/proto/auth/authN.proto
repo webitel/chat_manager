@@ -1,0 +1,76 @@
+// this is a partial derived proto interface to verify token authorization
+// keep sync with source https://git.webitel.com/projects/CORE/repos/webitel.go/browse/api/proto/authz.proto?at=refs%2Fheads%2Fdev
+
+syntax="proto3";
+
+package api;
+
+service Auth {
+    // The UserInfo Endpoint is an OAuth 2.0 Protected Resource that returns Claims about the authenticated End-User.
+    rpc UserInfo(UserinfoRequest) returns (Userinfo) {
+        // The UserInfo Endpoint MUST support the use of the HTTP GET and HTTP POST methods defined in RFC 2616 [RFC2616].
+    }
+}
+
+message UserinfoRequest {
+    string access_token = 1;
+    // string id_token = 2;
+}
+
+// AccessScope represents authorized access level
+// to object class declaration within domain namespace
+message Objclass {
+    // Inherit::ObjectClass
+    int64  id = 1;     // class: object id
+    string name = 2;   // class: display common name
+    string class = 3;  // class: alphanumeric code name
+    // Is [?]-[b]ased [A]ccess [C]ontrol *model enabled ?
+    bool abac = 4;  // [A]ttribute-[b]ased;  not implemented; next releases ...
+    bool obac = 5;  // [O]peration-[b]ased;  Mandatory: control access to object.class (alias: collection, section, etc.)
+    bool rbac = 6;  // [R]ecord-[b]ased; Discretionary: control access to object.entry (alias: resource, record, etc.)
+    // Extension: discretionary access control
+    string access = 7; // flags: [ CREATE | SELECT | UPDATE | DELETE ]
+}
+
+// 
+message ObjectId {
+
+    int64  id = 1;   // identifier
+    string name = 2; // display name
+}
+
+// USAGE details
+message LicenseUser {
+    string id = 1; // license.id
+    string prod = 2; // license.prod
+    ObjectId user = 3; // grant to::user
+    int64 issued_at = 4; // not before
+    int64 expires_at = 5; // not after
+}
+
+message Permission {
+
+    string id = 1;    // [required] e.g.: 'read', 'playback_record_file', ...
+    string name = 2;  // [optional] e.g.: 'Select Any'
+    string usage = 3; // [optional] e.g.: 'Grants permission to select any objects'
+}
+
+// https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims
+message Userinfo {
+
+    int64  dc = 2; // current domain component id
+    string domain = 3 [json_name="realm"]; // session domain.name
+    int64  user_id = 4 [json_name="sub"]; // current user.id
+    string name = 5 [json_name="name"]; // current user.id
+    string username = 6 [json_name="nickname"]; // session end-user login
+    string preferred_username = 7 [json_name="preferred_username"];
+    string extension = 8 [json_name="phone_number"];
+
+    repeated Objclass scope = 10; // map[class]dac
+    repeated ObjectId roles = 11;  // map[role]oid
+    repeated LicenseUser license = 12; // map[key]details
+    repeated Permission permissions = 13; // 
+
+    int64 updated_at = 20; // user last updated
+    int64 expires_at = 21 [json_name="exp"]; // unix
+}
