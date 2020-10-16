@@ -381,7 +381,7 @@ func (s *chatService) InviteToConversation(
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	if err := s.eventRouter.SendInviteToWebitelUser(conversation, &domainID, &invite.ConversationID, &invite.UserID, &invite.ID); err != nil {
+	if err := s.eventRouter.SendInviteToWebitelUser(conversation, invite); err != nil {
 		s.log.Warn().Msg(err.Error())
 		return err
 	}

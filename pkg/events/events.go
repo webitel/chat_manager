@@ -54,7 +54,9 @@ type InviteConversationEvent struct {
 type UserInvitationEvent struct {
 	BaseEvent
 	InviteID     string `json:"invite_id"`
+	Title        string `json:"title"`
 	Conversation `json:"conversation"`
+	Members      []*Member `json:"members"`
 }
 
 type DeclineInvitationEvent struct {
@@ -64,14 +66,13 @@ type DeclineInvitationEvent struct {
 }
 
 type Conversation struct {
-	ID            string    `json:"id"`
-	Title         string    `json:"title,omitempty"`
-	CreatedAt     int64     `json:"created_at,omitempty"`
-	ClosedAt      int64     `json:"created_at,omitempty"`
-	UpdatedAt     int64     `json:"updated_at,omitempty"`
-	DomainID      int64     `json:"domain_id"`
-	Members       []*Member `json:"members"`
-	SelfChannelID string    `json:"self_channel_id,omitempty"`
+	ID        string `json:"id"`
+	Title     string `json:"title,omitempty"`
+	CreatedAt int64  `json:"created_at,omitempty"`
+	//ClosedAt      int64     `json:"created_at,omitempty"`
+	UpdatedAt int64 `json:"updated_at,omitempty"`
+	//DomainID      int64     `json:"domain_id"`
+	//SelfChannelID string    `json:"self_channel_id,omitempty"`
 }
 
 type Member struct {

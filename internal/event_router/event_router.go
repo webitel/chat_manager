@@ -32,7 +32,7 @@ type Router interface {
 	RouteLeaveConversation(channel *pg.Channel, conversationID *string) error
 	RouteMessage(channel *pg.Channel, message *pb.Message) (bool, error)
 	RouteMessageFromFlow(conversationID *string, message *pb.Message) error
-	SendInviteToWebitelUser(conversation *pb.Conversation, domainID *int64, conversationID *string, userID *int64, inviteID *string) error
+	SendInviteToWebitelUser(conversation *pb.Conversation, invite *pg.Invite) error
 	SendDeclineInviteToWebitelUser(domainID *int64, conversationID *string, userID *int64, inviteID *string) error
 }
 
@@ -216,20 +216,21 @@ func (e *eventRouter) RouteInvite(conversationID *string, userID *int64) error {
 	return nil
 }
 
-func (e *eventRouter) SendInviteToWebitelUser(conversation *pb.Conversation, domainID *int64, conversationID *string, userID *int64, inviteID *string) error {
+func (e *eventRouter) SendInviteToWebitelUser(conversation *pb.Conversation, invite *pg.Invite) error {
 	mes := events.UserInvitationEvent{
 		BaseEvent: events.BaseEvent{
-			ConversationID: *conversationID,
+			ConversationID: conversation.Id,
 			Timestamp:      time.Now().Unix() * 1000,
 		},
-		InviteID: *inviteID,
+		InviteID: invite.ID,
+		Title:    invite.Title.String,
 		Conversation: events.Conversation{
-			ID:        conversation.Id,
-			DomainID:  conversation.DomainId,
+			ID: conversation.Id,
+			//DomainID:  conversation.DomainId,
 			CreatedAt: conversation.CreatedAt,
 			UpdatedAt: conversation.UpdatedAt,
-			ClosedAt:  conversation.ClosedAt,
-			Title:     conversation.Title,
+			//ClosedAt:  conversation.ClosedAt,
+			Title: conversation.Title,
 		},
 	}
 	// if conversation.CreatedAt != 0 {
@@ -263,7 +264,7 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *pb.Conversation, dom
 		},
 		Body: body,
 	}
-	if err := e.broker.Publish(fmt.Sprintf("event.%s.%v.%v", events.UserInvitationEventType, *domainID, *userID), msg); err != nil {
+	if err := e.broker.Publish(fmt.Sprintf("event.%s.%v.%v", events.UserInvitationEventType, invite.DomainID, invite.UserID), msg); err != nil {
 		return err
 	}
 	return nil
