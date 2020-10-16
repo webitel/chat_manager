@@ -14,12 +14,11 @@ import (
 	cache "github.com/matvoy/chat_server/internal/chat_cache"
 	event "github.com/matvoy/chat_server/internal/event_router"
 	"github.com/matvoy/chat_server/internal/flow"
-	pg "github.com/matvoy/chat_server/internal/repo/boiler"
-	"github.com/matvoy/chat_server/models"
+	pg "github.com/matvoy/chat_server/internal/repo/sqlx"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/micro/go-micro/v2/errors"
 	"github.com/rs/zerolog"
-	"github.com/volatiletech/null/v8"
 )
 
 type Service interface {
@@ -88,10 +87,10 @@ func (s *chatService) SendMessage(
 		Msg("send message")
 	if req.GetFromFlow() {
 		conversationID := req.GetConversationId()
-		message := &models.Message{
+		message := &pg.Message{
 			Type:           "text",
 			ConversationID: conversationID,
-			Text: null.String{
+			Text: sql.NullString{
 				req.GetMessage().GetText(),
 				true,
 			},
@@ -120,14 +119,14 @@ func (s *chatService) SendMessage(
 		return errors.BadRequest("channel not found", "")
 	}
 
-	message := &models.Message{
+	message := &pg.Message{
 		Type: "text",
-		ChannelID: null.String{
+		ChannelID: sql.NullString{
 			channel.ID,
 			true,
 		},
 		ConversationID: channel.ConversationID,
-		Text: null.String{
+		Text: sql.NullString{
 			req.GetMessage().GetText(),
 			true,
 		},
@@ -166,23 +165,25 @@ func (s *chatService) StartConversation(
 		Str("user.connection", req.GetUser().GetConnection()).
 		Str("user.type", req.GetUser().GetType()).
 		Int64("user.id", req.GetUser().GetUserId()).
+		Str("username", req.GetUsername()).
 		Bool("user.internal", req.GetUser().GetInternal()).
 		Msg("start conversation")
-	channel := &models.Channel{
+	channel := &pg.Channel{
 		Type: req.GetUser().GetType(),
 		// ConversationID: conversation.ID,
 		UserID: req.GetUser().GetUserId(),
-		Connection: null.String{
+		Connection: sql.NullString{
 			req.GetUser().GetConnection(),
 			true,
 		},
 		Internal: req.GetUser().GetInternal(),
 		DomainID: req.GetDomainId(),
+		Name:     req.GetUsername(),
 	}
-	conversation := &models.Conversation{
+	conversation := &pg.Conversation{
 		DomainID: req.GetDomainId(),
 	}
-	if err := s.repo.WithTransaction(func(tx *sql.Tx) error {
+	if err := s.repo.WithTransaction(func(tx *sqlx.Tx) error {
 		if err := s.repo.CreateConversationTx(ctx, tx, conversation); err != nil {
 			return err
 		}
@@ -270,17 +271,27 @@ func (s *chatService) JoinConversation(
 		s.log.Warn().Msg("invitation not found")
 		return errors.BadRequest("invitation not found", "")
 	}
-	channel := &models.Channel{
+	user, err := s.repo.GetWebitelUserByID(ctx, invite.UserID)
+	if err != nil {
+		s.log.Error().Msg(err.Error())
+		return err
+	}
+	if user == nil {
+		s.log.Warn().Msg("user not found")
+		return errors.BadRequest("user not found", "")
+	}
+	channel := &pg.Channel{
 		Type:           "webitel",
 		Internal:       true,
 		ConversationID: invite.ConversationID,
 		UserID:         invite.UserID,
 		DomainID:       invite.DomainID,
+		Name:           user.Name,
 	}
-	if invite.InviterChannelID == (null.String{}) {
+	if invite.InviterChannelID == (sql.NullString{}) {
 		channel.FlowBridge = true
 	}
-	if err := s.repo.WithTransaction(func(tx *sql.Tx) error {
+	if err := s.repo.WithTransaction(func(tx *sqlx.Tx) error {
 		if err := s.repo.CreateChannelTx(ctx, tx, channel); err != nil {
 			return err
 		}
@@ -293,7 +304,7 @@ func (s *chatService) JoinConversation(
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	if err := s.eventRouter.RouteJoinConversation(&channel.ID, &invite.ConversationID); err != nil {
+	if err := s.eventRouter.RouteJoinConversation(channel, &invite.ConversationID); err != nil {
 		s.log.Warn().Msg(err.Error())
 		return err
 	}
@@ -321,7 +332,7 @@ func (s *chatService) LeaveConversation(
 			return err
 		}
 	}
-	if err := s.eventRouter.RouteLeaveConversation(&channelID, &conversationID); err != nil {
+	if err := s.eventRouter.RouteLeaveConversation(ch, &conversationID); err != nil {
 		s.log.Warn().Msg(err.Error())
 		return err
 	}
@@ -346,16 +357,17 @@ func (s *chatService) InviteToConversation(
 		Str("conversation_id", req.GetConversationId()).
 		Str("inviter_channel_id", req.GetInviterChannelId()).
 		Int64("domain_id", req.GetDomainId()).
+		Int64("timeout_sec", req.GetTimeoutSec()).
 		Msg("invite to conversation")
 	domainID := req.GetDomainId()
-	invite := &models.Invite{
+	invite := &pg.Invite{
 		ConversationID: req.GetConversationId(),
 		UserID:         req.GetUser().GetUserId(),
 		TimeoutSec:     req.GetTimeoutSec(),
 		DomainID:       domainID,
 	}
 	if req.GetInviterChannelId() != "" {
-		invite.InviterChannelID = null.String{
+		invite.InviterChannelID = sql.NullString{
 			req.GetInviterChannelId(),
 			true,
 		}
@@ -427,7 +439,7 @@ func (s *chatService) DeclineInvitation(
 	if invite == nil {
 		return errors.BadRequest("invite not found", "")
 	}
-	if invite.InviterChannelID == (null.String{}) {
+	if invite.InviterChannelID == (sql.NullString{}) {
 		if err := s.flowClient.BreakBridge(invite.ConversationID, flow.DeclineInvitationCause); err != nil {
 			return err
 		}

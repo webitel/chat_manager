@@ -6,17 +6,17 @@ import (
 	"encoding/json"
 
 	pb "github.com/matvoy/chat_server/api/proto/chat"
-	"github.com/matvoy/chat_server/models"
+	pg "github.com/matvoy/chat_server/internal/repo/sqlx"
 
-	"github.com/volatiletech/null/v8"
+	"github.com/jmoiron/sqlx"
 )
 
 func (s *chatService) closeConversation(ctx context.Context, conversationID *string) error {
-	if err := s.repo.WithTransaction(func(tx *sql.Tx) error {
-		if err := s.repo.CloseConversation(ctx, *conversationID); err != nil {
+	if err := s.repo.WithTransaction(func(tx *sqlx.Tx) error {
+		if err := s.repo.CloseConversationTx(ctx, tx, *conversationID); err != nil {
 			return err
 		}
-		if err := s.repo.CloseChannels(ctx, *conversationID); err != nil {
+		if err := s.repo.CloseChannelsTx(ctx, tx, *conversationID); err != nil {
 			return err
 		}
 		return nil
@@ -27,7 +27,7 @@ func (s *chatService) closeConversation(ctx context.Context, conversationID *str
 	return nil
 }
 
-func transformProfileFromRepoModel(profile *models.Profile) (*pb.Profile, error) {
+func transformProfileFromRepoModel(profile *pg.Profile) (*pb.Profile, error) {
 	variableBytes, err := profile.Variables.MarshalJSON()
 	variables := make(map[string]string)
 	err = json.Unmarshal(variableBytes, &variables)
@@ -45,22 +45,22 @@ func transformProfileFromRepoModel(profile *models.Profile) (*pb.Profile, error)
 	return result, nil
 }
 
-func transformProfileToRepoModel(profile *pb.Profile) (*models.Profile, error) {
-	result := &models.Profile{
+func transformProfileToRepoModel(profile *pb.Profile) (*pg.Profile, error) {
+	result := &pg.Profile{
 		ID:       profile.Id,
 		Name:     profile.Name,
 		Type:     profile.Type,
 		DomainID: profile.DomainId,
-		SchemaID: null.Int64{
+		SchemaID: sql.NullInt64{
 			profile.SchemaId,
 			true,
 		},
 	}
-	result.Variables.Marshal(profile.Variables)
+	result.Variables.Scan(profile.Variables)
 	return result, nil
 }
 
-func transformProfilesFromRepoModel(profiles []*models.Profile) ([]*pb.Profile, error) {
+func transformProfilesFromRepoModel(profiles []*pg.Profile) ([]*pb.Profile, error) {
 	result := make([]*pb.Profile, 0, len(profiles))
 	var tmp *pb.Profile
 	var err error
@@ -74,13 +74,13 @@ func transformProfilesFromRepoModel(profiles []*models.Profile) ([]*pb.Profile, 
 	return result, nil
 }
 
-func (s *chatService) createClient(ctx context.Context, req *pb.CheckSessionRequest) (client *models.Client, err error) {
-	client = &models.Client{
-		ExternalID: null.String{
+func (s *chatService) createClient(ctx context.Context, req *pb.CheckSessionRequest) (client *pg.Client, err error) {
+	client = &pg.Client{
+		ExternalID: sql.NullString{
 			req.ExternalId,
 			true,
 		},
-		Name: null.String{
+		Name: sql.NullString{
 			req.Username,
 			true,
 		},
@@ -130,13 +130,15 @@ func (s *chatService) createClient(ctx context.Context, req *pb.CheckSessionRequ
 // 	return result
 // }
 
-func transformMessageFromRepoModel(message *models.Message) *pb.HistoryMessage {
+func transformMessageFromRepoModel(message *pg.Message) *pb.HistoryMessage {
 	result := &pb.HistoryMessage{
-		Id:        message.ID,
-		ChannelId: message.ChannelID.String,
+		Id: message.ID,
+		// ChannelId: message.ChannelID.String,
 		// ConversationId: message.ConversationID,
-		Type: message.Type,
-		Text: message.Text.String,
+		FromUserId:   message.UserID,
+		FromUserType: message.UserType,
+		Type:         message.Type,
+		Text:         message.Text.String,
 	}
 	if message.CreatedAt.Valid {
 		result.CreatedAt = message.CreatedAt.Time.Unix() * 1000
@@ -147,7 +149,7 @@ func transformMessageFromRepoModel(message *models.Message) *pb.HistoryMessage {
 	return result
 }
 
-func transformMessagesFromRepoModel(messages []*models.Message) []*pb.HistoryMessage {
+func transformMessagesFromRepoModel(messages []*pg.Message) []*pb.HistoryMessage {
 	result := make([]*pb.HistoryMessage, 0, len(messages))
 	var tmp *pb.HistoryMessage
 	for _, item := range messages {

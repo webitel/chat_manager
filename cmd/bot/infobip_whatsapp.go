@@ -274,6 +274,7 @@ func (b *botService) InfobipWAWebhookHandler(w http.ResponseWriter, r *http.Requ
 				Connection: p,
 				Internal:   false,
 			},
+			Username: check.Username,
 			DomainId: 1,
 		}
 		_, err := b.client.StartConversation(context.Background(), start)

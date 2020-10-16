@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"os"
 
 	pbauth "github.com/matvoy/chat_server/api/proto/auth"
@@ -13,8 +12,9 @@ import (
 	cache "github.com/matvoy/chat_server/internal/chat_cache"
 	event "github.com/matvoy/chat_server/internal/event_router"
 	"github.com/matvoy/chat_server/internal/flow"
-	pg "github.com/matvoy/chat_server/internal/repo/boiler"
+	pg "github.com/matvoy/chat_server/internal/repo/sqlx"
 
+	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"github.com/micro/cli/v2"
 	"github.com/micro/go-micro/v2"
@@ -146,7 +146,7 @@ func main() {
 		return
 	}
 
-	db, err := sql.Open("postgres", cfg.DBSource) //DbSource(cfg.DBHost, cfg.DBUser, cfg.DBName, cfg.DBPassword, cfg.DBSSLMode))
+	db, err := sqlx.Open("postgres", cfg.DBSource) //DbSource(cfg.DBHost, cfg.DBUser, cfg.DBName, cfg.DBPassword, cfg.DBSSLMode))
 	if err != nil {
 		logger.Fatal().
 			Str("app", "failed to connect db").

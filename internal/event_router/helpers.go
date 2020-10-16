@@ -7,12 +7,12 @@ import (
 
 	pbbot "github.com/matvoy/chat_server/api/proto/bot"
 	pb "github.com/matvoy/chat_server/api/proto/chat"
-	"github.com/matvoy/chat_server/models"
+	pg "github.com/matvoy/chat_server/internal/repo/sqlx"
 
 	"github.com/micro/go-micro/v2/broker"
 )
 
-func (e *eventRouter) sendEventToWebitelUser(from *models.Channel, to *models.Channel, eventType string, body []byte) error {
+func (e *eventRouter) sendEventToWebitelUser(from *pg.Channel, to *pg.Channel, eventType string, body []byte) error {
 	msg := &broker.Message{
 		Header: map[string]string{
 			"content_type": "text/json",
@@ -25,7 +25,7 @@ func (e *eventRouter) sendEventToWebitelUser(from *models.Channel, to *models.Ch
 	return nil
 }
 
-func (e *eventRouter) sendMessageToBotUser(from *models.Channel, to *models.Channel, message *pb.Message) error {
+func (e *eventRouter) sendMessageToBotUser(from *pg.Channel, to *pg.Channel, message *pb.Message) error {
 	profileID, err := strconv.ParseInt(to.Connection.String, 10, 64)
 	if err != nil {
 		return err

@@ -152,6 +152,7 @@ func (b *botService) TelegramWebhookHandler(w http.ResponseWriter, r *http.Reque
 				Connection: p,
 				Internal:   false,
 			},
+			Username: check.Username,
 			DomainId: 1,
 		}
 		_, err := b.client.StartConversation(context.Background(), start)

@@ -3,7 +3,6 @@ module github.com/matvoy/chat_server
 go 1.14
 
 require (
-	github.com/friendsofgo/errors v0.9.2
 	github.com/go-telegram-bot-api/telegram-bot-api v4.6.4+incompatible
 	github.com/gogo/protobuf v1.2.2-0.20190723190241-65acae22fc9d // indirect
 	github.com/golang/protobuf v1.4.2
@@ -21,9 +20,6 @@ require (
 	github.com/micro/go-plugins/store/redis/v2 v2.9.1
 	github.com/mitchellh/mapstructure v1.3.3 // indirect
 	github.com/rs/zerolog v1.19.0
-	github.com/volatiletech/null/v8 v8.1.0
-	github.com/volatiletech/sqlboiler/v4 v4.2.0
-	github.com/volatiletech/strmangle v0.0.1
 	golang.org/x/crypto v0.0.0-20200709230013-948cd5f35899 // indirect
 	google.golang.org/protobuf v1.23.0
 	gopkg.in/yaml.v2 v2.2.8 // indirect

@@ -18,7 +18,8 @@ type BaseEvent struct {
 
 type MessageEvent struct {
 	BaseEvent
-	FromChannelID string `json:"from_channel_id"`
+	FromUserID   int64  `json:"from_user_id"`
+	FromUserType string `json:"from_user_type"`
 	// ToChannelID    int64  `json:"to_channel_id"`
 	MessageID int64  `json:"message_id"`
 	Type      string `json:"message_type"`
@@ -27,20 +28,21 @@ type MessageEvent struct {
 
 type CloseConversationEvent struct {
 	BaseEvent
-	FromChannelID string `json:"from_channel_id"`
+	FromUserID int64 `json:"from_user_id"`
 	// ToChannelID    int64  `json:"to_channel_id"`
 	Cause string `json:"cause"`
 }
 
 type JoinConversationEvent struct {
 	BaseEvent
-	JoinedChannelID string `json:"joined_channel_id"`
-	// JoinedUserID    int64 `json:"joined_user_id"`
+	JoinedUserID  int64 `json:"joined_user_id"`
+	Member        `json:"member"`
+	SelfChannelID string `json:"self_channel_id,omitempty"`
 }
 
 type LeaveConversationEvent struct {
 	BaseEvent
-	LeavedChannelID string `json:"leaved_channel_id"`
+	LeavedUserID int64 `json:"leaved_user_id"`
 	// LeavedUserID    int64 `json:"leaved_user_id"`
 }
 
@@ -62,21 +64,23 @@ type DeclineInvitationEvent struct {
 }
 
 type Conversation struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title,omitempty"`
-	CreatedAt int64     `json:"created_at,omitempty"`
-	ClosedAt  int64     `json:"created_at,omitempty"`
-	UpdatedAt int64     `json:"updated_at,omitempty"`
-	DomainID  int64     `json:"domain_id"`
-	Members   []*Member `json:"members"`
+	ID            string    `json:"id"`
+	Title         string    `json:"title,omitempty"`
+	CreatedAt     int64     `json:"created_at,omitempty"`
+	ClosedAt      int64     `json:"created_at,omitempty"`
+	UpdatedAt     int64     `json:"updated_at,omitempty"`
+	DomainID      int64     `json:"domain_id"`
+	Members       []*Member `json:"members"`
+	SelfChannelID string    `json:"self_channel_id,omitempty"`
 }
 
 type Member struct {
-	ChannelID string `json:"channel_id"`
+	// ChannelID string `json:"channel_id"`
 	UserID    int64  `json:"user_id"`
 	Username  string `json:"username"`
 	Type      string `json:"type"`
 	Internal  bool   `json:"internal"`
-	Firstname string `json:"firstname,omitempty"`
-	Lastname  string `json:"lastname,omitempty"`
+	UpdatedAt int64  `json:"updated_at,omitempty"`
+	// Firstname string `json:"firstname,omitempty"`
+	// Lastname  string `json:"lastname,omitempty"`
 }
