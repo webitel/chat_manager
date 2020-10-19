@@ -257,6 +257,19 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *pb.Conversation, inv
 			})
 		}
 	}
+	if len(conversation.Messages) > 0 {
+		mes.Messages = []*events.Message{
+			{
+				MessageID:    conversation.Messages[0].Id,
+				FromUserID:   conversation.Messages[0].FromUserId,
+				FromUserType: conversation.Messages[0].FromUserType,
+				Type:         conversation.Messages[0].Type,
+				Value:        conversation.Messages[0].Text,
+				CreatedAt:    conversation.Messages[0].CreatedAt,
+				UpdatedAt:    conversation.Messages[0].UpdatedAt,
+			},
+		}
+	}
 	body, _ := json.Marshal(mes)
 	msg := &broker.Message{
 		Header: map[string]string{

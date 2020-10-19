@@ -135,8 +135,8 @@ func transformMessageFromRepoModel(message *pg.Message) *pb.HistoryMessage {
 		Id: message.ID,
 		// ChannelId: message.ChannelID.String,
 		// ConversationId: message.ConversationID,
-		FromUserId:   message.UserID,
-		FromUserType: message.UserType,
+		FromUserId:   message.UserID.Int64,
+		FromUserType: message.UserType.String,
 		Type:         message.Type,
 		Text:         message.Text.String,
 	}

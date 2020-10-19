@@ -68,6 +68,7 @@ type ConversationRepository interface {
 	) ([]*pb.Conversation, error)
 	CreateConversation(ctx context.Context, c *Conversation) error
 	GetConversationByID(ctx context.Context, id string) (*pb.Conversation, error)
+	//GetConversationByID(ctx context.Context, id string) (*Conversation, []*Channel, []*Message, error)
 }
 
 type ChannelRepository interface {

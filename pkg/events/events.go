@@ -56,7 +56,8 @@ type UserInvitationEvent struct {
 	InviteID     string `json:"invite_id"`
 	Title        string `json:"title"`
 	Conversation `json:"conversation"`
-	Members      []*Member `json:"members"`
+	Members      []*Member  `json:"members"`
+	Messages     []*Message `json:"messages"`
 }
 
 type DeclineInvitationEvent struct {
@@ -87,7 +88,6 @@ type Member struct {
 }
 
 type Message struct {
-	ID           int64  `json:"id"`
 	FromUserID   int64  `json:"from_user_id"`
 	FromUserType string `json:"from_user_type"`
 	MessageID    int64  `json:"message_id"`

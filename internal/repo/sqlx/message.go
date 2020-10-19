@@ -36,7 +36,7 @@ func (repo *sqlxRepository) CreateMessage(ctx context.Context, m *Message) error
 func (repo *sqlxRepository) GetMessages(ctx context.Context, id int64, size, page int32, fields, sort []string, conversationID string) ([]*Message, error) {
 	result := []*Message{}
 	// TO DO FILTERS
-	err := repo.db.SelectContext(ctx, &result, "SELECT m.*, c.user_id, c.type as user_type FROM chat.message m left join chat.channels c on m.channel_id = c.id")
+	err := repo.db.SelectContext(ctx, &result, "SELECT m.*, c.user_id, c.type as user_type FROM chat.message m left join chat.channel c on m.channel_id = c.id")
 	return result, err
 	// query := make([]qm.QueryMod, 0, 6)
 	// if size != 0 {

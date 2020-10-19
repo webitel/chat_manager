@@ -65,8 +65,8 @@ type Invite struct {
 type Message struct {
 	ID             int64          `db:"id" json:"id"`
 	ChannelID      sql.NullString `db:"channel_id" json:"channel_id,omitempty"`
-	UserID         int64          `db:"user_id" json:"user_id,omitempty"`
-	UserType       string         `db:"user_type" json:"user_type,omitempty"`
+	UserID         sql.NullInt64  `db:"user_id" json:"user_id,omitempty"`
+	UserType       sql.NullString `db:"user_type" json:"user_type,omitempty"`
 	ConversationID string         `db:"conversation_id" json:"conversation_id"`
 	Text           sql.NullString `db:"text" json:"text,omitempty"`
 	CreatedAt      sql.NullTime   `db:"created_at" json:"created_at,omitempty"`

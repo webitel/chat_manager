@@ -19,36 +19,9 @@ func (repo *sqlxRepository) GetConversationByID(ctx context.Context, id string) 
 		}
 		return nil, err
 	}
-	channels := []*Channel{}
-	err = repo.db.SelectContext(ctx, &channels, "SELECT * FROM chat.channel where conversation_id=$1", id)
+	members, messages, _, err := repo.getConversationInfo(ctx, id, -1)
 	if err != nil {
-		repo.log.Warn().Msg(err.Error())
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
-	}
-	members := make([]*pb.Member, 0, len(channels))
-	for _, ch := range channels {
-		tmp := &pb.Member{
-			// ChannelId: ch.ID,
-			UserId:   ch.UserID,
-			Type:     ch.Type,
-			Username: ch.Name,
-			Internal: ch.Internal,
-		}
-		if ch.UpdatedAt.Valid {
-			tmp.UpdatedAt = ch.UpdatedAt.Time.Unix() * 1000
-		}
-		members = append(members, tmp)
-	}
-	var lastMessage *pb.HistoryMessage
-	err = repo.db.GetContext(ctx, &lastMessage, "SELECT * FROM chat.message where conversation_id=$1 order by created_at desc limit 1", id)
-	if err != nil {
-		repo.log.Warn().Msg(err.Error())
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
+		repo.log.Error().Msg(err.Error())
 		return nil, err
 	}
 	result := &pb.Conversation{
@@ -57,7 +30,7 @@ func (repo *sqlxRepository) GetConversationByID(ctx context.Context, id string) 
 		CreatedAt: conversation.CreatedAt.Time.Unix() * 1000,
 		DomainId:  conversation.DomainID,
 		Members:   members,
-		Messages:  []*pb.HistoryMessage{lastMessage},
+		Messages:  messages,
 	}
 	if conversation.ClosedAt != (sql.NullTime{}) {
 		result.ClosedAt = conversation.ClosedAt.Time.Unix() * 1000
@@ -112,43 +85,9 @@ func (repo *sqlxRepository) GetConversations(
 	}
 	result := make([]*pb.Conversation, 0, len(conversations))
 	for _, c := range conversations {
-		channels := []*Channel{}
-		selfChannelID := ""
-		err := repo.db.SelectContext(ctx, &channels, "SELECT * FROM chat.channel where conversation_id=$1", c.ID)
+		members, messages, selfChannelID, err := repo.getConversationInfo(ctx, c.ID, userID)
 		if err != nil {
-			repo.log.Warn().Msg(err.Error())
-			if err == sql.ErrNoRows {
-				continue
-			}
-			return nil, err
-		}
-		if len(channels) == 0 {
-			continue
-		}
-		members := make([]*pb.Member, 0, len(channels))
-		for _, ch := range channels {
-			if ch.UserID == userID && ch.Type == "webitel" {
-				selfChannelID = ch.ID
-			}
-			tmp := &pb.Member{
-				// ChannelId: ch.ID,
-				UserId:   ch.UserID,
-				Type:     ch.Type,
-				Username: ch.Name,
-				Internal: ch.Internal,
-			}
-			if ch.UpdatedAt.Valid {
-				tmp.UpdatedAt = ch.UpdatedAt.Time.Unix() * 1000
-			}
-			members = append(members, tmp)
-		}
-		var lastMessage *pb.HistoryMessage
-		err = repo.db.GetContext(ctx, &lastMessage, "SELECT * FROM chat.message where conversation_id=$1 order by created_at desc limit 1", id)
-		if err != nil {
-			repo.log.Warn().Msg(err.Error())
-			if err == sql.ErrNoRows {
-				return nil, nil
-			}
+			repo.log.Error().Msg(err.Error())
 			return nil, err
 		}
 		conv := &pb.Conversation{
@@ -158,7 +97,7 @@ func (repo *sqlxRepository) GetConversations(
 			DomainId:      c.DomainID,
 			Members:       members,
 			SelfChannelId: selfChannelID,
-			Messages:      []*pb.HistoryMessage{lastMessage},
+			Messages:      messages,
 		}
 		if c.ClosedAt != (sql.NullTime{}) {
 			conv.ClosedAt = c.ClosedAt.Time.Unix() * 1000
@@ -169,4 +108,66 @@ func (repo *sqlxRepository) GetConversations(
 		result = append(result, conv)
 	}
 	return result, nil
+}
+
+func (repo *sqlxRepository) getConversationInfo(ctx context.Context, id string, userID int64) (members []*pb.Member, messages []*pb.HistoryMessage, channelID string, err error) {
+	channels := []*Channel{}
+	err = repo.db.SelectContext(ctx, &channels, "SELECT * FROM chat.channel where conversation_id=$1", id)
+	if err != nil {
+		repo.log.Warn().Msg(err.Error())
+		if err == sql.ErrNoRows {
+			err = nil
+			return
+		}
+		return
+	}
+	members = make([]*pb.Member, 0, len(channels))
+	for _, ch := range channels {
+		if ch.UserID == userID && ch.Type == "webitel" {
+			channelID = ch.ID
+		}
+		tmp := &pb.Member{
+			// ChannelId: ch.ID,
+			UserId:   ch.UserID,
+			Type:     ch.Type,
+			Username: ch.Name,
+			Internal: ch.Internal,
+		}
+		if ch.UpdatedAt.Valid {
+			tmp.UpdatedAt = ch.UpdatedAt.Time.Unix() * 1000
+		}
+		members = append(members, tmp)
+	}
+	lastMessage := new(Message)
+	err = repo.db.GetContext(ctx, lastMessage, `SELECT m.*, c.user_id, c.type as user_type
+		FROM chat.message m
+		left join chat.channel c
+		on m.channel_id = c.id
+		where m.conversation_id=$1
+		order by m.created_at desc
+		limit 1`, id)
+	if err != nil {
+		repo.log.Warn().Msg(err.Error())
+		if err == sql.ErrNoRows {
+			err = nil
+			return
+		}
+		return
+	}
+	if lastMessage != nil {
+		messages = []*pb.HistoryMessage{{
+			Id:           lastMessage.ID,
+			FromUserId:   lastMessage.UserID.Int64,
+			FromUserType: lastMessage.UserType.String,
+			Type:         lastMessage.Type,
+			Text:         lastMessage.Text.String,
+		}}
+		if lastMessage.CreatedAt != (sql.NullTime{}) {
+			messages[0].CreatedAt = lastMessage.CreatedAt.Time.Unix() * 1000
+		}
+		if lastMessage.UpdatedAt != (sql.NullTime{}) {
+			messages[0].UpdatedAt = lastMessage.UpdatedAt.Time.Unix() * 1000
+		}
+	}
+	return
 }
