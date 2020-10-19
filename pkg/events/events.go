@@ -64,14 +64,15 @@ type DeclineInvitationEvent struct {
 }
 
 type Conversation struct {
-	ID            string    `json:"id"`
-	Title         string    `json:"title,omitempty"`
-	CreatedAt     int64     `json:"created_at,omitempty"`
-	ClosedAt      int64     `json:"created_at,omitempty"`
-	UpdatedAt     int64     `json:"updated_at,omitempty"`
-	DomainID      int64     `json:"domain_id"`
-	Members       []*Member `json:"members"`
-	SelfChannelID string    `json:"self_channel_id,omitempty"`
+	ID            string     `json:"id"`
+	Title         string     `json:"title,omitempty"`
+	CreatedAt     int64      `json:"created_at,omitempty"`
+	ClosedAt      int64      `json:"created_at,omitempty"`
+	UpdatedAt     int64      `json:"updated_at,omitempty"`
+	DomainID      int64      `json:"domain_id"`
+	Members       []*Member  `json:"members"`
+	Messages      []*Message `json:"messages"`
+	SelfChannelID string     `json:"self_channel_id,omitempty"`
 }
 
 type Member struct {
@@ -83,4 +84,15 @@ type Member struct {
 	UpdatedAt int64  `json:"updated_at,omitempty"`
 	// Firstname string `json:"firstname,omitempty"`
 	// Lastname  string `json:"lastname,omitempty"`
+}
+
+type Message struct {
+	ID           int64  `json:"id"`
+	FromUserID   int64  `json:"from_user_id"`
+	FromUserType string `json:"from_user_type"`
+	MessageID    int64  `json:"message_id"`
+	Type         string `json:"message_type"`
+	Value        string `json:"message_value"`
+	CreatedAt    int64  `json:"created_at"`
+	UpdatedAt    int64  `json:"updated_at"`
 }
