@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package webitel.chat.server; 
 
-option go_package = "github.com/matvoy/chat_server/api/proto/chat";
+option go_package = "github.com/webitel/chat_manager/api/proto/chat";
 
 service ChatService {
   rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {}

@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 
-	pb "github.com/matvoy/chat_server/api/proto/chat"
-	pg "github.com/matvoy/chat_server/internal/repo/sqlx"
+	pb "github.com/webitel/chat_manager/api/proto/chat"
+	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
 
 	"github.com/jmoiron/sqlx"
 )

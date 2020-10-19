@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
-	pb "github.com/matvoy/chat_server/api/proto/bot"
-	pbchat "github.com/matvoy/chat_server/api/proto/chat"
+	pb "github.com/webitel/chat_manager/api/proto/bot"
+	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/gorilla/mux"

@@ -6,7 +6,7 @@ package webitel_chat_bot
 import (
 	fmt "fmt"
 	proto "github.com/golang/protobuf/proto"
-	_ "github.com/matvoy/chat_server/api/proto/chat"
+	_ "github.com/webitel/chat_manager/api/proto/chat"
 	math "math"
 )
 

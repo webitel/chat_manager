@@ -3,7 +3,7 @@ package sqlxrepo
 import (
 	"context"
 
-	pb "github.com/matvoy/chat_server/api/proto/chat"
+	pb "github.com/webitel/chat_manager/api/proto/chat"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog"

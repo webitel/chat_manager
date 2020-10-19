@@ -5,7 +5,7 @@ package boilrepo
 // 	"database/sql"
 // 	"time"
 
-// 	"github.com/matvoy/chat_server/models"
+// 	"github.com/webitel/chat_manager/models"
 
 // 	"github.com/google/uuid"
 // 	"github.com/volatiletech/null/v8"

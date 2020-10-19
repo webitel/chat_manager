@@ -1,4 +1,4 @@
-module github.com/matvoy/chat_server
+module github.com/webitel/chat_manager
 
 go 1.14
 

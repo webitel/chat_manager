@@ -8,7 +8,7 @@ package webitel_chat_bot
 
 import (
 	proto "github.com/golang/protobuf/proto"
-	chat "github.com/matvoy/chat_server/api/proto/chat"
+	chat "github.com/webitel/chat_manager/api/proto/chat"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"

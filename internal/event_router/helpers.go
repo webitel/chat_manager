@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strconv"
 
-	pbbot "github.com/matvoy/chat_server/api/proto/bot"
-	pb "github.com/matvoy/chat_server/api/proto/chat"
-	pg "github.com/matvoy/chat_server/internal/repo/sqlx"
+	pbbot "github.com/webitel/chat_manager/api/proto/bot"
+	pb "github.com/webitel/chat_manager/api/proto/chat"
+	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
 
 	"github.com/micro/go-micro/v2/broker"
 )

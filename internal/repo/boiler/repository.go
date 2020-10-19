@@ -4,8 +4,8 @@ package boilrepo
 // 	"context"
 // 	"database/sql"
 
-// 	pb "github.com/matvoy/chat_server/api/proto/chat"
-// 	"github.com/matvoy/chat_server/models"
+// 	pb "github.com/webitel/chat_manager/api/proto/chat"
+// 	"github.com/webitel/chat_manager/models"
 
 // 	"github.com/rs/zerolog"
 // 	"github.com/volatiletech/sqlboiler/v4/boil"

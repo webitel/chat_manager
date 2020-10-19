@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	pbauth "github.com/matvoy/chat_server/api/proto/auth"
-	cache "github.com/matvoy/chat_server/internal/chat_cache"
+	pbauth "github.com/webitel/chat_manager/api/proto/auth"
+	cache "github.com/webitel/chat_manager/internal/chat_cache"
 
 	"github.com/micro/go-micro/v2/errors"
 	"github.com/micro/go-micro/v2/metadata"
