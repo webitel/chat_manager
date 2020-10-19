@@ -3,11 +3,18 @@ package sqlxrepo
 import (
 	"context"
 	"database/sql"
+	"github.com/jmoiron/sqlx"
 	"time"
 
 	"github.com/google/uuid"
 	pb "github.com/matvoy/chat_server/api/proto/chat"
 )
+
+//type StringIDs []string
+//
+//func (strs StringIDs) Value() (driver.Value, error) {
+//	return strings.Join(strs, ", "), nil
+//}
 
 func (repo *sqlxRepository) GetConversationByID(ctx context.Context, id string) (*pb.Conversation, error) {
 	conversation := &Conversation{}
@@ -84,20 +91,23 @@ func (repo *sqlxRepository) GetConversations(
 		return nil, err
 	}
 	result := make([]*pb.Conversation, 0, len(conversations))
-	for _, c := range conversations {
-		members, messages, selfChannelID, err := repo.getConversationInfo(ctx, c.ID, userID)
-		if err != nil {
-			repo.log.Error().Msg(err.Error())
-			return nil, err
-		}
+	var ids = make([]string, len(conversations))
+	for i, c := range conversations {
+		ids[i] = c.ID //fmt.Sprintf("'%s'", c.ID)
+		//members, messages, selfChannelID, err := repo.getConversationInfo(ctx, c.ID, userID)
+		//if err != nil {
+		//	repo.log.Error().Msg(err.Error())
+		//	return nil, err
+		//}
 		conv := &pb.Conversation{
-			Id:            c.ID,
-			Title:         c.Title.String,
-			CreatedAt:     c.CreatedAt.Time.Unix() * 1000,
-			DomainId:      c.DomainID,
-			Members:       members,
-			SelfChannelId: selfChannelID,
-			Messages:      messages,
+			Id:        c.ID,
+			Title:     c.Title.String,
+			CreatedAt: c.CreatedAt.Time.Unix() * 1000,
+			DomainId:  c.DomainID,
+			Members:   []*pb.Member{},
+			//Members:       members,
+			//SelfChannelId: selfChannelID,
+			//Messages:      messages,
 		}
 		if c.ClosedAt != (sql.NullTime{}) {
 			conv.ClosedAt = c.ClosedAt.Time.Unix() * 1000
@@ -107,6 +117,40 @@ func (repo *sqlxRepository) GetConversations(
 		}
 		result = append(result, conv)
 	}
+	channels := []*Channel{}
+	s := "SELECT * FROM chat.channel where conversation_id in (?)"
+	q, vs, err := sqlx.In(s, ids)
+	q = repo.db.Rebind(q)
+	err = repo.db.SelectContext(context.Background(), &channels, q, vs...)
+	if err != nil {
+		repo.log.Warn().Msg(err.Error())
+		if err == sql.ErrNoRows {
+			err = nil
+			return nil, nil
+		}
+		return nil, err
+	}
+	for _, ch := range channels {
+		for _, conv := range result {
+			if ch.ConversationID == conv.Id {
+				if ch.UserID == userID && ch.Type == "webitel" {
+					conv.SelfChannelId = ch.ID
+				}
+				tmp := &pb.Member{
+					// ChannelId: ch.ID,
+					UserId:   ch.UserID,
+					Type:     ch.Type,
+					Username: ch.Name,
+					Internal: ch.Internal,
+				}
+				if ch.UpdatedAt.Valid {
+					tmp.UpdatedAt = ch.UpdatedAt.Time.Unix() * 1000
+				}
+				conv.Members = append(conv.Members, tmp)
+			}
+		}
+	}
+
 	return result, nil
 }
 
@@ -154,7 +198,7 @@ func (repo *sqlxRepository) getConversationInfo(ctx context.Context, id string, 
 		}
 		return
 	}
-	if lastMessage != nil {
+	if *lastMessage != (Message{}) {
 		messages = []*pb.HistoryMessage{{
 			Id:           lastMessage.ID,
 			FromUserId:   lastMessage.UserID.Int64,
