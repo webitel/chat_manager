@@ -64,7 +64,8 @@ message Conversation {
   int64 updated_at = 5;
   int64 domain_id = 6;
   repeated Member members = 7;
-  string self_channel_id = 8;
+  repeated HistoryMessage messages = 8;
+  string self_channel_id = 9;
 }
 
 message Member {

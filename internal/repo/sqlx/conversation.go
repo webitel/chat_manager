@@ -42,12 +42,22 @@ func (repo *sqlxRepository) GetConversationByID(ctx context.Context, id string) 
 		}
 		members = append(members, tmp)
 	}
+	var lastMessage *pb.HistoryMessage
+	err = repo.db.GetContext(ctx, &lastMessage, "SELECT * FROM chat.message where conversation_id=$1 order by created_at desc limit 1", id)
+	if err != nil {
+		repo.log.Warn().Msg(err.Error())
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
 	result := &pb.Conversation{
 		Id:        conversation.ID,
 		Title:     conversation.Title.String,
 		CreatedAt: conversation.CreatedAt.Time.Unix() * 1000,
 		DomainId:  conversation.DomainID,
 		Members:   members,
+		Messages:  []*pb.HistoryMessage{lastMessage},
 	}
 	if conversation.ClosedAt != (sql.NullTime{}) {
 		result.ClosedAt = conversation.ClosedAt.Time.Unix() * 1000
@@ -132,6 +142,15 @@ func (repo *sqlxRepository) GetConversations(
 			}
 			members = append(members, tmp)
 		}
+		var lastMessage *pb.HistoryMessage
+		err = repo.db.GetContext(ctx, &lastMessage, "SELECT * FROM chat.message where conversation_id=$1 order by created_at desc limit 1", id)
+		if err != nil {
+			repo.log.Warn().Msg(err.Error())
+			if err == sql.ErrNoRows {
+				return nil, nil
+			}
+			return nil, err
+		}
 		conv := &pb.Conversation{
 			Id:            c.ID,
 			Title:         c.Title.String,
@@ -139,6 +158,7 @@ func (repo *sqlxRepository) GetConversations(
 			DomainId:      c.DomainID,
 			Members:       members,
 			SelfChannelId: selfChannelID,
+			Messages:      []*pb.HistoryMessage{lastMessage},
 		}
 		if c.ClosedAt != (sql.NullTime{}) {
 			conv.ClosedAt = c.ClosedAt.Time.Unix() * 1000
