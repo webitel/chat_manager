@@ -62,8 +62,11 @@ func (repo *sqlxRepository) GetConversations(
 	userID int64,
 ) ([]*Conversation, error) {
 	// TO DO FILTERS
-	conversations := []*Conversation{}
-	err := repo.db.SelectContext(ctx, &conversations, `
+	if size == 0 {
+		size = 100
+	}
+	conversations := make([]*Conversation, 0, size)
+	rows, err := repo.db.QueryxContext(context.Background(), `
 		select *
 			from chat.conversation c
 				left join LATERAL (
@@ -85,7 +88,7 @@ func (repo *sqlxRepository) GetConversations(
 					) s
 				) m on true
 				left join LATERAL (
-					select json_agg(ss) as channels
+					select json_agg(ss) as members
 					from (
 						select
 							   ch.id,
@@ -109,12 +112,18 @@ func (repo *sqlxRepository) GetConversations(
 		}
 		return nil, err
 	}
-
+	for rows.Next() {
+		tmp := new(Conversation)
+		rows.StructScan(tmp)
+		tmp.Members.Scan(tmp.MembersBytes)
+		tmp.Messages.Scan(tmp.MessagesBytes)
+		conversations = append(conversations, tmp)
+	}
 	return conversations, nil
 }
 
-func (repo *sqlxRepository) getConversationInfo(ctx context.Context, id string, userID int64) (members []*ConversationMember, messages []*ConversationMessage, channelID string, err error) {
-	members = []*ConversationMember{}
+func (repo *sqlxRepository) getConversationInfo(ctx context.Context, id string, userID int64) (members ConversationMembers, messages ConversationMessages, channelID string, err error) {
+	members = ConversationMembers{}
 	err = repo.db.SelectContext(ctx, &members, "SELECT * FROM chat.channel where conversation_id=$1", id)
 	if err != nil {
 		repo.log.Warn().Msg(err.Error())
@@ -124,7 +133,7 @@ func (repo *sqlxRepository) getConversationInfo(ctx context.Context, id string, 
 		}
 		return
 	}
-	messages = []*ConversationMessage{}
+	messages = ConversationMessages{}
 	err = repo.db.GetContext(ctx, &messages, `SELECT m.*, c.user_id, c.type as user_type
 		FROM chat.message m
 		left join chat.channel c

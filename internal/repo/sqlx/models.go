@@ -2,6 +2,8 @@ package sqlxrepo
 
 import (
 	"database/sql"
+	"database/sql/driver"
+	"encoding/json"
 	"time"
 
 	"github.com/jmoiron/sqlx/types"
@@ -42,15 +44,19 @@ type Client struct {
 }
 
 type Conversation struct {
-	ID        string                 `db:"id" json:"id"`
-	Title     sql.NullString         `db:"title" json:"title,omitempty"`
-	CreatedAt time.Time              `db:"created_at" json:"created_at,omitempty"`
-	ClosedAt  sql.NullTime           `db:"closed_at" json:"closed_at,omitempty"`
-	UpdatedAt time.Time              `db:"updated_at" json:"updated_at,omitempty"`
-	DomainID  int64                  `db:"domain_id" json:"domain_id"`
-	Members   []*ConversationMember  `db:"members" json:"members"`
-	Messages  []*ConversationMessage `db:"messages" json:"messages"`
+	ID            string         `db:"id" json:"id"`
+	Title         sql.NullString `db:"title" json:"title,omitempty"`
+	CreatedAt     time.Time      `db:"created_at" json:"created_at,omitempty"`
+	ClosedAt      sql.NullTime   `db:"closed_at" json:"closed_at,omitempty"`
+	UpdatedAt     time.Time      `db:"updated_at" json:"updated_at,omitempty"`
+	DomainID      int64          `db:"domain_id" json:"domain_id"`
+	Members       ConversationMembers
+	Messages      ConversationMessages
+	MembersBytes  []byte `db:"members" json:"members"`
+	MessagesBytes []byte `db:"messages" json:"messages"`
 }
+
+type ConversationMembers []*ConversationMember
 
 type ConversationMember struct {
 	ID        string    `db:"id" json:"id"`
@@ -62,6 +68,16 @@ type ConversationMember struct {
 	Name      string    `db:"name" json:"name"`
 }
 
+func (c *ConversationMembers) Scan(src interface{}) error {
+	return json.Unmarshal(src.([]byte), c)
+}
+
+func (c *ConversationMembers) Value() (driver.Value, error) {
+	return json.Marshal(c)
+}
+
+type ConversationMessages []*ConversationMessage
+
 type ConversationMessage struct {
 	ID        int64          `db:"id" json:"id"`
 	UserID    sql.NullInt64  `db:"user_id" json:"user_id,omitempty"`
@@ -70,6 +86,14 @@ type ConversationMessage struct {
 	CreatedAt time.Time      `db:"created_at" json:"created_at,omitempty"`
 	UpdatedAt time.Time      `db:"updated_at" json:"updated_at,omitempty"`
 	Type      string         `db:"type" json:"type"`
+}
+
+func (c *ConversationMessages) Scan(src interface{}) error {
+	return json.Unmarshal(src.([]byte), c)
+}
+
+func (c *ConversationMessages) Value() (driver.Value, error) {
+	return json.Marshal(c)
 }
 
 type Invite struct {
