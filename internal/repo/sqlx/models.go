@@ -79,13 +79,13 @@ func (c *ConversationMembers) Value() (driver.Value, error) {
 type ConversationMessages []*ConversationMessage
 
 type ConversationMessage struct {
-	ID        int64          `db:"id" json:"id"`
-	UserID    sql.NullInt64  `db:"user_id" json:"user_id,omitempty"`
-	UserType  sql.NullString `db:"user_type" json:"user_type,omitempty"`
-	Text      sql.NullString `db:"text" json:"text,omitempty"`
-	CreatedAt time.Time      `db:"created_at" json:"created_at,omitempty"`
-	UpdatedAt time.Time      `db:"updated_at" json:"updated_at,omitempty"`
-	Type      string         `db:"type" json:"type"`
+	ID        int64     `db:"id" json:"id"`
+	UserID    int64     `db:"user_id" json:"user_id,omitempty"`
+	UserType  string    `db:"user_type" json:"user_type,omitempty"`
+	Text      string    `db:"text" json:"text,omitempty"`
+	CreatedAt time.Time `db:"created_at" json:"created_at,omitempty"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at,omitempty"`
+	Type      string    `db:"type" json:"type"`
 }
 
 func (c *ConversationMessages) Scan(src interface{}) error {
