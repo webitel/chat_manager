@@ -278,6 +278,7 @@ message GetConversationsRequest {
   repeated string sort = 7;   // select: order by (fields,...)
   int32 page = 8;             // select: offset {page}
   int32 size = 9;             // select: limit {size}
+  int32 message_size = 10;
 }
 
 message GetConversationsResponse {

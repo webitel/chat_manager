@@ -381,7 +381,7 @@ func (s *chatService) InviteToConversation(
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	if err := s.eventRouter.SendInviteToWebitelUser(conversation, invite); err != nil {
+	if err := s.eventRouter.SendInviteToWebitelUser(transformConversationFromRepoModel(conversation), invite); err != nil {
 		s.log.Warn().Msg(err.Error())
 		return err
 	}
@@ -550,7 +550,7 @@ func (s *chatService) GetConversationByID(ctx context.Context, req *pb.GetConver
 	if conversation == nil {
 		return nil
 	}
-	res.Item = conversation
+	res.Item = transformConversationFromRepoModel(conversation)
 	return nil
 }
 
@@ -577,7 +577,7 @@ func (s *chatService) GetConversations(ctx context.Context, req *pb.GetConversat
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	res.Items = conversations
+	res.Items = transformConversationsFromRepoModel(conversations)
 	return nil
 }
 

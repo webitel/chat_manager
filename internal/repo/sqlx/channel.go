@@ -69,10 +69,7 @@ func (repo *sqlxRepository) GetChannels(
 
 func (repo *sqlxRepository) CreateChannel(ctx context.Context, c *Channel) error {
 	c.ID = uuid.New().String()
-	tmp := sql.NullTime{
-		time.Now(),
-		true,
-	}
+	tmp := time.Now()
 	c.CreatedAt = tmp
 	c.UpdatedAt = tmp
 	_, err := repo.db.NamedExecContext(ctx, `insert into chat.channel (

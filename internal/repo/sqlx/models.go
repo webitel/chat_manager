@@ -2,6 +2,7 @@ package sqlxrepo
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/jmoiron/sqlx/types"
 )
@@ -21,10 +22,10 @@ type Channel struct {
 	ConversationID string         `db:"conversation_id" json:"conversation_id"`
 	UserID         int64          `db:"user_id" json:"user_id"`
 	Connection     sql.NullString `db:"connection" json:"connection,omitempty"`
-	CreatedAt      sql.NullTime   `db:"created_at" json:"created_at,omitempty"`
+	CreatedAt      time.Time      `db:"created_at" json:"created_at,omitempty"`
 	Internal       bool           `db:"internal" json:"internal"`
 	ClosedAt       sql.NullTime   `db:"closed_at" json:"closed_at,omitempty"`
-	UpdatedAt      sql.NullTime   `db:"updated_at" json:"updated_at,omitempty"`
+	UpdatedAt      time.Time      `db:"updated_at" json:"updated_at,omitempty"`
 	DomainID       int64          `db:"domain_id" json:"domain_id"`
 	FlowBridge     bool           `db:"flow_bridge" json:"flow_bridge"`
 	Name           string         `db:"name" json:"name"`
@@ -34,20 +35,41 @@ type Client struct {
 	ID         int64          `db:"id" json:"id"`
 	Name       sql.NullString `db:"name" json:"name,omitempty"`
 	Number     sql.NullString `db:"number" json:"number,omitempty"`
-	CreatedAt  sql.NullTime   `db:"created_at" json:"created_at,omitempty"`
-	ActivityAt sql.NullTime   `db:"activity_at" json:"activity_at,omitempty"`
+	CreatedAt  time.Time      `db:"created_at" json:"created_at,omitempty"`
 	ExternalID sql.NullString `db:"external_id" json:"external_id,omitempty"`
 	FirstName  sql.NullString `db:"first_name" json:"first_name,omitempty"`
 	LastName   sql.NullString `db:"last_name" json:"last_name,omitempty"`
 }
 
 type Conversation struct {
-	ID        string         `db:"id" json:"id"`
-	Title     sql.NullString `db:"title" json:"title,omitempty"`
-	CreatedAt sql.NullTime   `db:"created_at" json:"created_at,omitempty"`
-	ClosedAt  sql.NullTime   `db:"closed_at" json:"closed_at,omitempty"`
-	UpdatedAt sql.NullTime   `db:"updated_at" json:"updated_at,omitempty"`
-	DomainID  int64          `db:"domain_id" json:"domain_id"`
+	ID        string                 `db:"id" json:"id"`
+	Title     sql.NullString         `db:"title" json:"title,omitempty"`
+	CreatedAt time.Time              `db:"created_at" json:"created_at,omitempty"`
+	ClosedAt  sql.NullTime           `db:"closed_at" json:"closed_at,omitempty"`
+	UpdatedAt time.Time              `db:"updated_at" json:"updated_at,omitempty"`
+	DomainID  int64                  `db:"domain_id" json:"domain_id"`
+	Members   []*ConversationMember  `db:"members" json:"members"`
+	Messages  []*ConversationMessage `db:"messages" json:"messages"`
+}
+
+type ConversationMember struct {
+	ID        string    `db:"id" json:"id"`
+	Type      string    `db:"type" json:"type"`
+	UserID    int64     `db:"user_id" json:"user_id"`
+	CreatedAt time.Time `db:"created_at" json:"created_at,omitempty"`
+	Internal  bool      `db:"internal" json:"internal"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at,omitempty"`
+	Name      string    `db:"name" json:"name"`
+}
+
+type ConversationMessage struct {
+	ID        int64          `db:"id" json:"id"`
+	UserID    sql.NullInt64  `db:"user_id" json:"user_id,omitempty"`
+	UserType  sql.NullString `db:"user_type" json:"user_type,omitempty"`
+	Text      sql.NullString `db:"text" json:"text,omitempty"`
+	CreatedAt time.Time      `db:"created_at" json:"created_at,omitempty"`
+	UpdatedAt time.Time      `db:"updated_at" json:"updated_at,omitempty"`
+	Type      string         `db:"type" json:"type"`
 }
 
 type Invite struct {
@@ -58,7 +80,7 @@ type Invite struct {
 	TimeoutSec       int64          `db:"timeout_sec" json:"timeout_sec"`
 	InviterChannelID sql.NullString `db:"inviter_channel_id" json:"inviter_channel_id,omitempty"`
 	ClosedAt         sql.NullTime   `db:"closed_at" json:"closed_at,omitempty"`
-	CreatedAt        sql.NullTime   `db:"created_at" json:"created_at,omitempty"`
+	CreatedAt        time.Time      `db:"created_at" json:"created_at,omitempty"`
 	DomainID         int64          `db:"domain_id" json:"domain_id"`
 }
 
@@ -69,8 +91,8 @@ type Message struct {
 	UserType       sql.NullString `db:"user_type" json:"user_type,omitempty"`
 	ConversationID string         `db:"conversation_id" json:"conversation_id"`
 	Text           sql.NullString `db:"text" json:"text,omitempty"`
-	CreatedAt      sql.NullTime   `db:"created_at" json:"created_at,omitempty"`
-	UpdatedAt      sql.NullTime   `db:"updated_at" json:"updated_at,omitempty"`
+	CreatedAt      time.Time      `db:"created_at" json:"created_at,omitempty"`
+	UpdatedAt      time.Time      `db:"updated_at" json:"updated_at,omitempty"`
 	Type           string         `db:"type" json:"type"`
 }
 
@@ -81,7 +103,7 @@ type Profile struct {
 	Type      string         `db:"type" json:"type"`
 	Variables types.JSONText `db:"variables" json:"variables"`
 	DomainID  int64          `db:"domain_id" json:"domain_id"`
-	CreatedAt sql.NullTime   `db:"created_at" json:"created_at,omitempty"`
+	CreatedAt time.Time      `db:"created_at" json:"created_at,omitempty"`
 }
 
 type WebitelUser struct {

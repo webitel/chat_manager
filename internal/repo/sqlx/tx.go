@@ -31,10 +31,7 @@ func (repo *sqlxRepository) WithTransaction(txFunc func(*sqlx.Tx) error) (err er
 
 func (repo *sqlxRepository) CreateConversationTx(ctx context.Context, tx *sqlx.Tx, c *Conversation) error {
 	c.ID = uuid.New().String()
-	tmp := sql.NullTime{
-		time.Now(),
-		true,
-	}
+	tmp := time.Now()
 	c.CreatedAt = tmp
 	c.UpdatedAt = tmp
 	_, err := tx.NamedExecContext(ctx, `insert into chat.conversation (id, title, created_at, closed_at, updated_at, domain_id)
@@ -44,10 +41,7 @@ func (repo *sqlxRepository) CreateConversationTx(ctx context.Context, tx *sqlx.T
 
 func (repo *sqlxRepository) CreateMessageTx(ctx context.Context, tx *sqlx.Tx, m *Message) error {
 	m.ID = 0
-	tmp := sql.NullTime{
-		time.Now(),
-		true,
-	}
+	tmp := time.Now()
 	m.CreatedAt = tmp
 	m.UpdatedAt = tmp
 	stmt, err := tx.PrepareNamed(`insert into chat.message (channel_id, conversation_id, text, created_at, updated_at, type)
@@ -127,10 +121,7 @@ func (repo *sqlxRepository) CreateChannelTx(
 	tx *sqlx.Tx,
 	c *Channel) error {
 	c.ID = uuid.New().String()
-	tmp := sql.NullTime{
-		time.Now(),
-		true,
-	}
+	tmp := time.Now()
 	c.CreatedAt = tmp
 	c.UpdatedAt = tmp
 	_, err := tx.NamedExecContext(ctx, `insert into chat.channel (

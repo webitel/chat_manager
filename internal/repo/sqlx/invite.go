@@ -29,10 +29,7 @@ func (repo *sqlxRepository) GetInvites(ctx context.Context, userID int64) ([]*In
 
 func (repo *sqlxRepository) CreateInvite(ctx context.Context, m *Invite) error {
 	m.ID = uuid.New().String()
-	m.CreatedAt = sql.NullTime{
-		time.Now(),
-		true,
-	}
+	m.CreatedAt = time.Now()
 	_, err := repo.db.NamedExecContext(ctx, `insert into chat.invite (id, conversation_id, user_id, title, timeout_sec, inviter_channel_id, created_at, domain_id)
 	values (:id, :conversation_id, :user_id, :title, :timeout_sec, :inviter_channel_id, :created_at, :domain_id)`, *m)
 	if err != nil {

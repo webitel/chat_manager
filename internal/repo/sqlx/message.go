@@ -2,16 +2,12 @@ package sqlxrepo
 
 import (
 	"context"
-	"database/sql"
 	"time"
 )
 
 func (repo *sqlxRepository) CreateMessage(ctx context.Context, m *Message) error {
 	m.ID = 0
-	tmp := sql.NullTime{
-		time.Now(),
-		true,
-	}
+	tmp := time.Now()
 	m.CreatedAt = tmp
 	m.UpdatedAt = tmp
 	stmt, err := repo.db.PrepareNamed(`insert into chat.message (channel_id, conversation_id, text, created_at, updated_at, type)

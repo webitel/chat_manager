@@ -3,6 +3,7 @@ package sqlxrepo
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 func (repo *sqlxRepository) GetProfileByID(ctx context.Context, id int64) (*Profile, error) {
@@ -27,8 +28,9 @@ func (repo *sqlxRepository) GetProfiles(ctx context.Context, id int64, size, pag
 
 func (repo *sqlxRepository) CreateProfile(ctx context.Context, p *Profile) error {
 	p.ID = 0
-	stmt, err := repo.db.PrepareNamed(`insert into chat.profile (name, schema_id, type, variables, domain_id)
-	values (:name, :schema_id, :type, :variables, :domain_id)`)
+	p.CreatedAt = time.Now()
+	stmt, err := repo.db.PrepareNamed(`insert into chat.profile (name, schema_id, type, variables, domain_id, created_at)
+	values (:name, :schema_id, :type, :variables, :domain_id, :created_at)`)
 	if err != nil {
 		return err
 	}

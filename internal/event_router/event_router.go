@@ -313,13 +313,11 @@ func (e *eventRouter) RouteJoinConversation(channel *pg.Channel, conversationID 
 		return nil
 	}
 	member := events.Member{
-		UserID:   channel.UserID,
-		Username: channel.Name,
-		Type:     channel.Type,
-		Internal: channel.Internal,
-	}
-	if channel.UpdatedAt.Valid {
-		member.UpdatedAt = channel.UpdatedAt.Time.Unix() * 1000
+		UserID:    channel.UserID,
+		Username:  channel.Name,
+		Type:      channel.Type,
+		Internal:  channel.Internal,
+		UpdatedAt: channel.UpdatedAt.Unix() * 1000,
 	}
 	selfEvent := events.JoinConversationEvent{
 		BaseEvent: events.BaseEvent{

@@ -34,10 +34,7 @@ func (repo *sqlxRepository) GetClientByExternalID(ctx context.Context, externalI
 
 func (repo *sqlxRepository) CreateClient(ctx context.Context, c *Client) error {
 	c.ID = 0
-	c.CreatedAt = sql.NullTime{
-		time.Now(),
-		true,
-	}
+	c.CreatedAt = time.Now()
 	stmt, err := repo.db.PrepareNamed(`insert into chat.client (name, number, created_at, external_id, first_name, last_name)
 	values (:name, :number, :created_at, :external_id, :first_name, :last_name)`)
 	if err != nil {

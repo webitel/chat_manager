@@ -89,46 +89,50 @@ func (s *chatService) createClient(ctx context.Context, req *pb.CheckSessionRequ
 	return
 }
 
-// func transformConversationFromRepoModel(c *repo.Conversation) *pb.Conversation {
-// 	result := &pb.Conversation{
-// 		Id:       c.ID,
-// 		Title:    *c.Title,
-// 		DomainId: c.DomainID,
-// 	}
-// 	if c.CreatedAt != nil {
-// 		result.CreatedAt = c.CreatedAt.Unix() * 1000
-// 	}
-// 	if c.ClosedAt != nil {
-// 		result.ClosedAt = c.ClosedAt.Unix() * 1000
-// 	}
-// 	if c.UpdatedAt != nil {
-// 		result.UpdatedAt = c.UpdatedAt.Unix() * 1000
-// 	}
-// 	members := make([]*pb.Member, 0, len(c.Members))
-// 	for _, item := range c.Members {
-// 		members = append(members, &pb.Member{
-// 			ChannelId: item.ChannelID,
-// 			UserId:    item.UserID,
-// 			Username:  item.Username,
-// 			Type:      item.Type,
-// 			Internal:  item.Internal,
-// 			Firstname: item.Firstname,
-// 			Lastname:  item.Lastname,
-// 		})
-// 	}
-// 	result.Members = members
-// 	return result
-// }
+func transformConversationFromRepoModel(c *pg.Conversation) *pb.Conversation {
+	result := &pb.Conversation{
+		Id:        c.ID,
+		Title:     c.Title.String,
+		DomainId:  c.DomainID,
+		CreatedAt: c.CreatedAt.Unix() * 1000,
+		UpdatedAt: c.UpdatedAt.Unix() * 1000,
+	}
+	members := make([]*pb.Member, 0, len(c.Members))
+	for _, item := range c.Members {
+		members = append(members, &pb.Member{
+			//ChannelId: item.ChannelID,
+			UserId:   item.UserID,
+			Username: item.Name,
+			Type:     item.Type,
+			Internal: item.Internal,
+		})
+	}
+	result.Members = members
+	messages := make([]*pb.HistoryMessage, 0, len(c.Messages))
+	for _, item := range c.Messages {
+		messages = append(messages, &pb.HistoryMessage{
+			//ChannelId: item.ChannelID,
+			FromUserId:   item.UserID.Int64,
+			FromUserType: item.UserType.String,
+			Type:         item.Type,
+			Text:         item.Text.String,
+			CreatedAt:    item.CreatedAt.Unix() * 1000,
+			UpdatedAt:    item.UpdatedAt.Unix() * 1000,
+		})
+	}
+	result.Members = members
+	return result
+}
 
-// func transformConversationsFromRepoModel(conversations []*repo.Conversation) []*pb.Conversation {
-// 	result := make([]*pb.Conversation, 0, len(conversations))
-// 	var tmp *pb.Conversation
-// 	for _, item := range conversations {
-// 		tmp = transformConversationFromRepoModel(item)
-// 		result = append(result, tmp)
-// 	}
-// 	return result
-// }
+func transformConversationsFromRepoModel(conversations []*pg.Conversation) []*pb.Conversation {
+	result := make([]*pb.Conversation, 0, len(conversations))
+	var tmp *pb.Conversation
+	for _, item := range conversations {
+		tmp = transformConversationFromRepoModel(item)
+		result = append(result, tmp)
+	}
+	return result
+}
 
 func transformMessageFromRepoModel(message *pg.Message) *pb.HistoryMessage {
 	result := &pb.HistoryMessage{
@@ -139,12 +143,8 @@ func transformMessageFromRepoModel(message *pg.Message) *pb.HistoryMessage {
 		FromUserType: message.UserType.String,
 		Type:         message.Type,
 		Text:         message.Text.String,
-	}
-	if message.CreatedAt.Valid {
-		result.CreatedAt = message.CreatedAt.Time.Unix() * 1000
-	}
-	if message.UpdatedAt.Valid {
-		result.UpdatedAt = message.UpdatedAt.Time.Unix() * 1000
+		CreatedAt:    message.CreatedAt.Unix() * 1000,
+		UpdatedAt:    message.UpdatedAt.Unix() * 1000,
 	}
 	return result
 }

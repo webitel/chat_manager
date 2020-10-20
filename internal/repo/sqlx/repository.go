@@ -3,8 +3,6 @@ package sqlxrepo
 import (
 	"context"
 
-	pb "github.com/webitel/chat_manager/api/proto/chat"
-
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog"
 )
@@ -65,9 +63,9 @@ type ConversationRepository interface {
 		domainID int64,
 		active bool,
 		userID int64,
-	) ([]*pb.Conversation, error)
+	) ([]*Conversation, error)
 	CreateConversation(ctx context.Context, c *Conversation) error
-	GetConversationByID(ctx context.Context, id string) (*pb.Conversation, error)
+	GetConversationByID(ctx context.Context, id string) (*Conversation, error)
 	//GetConversationByID(ctx context.Context, id string) (*Conversation, []*Channel, []*Message, error)
 }
 
