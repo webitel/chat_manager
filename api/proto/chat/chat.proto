@@ -66,6 +66,7 @@ message Conversation {
   repeated Member members = 7;
   repeated HistoryMessage messages = 8;
   string self_channel_id = 9;
+  int32 unread_messages = 10;
 }
 
 message Member {
