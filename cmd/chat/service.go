@@ -96,16 +96,29 @@ func (s *chatService) SendMessage(
 				true,
 			},
 		}
-		if err := s.repo.CreateMessage(ctx, message); err != nil {
-			s.log.Error().Msg(err.Error())
-			return err
-		}
-		if err := s.eventRouter.RouteMessageFromFlow(&conversationID, req.GetMessage()); err != nil {
-			s.log.Error().Msg(err.Error())
-			if err := s.flowClient.CloseConversation(conversationID); err != nil {
-				s.log.Error().Msg(err.Error())
+		resErrorsChan := make(chan error, 2)
+		go func() {
+			if err := s.repo.CreateMessage(ctx, message); err != nil {
+				resErrorsChan <- err
+			} else {
+				resErrorsChan <- nil
 			}
-			return err
+		}()
+		go func() {
+			if err := s.eventRouter.RouteMessageFromFlow(&conversationID, req.GetMessage()); err != nil {
+				if err := s.flowClient.CloseConversation(conversationID); err != nil {
+					s.log.Error().Msg(err.Error())
+				}
+				resErrorsChan <- err
+			} else {
+				resErrorsChan <- nil
+			}
+		}()
+		for i := 0; i < 2; i++ {
+			if err := <-resErrorsChan; err != nil {
+				s.log.Error().Msg(err.Error())
+				return err
+			}
 		}
 		return nil
 	}
@@ -143,6 +156,7 @@ func (s *chatService) SendMessage(
 			Text: message.Text.String,
 		},
 	}
+
 	sent, err := s.eventRouter.RouteMessage(channel, reqMessage)
 	if err != nil {
 		s.log.Warn().Msg(err.Error())
@@ -228,15 +242,42 @@ func (s *chatService) CloseConversation(
 	}
 	if req.FromFlow {
 		// s.chatCache.DeleteCachedMessages(conversationID)
+		resErrorsChan := make(chan error, 4)
 		go func() {
-			s.chatCache.DeleteConfirmation(conversationID)
-			s.chatCache.DeleteConversationNode(conversationID)
+			if err := s.chatCache.DeleteConfirmation(conversationID); err != nil {
+				resErrorsChan <- err
+			} else {
+				resErrorsChan <- nil
+			}
 		}()
-		if err := s.eventRouter.RouteCloseConversationFromFlow(&conversationID, req.GetCause()); err != nil {
-			s.log.Error().Msg(err.Error())
-			return err
+		go func() {
+			if err := s.chatCache.DeleteConversationNode(conversationID); err != nil {
+				resErrorsChan <- err
+			} else {
+				resErrorsChan <- nil
+			}
+		}()
+		go func() {
+			if err := s.eventRouter.RouteCloseConversationFromFlow(&conversationID, req.GetCause()); err != nil {
+				resErrorsChan <- err
+			} else {
+				resErrorsChan <- nil
+			}
+		}()
+		go func() {
+			if err := s.closeConversation(ctx, &conversationID); err != nil {
+				resErrorsChan <- err
+			} else {
+				resErrorsChan <- nil
+			}
+		}()
+		for i := 0; i < 4; i++ {
+			if err := <-resErrorsChan; err != nil {
+				s.log.Error().Msg(err.Error())
+				return err
+			}
 		}
-		return s.closeConversation(ctx, &conversationID)
+		return nil
 	}
 	closerChannel, err := s.repo.CheckUserChannel(ctx, req.GetCloserChannelId(), req.GetAuthUserId())
 	if err != nil {
@@ -247,16 +288,37 @@ func (s *chatService) CloseConversation(
 		s.log.Warn().Msg("channel not found")
 		return errors.BadRequest("channel not found", "")
 	}
-	if err := s.eventRouter.RouteCloseConversation(closerChannel, req.GetCause()); err != nil {
-		s.log.Warn().Msg(err.Error())
-		return err
-	}
-	if !closerChannel.Internal || closerChannel.FlowBridge {
-		if err := s.flowClient.CloseConversation(closerChannel.ConversationID); err != nil {
+	resErrorsChan := make(chan error, 3)
+	go func() {
+		if err := s.eventRouter.RouteCloseConversation(closerChannel, req.GetCause()); err != nil {
+			resErrorsChan <- err
+		} else {
+			resErrorsChan <- nil
+		}
+	}()
+	go func() {
+		if !closerChannel.Internal || closerChannel.FlowBridge {
+			if err := s.flowClient.CloseConversation(closerChannel.ConversationID); err != nil {
+				resErrorsChan <- err
+				return
+			}
+		}
+		resErrorsChan <- nil
+	}()
+	go func() {
+		if err := s.closeConversation(ctx, &conversationID); err != nil {
+			resErrorsChan <- err
+		} else {
+			resErrorsChan <- nil
+		}
+	}()
+	for i := 0; i < 3; i++ {
+		if err := <-resErrorsChan; err != nil {
+			s.log.Error().Msg(err.Error())
 			return err
 		}
 	}
-	return s.closeConversation(ctx, &conversationID)
+	return nil
 }
 
 func (s *chatService) JoinConversation(
@@ -342,14 +404,28 @@ func (s *chatService) LeaveConversation(
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	if ch.FlowBridge {
-		if err := s.flowClient.BreakBridge(conversationID, flow.LeaveConversationCause); err != nil {
+	resErrorsChan := make(chan error, 2)
+	go func() {
+		if ch.FlowBridge {
+			if err := s.flowClient.BreakBridge(conversationID, flow.LeaveConversationCause); err != nil {
+				resErrorsChan <- err
+				return
+			}
+		}
+		resErrorsChan <- nil
+	}()
+	go func() {
+		if err := s.eventRouter.RouteLeaveConversation(ch, &conversationID); err != nil {
+			resErrorsChan <- err
+		} else {
+			resErrorsChan <- nil
+		}
+	}()
+	for i := 0; i < 2; i++ {
+		if err := <-resErrorsChan; err != nil {
+			s.log.Error().Msg(err.Error())
 			return err
 		}
-	}
-	if err := s.eventRouter.RouteLeaveConversation(ch, &conversationID); err != nil {
-		s.log.Warn().Msg(err.Error())
-		return err
 	}
 	return nil
 }
@@ -412,13 +488,26 @@ func (s *chatService) InviteToConversation(
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	if err := s.eventRouter.SendInviteToWebitelUser(transformConversationFromRepoModel(conversation), invite); err != nil {
-		s.log.Warn().Msg(err.Error())
-		return err
-	}
-	if err := s.eventRouter.RouteInvite(&invite.ConversationID, &invite.UserID); err != nil {
-		s.log.Warn().Msg(err.Error())
-		return err
+	resErrorsChan := make(chan error, 2)
+	go func() {
+		if err := s.eventRouter.SendInviteToWebitelUser(transformConversationFromRepoModel(conversation), invite); err != nil {
+			resErrorsChan <- err
+		} else {
+			resErrorsChan <- nil
+		}
+	}()
+	go func() {
+		if err := s.eventRouter.RouteInvite(&invite.ConversationID, &invite.UserID); err != nil {
+			resErrorsChan <- err
+		} else {
+			resErrorsChan <- nil
+		}
+	}()
+	for i := 0; i < 2; i++ {
+		if err := <-resErrorsChan; err != nil {
+			s.log.Error().Msg(err.Error())
+			return err
+		}
 	}
 	if req.GetTimeoutSec() != 0 {
 		go func() {
@@ -470,18 +559,35 @@ func (s *chatService) DeclineInvitation(
 	if invite == nil && invite.UserID != req.GetAuthUserId() {
 		return errors.BadRequest("invite not found", "")
 	}
-	if invite.InviterChannelID == (sql.NullString{}) {
-		if err := s.flowClient.BreakBridge(invite.ConversationID, flow.DeclineInvitationCause); err != nil {
+	resErrorsChan := make(chan error, 3)
+	go func() {
+		if invite.InviterChannelID == (sql.NullString{}) {
+			if err := s.flowClient.BreakBridge(invite.ConversationID, flow.DeclineInvitationCause); err != nil {
+				resErrorsChan <- err
+				return
+			}
+		}
+		resErrorsChan <- nil
+	}()
+	go func() {
+		if err := s.repo.CloseInvite(ctx, req.GetInviteId()); err != nil {
+			resErrorsChan <- err
+		} else {
+			resErrorsChan <- nil
+		}
+	}()
+	go func() {
+		if err := s.eventRouter.RouteDeclineInvite(&invite.UserID, &invite.ConversationID); err != nil {
+			resErrorsChan <- err
+		} else {
+			resErrorsChan <- nil
+		}
+	}()
+	for i := 0; i < 3; i++ {
+		if err := <-resErrorsChan; err != nil {
+			s.log.Error().Msg(err.Error())
 			return err
 		}
-	}
-	if err := s.repo.CloseInvite(ctx, req.GetInviteId()); err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	}
-	if err := s.eventRouter.RouteDeclineInvite(&invite.UserID, &invite.ConversationID); err != nil {
-		s.log.Warn().Msg(err.Error())
-		return err
 	}
 	return nil
 }

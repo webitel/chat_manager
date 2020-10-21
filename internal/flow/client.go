@@ -181,7 +181,7 @@ func (s *flowClient) CloseConversation(conversationID string) error {
 	} else if res != nil && res.Error != nil {
 		return errors.New(res.Error.Message)
 	}
-	s.chatCache.DeleteCachedMessages(conversationID)
+	//s.chatCache.DeleteCachedMessages(conversationID)
 	s.chatCache.DeleteConfirmation(conversationID)
 	s.chatCache.DeleteConversationNode(conversationID)
 	return nil
