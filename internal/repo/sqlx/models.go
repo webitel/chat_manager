@@ -15,7 +15,7 @@ var (
 	conversationAllColumns = []string{"id", "title", "created_at", "closed_at", "updated_at", "domain_id"}
 	inviteAllColumns       = []string{"id", "conversation_id", "user_id", "title", "timeout_sec", "inviter_channel_id", "closed_at", "created_at", "domain_id"}
 	messageAllColumns      = []string{"id", "channel_id", "conversation_id", "text", "created_at", "updated_at", "type"}
-	profileAllColumns      = []string{"id", "name", "schema_id", "type", "variables", "domain_id"}
+	profileAllColumns      = []string{"id", "name", "schema_id", "type", "variables", "domain_id", "created_at"}
 )
 
 type Channel struct {

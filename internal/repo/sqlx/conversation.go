@@ -66,7 +66,7 @@ func (repo *sqlxRepository) GetConversations(
 		size = 100
 	}
 	conversations := make([]*Conversation, 0, size)
-	rows, err := repo.db.QueryxContext(context.Background(), `
+	rows, err := repo.db.QueryxContext(ctx, `
 		select *
 			from chat.conversation c
 				left join LATERAL (

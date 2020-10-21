@@ -3,6 +3,9 @@ package sqlxrepo
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -21,8 +24,67 @@ func (repo *sqlxRepository) GetProfileByID(ctx context.Context, id int64) (*Prof
 
 func (repo *sqlxRepository) GetProfiles(ctx context.Context, id int64, size, page int32, fields, sort []string, profileType string, domainID int64) ([]*Profile, error) {
 	result := []*Profile{}
-	// TO DO FILTERS
-	err := repo.db.SelectContext(ctx, &result, "SELECT * FROM chat.profile")
+	limitStr, fieldsStr, whereStr, sortStr := "", "*", "", "order by created_at desc"
+	if size == 0 {
+		size = 15
+	}
+	if page == 0 {
+		page = 1
+	}
+	limitStr = fmt.Sprintf("limit %v offset %v", size, (page-1)*size)
+	if len(fields) > 0 {
+	OUTER:
+		for _, field := range fields {
+			for _, allowedField := range profileAllColumns {
+				if field == allowedField {
+					continue OUTER
+				}
+			}
+			return nil, errors.New("fields not allowed")
+		}
+		fieldsStr = strings.Join(fields, ", ")
+	}
+	if len(sort) > 0 {
+		sortField := sort[0][1:]
+		found := false
+		for _, allowedField := range profileAllColumns {
+			if sortField == allowedField {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, errors.New("sort not allowed")
+		}
+		if direction := string(sort[0][0]); direction == "-" {
+			sortStr = fmt.Sprintf("order by %s desc", sortField)
+		} else {
+			sortStr = fmt.Sprintf("order by %s asc", sortField)
+		}
+	}
+	queryStrings := make([]string, 0, 3)
+	queryArgs := make([]interface{}, 0, 3)
+	if id != 0 {
+		queryStrings = append(queryStrings, "id")
+		queryArgs = append(queryArgs, id)
+	}
+	if profileType != "" {
+		queryStrings = append(queryStrings, "type")
+		queryArgs = append(queryArgs, profileType)
+	}
+	if domainID != 0 {
+		queryStrings = append(queryStrings, "domain_id")
+		queryArgs = append(queryArgs, domainID)
+	}
+	if len(queryArgs) > 0 {
+		whereStr = "where"
+		for i, _ := range queryArgs {
+			whereStr = whereStr + fmt.Sprintf(" %s=$%v and", queryStrings[i], i+1)
+		}
+		whereStr = strings.TrimRight(whereStr, " and")
+	}
+	query := fmt.Sprintf("SELECT %s FROM chat.profile %s %s %s", fieldsStr, whereStr, sortStr, limitStr)
+	err := repo.db.SelectContext(ctx, &result, query, queryArgs...)
 	return result, err
 }
 
