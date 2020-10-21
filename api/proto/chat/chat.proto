@@ -141,6 +141,7 @@ message SendMessageRequest {
   string channel_id = 2;
   bool from_flow = 3;
   string conversation_id = 4;
+  int64 auth_user_id = 5;
 }
 
 message SendMessageResponse {
@@ -162,6 +163,7 @@ message CloseConversationRequest {
   string closer_channel_id = 2;
   bool from_flow = 3;
   string cause = 4;
+  int64 auth_user_id = 5;
 }
 
 message CloseConversationResponse {
@@ -169,6 +171,7 @@ message CloseConversationResponse {
 
 message JoinConversationRequest {
   string invite_id = 1;
+  int64 auth_user_id = 2;
   // User user = 1;
   // int64 conversation_id = 2;
 }
@@ -180,6 +183,7 @@ message JoinConversationResponse {
 message LeaveConversationRequest {
   string channel_id = 1;
   string conversation_id = 2;
+  int64 auth_user_id = 3;
 }
 
 message LeaveConversationResponse {
@@ -191,6 +195,8 @@ message InviteToConversationRequest {
   string inviter_channel_id = 3;
   int64 timeout_sec = 4;
   int64 domain_id = 5;
+  int64 auth_user_id = 6;
+  bool from_flow = 7;
 }
 
 message InviteToConversationResponse {
@@ -199,7 +205,7 @@ message InviteToConversationResponse {
 
 message DeclineInvitationRequest {
   string invite_id = 1;
-  int64 user_id = 2;
+  int64 auth_user_id = 2;
   string conversation_id = 3;
 }
 

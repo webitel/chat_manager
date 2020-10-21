@@ -136,3 +136,16 @@ func (repo *sqlxRepository) CloseChannels(ctx context.Context, conversationID st
 	}, conversationID)
 	return err
 }
+
+func (repo *sqlxRepository) CheckUserChannel(ctx context.Context, channelID string, userID int64) (*Channel, error) {
+	result := &Channel{}
+	err := repo.db.GetContext(ctx, result, "SELECT * FROM chat.channel WHERE id=$1 and user_id=$2", channelID, userID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			repo.log.Warn().Msg(err.Error())
+			return nil, nil
+		}
+		return nil, err
+	}
+	return result, nil
+}

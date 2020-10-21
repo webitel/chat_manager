@@ -84,6 +84,7 @@ func (s *chatService) SendMessage(
 		Str("channel_id", req.GetChannelId()).
 		Str("conversation_id", req.GetConversationId()).
 		Bool("from_flow", req.GetFromFlow()).
+		Int64("auth_user_id", req.GetAuthUserId()).
 		Msg("send message")
 	if req.GetFromFlow() {
 		conversationID := req.GetConversationId()
@@ -109,7 +110,7 @@ func (s *chatService) SendMessage(
 		return nil
 	}
 
-	channel, err := s.repo.GetChannelByID(ctx, req.GetChannelId())
+	channel, err := s.repo.CheckUserChannel(ctx, req.GetChannelId(), req.GetAuthUserId())
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
@@ -237,10 +238,14 @@ func (s *chatService) CloseConversation(
 		}
 		return s.closeConversation(ctx, &conversationID)
 	}
-	closerChannel, err := s.repo.GetChannelByID(ctx, req.GetCloserChannelId())
+	closerChannel, err := s.repo.CheckUserChannel(ctx, req.GetCloserChannelId(), req.GetAuthUserId())
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
+	}
+	if closerChannel == nil {
+		s.log.Warn().Msg("channel not found")
+		return errors.BadRequest("channel not found", "")
 	}
 	if err := s.eventRouter.RouteCloseConversation(closerChannel, req.GetCause()); err != nil {
 		s.log.Warn().Msg(err.Error())
@@ -267,7 +272,7 @@ func (s *chatService) JoinConversation(
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	if invite == nil {
+	if invite == nil || invite.UserID != req.GetAuthUserId() {
 		s.log.Warn().Msg("invitation not found")
 		return errors.BadRequest("invitation not found", "")
 	}
@@ -321,7 +326,17 @@ func (s *chatService) LeaveConversation(
 	s.log.Trace().
 		Str("channel_id", channelID).
 		Str("conversation_id", conversationID).
+		Int64("auth_user_id", req.GetAuthUserId()).
 		Msg("leave conversation")
+	channel, err := s.repo.CheckUserChannel(ctx, req.GetChannelId(), req.GetAuthUserId())
+	if err != nil {
+		s.log.Error().Msg(err.Error())
+		return err
+	}
+	if channel == nil {
+		s.log.Warn().Msg("channel not found")
+		return errors.BadRequest("channel not found", "")
+	}
 	ch, err := s.repo.CloseChannel(ctx, channelID)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
@@ -358,7 +373,14 @@ func (s *chatService) InviteToConversation(
 		Str("inviter_channel_id", req.GetInviterChannelId()).
 		Int64("domain_id", req.GetDomainId()).
 		Int64("timeout_sec", req.GetTimeoutSec()).
+		Int64("auth_user_id", req.GetAuthUserId()).
+		Bool("from_flow", req.GetFromFlow()).
 		Msg("invite to conversation")
+	if !req.GetFromFlow() &&
+		(req.GetInviterChannelId() == "" || req.GetAuthUserId() == 0) {
+		s.log.Error().Msg("failed auth")
+		return errors.BadRequest("failed auth", "")
+	}
 	domainID := req.GetDomainId()
 	invite := &pg.Invite{
 		ConversationID: req.GetConversationId(),
@@ -367,6 +389,15 @@ func (s *chatService) InviteToConversation(
 		DomainID:       domainID,
 	}
 	if req.GetInviterChannelId() != "" {
+		channel, err := s.repo.CheckUserChannel(ctx, req.GetInviterChannelId(), req.GetAuthUserId())
+		if err != nil {
+			s.log.Error().Msg(err.Error())
+			return err
+		}
+		if channel == nil {
+			s.log.Warn().Msg("channel not found")
+			return errors.BadRequest("channel not found", "")
+		}
 		invite.InviterChannelID = sql.NullString{
 			req.GetInviterChannelId(),
 			true,
@@ -424,19 +455,19 @@ func (s *chatService) DeclineInvitation(
 	req *pb.DeclineInvitationRequest,
 	res *pb.DeclineInvitationResponse,
 ) error {
-	userID := req.GetUserId()
+	userID := req.GetAuthUserId()
 	conversationID := req.GetConversationId()
 	s.log.Trace().
 		Str("invite_id", req.GetInviteId()).
 		Str("conversation_id", conversationID).
-		Int64("user_id", userID).
+		Int64("auth_user_id", userID).
 		Msg("decline invitation")
 	invite, err := s.repo.GetInviteByID(ctx, req.GetInviteId())
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	if invite == nil {
+	if invite == nil && invite.UserID != req.GetAuthUserId() {
 		return errors.BadRequest("invite not found", "")
 	}
 	if invite.InviterChannelID == (sql.NullString{}) {
