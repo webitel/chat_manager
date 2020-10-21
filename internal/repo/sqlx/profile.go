@@ -24,7 +24,7 @@ func (repo *sqlxRepository) GetProfileByID(ctx context.Context, id int64) (*Prof
 
 func (repo *sqlxRepository) GetProfiles(ctx context.Context, id int64, size, page int32, fields, sort []string, profileType string, domainID int64) ([]*Profile, error) {
 	result := []*Profile{}
-	limitStr, fieldsStr, whereStr, sortStr := "", "*", "", "order by created_at desc"
+	fieldsStr, whereStr, sortStr, limitStr := "*", "", "order by created_at desc", ""
 	if size == 0 {
 		size = 15
 	}

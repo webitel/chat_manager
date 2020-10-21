@@ -3,6 +3,8 @@ package sqlxrepo
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -61,13 +63,45 @@ func (repo *sqlxRepository) GetConversations(
 	active bool,
 	userID int64,
 ) ([]*Conversation, error) {
-	// TO DO FILTERS
-	if size == 0 {
-		size = 100
-	}
 	conversations := make([]*Conversation, 0, size)
-	rows, err := repo.db.QueryxContext(ctx, `
-		select *
+	fieldsStr, whereStr, sortStr, limitStr := "c.*, m.*, ch.*", "", "order by c.created_at desc", ""
+	if size == 0 {
+		size = 15
+	}
+	if page == 0 {
+		page = 1
+	}
+	limitStr = fmt.Sprintf("limit %v offset %v", size, (page-1)*size)
+	queryStrings := make([]string, 0, 4)
+	queryArgs := make([]interface{}, 0, 4)
+	argCounter := 1
+	if userID != 0 {
+		whereStr = "right join chat.channel rch on c.id = rch.conversation_id where rch.user_id=$1 and"
+		queryArgs = append(queryArgs, userID)
+		argCounter++
+	}
+	if id != "" {
+		queryStrings = append(queryStrings, "c.id")
+		queryArgs = append(queryArgs, id)
+	}
+	if domainID != 0 {
+		queryStrings = append(queryStrings, "c.domain_id")
+		queryArgs = append(queryArgs, domainID)
+	}
+	if len(queryStrings) > 0 {
+		if whereStr == "" {
+			whereStr = "where"
+		}
+		if active != false {
+			whereStr = whereStr + " closed_at is not null and"
+		}
+		for i, _ := range queryStrings {
+			whereStr = whereStr + fmt.Sprintf(" %s=$%v and", queryStrings[i], i+argCounter)
+		}
+	}
+	whereStr = strings.TrimRight(whereStr, " and")
+	query := fmt.Sprintf(`
+		select %s
 			from chat.conversation c
 				left join LATERAL (
 					select json_agg(s) as messages
@@ -102,10 +136,11 @@ func (repo *sqlxRepository) GetConversations(
 						where ch.conversation_id = c.id
 					) ss
 				) ch on true
-			where domain_id = 1 --and closed_at isnull
-			order by c.created_at desc
-		limit 100;
-		`)
+			%s
+			%s
+		%s;
+		`, fieldsStr, whereStr, sortStr, limitStr)
+	rows, err := repo.db.QueryxContext(ctx, query, queryArgs...)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil

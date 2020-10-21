@@ -2,6 +2,7 @@ package sqlxrepo
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -31,33 +32,16 @@ func (repo *sqlxRepository) CreateMessage(ctx context.Context, m *Message) error
 
 func (repo *sqlxRepository) GetMessages(ctx context.Context, id int64, size, page int32, fields, sort []string, conversationID string) ([]*Message, error) {
 	result := []*Message{}
-	// TO DO FILTERS
-	err := repo.db.SelectContext(ctx, &result, "SELECT m.*, c.user_id, c.type as user_type FROM chat.message m left join chat.channel c on m.channel_id = c.id")
+	fieldsStr, whereStr, sortStr, limitStr := "m.*, c.user_id, c.type as user_type", "where conversation_id=$1", "order by created_at desc", ""
+	if size == 0 {
+		size = 15
+	}
+	if page == 0 {
+		page = 1
+	}
+	limitStr = fmt.Sprintf("limit %v offset %v", size, (page-1)*size)
+	query := fmt.Sprintf("SELECT %s FROM chat.message m left join chat.channel c on m.channel_id = c.id %s %s %s", fieldsStr, whereStr, sortStr, limitStr)
+	err := repo.db.SelectContext(ctx, &result, query, conversationID)
 	return result, err
-	// query := make([]qm.QueryMod, 0, 6)
-	// if size != 0 {
-	// 	query = append(query, qm.Limit(int(size)))
-	// } else {
-	// 	query = append(query, qm.Limit(15))
-	// }
-	// if page != 0 {
-	// 	query = append(query, qm.Offset(int((page-1)*size)))
-	// }
-	// if id != 0 {
-	// 	query = append(query, models.MessageWhere.ID.EQ(id))
-	// }
-	// if fields != nil && len(fields) > 0 {
-	// 	query = append(query, qm.Select(fields...))
-	// }
-	// if sort != nil && len(sort) > 0 {
-	// 	for _, item := range sort {
-	// 		query = append(query, qm.OrderBy(item))
-	// 	}
-	// } else {
-	// 	query = append(query, qm.OrderBy("created_at"))
-	// }
-	// if conversationID != "" {
-	// 	query = append(query, models.MessageWhere.ConversationID.EQ(conversationID))
-	// }
-	// return models.Messages(query...).All(ctx, repo.db)
+
 }
