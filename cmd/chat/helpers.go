@@ -100,24 +100,24 @@ func transformConversationFromRepoModel(c *pg.Conversation) *pb.Conversation {
 	members := make([]*pb.Member, 0, len(c.Members))
 	for _, item := range c.Members {
 		members = append(members, &pb.Member{
-			//ChannelId: item.ChannelID,
-			UserId:   item.UserID,
-			Username: item.Name,
-			Type:     item.Type,
-			Internal: item.Internal,
+			ChannelId: item.ID,
+			UserId:    item.UserID,
+			Username:  item.Name,
+			Type:      item.Type,
+			Internal:  item.Internal,
 		})
 	}
 	result.Members = members
 	messages := make([]*pb.HistoryMessage, 0, len(c.Messages))
 	for _, item := range c.Messages {
 		messages = append(messages, &pb.HistoryMessage{
-			//ChannelId: item.ChannelID,
-			FromUserId:   item.UserID,
-			FromUserType: item.UserType,
-			Type:         item.Type,
-			Text:         item.Text,
-			CreatedAt:    item.CreatedAt.Unix() * 1000,
-			UpdatedAt:    item.UpdatedAt.Unix() * 1000,
+			ChannelId: item.ChannelID,
+			//FromUserId:   item.UserID,
+			//FromUserType: item.UserType,
+			Type:      item.Type,
+			Text:      item.Text,
+			CreatedAt: item.CreatedAt.Unix() * 1000,
+			UpdatedAt: item.UpdatedAt.Unix() * 1000,
 		})
 	}
 	result.Members = members
@@ -137,15 +137,15 @@ func transformConversationsFromRepoModel(conversations []*pg.Conversation) []*pb
 
 func transformMessageFromRepoModel(message *pg.Message) *pb.HistoryMessage {
 	result := &pb.HistoryMessage{
-		Id: message.ID,
-		// ChannelId: message.ChannelID.String,
+		Id:        message.ID,
+		ChannelId: message.ChannelID.String,
 		// ConversationId: message.ConversationID,
-		FromUserId:   message.UserID.Int64,
-		FromUserType: message.UserType.String,
-		Type:         message.Type,
-		Text:         message.Text.String,
-		CreatedAt:    message.CreatedAt.Unix() * 1000,
-		UpdatedAt:    message.UpdatedAt.Unix() * 1000,
+		//FromUserId:   message.UserID.Int64,
+		//FromUserType: message.UserType.String,
+		Type:      message.Type,
+		Text:      message.Text.String,
+		CreatedAt: message.CreatedAt.Unix() * 1000,
+		UpdatedAt: message.UpdatedAt.Unix() * 1000,
 	}
 	return result
 }

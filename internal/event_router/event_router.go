@@ -68,8 +68,8 @@ func (e *eventRouter) RouteCloseConversation(channel *pg.Channel, cause string) 
 			ConversationID: channel.ConversationID,
 			Timestamp:      time.Now().Unix() * 1000,
 		},
-		FromUserID: channel.UserID,
-		Cause:      cause,
+		FromChannelID: channel.ID,
+		Cause:         cause,
 	})
 	for _, item := range otherChannels {
 		var err error
@@ -260,13 +260,12 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *pb.Conversation, inv
 	if len(conversation.Messages) > 0 {
 		mes.Messages = []*events.Message{
 			{
-				MessageID:    conversation.Messages[0].Id,
-				FromUserID:   conversation.Messages[0].FromUserId,
-				FromUserType: conversation.Messages[0].FromUserType,
-				Type:         conversation.Messages[0].Type,
-				Value:        conversation.Messages[0].Text,
-				CreatedAt:    conversation.Messages[0].CreatedAt,
-				UpdatedAt:    conversation.Messages[0].UpdatedAt,
+				MessageID: conversation.Messages[0].Id,
+				ChannelID: conversation.Messages[0].ChannelId,
+				Type:      conversation.Messages[0].Type,
+				Value:     conversation.Messages[0].Text,
+				CreatedAt: conversation.Messages[0].CreatedAt,
+				UpdatedAt: conversation.Messages[0].UpdatedAt,
 			},
 		}
 	}
@@ -305,7 +304,7 @@ func (e *eventRouter) SendDeclineInviteToWebitelUser(domainID *int64, conversati
 }
 
 func (e *eventRouter) RouteJoinConversation(channel *pg.Channel, conversationID *string) error {
-	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, &channel.ID)
+	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -313,35 +312,36 @@ func (e *eventRouter) RouteJoinConversation(channel *pg.Channel, conversationID 
 		return nil
 	}
 	member := events.Member{
+		ChannelID: channel.ID,
 		UserID:    channel.UserID,
 		Username:  channel.Name,
 		Type:      channel.Type,
 		Internal:  channel.Internal,
 		UpdatedAt: channel.UpdatedAt.Unix() * 1000,
 	}
-	selfEvent := events.JoinConversationEvent{
+	req := events.JoinConversationEvent{
 		BaseEvent: events.BaseEvent{
 			ConversationID: *conversationID,
 			Timestamp:      time.Now().Unix() * 1000,
 		},
-		JoinedUserID:  channel.UserID,
-		Member:        member,
-		SelfChannelID: channel.ID,
+		//JoinedUserID:  channel.UserID,
+		Member: member,
+		//SelfChannelID: channel.ID,
 	}
-	selfBody, _ := json.Marshal(selfEvent)
-	if err := e.sendEventToWebitelUser(nil, channel, events.JoinConversationEventType, selfBody); err != nil {
-		e.log.Error().
-			Str("channel_id", channel.ID).
-			Bool("internal", channel.Internal).
-			Int64("user_id", channel.UserID).
-			Str("conversation_id", channel.ConversationID).
-			Str("type", channel.Type).
-			Str("connection", channel.Connection.String).
-			Msgf("failed to send join conversation event to channel: %s", err.Error())
-		return err
-	}
-	selfEvent.SelfChannelID = ""
-	body, _ := json.Marshal(selfEvent)
+	//selfBody, _ := json.Marshal(selfEvent)
+	//if err := e.sendEventToWebitelUser(nil, channel, events.JoinConversationEventType, selfBody); err != nil {
+	//	e.log.Error().
+	//		Str("channel_id", channel.ID).
+	//		Bool("internal", channel.Internal).
+	//		Int64("user_id", channel.UserID).
+	//		Str("conversation_id", channel.ConversationID).
+	//		Str("type", channel.Type).
+	//		Str("connection", channel.Connection.String).
+	//		Msgf("failed to send join conversation event to channel: %s", err.Error())
+	//	return err
+	//}
+	// selfEvent.SelfChannelID = ""
+	body, _ := json.Marshal(req)
 	for _, item := range otherChannels {
 		switch item.Type {
 		case "webitel":
@@ -376,7 +376,7 @@ func (e *eventRouter) RouteLeaveConversation(channel *pg.Channel, conversationID
 			ConversationID: *conversationID,
 			Timestamp:      time.Now().Unix() * 1000,
 		},
-		LeavedUserID: channel.UserID,
+		LeavedChannelID: channel.ID,
 	})
 	for _, item := range otherChannels {
 		switch item.Type {
@@ -415,12 +415,14 @@ func (e *eventRouter) RouteMessage(channel *pg.Channel, message *pb.Message) (bo
 			ConversationID: channel.ConversationID,
 			Timestamp:      time.Now().Unix() * 1000,
 		},
-		FromUserID:   channel.UserID,
-		FromUserType: channel.Type,
-		// ToChannelID:    item.ID,
-		MessageID: message.Id,
-		Type:      message.Type,
-		Value:     message.GetText(),
+		Message: events.Message{
+			ChannelID: channel.ID,
+			MessageID: message.GetId(),
+			Type:      message.GetType(),
+			Value:     message.GetText(),
+			//CreatedAt: 0,
+			//UpdatedAt: 0,
+		},
 	})
 	flag := false
 	for _, item := range otherChannels {
