@@ -290,9 +290,10 @@ func (b *botService) InfobipWAWebhookHandler(w http.ResponseWriter, r *http.Requ
 			},
 		}
 		message := &pbchat.SendMessageRequest{
-			Message:   textMessage,
-			ChannelId: resCheck.ChannelId,
-			FromFlow:  false,
+			AuthUserId: resCheck.ClientId,
+			Message:    textMessage,
+			ChannelId:  resCheck.ChannelId,
+			FromFlow:   false,
 		}
 		_, err := b.client.SendMessage(context.Background(), message)
 		if err != nil {

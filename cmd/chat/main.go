@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 
 	pbauth "github.com/webitel/chat_manager/api/proto/auth"
@@ -129,6 +131,9 @@ func main() {
 				rabbitmq.DurableExchange(),
 			),
 		),
+		micro.AfterStart(func() error {
+			return http.ListenAndServe("localhost:6060", nil)
+		}),
 	)
 
 	service.Options().Store.Init(store.Table(redisTable))

@@ -182,8 +182,9 @@ func (b *botService) TelegramWebhookHandler(w http.ResponseWriter, r *http.Reque
 	} else {
 		message := &pbchat.SendMessageRequest{
 			// Message:   textMessage,
-			ChannelId: resCheck.ChannelId,
-			FromFlow:  false,
+			AuthUserId: resCheck.ClientId,
+			ChannelId:  resCheck.ChannelId,
+			FromFlow:   false,
 		}
 		// if update.Message.Photo != nil {
 		// 	fileURL, err := b.telegramBots[profileID].GetFileDirectURL(
