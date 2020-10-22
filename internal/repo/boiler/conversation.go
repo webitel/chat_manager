@@ -5,7 +5,7 @@ package boilrepo
 // 	"database/sql"
 // 	"time"
 
-// 	pb "github.com/webitel/chat_manager/api/proto/chat"
+// 	pb "github.com/webitel/protos/pkg/chat"
 // 	"github.com/webitel/chat_manager/models"
 
 // 	"github.com/google/uuid"

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	pbbot "github.com/webitel/chat_manager/api/proto/bot"
-	pb "github.com/webitel/chat_manager/api/proto/chat"
 	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
 	"github.com/webitel/chat_manager/pkg/events"
+	pbbot "github.com/webitel/protos/pkg/bot"
+	pb "github.com/webitel/protos/pkg/chat"
 
 	"github.com/micro/go-micro/v2/broker"
 	"github.com/rs/zerolog"

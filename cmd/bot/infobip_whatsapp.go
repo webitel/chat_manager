@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	pb "github.com/webitel/chat_manager/api/proto/bot"
-	pbchat "github.com/webitel/chat_manager/api/proto/chat"
+	pb "github.com/webitel/protos/pkg/bot"
+	pbchat "github.com/webitel/protos/pkg/chat"
 
 	"github.com/rs/zerolog/log"
 )

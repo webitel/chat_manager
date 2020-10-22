@@ -7,14 +7,14 @@ import (
 	"strconv"
 	"time"
 
-	pbbot "github.com/webitel/chat_manager/api/proto/bot"
-	pb "github.com/webitel/chat_manager/api/proto/chat"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/internal/auth"
 	cache "github.com/webitel/chat_manager/internal/chat_cache"
 	event "github.com/webitel/chat_manager/internal/event_router"
 	"github.com/webitel/chat_manager/internal/flow"
 	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
+	pbbot "github.com/webitel/protos/pkg/bot"
+	pb "github.com/webitel/protos/pkg/chat"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/micro/go-micro/v2/errors"

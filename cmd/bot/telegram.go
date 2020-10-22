@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	pb "github.com/webitel/chat_manager/api/proto/bot"
-	pbchat "github.com/webitel/chat_manager/api/proto/chat"
+	pb "github.com/webitel/protos/pkg/bot"
+	pbchat "github.com/webitel/protos/pkg/chat"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/rs/zerolog/log"

@@ -6,15 +6,15 @@ import (
 	"os"
 
 	pbauth "github.com/webitel/chat_manager/api/proto/auth"
-	pbbot "github.com/webitel/chat_manager/api/proto/bot"
-	pb "github.com/webitel/chat_manager/api/proto/chat"
-	pbmanager "github.com/webitel/chat_manager/api/proto/flow_manager"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/internal/auth"
 	cache "github.com/webitel/chat_manager/internal/chat_cache"
 	event "github.com/webitel/chat_manager/internal/event_router"
 	"github.com/webitel/chat_manager/internal/flow"
 	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
+	pbbot "github.com/webitel/protos/pkg/bot"
+	pb "github.com/webitel/protos/pkg/chat"
+	pbmanager "github.com/webitel/protos/pkg/workflow"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"

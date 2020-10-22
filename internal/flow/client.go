@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	pb "github.com/webitel/chat_manager/api/proto/chat"
-	pbmanager "github.com/webitel/chat_manager/api/proto/flow_manager"
 	cache "github.com/webitel/chat_manager/internal/chat_cache"
+	pb "github.com/webitel/protos/pkg/chat"
+	pbmanager "github.com/webitel/protos/pkg/workflow"
 
 	"github.com/micro/go-micro/v2/client"
 	"github.com/micro/go-micro/v2/client/selector"
