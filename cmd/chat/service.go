@@ -40,6 +40,7 @@ type Service interface {
 	DeclineInvitation(ctx context.Context, req *pb.DeclineInvitationRequest, res *pb.DeclineInvitationResponse) error
 	WaitMessage(ctx context.Context, req *pb.WaitMessageRequest, res *pb.WaitMessageResponse) error
 	CheckSession(ctx context.Context, req *pb.CheckSessionRequest, res *pb.CheckSessionResponse) error
+	UpdateChannel(ctx context.Context, req *pb.UpdateChannelRequest, res *pb.UpdateChannelResponse) error
 }
 
 type chatService struct {
@@ -73,6 +74,26 @@ func NewChatService(
 		chatCache,
 		eventRouter,
 	}
+}
+
+func (s *chatService) UpdateChannel(
+	ctx context.Context,
+	req *pb.UpdateChannelRequest,
+	res *pb.UpdateChannelResponse,
+) error {
+	channel, err := s.repo.CheckUserChannel(ctx, req.GetChannelId(), req.GetAuthUserId())
+	if err != nil {
+		s.log.Error().Msg(err.Error())
+		return err
+	}
+	if channel == nil {
+		s.log.Warn().Msg("channel not found")
+		return errors.BadRequest("channel not found", "")
+	}
+	if err := s.repo.UpdateChannel(ctx, req.GetChannelId()); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *chatService) SendMessage(
