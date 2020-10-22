@@ -66,8 +66,8 @@ message Conversation {
   int64 domain_id = 6;
   repeated Member members = 7;
   repeated HistoryMessage messages = 8;
-  string self_channel_id = 9;
-  int32 unread_messages = 10;
+//  string self_channel_id = 9;
+//  int32 unread_messages = 10;
 }
 
 message Member {
