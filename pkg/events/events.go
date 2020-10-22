@@ -8,6 +8,7 @@ const (
 	InviteConversationEventType = "invite_conversation"
 	UserInvitationEventType     = "user_invite"
 	DeclineInvitationEventType  = "decline_invite"
+	UpdateChannelEventType      = "update_channel"
 )
 
 type BaseEvent struct {
@@ -58,6 +59,12 @@ type DeclineInvitationEvent struct {
 	BaseEvent
 	UserID   int64  `json:"user_id"`
 	InviteID string `json:"invite_id"`
+}
+
+type UpdateChannelEvent struct {
+	BaseEvent
+	ChannelID string `json:"channel_id"`
+	UpdatedAt int64  `json:"updated_at"`
 }
 
 type Conversation struct {

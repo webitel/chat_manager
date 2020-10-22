@@ -34,6 +34,7 @@ type Router interface {
 	RouteMessageFromFlow(conversationID *string, message *pb.Message) error
 	SendInviteToWebitelUser(conversation *pb.Conversation, invite *pg.Invite) error
 	SendDeclineInviteToWebitelUser(domainID *int64, conversationID *string, userID *int64, inviteID *string) error
+	SendUpdateChannel(channel *pg.Channel, updated_at int64) error
 }
 
 func NewRouter(
@@ -298,6 +299,27 @@ func (e *eventRouter) SendDeclineInviteToWebitelUser(domainID *int64, conversati
 		Body: body,
 	}
 	if err := e.broker.Publish(fmt.Sprintf("event.%s.%v.%v", events.DeclineInvitationEventType, *domainID, *userID), msg); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (e *eventRouter) SendUpdateChannel(channel *pg.Channel, updated_at int64) error {
+	body, _ := json.Marshal(events.UpdateChannelEvent{
+		BaseEvent: events.BaseEvent{
+			ConversationID: channel.ConversationID,
+			Timestamp:      time.Now().Unix() * 1000,
+		},
+		UpdatedAt: updated_at,
+		ChannelID: channel.ID,
+	})
+	msg := &broker.Message{
+		Header: map[string]string{
+			"content_type": "text/json",
+		},
+		Body: body,
+	}
+	if err := e.broker.Publish(fmt.Sprintf("event.%s.%v.%v", events.UpdateChannelEventType, channel.DomainID, channel.UserID), msg); err != nil {
 		return err
 	}
 	return nil

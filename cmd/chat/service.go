@@ -90,7 +90,11 @@ func (s *chatService) UpdateChannel(
 		s.log.Warn().Msg("channel not found")
 		return errors.BadRequest("channel not found", "")
 	}
-	if err := s.repo.UpdateChannel(ctx, req.GetChannelId()); err != nil {
+	updatedAt, err := s.repo.UpdateChannel(ctx, req.GetChannelId())
+	if err != nil {
+		return err
+	}
+	if err := s.eventRouter.SendUpdateChannel(channel, updatedAt); err != nil {
 		return err
 	}
 	return nil

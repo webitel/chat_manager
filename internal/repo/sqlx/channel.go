@@ -150,7 +150,8 @@ func (repo *sqlxRepository) CheckUserChannel(ctx context.Context, channelID stri
 	return result, nil
 }
 
-func (repo *sqlxRepository) UpdateChannel(ctx context.Context, channelID string) error {
-	_, err := repo.db.ExecContext(ctx, `update chat.channel set updated_at=$1 where id=$2`, time.Now(), channelID)
-	return err
+func (repo *sqlxRepository) UpdateChannel(ctx context.Context, channelID string) (int64, error) {
+	updatedAt := time.Now()
+	_, err := repo.db.ExecContext(ctx, `update chat.channel set updated_at=$1 where id=$2`, updatedAt, channelID)
+	return updatedAt.Unix() * 1000, err
 }

@@ -83,7 +83,7 @@ type ChannelRepository interface {
 	CreateChannel(ctx context.Context, c *Channel) error
 	GetChannelByID(ctx context.Context, id string) (*Channel, error)
 	CheckUserChannel(ctx context.Context, channelID string, userID int64) (*Channel, error)
-	UpdateChannel(ctx context.Context, channelID string) error
+	UpdateChannel(ctx context.Context, channelID string) (int64, error)
 }
 
 type ClientRepository interface {
