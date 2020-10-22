@@ -110,12 +110,10 @@ func (repo *sqlxRepository) GetConversations(
 							   m.id,
 							   m.text,
 							   m.type,
-							   mch.user_id,
-							   mch.type as user_type,
+							   m.channel_id,
 							   m.created_at,
 							   m.updated_at
 						FROM chat.message m
-							left join chat.channel mch on m.channel_id = mch.id
 						where m.conversation_id = c.id
 						order by m.created_at desc
 						limit 10
