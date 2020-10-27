@@ -12,9 +12,9 @@ import (
 	event "github.com/webitel/chat_manager/internal/event_router"
 	"github.com/webitel/chat_manager/internal/flow"
 	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
-	pbbot "github.com/webitel/protos/pkg/bot"
-	pb "github.com/webitel/protos/pkg/chat"
-	pbmanager "github.com/webitel/protos/pkg/workflow"
+	pbbot "github.com/webitel/protos/bot"
+	pb "github.com/webitel/protos/chat"
+	pbmanager "github.com/webitel/protos/workflow"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"

@@ -4,7 +4,7 @@ package boilrepo
 // 	"context"
 // 	"database/sql"
 
-// 	pb "github.com/webitel/protos/pkg/chat"
+// 	pb "github.com/webitel/protos/chat"
 // 	"github.com/webitel/chat_manager/models"
 
 // 	"github.com/rs/zerolog"

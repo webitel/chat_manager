@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
-	pb "github.com/webitel/protos/pkg/bot"
-	pbchat "github.com/webitel/protos/pkg/chat"
+	pb "github.com/webitel/protos/bot"
+	pbchat "github.com/webitel/protos/chat"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/gorilla/mux"

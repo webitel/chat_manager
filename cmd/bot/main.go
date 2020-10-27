@@ -3,8 +3,8 @@ package main
 import (
 	"os"
 
-	pb "github.com/webitel/protos/pkg/bot"
-	pbchat "github.com/webitel/protos/pkg/chat"
+	pb "github.com/webitel/protos/bot"
+	pbchat "github.com/webitel/protos/chat"
 
 	"github.com/gorilla/mux"
 	"github.com/micro/cli/v2"

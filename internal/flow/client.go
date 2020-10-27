@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	cache "github.com/webitel/chat_manager/internal/chat_cache"
-	pb "github.com/webitel/protos/pkg/chat"
-	pbmanager "github.com/webitel/protos/pkg/workflow"
+	pb "github.com/webitel/protos/chat"
+	pbmanager "github.com/webitel/protos/workflow"
 
 	"github.com/micro/go-micro/v2/client"
 	"github.com/micro/go-micro/v2/client/selector"

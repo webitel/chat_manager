@@ -8,8 +8,8 @@ import (
 
 	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
 	"github.com/webitel/chat_manager/pkg/events"
-	pbbot "github.com/webitel/protos/pkg/bot"
-	pb "github.com/webitel/protos/pkg/chat"
+	pbbot "github.com/webitel/protos/bot"
+	pb "github.com/webitel/protos/chat"
 
 	"github.com/micro/go-micro/v2/broker"
 	"github.com/rs/zerolog"
