@@ -28,6 +28,7 @@ type botService struct {
 	router        *mux.Router
 	telegramBots  map[int64]*tgbotapi.BotAPI
 	infobipWABots map[int64]*infobipWAClient
+	corezoidBots  map[int64]*corezoidClient
 	botMap        map[int64]string
 }
 
@@ -44,10 +45,13 @@ func NewBotService(
 	b.botMap = make(map[int64]string)
 	b.telegramBots = make(map[int64]*tgbotapi.BotAPI)
 	b.infobipWABots = make(map[int64]*infobipWAClient)
+	b.corezoidBots = make(map[int64]*corezoidClient)
 
 	b.router.HandleFunc("/telegram/{profile_id}", b.TelegramWebhookHandler).
 		Methods("POST")
 	b.router.HandleFunc("/infobip/whatsapp/{profile_id}", b.InfobipWAWebhookHandler).
+		Methods("POST")
+	b.router.HandleFunc("/corezoid/{profile_id}", b.CorezoidWebhookHandler).
 		Methods("POST")
 
 	res, err := b.client.GetProfiles(context.Background(), &pbchat.GetProfilesRequest{Size: 100})
@@ -67,6 +71,11 @@ func NewBotService(
 			{
 				b.botMap[profile.Id] = "infobip-whatsapp"
 				b.infobipWABots[profile.Id] = b.configureInfobipWA(profile)
+			}
+		case "corezoid":
+			{
+				b.botMap[profile.Id] = "corezoid"
+				b.corezoidBots[profile.Id] = b.configureCorezoid(profile)
 			}
 		default:
 			b.log.Warn().
@@ -121,7 +130,15 @@ func (b *botService) SendMessage(ctx context.Context, req *pb.SendMessageRequest
 				return err
 			}
 		}
+	case "corezoid":
+		{
+			if err := b.sendMessageCorezoid(req); err != nil {
+				b.log.Error().Msg(err.Error())
+				return err
+			}
+		}
 	}
+
 	return nil
 }
 
@@ -147,6 +164,13 @@ func (b *botService) AddProfile(ctx context.Context, req *pb.AddProfileRequest, 
 				return err
 			}
 		}
+	case "corezoid":
+		{
+			if err := b.addProfileCorezoid(req); err != nil {
+				b.log.Error().Msg(err.Error())
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -166,6 +190,13 @@ func (b *botService) DeleteProfile(ctx context.Context, req *pb.DeleteProfileReq
 	case "infobip-whatsapp":
 		{
 			if err := b.deleteProfileInfobipWA(req); err != nil {
+				b.log.Error().Msg(err.Error())
+				return err
+			}
+		}
+	case "corezoid":
+		{
+			if err := b.deleteProfileCorezoid(req); err != nil {
 				b.log.Error().Msg(err.Error())
 				return err
 			}
