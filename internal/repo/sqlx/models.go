@@ -15,7 +15,7 @@ var (
 	conversationAllColumns = []string{"id", "title", "created_at", "closed_at", "updated_at", "domain_id"}
 	inviteAllColumns       = []string{"id", "conversation_id", "user_id", "title", "timeout_sec", "inviter_channel_id", "closed_at", "created_at", "domain_id"}
 	messageAllColumns      = []string{"id", "channel_id", "conversation_id", "text", "created_at", "updated_at", "type"}
-	profileAllColumns      = []string{"id", "name", "schema_id", "type", "variables", "domain_id", "created_at"}
+	profileAllColumns      = []string{"id", "url_id", "name", "schema_id", "type", "variables", "domain_id", "created_at"}
 )
 
 type Channel struct {
@@ -123,6 +123,7 @@ type Message struct {
 
 type Profile struct {
 	ID        int64          `db:"id" json:"id"`
+	UrlID     string         `db:"name" json:"name"`
 	Name      string         `db:"name" json:"name"`
 	SchemaID  sql.NullInt64  `db:"schema_id" json:"schema_id,omitempty"`
 	Type      string         `db:"type" json:"type"`

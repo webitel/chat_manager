@@ -803,7 +803,8 @@ func (s *chatService) DeleteProfile(
 		return err
 	}
 	deleteProfileReq := &pbbot.DeleteProfileRequest{
-		Id: req.GetId(),
+		Id:    req.GetId(),
+		UrlId: profile.UrlID,
 	}
 	if _, err := s.botClient.DeleteProfile(ctx, deleteProfileReq); err != nil {
 		s.log.Error().Msg(err.Error())

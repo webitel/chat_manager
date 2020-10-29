@@ -4,11 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
-	"strings"
 
 	pb "github.com/webitel/protos/bot"
 	pbchat "github.com/webitel/protos/chat"
@@ -34,29 +32,29 @@ type corezoidResBody struct {
 }
 
 type corezoidClient struct {
-	token string
-	url   string
+	//token string
+	url string
 }
 
-func NewCorezoidClient(token, url string) *corezoidClient {
+func NewCorezoidClient(url string) *corezoidClient {
 	return &corezoidClient{
-		token,
+		//token,
 		url,
 	}
 }
 
 func (b *botService) configureCorezoid(profile *pbchat.Profile) *corezoidClient {
-	token, ok := profile.Variables["token"]
-	if !ok {
-		b.log.Fatal().Msg("token not found")
-		return nil
-	}
+	//token, ok := profile.Variables["token"]
+	//if !ok {
+	//	b.log.Fatal().Msg("token not found")
+	//	return nil
+	//}
 	url, ok := profile.Variables["url"]
 	if !ok {
 		b.log.Fatal().Msg("url not found")
 		return nil
 	}
-	return NewCorezoidClient(token, url)
+	return NewCorezoidClient(url)
 }
 
 func (b *botService) addProfileCorezoid(req *pb.AddProfileRequest) error {
@@ -90,7 +88,7 @@ func (b *botService) sendMessageCorezoid(req *pb.SendMessageRequest) error {
 		return err
 	}
 	corezoidReq.Header.Set("Content-Type", "application/json")
-	corezoidReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", profile.token))
+	//corezoidReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", profile.token))
 
 	corezoidRes, err := http.DefaultClient.Do(corezoidReq)
 	if err != nil {
@@ -100,13 +98,9 @@ func (b *botService) sendMessageCorezoid(req *pb.SendMessageRequest) error {
 	return err
 }
 
-func (b *botService) CorezoidWebhookHandler(w http.ResponseWriter, r *http.Request) {
-	p := strings.TrimPrefix(r.URL.Path, "/corezoid/")
-	profileID, err := strconv.ParseInt(p, 10, 64)
-	if err != nil {
-		b.log.Error().Msg(err.Error())
-		return
-	}
+func (b *botService) corezoidHandler(profileID int64, r *http.Request) {
+	p := strconv.Itoa(int(profileID))
+
 	update := &corezoidReqBody{}
 	if err := json.NewDecoder(r.Body).Decode(update); err != nil {
 		log.Error().Msgf("could not decode request body: %s", err)

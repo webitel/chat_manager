@@ -224,13 +224,9 @@ func (b *botService) sendMessageInfobipWA(req *pb.SendMessageRequest) error {
 	return err
 }
 
-func (b *botService) InfobipWAWebhookHandler(w http.ResponseWriter, r *http.Request) {
-	p := strings.TrimPrefix(r.URL.Path, "/infobip/whatsapp/")
-	profileID, err := strconv.ParseInt(p, 10, 64)
-	if err != nil {
-		b.log.Error().Msg(err.Error())
-		return
-	}
+func (b *botService) infobipWAHandler(profileID int64, r *http.Request) {
+	p := strconv.Itoa(int(profileID))
+
 	update := &InfobipWABody{}
 	if err := json.NewDecoder(r.Body).Decode(update); err != nil {
 		log.Error().Msgf("could not decode request body: %s", err)

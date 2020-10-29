@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	pb "github.com/webitel/protos/bot"
 	pbchat "github.com/webitel/protos/chat"
@@ -14,7 +15,7 @@ import (
 )
 
 type ChatServer interface {
-	TelegramWebhookHandler(w http.ResponseWriter, r *http.Request)
+	WebhookFunc(w http.ResponseWriter, r *http.Request)
 	SendMessage(ctx context.Context, req *pb.SendMessageRequest, res *pb.SendMessageResponse) error
 	AddProfile(ctx context.Context, req *pb.AddProfileRequest, res *pb.AddProfileResponse) error
 	DeleteProfile(ctx context.Context, req *pb.DeleteProfileRequest, res *pb.DeleteProfileResponse) error
@@ -30,6 +31,7 @@ type botService struct {
 	infobipWABots map[int64]*infobipWAClient
 	corezoidBots  map[int64]*corezoidClient
 	botMap        map[int64]string
+	urlMap        map[string]int64
 }
 
 func NewBotService(
@@ -43,16 +45,19 @@ func NewBotService(
 		router: router,
 	}
 	b.botMap = make(map[int64]string)
+	b.urlMap = make(map[string]int64)
 	b.telegramBots = make(map[int64]*tgbotapi.BotAPI)
 	b.infobipWABots = make(map[int64]*infobipWAClient)
 	b.corezoidBots = make(map[int64]*corezoidClient)
 
-	b.router.HandleFunc("/telegram/{profile_id}", b.TelegramWebhookHandler).
+	b.router.HandleFunc("/{url_id}", b.WebhookFunc).
 		Methods("POST")
-	b.router.HandleFunc("/infobip/whatsapp/{profile_id}", b.InfobipWAWebhookHandler).
-		Methods("POST")
-	b.router.HandleFunc("/corezoid/{profile_id}", b.CorezoidWebhookHandler).
-		Methods("POST")
+	//b.router.HandleFunc("/telegram/{profile_id}", b.TelegramWebhookHandler).
+	//	Methods("POST")
+	//b.router.HandleFunc("/infobip/whatsapp/{profile_id}", b.InfobipWAWebhookHandler).
+	//	Methods("POST")
+	//b.router.HandleFunc("/corezoid/{profile_id}", b.CorezoidWebhookHandler).
+	//	Methods("POST")
 
 	res, err := b.client.GetProfiles(context.Background(), &pbchat.GetProfilesRequest{Size: 100})
 	if err != nil || res == nil {
@@ -61,6 +66,7 @@ func NewBotService(
 	}
 
 	for _, profile := range res.Items {
+		b.urlMap[profile.UrlId] = profile.Id
 		switch profile.Type {
 		case "telegram":
 			{
@@ -149,6 +155,7 @@ func (b *botService) AddProfile(ctx context.Context, req *pb.AddProfileRequest, 
 		Str("name", req.GetProfile().GetName()).
 		Int64("domain_id", req.GetProfile().GetDomainId()).
 		Msg("add profile")
+	b.urlMap[req.Profile.UrlId] = req.Profile.Id
 	switch req.Profile.Type {
 	case "telegram":
 		{
@@ -179,6 +186,7 @@ func (b *botService) DeleteProfile(ctx context.Context, req *pb.DeleteProfileReq
 	b.log.Info().
 		Int64("id", req.GetId()).
 		Msg("delete profile")
+	delete(b.urlMap, req.UrlId)
 	switch b.botMap[req.Id] {
 	case "telegram":
 		{
@@ -203,4 +211,31 @@ func (b *botService) DeleteProfile(ctx context.Context, req *pb.DeleteProfileReq
 		}
 	}
 	return nil
+}
+
+func (b *botService) WebhookFunc(w http.ResponseWriter, r *http.Request) {
+	urlID := strings.TrimPrefix(r.URL.Path, "/")
+	if urlID == "" {
+		b.log.Error().Msg("url id doesn't exist")
+		return
+	}
+	profileID, ok := b.urlMap[urlID]
+	if !ok {
+		b.log.Error().Msg("profile id not found")
+		return
+	}
+	switch b.botMap[profileID] {
+	case "telegram":
+		{
+			b.telegramHandler(profileID, r)
+		}
+	case "infobip-whatsapp":
+		{
+			b.infobipWAHandler(profileID, r)
+		}
+	case "corezoid":
+		{
+
+		}
+	}
 }

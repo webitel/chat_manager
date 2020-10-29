@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 
 	pb "github.com/webitel/protos/bot"
 	pbchat "github.com/webitel/protos/chat"
@@ -105,13 +104,9 @@ func (b *botService) sendMessageTelegram(req *pb.SendMessageRequest) error {
 	return nil
 }
 
-func (b *botService) TelegramWebhookHandler(w http.ResponseWriter, r *http.Request) {
-	p := strings.TrimPrefix(r.URL.Path, "/telegram/")
-	profileID, err := strconv.ParseInt(p, 10, 64)
-	if err != nil {
-		b.log.Error().Msg(err.Error())
-		return
-	}
+func (b *botService) telegramHandler(profileID int64, r *http.Request) {
+	p := strconv.Itoa(int(profileID))
+
 	update := &telegramBody{}
 	if err := json.NewDecoder(r.Body).Decode(update); err != nil {
 		log.Error().Msgf("could not decode request body: %s", err)

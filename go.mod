@@ -19,8 +19,8 @@ require (
 	github.com/micro/go-plugins/store/redis/v2 v2.9.1
 	github.com/mitchellh/mapstructure v1.3.3 // indirect
 	github.com/rs/zerolog v1.19.0
-	github.com/webitel/protos/bot v0.0.0-20201029031627-fe46f6ccc78d
-	github.com/webitel/protos/chat v0.0.0-20201029031627-fe46f6ccc78d
+	github.com/webitel/protos/bot v0.0.0-20201029223651-e8f525109e77
+	github.com/webitel/protos/chat v0.0.0-20201029223651-e8f525109e77
 	github.com/webitel/protos/workflow v0.0.0-20201027102345-8712c66e378e
 	golang.org/x/crypto v0.0.0-20201016220609-9e8e0b390897 // indirect
 	google.golang.org/grpc v1.33.1 // indirect
