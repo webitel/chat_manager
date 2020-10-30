@@ -123,7 +123,7 @@ type Message struct {
 
 type Profile struct {
 	ID        int64          `db:"id" json:"id"`
-	UrlID     string         `db:"name" json:"name"`
+	UrlID     string         `db:"url_id" json:"url_id"`
 	Name      string         `db:"name" json:"name"`
 	SchemaID  sql.NullInt64  `db:"schema_id" json:"schema_id,omitempty"`
 	Type      string         `db:"type" json:"type"`

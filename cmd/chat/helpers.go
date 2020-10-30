@@ -41,6 +41,7 @@ func transformProfileFromRepoModel(profile *pg.Profile) (*pb.Profile, error) {
 		DomainId:  profile.DomainID,
 		SchemaId:  profile.SchemaID.Int64,
 		Variables: variables,
+		UrlId:     profile.UrlID,
 	}
 	return result, nil
 }
@@ -51,6 +52,7 @@ func transformProfileToRepoModel(profile *pb.Profile) (*pg.Profile, error) {
 		Name:     profile.Name,
 		Type:     profile.Type,
 		DomainID: profile.DomainId,
+		UrlID:    profile.UrlId,
 		SchemaID: sql.NullInt64{
 			profile.SchemaId,
 			true,
