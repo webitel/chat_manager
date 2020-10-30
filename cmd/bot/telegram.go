@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"github.com/rs/zerolog"
 	"net/http"
 	"strconv"
 
@@ -14,6 +14,13 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/rs/zerolog/log"
 )
+
+type telegramBot struct {
+	profileID int64
+	API       *tgbotapi.BotAPI
+	log       *zerolog.Logger
+	client    pbchat.ChatService
+}
 
 type telegramBody struct {
 	Message struct {
@@ -40,72 +47,55 @@ type PhotoSize struct {
 	FileSize     int64  `json:"file_size"`
 }
 
-func (b *botService) configureTelegram(profile *pbchat.Profile) *tgbotapi.BotAPI {
+func ConfigureTelegram(profile *pbchat.Profile, client pbchat.ChatService, log *zerolog.Logger) ChatBot {
 	token, ok := profile.Variables["token"]
 	if !ok {
-		b.log.Fatal().Msg("token not found")
+		log.Fatal().Msg("token not found")
 		return nil
 	}
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
-		b.log.Fatal().Msg(err.Error())
+		log.Fatal().Msg(err.Error())
 		return nil
 	}
 	// webhookInfo := tgbotapi.NewWebhookWithCert(fmt.Sprintf("%s/telegram/%v", cfg.TgWebhook, profile.Id), cfg.CertPath)
-	webhookInfo := tgbotapi.NewWebhook(fmt.Sprintf("%s/telegram/%v", cfg.Webhook, profile.Id))
+	webhookInfo := tgbotapi.NewWebhook(fmt.Sprintf("%s/%s", cfg.Webhook, profile.UrlId))
 	_, err = bot.SetWebhook(webhookInfo)
 	if err != nil {
-		b.log.Fatal().Msg(err.Error())
+		log.Fatal().Msg(err.Error())
 		return nil
 	}
-	return bot
+	return &telegramBot{
+		profile.Id,
+		bot,
+		log,
+		client,
+	}
 }
 
-func (b *botService) addProfileTelegram(req *pb.AddProfileRequest) error {
-	token, ok := req.Profile.Variables["token"]
-	if !ok {
-		return errors.New("token not found")
-	}
-	bot, err := tgbotapi.NewBotAPI(token)
-	if err != nil {
+func (b *telegramBot) DeleteProfile() error {
+	if _, err := b.API.RemoveWebhook(); err != nil {
 		return err
 	}
-	// webhookInfo := tgbotapi.NewWebhookWithCert(fmt.Sprintf("%s/telegram/%v", cfg.TgWebhook, profile.Id), cfg.CertPath)
-	webhookInfo := tgbotapi.NewWebhook(fmt.Sprintf("%s/telegram/%v", cfg.Webhook, req.Profile.Id))
-	_, err = bot.SetWebhook(webhookInfo)
-	if err != nil {
-		return err
-	}
-	b.telegramBots[req.Profile.Id] = bot
-	b.botMap[req.Profile.Id] = "telegram"
 	return nil
 }
 
-func (b *botService) deleteProfileTelegram(req *pb.DeleteProfileRequest) error {
-	if _, err := b.telegramBots[req.Id].RemoveWebhook(); err != nil {
-		return err
-	}
-	delete(b.telegramBots, req.Id)
-	delete(b.botMap, req.Id)
-	return nil
-}
-
-func (b *botService) sendMessageTelegram(req *pb.SendMessageRequest) error {
+func (b *telegramBot) SendMessage(req *pb.SendMessageRequest) error {
 	id, err := strconv.ParseInt(req.ExternalUserId, 10, 64)
 	if err != nil {
 		return err
 	}
 	msg := tgbotapi.NewMessage(id, req.GetMessage().GetText())
 	// msg.ReplyToMessageID = update.Message.MessageID
-	_, err = b.telegramBots[req.ProfileId].Send(msg)
+	_, err = b.API.Send(msg)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (b *botService) telegramHandler(profileID int64, r *http.Request) {
-	p := strconv.Itoa(int(profileID))
+func (b *telegramBot) Handler(r *http.Request) {
+	p := strconv.Itoa(int(b.profileID))
 
 	update := &telegramBody{}
 	if err := json.NewDecoder(r.Body).Decode(update); err != nil {
@@ -125,7 +115,7 @@ func (b *botService) telegramHandler(profileID int64, r *http.Request) {
 
 	check := &pbchat.CheckSessionRequest{
 		ExternalId: strChatID,
-		ProfileId:  profileID,
+		ProfileId:  b.profileID,
 		Username:   update.Message.From.Username,
 	}
 	resCheck, err := b.client.CheckSession(context.Background(), check)

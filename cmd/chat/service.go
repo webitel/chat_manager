@@ -489,6 +489,12 @@ func (s *chatService) InviteToConversation(
 		TimeoutSec:     req.GetTimeoutSec(),
 		DomainID:       domainID,
 	}
+	if title := req.GetTitle(); title != "" {
+		invite.Title = sql.NullString{
+			title,
+			true,
+		}
+	}
 	if req.GetInviterChannelId() != "" {
 		channel, err := s.repo.CheckUserChannel(ctx, req.GetInviterChannelId(), req.GetAuthUserId())
 		if err != nil {

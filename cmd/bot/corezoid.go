@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/rs/zerolog"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -31,19 +32,21 @@ type corezoidResBody struct {
 	Type         string `json:"type,omitempty"`
 }
 
-type corezoidClient struct {
-	//token string
-	url string
+type corezoidBot struct {
+	profileID int64
+	url       string
+	log       *zerolog.Logger
+	client    pbchat.ChatService
 }
 
-func NewCorezoidClient(url string) *corezoidClient {
-	return &corezoidClient{
-		//token,
-		url,
-	}
-}
+//func NewCorezoidClient(url string) *corezoidClient {
+//	return &corezoidClient{
+//		//token,
+//		url,
+//	}
+//}
 
-func (b *botService) configureCorezoid(profile *pbchat.Profile) *corezoidClient {
+func ConfigureCorezoid(profile *pbchat.Profile, client pbchat.ChatService, log *zerolog.Logger) ChatBot {
 	//token, ok := profile.Variables["token"]
 	//if !ok {
 	//	b.log.Fatal().Msg("token not found")
@@ -51,27 +54,22 @@ func (b *botService) configureCorezoid(profile *pbchat.Profile) *corezoidClient 
 	//}
 	url, ok := profile.Variables["url"]
 	if !ok {
-		b.log.Fatal().Msg("url not found")
+		log.Fatal().Msg("url not found")
 		return nil
 	}
-	return NewCorezoidClient(url)
+	return &corezoidBot{
+		profile.Id,
+		url,
+		log,
+		client,
+	}
 }
 
-func (b *botService) addProfileCorezoid(req *pb.AddProfileRequest) error {
-	bot := b.configureCorezoid(req.Profile)
-	b.corezoidBots[req.Profile.Id] = bot
-	b.botMap[req.Profile.Id] = "corezoid"
+func (b *corezoidBot) DeleteProfile() error {
 	return nil
 }
 
-func (b *botService) deleteProfileCorezoid(req *pb.DeleteProfileRequest) error {
-	delete(b.corezoidBots, req.Id)
-	delete(b.botMap, req.Id)
-	return nil
-}
-
-func (b *botService) sendMessageCorezoid(req *pb.SendMessageRequest) error {
-	profile := b.corezoidBots[req.ProfileId]
+func (b *corezoidBot) SendMessage(req *pb.SendMessageRequest) error {
 	body, err := json.Marshal(corezoidResBody{
 		ID:           req.GetExternalUserId(),
 		Text:         req.GetMessage().GetText(),
@@ -83,7 +81,7 @@ func (b *botService) sendMessageCorezoid(req *pb.SendMessageRequest) error {
 	if err != nil {
 		return err
 	}
-	corezoidReq, err := http.NewRequest(http.MethodPost, profile.url, bytes.NewBuffer(body))
+	corezoidReq, err := http.NewRequest(http.MethodPost, b.url, bytes.NewBuffer(body))
 	if err != nil {
 		return err
 	}
@@ -98,8 +96,8 @@ func (b *botService) sendMessageCorezoid(req *pb.SendMessageRequest) error {
 	return err
 }
 
-func (b *botService) corezoidHandler(profileID int64, r *http.Request) {
-	p := strconv.Itoa(int(profileID))
+func (b *corezoidBot) Handler(r *http.Request) {
+	p := strconv.Itoa(int(b.profileID))
 
 	update := &corezoidReqBody{}
 	if err := json.NewDecoder(r.Body).Decode(update); err != nil {
@@ -119,7 +117,7 @@ func (b *botService) corezoidHandler(profileID int64, r *http.Request) {
 
 	check := &pbchat.CheckSessionRequest{
 		ExternalId: strChatID,
-		ProfileId:  profileID,
+		ProfileId:  b.profileID,
 		//Username:   update.Message.From.Username,
 	}
 	resCheck, err := b.client.CheckSession(context.Background(), check)
