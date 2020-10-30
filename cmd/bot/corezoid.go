@@ -4,11 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
+	"github.com/rs/zerolog"
 	"io/ioutil"
 	"net/http"
 	"strconv"
-	"strings"
 
 	pb "github.com/webitel/protos/bot"
 	pbchat "github.com/webitel/protos/chat"
@@ -33,47 +32,44 @@ type corezoidResBody struct {
 	Type         string `json:"type,omitempty"`
 }
 
-type corezoidClient struct {
-	token string
-	url   string
+type corezoidBot struct {
+	profileID int64
+	url       string
+	log       *zerolog.Logger
+	client    pbchat.ChatService
 }
 
-func NewCorezoidClient(token, url string) *corezoidClient {
-	return &corezoidClient{
-		token,
-		url,
-	}
-}
+//func NewCorezoidClient(url string) *corezoidClient {
+//	return &corezoidClient{
+//		//token,
+//		url,
+//	}
+//}
 
-func (b *botService) configureCorezoid(profile *pbchat.Profile) *corezoidClient {
-	token, ok := profile.Variables["token"]
-	if !ok {
-		b.log.Fatal().Msg("token not found")
-		return nil
-	}
+func ConfigureCorezoid(profile *pbchat.Profile, client pbchat.ChatService, log *zerolog.Logger) ChatBot {
+	//token, ok := profile.Variables["token"]
+	//if !ok {
+	//	b.log.Fatal().Msg("token not found")
+	//	return nil
+	//}
 	url, ok := profile.Variables["url"]
 	if !ok {
-		b.log.Fatal().Msg("url not found")
+		log.Fatal().Msg("url not found")
 		return nil
 	}
-	return NewCorezoidClient(token, url)
+	return &corezoidBot{
+		profile.Id,
+		url,
+		log,
+		client,
+	}
 }
 
-func (b *botService) addProfileCorezoid(req *pb.AddProfileRequest) error {
-	bot := b.configureCorezoid(req.Profile)
-	b.corezoidBots[req.Profile.Id] = bot
-	b.botMap[req.Profile.Id] = "corezoid"
+func (b *corezoidBot) DeleteProfile() error {
 	return nil
 }
 
-func (b *botService) deleteProfileCorezoid(req *pb.DeleteProfileRequest) error {
-	delete(b.corezoidBots, req.Id)
-	delete(b.botMap, req.Id)
-	return nil
-}
-
-func (b *botService) sendMessageCorezoid(req *pb.SendMessageRequest) error {
-	profile := b.corezoidBots[req.ProfileId]
+func (b *corezoidBot) SendMessage(req *pb.SendMessageRequest) error {
 	body, err := json.Marshal(corezoidResBody{
 		ID:           req.GetExternalUserId(),
 		Text:         req.GetMessage().GetText(),
@@ -85,12 +81,12 @@ func (b *botService) sendMessageCorezoid(req *pb.SendMessageRequest) error {
 	if err != nil {
 		return err
 	}
-	corezoidReq, err := http.NewRequest(http.MethodPost, profile.url, bytes.NewBuffer(body))
+	corezoidReq, err := http.NewRequest(http.MethodPost, b.url, bytes.NewBuffer(body))
 	if err != nil {
 		return err
 	}
 	corezoidReq.Header.Set("Content-Type", "application/json")
-	corezoidReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", profile.token))
+	//corezoidReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", profile.token))
 
 	corezoidRes, err := http.DefaultClient.Do(corezoidReq)
 	if err != nil {
@@ -100,13 +96,9 @@ func (b *botService) sendMessageCorezoid(req *pb.SendMessageRequest) error {
 	return err
 }
 
-func (b *botService) CorezoidWebhookHandler(w http.ResponseWriter, r *http.Request) {
-	p := strings.TrimPrefix(r.URL.Path, "/corezoid/")
-	profileID, err := strconv.ParseInt(p, 10, 64)
-	if err != nil {
-		b.log.Error().Msg(err.Error())
-		return
-	}
+func (b *corezoidBot) Handler(r *http.Request) {
+	p := strconv.Itoa(int(b.profileID))
+
 	update := &corezoidReqBody{}
 	if err := json.NewDecoder(r.Body).Decode(update); err != nil {
 		log.Error().Msgf("could not decode request body: %s", err)
@@ -125,7 +117,7 @@ func (b *botService) CorezoidWebhookHandler(w http.ResponseWriter, r *http.Reque
 
 	check := &pbchat.CheckSessionRequest{
 		ExternalId: strChatID,
-		ProfileId:  profileID,
+		ProfileId:  b.profileID,
 		//Username:   update.Message.From.Username,
 	}
 	resCheck, err := b.client.CheckSession(context.Background(), check)

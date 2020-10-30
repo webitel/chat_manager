@@ -489,6 +489,12 @@ func (s *chatService) InviteToConversation(
 		TimeoutSec:     req.GetTimeoutSec(),
 		DomainID:       domainID,
 	}
+	if title := req.GetTitle(); title != "" {
+		invite.Title = sql.NullString{
+			title,
+			true,
+		}
+	}
 	if req.GetInviterChannelId() != "" {
 		channel, err := s.repo.CheckUserChannel(ctx, req.GetInviterChannelId(), req.GetAuthUserId())
 		if err != nil {
@@ -803,7 +809,8 @@ func (s *chatService) DeleteProfile(
 		return err
 	}
 	deleteProfileReq := &pbbot.DeleteProfileRequest{
-		Id: req.GetId(),
+		Id:    req.GetId(),
+		UrlId: profile.UrlID,
 	}
 	if _, err := s.botClient.DeleteProfile(ctx, deleteProfileReq); err != nil {
 		s.log.Error().Msg(err.Error())

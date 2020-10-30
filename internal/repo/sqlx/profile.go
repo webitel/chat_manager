@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"strings"
 	"time"
 )
@@ -91,6 +92,9 @@ func (repo *sqlxRepository) GetProfiles(ctx context.Context, id int64, size, pag
 func (repo *sqlxRepository) CreateProfile(ctx context.Context, p *Profile) error {
 	p.ID = 0
 	p.CreatedAt = time.Now()
+	if p.UrlID == "" {
+		p.UrlID = uuid.New().String()
+	}
 	stmt, err := repo.db.PrepareNamed(`insert into chat.profile (name, schema_id, type, variables, domain_id, created_at)
 	values (:name, :schema_id, :type, :variables, :domain_id, :created_at)`)
 	if err != nil {
