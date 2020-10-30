@@ -14,6 +14,7 @@ type Repository interface {
 	ClientRepository
 	InviteRepository
 	MessageRepository
+	CacheRepository
 	GetWebitelUserByID(ctx context.Context, id int64) (*WebitelUser, error)
 	WithTransaction(txFunc func(*sqlx.Tx) error) (err error)
 	CreateConversationTx(ctx context.Context, tx *sqlx.Tx, c *Conversation) error
@@ -110,6 +111,16 @@ type MessageRepository interface {
 		sort []string,
 		conversationID string,
 	) ([]*Message, error)
+}
+
+type CacheRepository interface {
+	WriteConversationNode(conversationID string, nodeID string) error
+	ReadConversationNode(conversationID string) (string, error)
+	DeleteConversationNode(conversationID string) error
+
+	ReadConfirmation(conversationID string) (string, error)
+	WriteConfirmation(conversationID string, confirmationID string) error
+	DeleteConfirmation(conversationID string) error
 }
 
 type sqlxRepository struct {

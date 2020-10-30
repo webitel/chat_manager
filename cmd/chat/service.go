@@ -9,7 +9,6 @@ import (
 
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/internal/auth"
-	cache "github.com/webitel/chat_manager/internal/chat_cache"
 	event "github.com/webitel/chat_manager/internal/event_router"
 	"github.com/webitel/chat_manager/internal/flow"
 	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
@@ -50,7 +49,6 @@ type chatService struct {
 	authClient    auth.Client
 	botClient     pbbot.BotService
 	storageClient pbstorage.FileService
-	chatCache     cache.ChatCache
 	eventRouter   event.Router
 }
 
@@ -61,7 +59,6 @@ func NewChatService(
 	authClient auth.Client,
 	botClient pbbot.BotService,
 	storageClient pbstorage.FileService,
-	chatCache cache.ChatCache,
 	eventRouter event.Router,
 ) Service {
 	return &chatService{
@@ -71,7 +68,6 @@ func NewChatService(
 		authClient,
 		botClient,
 		storageClient,
-		chatCache,
 		eventRouter,
 	}
 }
@@ -269,14 +265,14 @@ func (s *chatService) CloseConversation(
 		// s.chatCache.DeleteCachedMessages(conversationID)
 		resErrorsChan := make(chan error, 4)
 		go func() {
-			if err := s.chatCache.DeleteConfirmation(conversationID); err != nil {
+			if err := s.repo.DeleteConfirmation(conversationID); err != nil {
 				resErrorsChan <- err
 			} else {
 				resErrorsChan <- nil
 			}
 		}()
 		go func() {
-			if err := s.chatCache.DeleteConversationNode(conversationID); err != nil {
+			if err := s.repo.DeleteConversationNode(conversationID); err != nil {
 				resErrorsChan <- err
 			} else {
 				resErrorsChan <- nil
@@ -514,14 +510,18 @@ func (s *chatService) InviteToConversation(
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	conversation, err := s.repo.GetConversationByID(ctx, req.GetConversationId())
+	conversation, err := s.repo.GetConversations(ctx, req.GetConversationId(), 0, 0, nil, nil, 0, false, 0)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
+	if conversation == nil {
+		s.log.Error().Msg("conversation not found")
+		return errors.BadRequest("conversation not found", "")
+	}
 	resErrorsChan := make(chan error, 2)
 	go func() {
-		if err := s.eventRouter.SendInviteToWebitelUser(transformConversationFromRepoModel(conversation), invite); err != nil {
+		if err := s.eventRouter.SendInviteToWebitelUser(transformConversationFromRepoModel(conversation[0]), invite); err != nil {
 			resErrorsChan <- err
 		} else {
 			resErrorsChan <- nil
@@ -652,7 +652,7 @@ func (s *chatService) WaitMessage(ctx context.Context, req *pb.WaitMessageReques
 	// 	res.TimeoutSec = int64(timeout)
 	// 	return nil
 	// }
-	if err := s.chatCache.WriteConfirmation(req.GetConversationId(), []byte(req.GetConfirmationId())); err != nil {
+	if err := s.repo.WriteConfirmation(req.GetConversationId(), req.GetConfirmationId()); err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
@@ -710,7 +710,8 @@ func (s *chatService) GetConversationByID(ctx context.Context, req *pb.GetConver
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	conversation, err := s.repo.GetConversationByID(ctx, req.GetId())
+	conversation, err := s.repo.GetConversations(ctx, req.GetId(), 0, 0, nil, nil, 0, false, 0)
+	//conversation, err := s.repo.GetConversationByID(ctx, req.GetId())
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
@@ -718,7 +719,7 @@ func (s *chatService) GetConversationByID(ctx context.Context, req *pb.GetConver
 	if conversation == nil {
 		return nil
 	}
-	res.Item = transformConversationFromRepoModel(conversation)
+	res.Item = transformConversationFromRepoModel(conversation[0])
 	return nil
 }
 

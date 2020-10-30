@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	cache "github.com/webitel/chat_manager/internal/chat_cache"
+	sqlxrepo "github.com/webitel/chat_manager/internal/repo/sqlx"
 	pb "github.com/webitel/protos/chat"
 	pbmanager "github.com/webitel/protos/workflow"
 
@@ -40,13 +40,13 @@ type Client interface {
 type flowClient struct {
 	log       *zerolog.Logger
 	client    pbmanager.FlowChatServerService
-	chatCache cache.ChatCache
+	chatCache sqlxrepo.CacheRepository
 }
 
 func NewClient(
 	log *zerolog.Logger,
 	client pbmanager.FlowChatServerService,
-	chatCache cache.ChatCache,
+	chatCache sqlxrepo.CacheRepository,
 ) *flowClient {
 	return &flowClient{
 		log,
@@ -60,7 +60,7 @@ func (s *flowClient) SendMessage(conversationID string, message *pb.Message) err
 	if err != nil {
 		return err
 	}
-	if confirmationID == nil {
+	if confirmationID == "" {
 		return nil
 	}
 	s.log.Debug().
@@ -78,7 +78,7 @@ func (s *flowClient) SendMessage(conversationID string, message *pb.Message) err
 	}
 	messageReq := &pbmanager.ConfirmationMessageRequest{
 		ConversationId: conversationID,
-		ConfirmationId: string(confirmationID),
+		ConfirmationId: confirmationID,
 		Messages:       messages,
 	}
 	nodeID, err := s.chatCache.ReadConversationNode(conversationID)
@@ -90,7 +90,7 @@ func (s *flowClient) SendMessage(conversationID string, message *pb.Message) err
 		messageReq,
 		client.WithSelectOption(
 			selector.WithFilter(
-				FilterNodes(string(nodeID)),
+				FilterNodes(nodeID),
 			),
 		),
 	); err != nil || res.Error != nil {
@@ -173,7 +173,7 @@ func (s *flowClient) CloseConversation(conversationID string) error {
 		},
 		client.WithSelectOption(
 			selector.WithFilter(
-				FilterNodes(string(nodeID)),
+				FilterNodes(nodeID),
 			),
 		),
 	); err != nil {
@@ -200,7 +200,7 @@ func (s *flowClient) BreakBridge(conversationID string, cause BreakBridgeCause) 
 		},
 		client.WithSelectOption(
 			selector.WithFilter(
-				FilterNodes(string(nodeID)),
+				FilterNodes(nodeID),
 			),
 		),
 	); err != nil {
@@ -222,7 +222,7 @@ func (s *flowClient) initCallWrapper(conversationID string) func(client.CallFunc
 				// s.log.Error().Msg(err.Error())
 				return err
 			}
-			if err := s.chatCache.WriteConversationNode(conversationID, []byte(node.Id)); err != nil {
+			if err := s.chatCache.WriteConversationNode(conversationID, node.Id); err != nil {
 				// s.log.Error().Msg(err.Error())
 				return err
 			}

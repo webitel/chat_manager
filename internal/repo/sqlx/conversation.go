@@ -26,7 +26,7 @@ func (repo *sqlxRepository) GetConversationByID(ctx context.Context, id string) 
 		}
 		return nil, err
 	}
-	conversation.Members, conversation.Messages, _, err = repo.getConversationInfo(ctx, id, -1)
+	conversation.Members, conversation.Messages, err = repo.getConversationInfo(ctx, id)
 	if err != nil {
 		repo.log.Error().Msg(err.Error())
 		return nil, err
@@ -155,9 +155,19 @@ func (repo *sqlxRepository) GetConversations(
 	return conversations, nil
 }
 
-func (repo *sqlxRepository) getConversationInfo(ctx context.Context, id string, userID int64) (members ConversationMembers, messages ConversationMessages, channelID string, err error) {
+func (repo *sqlxRepository) getConversationInfo(ctx context.Context, id string) (members ConversationMembers, messages ConversationMessages, err error) {
 	members = ConversationMembers{}
-	err = repo.db.SelectContext(ctx, &members, "SELECT * FROM chat.channel where conversation_id=$1", id)
+	err = repo.db.SelectContext(ctx, &members, `
+		select
+			   ch.id,
+			   ch.type,
+			   ch.user_id,
+			   ch.name,
+			   ch.internal,
+			   ch.created_at,
+			   ch.updated_at
+		from chat.channel ch
+		where ch.conversation_id = $1`, id)
 	if err != nil {
 		repo.log.Warn().Msg(err.Error())
 		if err == sql.ErrNoRows {
@@ -167,13 +177,18 @@ func (repo *sqlxRepository) getConversationInfo(ctx context.Context, id string, 
 		return
 	}
 	messages = ConversationMessages{}
-	err = repo.db.GetContext(ctx, &messages, `SELECT m.*, c.user_id, c.type as user_type
+	err = repo.db.GetContext(ctx, &messages, `
+		SELECT 
+			   m.id,
+			   m.text,
+			   m.type,
+			   m.channel_id,
+			   m.created_at,
+			   m.updated_at
 		FROM chat.message m
-		left join chat.channel c
-		on m.channel_id = c.id
 		where m.conversation_id=$1
 		order by m.created_at desc
-		limit 1`, id)
+		limit 10`, id)
 	if err != nil {
 		repo.log.Warn().Msg(err.Error())
 		if err == sql.ErrNoRows {

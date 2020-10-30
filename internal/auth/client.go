@@ -5,12 +5,10 @@ import (
 	"strings"
 
 	pbauth "github.com/webitel/chat_manager/api/proto/auth"
-	cache "github.com/webitel/chat_manager/internal/chat_cache"
 
 	"github.com/micro/go-micro/v2/errors"
 	"github.com/micro/go-micro/v2/metadata"
 	"github.com/rs/zerolog"
-	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -33,19 +31,19 @@ type Client interface {
 }
 
 type client struct {
-	log        *zerolog.Logger
-	chatCache  cache.ChatCache
+	log *zerolog.Logger
+	//chatCache  cache.ChatCache
 	authClient pbauth.AuthService
 }
 
 func NewClient(
 	log *zerolog.Logger,
-	chatCache cache.ChatCache,
+	//chatCache cache.ChatCache,
 	authClient pbauth.AuthService,
 ) Client {
 	return &client{
 		log,
-		chatCache,
+		//chatCache,
 		authClient,
 	}
 }
@@ -69,26 +67,25 @@ func (c *client) MicroAuthentication(rpc *context.Context) error {
 	if len(token) == 0 {
 		return errors.Unauthorized("invalid token", "")
 	}
-	exists, err := c.chatCache.GetUserInfo(token)
-	// session, err := rpc.App.GetSession(rpc.App.Context, token)
-	if err != nil {
-		return errors.InternalServerError("failed to get userinfo from cache", err.Error())
-	}
-	if exists {
-		return nil
-	}
+	//exists, err := c.chatCache.GetUserInfo(token)
+	//if err != nil {
+	//	return errors.InternalServerError("failed to get userinfo from cache", err.Error())
+	//}
+	//if exists {
+	//	return nil
+	//}
 	uiReq := &pbauth.UserinfoRequest{
 		AccessToken: token,
 	}
 	ctx := metadata.Set(*rpc, h2pTokenAccess, token)
-	info, err := c.authClient.UserInfo(ctx, uiReq)
+	_, err = c.authClient.UserInfo(ctx, uiReq)
 	if err != nil {
 		return errors.Unauthorized("failed to get userinfo from app", err.Error())
 	}
-	infoBytes, _ := proto.Marshal(info)
-	if err := c.chatCache.SetUserInfo(token, infoBytes, info.ExpiresAt); err != nil {
-		return errors.InternalServerError("failed to get userinfo to cache", err.Error())
-	}
+	//infoBytes, _ := proto.Marshal(info)
+	//if err := c.chatCache.SetUserInfo(token, infoBytes, info.ExpiresAt); err != nil {
+	//	return errors.InternalServerError("failed to get userinfo to cache", err.Error())
+	//}
 	return nil
 }
 

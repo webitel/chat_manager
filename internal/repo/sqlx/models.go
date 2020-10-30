@@ -136,3 +136,13 @@ type WebitelUser struct {
 	ID   int64  `db:"id" json:"id"`
 	Name string `db:"name" json:"name"`
 }
+
+type ConversationNode struct {
+	ConversationID string `db:"conversation_id" json:"conversation_id"`
+	NodeID         string `db:"node_id" json:"node_id"`
+}
+
+type ConversationConfirmation struct {
+	ConversationID string `db:"conversation_id" json:"conversation_id"`
+	ConfirmationID string `db:"confirmation_id" json:"confirmation_id"`
+}

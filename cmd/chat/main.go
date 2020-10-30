@@ -8,7 +8,6 @@ import (
 	pbauth "github.com/webitel/chat_manager/api/proto/auth"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/internal/auth"
-	cache "github.com/webitel/chat_manager/internal/chat_cache"
 	event "github.com/webitel/chat_manager/internal/event_router"
 	"github.com/webitel/chat_manager/internal/flow"
 	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
@@ -21,10 +20,8 @@ import (
 	"github.com/micro/cli/v2"
 	"github.com/micro/go-micro/v2"
 	"github.com/micro/go-micro/v2/config/cmd"
-	"github.com/micro/go-micro/v2/store"
 	"github.com/micro/go-plugins/broker/rabbitmq/v2"
 	"github.com/micro/go-plugins/registry/consul/v2"
-	"github.com/micro/go-plugins/store/redis/v2"
 	"github.com/rs/zerolog"
 )
 
@@ -34,12 +31,12 @@ type Config struct {
 }
 
 var (
-	logger     *zerolog.Logger
-	cfg        *Config
-	service    micro.Service
-	redisStore store.Store
+	logger  *zerolog.Logger
+	cfg     *Config
+	service micro.Service
+	//redisStore store.Store
 	// rabbitBroker broker.Broker
-	redisTable    string
+	//redisTable    string
 	flowClient    pbmanager.FlowChatServerService
 	botClient     pbbot.BotService
 	authClient    pbauth.AuthService
@@ -50,7 +47,7 @@ var (
 func init() {
 	// plugins
 	cmd.DefaultBrokers["rabbitmq"] = rabbitmq.NewBroker
-	cmd.DefaultStores["redis"] = redis.NewStore
+	//cmd.DefaultStores["redis"] = redis.NewStore
 	cmd.DefaultRegistries["consul"] = consul.NewRegistry
 }
 
@@ -109,7 +106,7 @@ func main() {
 		micro.Action(func(c *cli.Context) error {
 			cfg.LogLevel = c.String("log_level")
 			cfg.DBSource = c.String("webitel_dbo_address")
-			redisTable = c.String("store_table")
+			//redisTable = c.String("store_table")
 			timeout = 600 //c.Uint64("conversation_timeout_sec")
 			var err error
 			logger, err = NewLogger(cfg.LogLevel)
@@ -136,7 +133,7 @@ func main() {
 		}),
 	)
 
-	service.Options().Store.Init(store.Table(redisTable))
+	//service.Options().Store.Init(store.Table(redisTable))
 
 	if err := service.Options().Broker.Init(); err != nil {
 		logger.Fatal().
@@ -164,11 +161,11 @@ func main() {
 		Msg("db connected")
 
 	repo := pg.NewRepository(db, logger)
-	cache := cache.NewChatCache(service.Options().Store)
-	flow := flow.NewClient(logger, flowClient, cache)
-	auth := auth.NewClient(logger, cache, authClient)
+	//cache := cache.NewChatCache(service.Options().Store)
+	flow := flow.NewClient(logger, flowClient, repo)
+	auth := auth.NewClient(logger, authClient)
 	eventRouter := event.NewRouter(botClient /*flow,*/, service.Options().Broker, repo, logger)
-	serv := NewChatService(repo, logger, flow, auth, botClient, storageClient, cache, eventRouter)
+	serv := NewChatService(repo, logger, flow, auth, botClient, storageClient, eventRouter)
 
 	if err := pb.RegisterChatServiceHandler(service.Server(), serv); err != nil {
 		logger.Fatal().
