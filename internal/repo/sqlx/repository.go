@@ -64,6 +64,7 @@ type ConversationRepository interface {
 		domainID int64,
 		active bool,
 		userID int64,
+		messageSize int32,
 	) ([]*Conversation, error)
 	CreateConversation(ctx context.Context, c *Conversation) error
 	GetConversationByID(ctx context.Context, id string) (*Conversation, error)
@@ -111,6 +112,7 @@ type MessageRepository interface {
 		sort []string,
 		conversationID string,
 	) ([]*Message, error)
+	GetLastMessage(conversationID string) (*Message, error)
 }
 
 type CacheRepository interface {

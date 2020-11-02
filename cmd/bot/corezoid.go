@@ -20,7 +20,8 @@ type corezoidReqBody struct {
 	Text    string `json:"text,omitempty"`
 	Action  string `json:"action,omitempty"`
 	Channel string `json:"channel,omitempty"`
-	Type    string `json:"type,omitempty"`
+	ReplyTo string `json:"replyTo,omitempty"`
+	Answer  string `json:"answer,omitempty"`
 }
 
 type corezoidResBody struct {
@@ -70,13 +71,15 @@ func (b *corezoidBot) DeleteProfile() error {
 }
 
 func (b *corezoidBot) SendMessage(req *pb.SendMessageRequest) error {
-	body, err := json.Marshal(corezoidResBody{
-		ID:           req.GetExternalUserId(),
-		Text:         req.GetMessage().GetText(),
-		Action:       req.GetMessage().GetVariables()["action"],
-		Channel:      req.GetMessage().GetVariables()["channel"],
-		OperatorName: req.GetMessage().GetVariables()["operator_name"],
-		Type:         req.GetMessage().GetType(),
+	body, err := json.Marshal(corezoidReqBody{
+		ID:      req.GetExternalUserId(),
+		Text:    req.GetMessage().GetVariables()["text"],
+		Action:  req.GetMessage().GetVariables()["action"],
+		Channel: req.GetMessage().GetVariables()["channel"],
+		ReplyTo: req.GetMessage().GetVariables()["replyTo"],
+		Answer:  req.GetMessage().GetText(),
+		//OperatorName: req.GetMessage().GetVariables()["operator_name"],
+		//Type:         req.GetMessage().GetType(),
 	})
 	if err != nil {
 		return err
@@ -105,13 +108,13 @@ func (b *corezoidBot) Handler(r *http.Request) {
 		return
 	}
 
-	//b.log.Debug().
-	//	Int64("id", update.ID).
-	//	Str("username", update.Message.From.Username).
-	//	Str("first_name", update.Message.From.FirstName).
-	//	Str("last_name", update.Message.From.LastName).
-	//	Str("text", update.Message.Text).
-	//	Msg("receive message")
+	b.log.Debug().
+		Str("id", update.ID).
+		Str("text", update.Text).
+		Str("channel", update.Channel).
+		Str("replyTo", update.ReplyTo).
+		Str("action", update.Action).
+		Msg("receive message")
 
 	strChatID := update.ID //strconv.FormatInt(update.ID, 10)
 
@@ -158,6 +161,11 @@ func (b *corezoidBot) Handler(r *http.Request) {
 			Type: "text",
 			Value: &pbchat.Message_Text{
 				Text: update.Text,
+			},
+			Variables: map[string]string{
+				"action":  update.Action,
+				"channel": update.Channel,
+				"replyTo": update.ReplyTo,
 			},
 		}
 		message.Message = textMessage

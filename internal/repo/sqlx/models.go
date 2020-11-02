@@ -110,15 +110,16 @@ type Invite struct {
 }
 
 type Message struct {
-	ID             int64          `db:"id" json:"id"`
-	ChannelID      sql.NullString `db:"channel_id" json:"channel_id,omitempty"`
-	UserID         sql.NullInt64  `db:"user_id" json:"user_id,omitempty"`
-	UserType       sql.NullString `db:"user_type" json:"user_type,omitempty"`
+	ID        int64          `db:"id" json:"id"`
+	ChannelID sql.NullString `db:"channel_id" json:"channel_id,omitempty"`
+	//UserID         sql.NullInt64  `db:"user_id" json:"user_id,omitempty"`
+	//UserType       sql.NullString `db:"user_type" json:"user_type,omitempty"`
 	ConversationID string         `db:"conversation_id" json:"conversation_id"`
 	Text           sql.NullString `db:"text" json:"text,omitempty"`
 	CreatedAt      time.Time      `db:"created_at" json:"created_at,omitempty"`
 	UpdatedAt      time.Time      `db:"updated_at" json:"updated_at,omitempty"`
 	Type           string         `db:"type" json:"type"`
+	Variables      types.JSONText `db:"variables" json:"variables"`
 }
 
 type Profile struct {

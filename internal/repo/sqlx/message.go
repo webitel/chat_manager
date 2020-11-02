@@ -43,5 +43,10 @@ func (repo *sqlxRepository) GetMessages(ctx context.Context, id int64, size, pag
 	query := fmt.Sprintf("SELECT %s FROM chat.message m left join chat.channel c on m.channel_id = c.id %s %s %s", fieldsStr, whereStr, sortStr, limitStr)
 	err := repo.db.SelectContext(ctx, &result, query, conversationID)
 	return result, err
+}
 
+func (repo *sqlxRepository) GetLastMessage(conversationID string) (*Message, error) {
+	result := &Message{}
+	err := repo.db.Get(result, "select id, text, variables from chat.message where conversation_id=$1 order by created_at desc limit 1", conversationID)
+	return result, err
 }

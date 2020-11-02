@@ -166,6 +166,9 @@ func (s *chatService) SendMessage(
 			true,
 		},
 	}
+	if req.GetMessage().Variables != nil {
+		message.Variables.Scan(req.GetMessage().Variables)
+	}
 	if err := s.repo.CreateMessage(ctx, message); err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
@@ -510,7 +513,7 @@ func (s *chatService) InviteToConversation(
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	conversation, err := s.repo.GetConversations(ctx, req.GetConversationId(), 0, 0, nil, nil, 0, false, 0)
+	conversation, err := s.repo.GetConversations(ctx, req.GetConversationId(), 0, 0, nil, nil, 0, false, 0, 0)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
@@ -710,7 +713,7 @@ func (s *chatService) GetConversationByID(ctx context.Context, req *pb.GetConver
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	conversation, err := s.repo.GetConversations(ctx, req.GetId(), 0, 0, nil, nil, 0, false, 0)
+	conversation, err := s.repo.GetConversations(ctx, req.GetId(), 0, 0, nil, nil, 0, false, 0, 0)
 	//conversation, err := s.repo.GetConversationByID(ctx, req.GetId())
 	if err != nil {
 		s.log.Error().Msg(err.Error())
@@ -741,6 +744,7 @@ func (s *chatService) GetConversations(ctx context.Context, req *pb.GetConversat
 		req.GetDomainId(),
 		req.GetActive(),
 		req.GetUserId(),
+		req.GetMessageSize(),
 	)
 	if err != nil {
 		s.log.Error().Msg(err.Error())

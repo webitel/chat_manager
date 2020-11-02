@@ -62,6 +62,7 @@ func (repo *sqlxRepository) GetConversations(
 	domainID int64,
 	active bool,
 	userID int64,
+	messageSize int32,
 ) ([]*Conversation, error) {
 	conversations := make([]*Conversation, 0, size)
 	fieldsStr, whereStr, sortStr, limitStr := "c.*, m.*, ch.*", "", "order by c.created_at desc", ""
@@ -72,6 +73,10 @@ func (repo *sqlxRepository) GetConversations(
 		page = 1
 	}
 	limitStr = fmt.Sprintf("limit %v offset %v", size, (page-1)*size)
+	if messageSize == 0 {
+		messageSize = 10
+	}
+	messageLimitStr := fmt.Sprintf("limit %v", messageSize)
 	queryStrings := make([]string, 0, 4)
 	queryArgs := make([]interface{}, 0, 4)
 	argCounter := 1
@@ -84,6 +89,7 @@ func (repo *sqlxRepository) GetConversations(
 		queryStrings = append(queryStrings, "c.id")
 		queryArgs = append(queryArgs, id)
 	}
+	// TO DO GET DOMAIN FROM TOKEN
 	if domainID != 0 {
 		queryStrings = append(queryStrings, "c.domain_id")
 		queryArgs = append(queryArgs, domainID)
@@ -93,7 +99,7 @@ func (repo *sqlxRepository) GetConversations(
 			whereStr = "where"
 		}
 		if active != false {
-			whereStr = whereStr + " closed_at is not null and"
+			whereStr = whereStr + " c.closed_at is not null and"
 		}
 		for i, _ := range queryStrings {
 			whereStr = whereStr + fmt.Sprintf(" %s=$%v and", queryStrings[i], i+argCounter)
@@ -116,7 +122,7 @@ func (repo *sqlxRepository) GetConversations(
 						FROM chat.message m
 						where m.conversation_id = c.id
 						order by m.created_at desc
-						limit 10
+						%s
 					) s
 				) m on true
 				left join LATERAL (
@@ -137,7 +143,7 @@ func (repo *sqlxRepository) GetConversations(
 			%s
 			%s
 		%s;
-		`, fieldsStr, whereStr, sortStr, limitStr)
+		`, fieldsStr, messageLimitStr, whereStr, sortStr, limitStr)
 	rows, err := repo.db.QueryxContext(ctx, query, queryArgs...)
 	if err != nil {
 		if err == sql.ErrNoRows {
