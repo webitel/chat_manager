@@ -590,7 +590,7 @@ func (s *chatService) DeclineInvitation(
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	if invite == nil && invite.UserID != req.GetAuthUserId() {
+	if invite == nil || invite.UserID != req.GetAuthUserId() {
 		return errors.BadRequest("invite not found", "")
 	}
 	resErrorsChan := make(chan error, 3)
@@ -617,7 +617,14 @@ func (s *chatService) DeclineInvitation(
 			resErrorsChan <- nil
 		}
 	}()
-	for i := 0; i < 3; i++ {
+	go func() {
+		if err := s.eventRouter.SendDeclineInviteToWebitelUser(&invite.DomainID, &invite.ConversationID, &invite.UserID, &invite.ID); err != nil {
+			resErrorsChan <- err
+		} else {
+			resErrorsChan <- nil
+		}
+	}()
+	for i := 0; i < 4; i++ {
 		if err := <-resErrorsChan; err != nil {
 			s.log.Error().Msg(err.Error())
 			return err

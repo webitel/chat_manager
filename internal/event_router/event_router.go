@@ -445,13 +445,6 @@ func (e *eventRouter) RouteJoinConversation(channel *pg.Channel, conversationID 
 }
 
 func (e *eventRouter) RouteLeaveConversation(channel *pg.Channel, conversationID *string) error {
-	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil) //channelID)
-	if err != nil {
-		return err
-	}
-	if otherChannels == nil {
-		return nil
-	}
 	body, _ := json.Marshal(events.LeaveConversationEvent{
 		BaseEvent: events.BaseEvent{
 			ConversationID: *conversationID,
@@ -459,6 +452,23 @@ func (e *eventRouter) RouteLeaveConversation(channel *pg.Channel, conversationID
 		},
 		LeavedChannelID: channel.ID,
 	})
+	if err := e.sendEventToWebitelUser(nil, channel, events.LeaveConversationEventType, body); err != nil {
+		e.log.Warn().
+			Str("channel_id", channel.ID).
+			Bool("internal", channel.Internal).
+			Int64("user_id", channel.UserID).
+			Str("conversation_id", channel.ConversationID).
+			Str("type", channel.Type).
+			Str("connection", channel.Connection.String).
+			Msg("failed to send leave conversation event to channel")
+	}
+	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil) //channelID)
+	if err != nil {
+		return err
+	}
+	if len(otherChannels) == 0 {
+		return nil
+	}
 	for _, item := range otherChannels {
 		switch item.Type {
 		case "webitel":
