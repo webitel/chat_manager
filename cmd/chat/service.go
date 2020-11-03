@@ -104,10 +104,11 @@ func (s *chatService) SendMessage(
 	s.log.Trace().
 		Str("channel_id", req.GetChannelId()).
 		Str("conversation_id", req.GetConversationId()).
-		Bool("from_flow", req.GetFromFlow()).
+		// Bool("from_flow", req.GetFromFlow()).
 		Int64("auth_user_id", req.GetAuthUserId()).
 		Msg("send message")
-	if req.GetFromFlow() {
+	servName := s.authClient.GetServiceName(&ctx)
+	if servName == "workflow" {
 		conversationID := req.GetConversationId()
 		message := &pg.Message{
 			Type:           "text",
@@ -264,7 +265,8 @@ func (s *chatService) CloseConversation(
 	if conversationID == "" {
 		return errors.BadRequest("conversation_id not found", "")
 	}
-	if req.FromFlow {
+	servName := s.authClient.GetServiceName(&ctx)
+	if servName == "workflow" {
 		// s.chatCache.DeleteCachedMessages(conversationID)
 		resErrorsChan := make(chan error, 4)
 		go func() {
@@ -379,7 +381,7 @@ func (s *chatService) JoinConversation(
 		DomainID:       invite.DomainID,
 		Name:           user.Name,
 	}
-	if invite.InviterChannelID == (sql.NullString{}) {
+	if !invite.InviterChannelID.Valid {
 		channel.FlowBridge = true
 	}
 	if err := s.repo.WithTransaction(func(tx *sqlx.Tx) error {
@@ -474,9 +476,10 @@ func (s *chatService) InviteToConversation(
 		Int64("domain_id", req.GetDomainId()).
 		Int64("timeout_sec", req.GetTimeoutSec()).
 		Int64("auth_user_id", req.GetAuthUserId()).
-		Bool("from_flow", req.GetFromFlow()).
+		// Bool("from_flow", req.GetFromFlow()).
 		Msg("invite to conversation")
-	if !req.GetFromFlow() &&
+	servName := s.authClient.GetServiceName(&ctx)
+	if servName != "workflow" &&
 		(req.GetInviterChannelId() == "" || req.GetAuthUserId() == 0) {
 		s.log.Error().Msg("failed auth")
 		return errors.BadRequest("failed auth", "")
@@ -595,7 +598,7 @@ func (s *chatService) DeclineInvitation(
 	}
 	resErrorsChan := make(chan error, 3)
 	go func() {
-		if invite.InviterChannelID == (sql.NullString{}) {
+		if !invite.InviterChannelID.Valid {
 			if err := s.flowClient.BreakBridge(invite.ConversationID, flow.DeclineInvitationCause); err != nil {
 				resErrorsChan <- err
 				return

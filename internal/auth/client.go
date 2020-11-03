@@ -35,6 +35,7 @@ type User struct {
 
 type Client interface {
 	MicroAuthentication(rpc *context.Context) (*User, error)
+	GetServiceName(rpc *context.Context) string
 }
 
 type client struct {
@@ -53,6 +54,15 @@ func NewClient(
 		//chatCache,
 		authClient,
 	}
+}
+
+func (c *client) GetServiceName(rpc *context.Context) string {
+	md, _ := metadata.FromContext(*rpc)
+	if len(md) == 0 {
+		return ""
+	}
+	serviceName := md[botServiceKey]
+	return serviceName
 }
 
 func (c *client) MicroAuthentication(rpc *context.Context) (*User, error) {
