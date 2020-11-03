@@ -29,6 +29,7 @@ type Router interface {
 	RouteDeclineInvite(userID *int64, conversationID *string) error
 	RouteInvite(conversationID *string, userID *int64) error
 	RouteJoinConversation(channel *pg.Channel, conversationID *string) error
+	RouteAddToConversation(channel *pg.Channel, conversationID *string) error
 	RouteLeaveConversation(channel *pg.Channel, conversationID *string) error
 	RouteMessage(channel *pg.Channel, message *pb.Message) (bool, error)
 	RouteMessageFromFlow(conversationID *string, message *pb.Message) error
@@ -51,6 +52,75 @@ func NewRouter(
 		repo,
 		log,
 	}
+}
+
+func (e *eventRouter) RouteAddToConversation(channel *pg.Channel, conversationID *string) error {
+	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil)
+	if err != nil {
+		return err
+	}
+	if otherChannels == nil {
+		return nil
+	}
+	member := events.Member{
+		ChannelID: channel.ID,
+		UserID:    channel.UserID,
+		Username:  channel.Name,
+		Type:      channel.Type,
+		Internal:  channel.Internal,
+		UpdatedAt: channel.UpdatedAt.Unix() * 1000,
+	}
+	req := events.JoinConversationEvent{
+		BaseEvent: events.BaseEvent{
+			ConversationID: *conversationID,
+			Timestamp:      time.Now().Unix() * 1000,
+		},
+		Member: member,
+	}
+	body, _ := json.Marshal(req)
+	for _, item := range otherChannels {
+		switch item.Type {
+		case "webitel":
+			{
+				if err := e.sendEventToWebitelUser(nil, item, events.JoinConversationEventType, body); err != nil {
+					e.log.Warn().
+						Str("channel_id", item.ID).
+						Bool("internal", item.Internal).
+						Int64("user_id", item.UserID).
+						Str("conversation_id", item.ConversationID).
+						Str("type", item.Type).
+						Str("connection", item.Connection.String).
+						Msgf("failed to send join conversation event to channel: %s", err.Error())
+				}
+			}
+		//case "corezoid":
+		//	{
+		//		reqMessage := &pb.Message{
+		//			Type: "text",
+		//			Value: &pb.Message_Text{
+		//				Text: "Operator joined",
+		//			},
+		//			Variables: map[string]string{
+		//				"operator_name": channel.Name,
+		//				"action":        "join",
+		//				"channel":       "viber",
+		//			},
+		//		}
+		//		if err := e.sendMessageToBotUser(channel, item, reqMessage); err != nil {
+		//			e.log.Warn().
+		//				Str("channel_id", item.ID).
+		//				Bool("internal", item.Internal).
+		//				Int64("user_id", item.UserID).
+		//				Str("conversation_id", item.ConversationID).
+		//				Str("type", item.Type).
+		//				Str("connection", item.Connection.String).
+		//				Msgf("failed to send join conversation event to channel: %s", err.Error())
+		//		}
+		//	}
+		default:
+		}
+	}
+	return nil
 }
 
 func (e *eventRouter) RouteCloseConversation(channel *pg.Channel, cause string) error {
@@ -282,14 +352,12 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *pb.Conversation, inv
 		mes.Members = make([]*events.Member, 0, memLen)
 		for _, item := range conversation.Members {
 			mes.Members = append(mes.Members, &events.Member{
-				// ChannelID: item.ChannelId,
+				ChannelID: item.ChannelId,
 				UserID:    item.UserId,
 				Username:  item.Username,
 				Type:      item.Type,
 				Internal:  item.Internal,
 				UpdatedAt: item.UpdatedAt,
-				// Firstname: item.Firstname,
-				// Lastname:  item.Lastname,
 			})
 		}
 	}
@@ -381,23 +449,8 @@ func (e *eventRouter) RouteJoinConversation(channel *pg.Channel, conversationID 
 			ConversationID: *conversationID,
 			Timestamp:      time.Now().Unix() * 1000,
 		},
-		//JoinedUserID:  channel.UserID,
 		Member: member,
-		//SelfChannelID: channel.ID,
 	}
-	//selfBody, _ := json.Marshal(selfEvent)
-	//if err := e.sendEventToWebitelUser(nil, channel, events.JoinConversationEventType, selfBody); err != nil {
-	//	e.log.Error().
-	//		Str("channel_id", channel.ID).
-	//		Bool("internal", channel.Internal).
-	//		Int64("user_id", channel.UserID).
-	//		Str("conversation_id", channel.ConversationID).
-	//		Str("type", channel.Type).
-	//		Str("connection", channel.Connection.String).
-	//		Msgf("failed to send join conversation event to channel: %s", err.Error())
-	//	return err
-	//}
-	// selfEvent.SelfChannelID = ""
 	body, _ := json.Marshal(req)
 	for _, item := range otherChannels {
 		switch item.Type {

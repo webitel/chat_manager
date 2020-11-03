@@ -16,6 +16,7 @@ const (
 	botServiceName      = `webitel.chat.bot`
 	engineServiceName   = `engine`
 	workflowServiceName = `workflow`
+	serviceKey          = `From-Service`
 
 	h2pDomainId      = `x-webitel-dc`
 	h2pDomainName    = `x-webitel-domain`
@@ -61,7 +62,7 @@ func (c *client) GetServiceName(rpc *context.Context) string {
 	if len(md) == 0 {
 		return ""
 	}
-	serviceName := md[botServiceKey]
+	serviceName := md[serviceKey]
 	return serviceName
 }
 

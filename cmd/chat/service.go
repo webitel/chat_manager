@@ -33,10 +33,15 @@ type Service interface {
 	SendMessage(ctx context.Context, req *pb.SendMessageRequest, res *pb.SendMessageResponse) error
 	StartConversation(ctx context.Context, req *pb.StartConversationRequest, res *pb.StartConversationResponse) error
 	CloseConversation(ctx context.Context, req *pb.CloseConversationRequest, res *pb.CloseConversationResponse) error
-	JoinConversation(ctx context.Context, req *pb.JoinConversationRequest, res *pb.JoinConversationResponse) error
+	AddToConversation(ctx context.Context, req *pb.AddToConversationRequest, res *pb.AddToConversationResponse) error
 	LeaveConversation(ctx context.Context, req *pb.LeaveConversationRequest, res *pb.LeaveConversationResponse) error
+
+	// DEPRECATED
+	JoinConversation(ctx context.Context, req *pb.JoinConversationRequest, res *pb.JoinConversationResponse) error
 	InviteToConversation(ctx context.Context, req *pb.InviteToConversationRequest, res *pb.InviteToConversationResponse) error
 	DeclineInvitation(ctx context.Context, req *pb.DeclineInvitationRequest, res *pb.DeclineInvitationResponse) error
+	//
+
 	WaitMessage(ctx context.Context, req *pb.WaitMessageRequest, res *pb.WaitMessageResponse) error
 	CheckSession(ctx context.Context, req *pb.CheckSessionRequest, res *pb.CheckSessionResponse) error
 	UpdateChannel(ctx context.Context, req *pb.UpdateChannelRequest, res *pb.UpdateChannelResponse) error
@@ -70,6 +75,56 @@ func NewChatService(
 		storageClient,
 		eventRouter,
 	}
+}
+
+func (s *chatService) AddToConversation(
+	ctx context.Context,
+	req *pb.AddToConversationRequest,
+	res *pb.AddToConversationResponse) error {
+	s.log.Trace().
+		Str("user.connection", req.GetUser().GetConnection()).
+		Str("user.type", req.GetUser().GetType()).
+		Int64("user.id", req.GetUser().GetUserId()).
+		Bool("user.internal", req.GetUser().GetInternal()).
+		Str("conversation_id", req.GetConversationId()).
+		Str("inviter_channel_id", req.GetInviterChannelId()).
+		Int64("domain_id", req.GetDomainId()).
+		Int64("auth_user_id", req.GetAuthUserId()).
+		Msg("add to conversation")
+	//inviterChannel, err := s.repo.CheckUserChannel(ctx, req.GetInviterChannelId(), req.GetAuthUserId())
+	//if err != nil {
+	//	s.log.Error().Msg(err.Error())
+	//	return err
+	//}
+	//if inviterChannel == nil {
+	//	s.log.Warn().Msg("channel not found")
+	//	return errors.BadRequest("channel not found", "")
+	//}
+	user, err := s.repo.GetWebitelUserByID(ctx, req.GetUser().GetUserId())
+	if err != nil {
+		s.log.Error().Msg(err.Error())
+		return err
+	}
+	if user == nil || user.DomainID != req.GetDomainId() {
+		s.log.Warn().Msg("user not found")
+		return errors.BadRequest("user not found", "")
+	}
+	channel := &pg.Channel{
+		Type:           "webitel",
+		Internal:       true,
+		ConversationID: req.GetConversationId(),
+		UserID:         user.ID,
+		DomainID:       user.DomainID,
+		Name:           user.Name,
+	}
+	if err := s.repo.CreateChannel(ctx, channel); err != nil {
+		return err
+	}
+	if err := s.eventRouter.RouteAddToConversation(channel, &channel.ConversationID); err != nil {
+		s.log.Warn().Msg(err.Error())
+		return err
+	}
+	return nil
 }
 
 func (s *chatService) UpdateChannel(
@@ -882,6 +937,10 @@ func (s *chatService) GetProfiles(ctx context.Context, req *pb.GetProfilesReques
 		s.log.Error().Msg(err.Error())
 		return err
 	}
+	var domainID int64
+	if user != nil {
+		domainID = user.DomainID
+	}
 	profiles, err := s.repo.GetProfiles(
 		ctx,
 		req.GetId(),
@@ -890,7 +949,7 @@ func (s *chatService) GetProfiles(ctx context.Context, req *pb.GetProfilesReques
 		req.GetFields(),
 		req.GetSort(),
 		req.GetType(),
-		user.DomainID, //req.GetDomainId(),
+		domainID, //req.GetDomainId(),
 	)
 	if err != nil {
 		s.log.Error().Msg(err.Error())

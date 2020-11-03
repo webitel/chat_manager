@@ -112,11 +112,11 @@ func (b *telegramBot) Handler(r *http.Request) {
 		Msg("receive message")
 
 	strChatID := strconv.FormatInt(update.Message.Chat.ID, 10)
-
+	username := fmt.Sprintf("%s %s", update.Message.From.FirstName, update.Message.From.LastName)
 	check := &pbchat.CheckSessionRequest{
 		ExternalId: strChatID,
 		ProfileId:  b.profileID,
-		Username:   update.Message.From.Username,
+		Username:   username,
 	}
 	resCheck, err := b.client.CheckSession(context.Background(), check)
 	if err != nil {
