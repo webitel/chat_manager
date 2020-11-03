@@ -155,7 +155,6 @@ func (b *corezoidBot) Handler(r *http.Request) {
 			// Message:   textMessage,
 			AuthUserId: resCheck.ClientId,
 			ChannelId:  resCheck.ChannelId,
-			FromFlow:   false,
 		}
 		textMessage := &pbchat.Message{
 			Type: "text",

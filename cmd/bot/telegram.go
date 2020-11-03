@@ -169,7 +169,6 @@ func (b *telegramBot) Handler(r *http.Request) {
 			// Message:   textMessage,
 			AuthUserId: resCheck.ClientId,
 			ChannelId:  resCheck.ChannelId,
-			FromFlow:   false,
 		}
 		// if update.Message.Photo != nil {
 		// 	fileURL, err := b.telegramBots[profileID].GetFileDirectURL(

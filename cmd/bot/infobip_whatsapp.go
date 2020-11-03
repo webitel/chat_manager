@@ -282,7 +282,6 @@ func (b *infobipWABot) Handler(r *http.Request) {
 			AuthUserId: resCheck.ClientId,
 			Message:    textMessage,
 			ChannelId:  resCheck.ChannelId,
-			FromFlow:   false,
 		}
 		_, err := b.client.SendMessage(context.Background(), message)
 		if err != nil {
