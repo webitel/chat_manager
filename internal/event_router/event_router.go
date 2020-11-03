@@ -296,7 +296,7 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *pb.Conversation, inv
 	if len(conversation.Messages) > 0 {
 		mes.Messages = []*events.Message{
 			{
-				MessageID: conversation.Messages[0].Id,
+				ID:        conversation.Messages[0].Id,
 				ChannelID: conversation.Messages[0].ChannelId,
 				Type:      conversation.Messages[0].Type,
 				Value:     conversation.Messages[0].Text,
@@ -523,7 +523,7 @@ func (e *eventRouter) RouteMessage(channel *pg.Channel, message *pb.Message) (bo
 		},
 		Message: events.Message{
 			ChannelID: channel.ID,
-			MessageID: message.GetId(),
+			ID:        message.GetId(),
 			Type:      message.GetType(),
 			Value:     message.GetText(),
 			//CreatedAt: 0,

@@ -113,6 +113,7 @@ func transformConversationFromRepoModel(c *pg.Conversation) *pb.Conversation {
 	messages := make([]*pb.HistoryMessage, 0, len(c.Messages))
 	for _, item := range c.Messages {
 		messages = append(messages, &pb.HistoryMessage{
+			Id:        item.ID,
 			ChannelId: item.ChannelID,
 			//FromUserId:   item.UserID,
 			//FromUserType: item.UserType,

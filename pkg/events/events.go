@@ -78,9 +78,9 @@ type Conversation struct {
 }
 
 type Member struct {
-	ChannelID string `json:"channel_id"`
+	ChannelID string `json:"id"`
 	UserID    int64  `json:"user_id"`
-	Username  string `json:"username"`
+	Username  string `json:"name"`
 	Type      string `json:"type"`
 	Internal  bool   `json:"internal"`
 	UpdatedAt int64  `json:"updated_at,omitempty"`
@@ -89,10 +89,10 @@ type Member struct {
 }
 
 type Message struct {
+	ID        int64  `json:"id"`
 	ChannelID string `json:"channel_id,omitempty"`
-	MessageID int64  `json:"message_id"`
-	Type      string `json:"message_type"`
-	Value     string `json:"message_value"`
+	Type      string `json:"type"`
+	Value     string `json:"text"`
 	CreatedAt int64  `json:"created_at,omitempty"`
 	UpdatedAt int64  `json:"updated_at,omitempty"`
 }
