@@ -12,8 +12,10 @@ import (
 )
 
 const (
-	botServiceKey  = `Micro-From-Service`
-	botServiceName = `webitel.chat.bot`
+	botServiceKey       = `Micro-From-Service`
+	botServiceName      = `webitel.chat.bot`
+	engineServiceName   = `engine`
+	workflowServiceName = `workflow`
 
 	h2pDomainId      = `x-webitel-dc`
 	h2pDomainName    = `x-webitel-domain`
@@ -26,8 +28,13 @@ const (
 	hdrAuthorization = `Authorization`
 )
 
+type User struct {
+	ID       int64 `db:"id" json:"id"`
+	DomainID int64 `db:"dc" json:"dc"`
+}
+
 type Client interface {
-	MicroAuthentication(rpc *context.Context) error
+	MicroAuthentication(rpc *context.Context) (*User, error)
 }
 
 type client struct {
@@ -48,25 +55,27 @@ func NewClient(
 	}
 }
 
-func (c *client) MicroAuthentication(rpc *context.Context) error {
+func (c *client) MicroAuthentication(rpc *context.Context) (*User, error) {
 	// metadata binding ...
 	md, _ := metadata.FromContext(*rpc)
 	if len(md) == 0 {
-		return errors.Unauthorized("no metadata", "")
+		return nil, errors.Unauthorized("no metadata", "")
 	}
 	serviceName, ok := md[botServiceKey]
-	if ok && serviceName == botServiceName {
-		return nil
+	if ok && (serviceName == botServiceName ||
+		serviceName == workflowServiceName) {
+		return nil, nil
 	}
 	// context authorization credentials
 	_, token, err := getAuthTokenFromMetadata(md)
 	if err != nil {
-		return errors.Unauthorized("invalid token", "")
+		return nil, errors.Unauthorized("invalid token", "")
 	}
 	// provided ?
 	if len(token) == 0 {
-		return errors.Unauthorized("invalid token", "")
+		return nil, errors.Unauthorized("invalid token", "")
 	}
+	// TO DO CACHE USER INFO
 	//exists, err := c.chatCache.GetUserInfo(token)
 	//if err != nil {
 	//	return errors.InternalServerError("failed to get userinfo from cache", err.Error())
@@ -78,15 +87,19 @@ func (c *client) MicroAuthentication(rpc *context.Context) error {
 		AccessToken: token,
 	}
 	ctx := metadata.Set(*rpc, h2pTokenAccess, token)
-	_, err = c.authClient.UserInfo(ctx, uiReq)
+	info, err := c.authClient.UserInfo(ctx, uiReq)
 	if err != nil {
-		return errors.Unauthorized("failed to get userinfo from app", err.Error())
+		return nil, errors.Unauthorized("failed to get userinfo from app", err.Error())
 	}
-	//infoBytes, _ := proto.Marshal(info)
+	// TO DO CACHE USER INFO
+	// infoBytes, _ := proto.Marshal(info)
 	//if err := c.chatCache.SetUserInfo(token, infoBytes, info.ExpiresAt); err != nil {
 	//	return errors.InternalServerError("failed to get userinfo to cache", err.Error())
 	//}
-	return nil
+	return &User{
+		ID:       info.UserId,
+		DomainID: info.Dc,
+	}, nil
 }
 
 // method:<type> credentials:<token>

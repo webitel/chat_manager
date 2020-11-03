@@ -367,7 +367,7 @@ func (s *chatService) JoinConversation(
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	if user == nil {
+	if user == nil || user.DomainID != invite.DomainID {
 		s.log.Warn().Msg("user not found")
 		return errors.BadRequest("user not found", "")
 	}
@@ -716,11 +716,12 @@ func (s *chatService) GetConversationByID(ctx context.Context, req *pb.GetConver
 	s.log.Trace().
 		Str("conversation_id", req.GetId()).
 		Msg("get conversation by id")
-	if err := s.authClient.MicroAuthentication(&ctx); err != nil {
+	user, err := s.authClient.MicroAuthentication(&ctx)
+	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	conversation, err := s.repo.GetConversations(ctx, req.GetId(), 0, 0, nil, nil, 0, false, 0, 0)
+	conversation, err := s.repo.GetConversations(ctx, req.GetId(), 0, 0, nil, nil, user.DomainID, false, 0, 0)
 	//conversation, err := s.repo.GetConversationByID(ctx, req.GetId())
 	if err != nil {
 		s.log.Error().Msg(err.Error())
@@ -737,7 +738,8 @@ func (s *chatService) GetConversations(ctx context.Context, req *pb.GetConversat
 	s.log.Trace().
 		Str("conversation_id", req.GetId()).
 		Msg("get conversations")
-	if err := s.authClient.MicroAuthentication(&ctx); err != nil {
+	user, err := s.authClient.MicroAuthentication(&ctx)
+	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
@@ -748,7 +750,7 @@ func (s *chatService) GetConversations(ctx context.Context, req *pb.GetConversat
 		req.GetPage(),
 		req.GetFields(),
 		req.GetSort(),
-		req.GetDomainId(),
+		user.DomainID, //req.GetDomainId(),
 		req.GetActive(),
 		req.GetUserId(),
 		req.GetMessageSize(),
@@ -772,9 +774,14 @@ func (s *chatService) CreateProfile(
 		Int64("schema_id", req.GetItem().GetSchemaId()).
 		Str("variables", fmt.Sprintf("%v", req.GetItem().GetVariables())).
 		Msg("create profile")
-	if err := s.authClient.MicroAuthentication(&ctx); err != nil {
+	user, err := s.authClient.MicroAuthentication(&ctx)
+	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
+	}
+	if user.DomainID != req.GetItem().GetDomainId() {
+		s.log.Error().Msg("invalid domain id")
+		return errors.BadRequest("invalid domain id", "")
 	}
 	result, err := transformProfileToRepoModel(req.GetItem())
 	if err != nil {
@@ -805,7 +812,8 @@ func (s *chatService) DeleteProfile(
 	s.log.Trace().
 		Int64("profile_id", req.GetId()).
 		Msg("delete profile")
-	if err := s.authClient.MicroAuthentication(&ctx); err != nil {
+	user, err := s.authClient.MicroAuthentication(&ctx)
+	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
@@ -813,7 +821,7 @@ func (s *chatService) DeleteProfile(
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
-	} else if profile == nil {
+	} else if profile == nil || profile.DomainID != user.DomainID {
 		return errors.BadRequest("profile not found", "")
 	}
 	if err := s.repo.DeleteProfile(ctx, req.GetId()); err != nil {
@@ -839,7 +847,8 @@ func (s *chatService) UpdateProfile(
 	s.log.Trace().
 		Str("update", "profile").
 		Msgf("%v", req.GetItem())
-	if err := s.authClient.MicroAuthentication(&ctx); err != nil {
+	user, err := s.authClient.MicroAuthentication(&ctx)
+	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
@@ -847,6 +856,10 @@ func (s *chatService) UpdateProfile(
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
+	}
+	if profile.DomainID != user.DomainID {
+		s.log.Error().Msg("invalid domain id")
+		return errors.BadRequest("invalid domain id", "")
 	}
 	if err := s.repo.UpdateProfile(ctx, profile); err != nil {
 		s.log.Error().Msg(err.Error())
@@ -861,7 +874,8 @@ func (s *chatService) GetProfiles(ctx context.Context, req *pb.GetProfilesReques
 		Str("type", req.GetType()).
 		Int64("domain_id", req.GetDomainId()).
 		Msg("get profiles")
-	if err := s.authClient.MicroAuthentication(&ctx); err != nil {
+	user, err := s.authClient.MicroAuthentication(&ctx)
+	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
@@ -873,7 +887,7 @@ func (s *chatService) GetProfiles(ctx context.Context, req *pb.GetProfilesReques
 		req.GetFields(),
 		req.GetSort(),
 		req.GetType(),
-		req.GetDomainId(),
+		user.DomainID, //req.GetDomainId(),
 	)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
@@ -892,7 +906,8 @@ func (s *chatService) GetProfileByID(ctx context.Context, req *pb.GetProfileByID
 	s.log.Trace().
 		Int64("profile_id", req.GetId()).
 		Msg("get profile by id")
-	if err := s.authClient.MicroAuthentication(&ctx); err != nil {
+	user, err := s.authClient.MicroAuthentication(&ctx)
+	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
@@ -900,6 +915,10 @@ func (s *chatService) GetProfileByID(ctx context.Context, req *pb.GetProfileByID
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
+	}
+	if profile.DomainID != user.DomainID {
+		s.log.Error().Msg("invalid domain id")
+		return errors.BadRequest("invalid domain id", "")
 	}
 	result, err := transformProfileFromRepoModel(profile)
 	if err != nil {
@@ -914,7 +933,8 @@ func (s *chatService) GetHistoryMessages(ctx context.Context, req *pb.GetHistory
 	s.log.Trace().
 		Str("conversation_id", req.GetConversationId()).
 		Msg("get history")
-	if err := s.authClient.MicroAuthentication(&ctx); err != nil {
+	user, err := s.authClient.MicroAuthentication(&ctx)
+	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
@@ -925,6 +945,7 @@ func (s *chatService) GetHistoryMessages(ctx context.Context, req *pb.GetHistory
 		req.GetPage(),
 		req.GetFields(),
 		req.GetSort(),
+		user.DomainID,
 		req.GetConversationId(),
 	)
 	if err != nil {

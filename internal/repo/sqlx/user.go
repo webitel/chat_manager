@@ -7,7 +7,7 @@ import (
 
 func (repo *sqlxRepository) GetWebitelUserByID(ctx context.Context, id int64) (*WebitelUser, error) {
 	result := &WebitelUser{}
-	err := repo.db.GetContext(ctx, result, "SELECT id, name FROM directory.wbt_user WHERE id=$1", id)
+	err := repo.db.GetContext(ctx, result, "SELECT id, name, dc FROM directory.wbt_user WHERE id=$1", id)
 	if err != nil {
 		repo.log.Warn().Msg(err.Error())
 		if err == sql.ErrNoRows {

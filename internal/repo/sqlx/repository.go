@@ -110,6 +110,7 @@ type MessageRepository interface {
 		page int32,
 		fields []string,
 		sort []string,
+		domainID int64,
 		conversationID string,
 	) ([]*Message, error)
 	GetLastMessage(conversationID string) (*Message, error)

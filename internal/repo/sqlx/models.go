@@ -134,8 +134,9 @@ type Profile struct {
 }
 
 type WebitelUser struct {
-	ID   int64  `db:"id" json:"id"`
-	Name string `db:"name" json:"name"`
+	ID       int64  `db:"id" json:"id"`
+	Name     string `db:"name" json:"name"`
+	DomainID int64  `db:"dc" json:"dc"`
 }
 
 type ConversationNode struct {

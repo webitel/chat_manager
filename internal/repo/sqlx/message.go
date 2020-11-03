@@ -30,9 +30,9 @@ func (repo *sqlxRepository) CreateMessage(ctx context.Context, m *Message) error
 	return err
 }
 
-func (repo *sqlxRepository) GetMessages(ctx context.Context, id int64, size, page int32, fields, sort []string, conversationID string) ([]*Message, error) {
+func (repo *sqlxRepository) GetMessages(ctx context.Context, id int64, size, page int32, fields, sort []string, domainID int64, conversationID string) ([]*Message, error) {
 	result := []*Message{}
-	fieldsStr, whereStr, sortStr, limitStr := "m.*, c.user_id, c.type as user_type", "where conversation_id=$1", "order by created_at desc", ""
+	fieldsStr, whereStr, sortStr, limitStr := "m.*, c.user_id, c.type as user_type", "where c.domain_id=$1 and m.conversation_id=$2", "order by created_at desc", ""
 	if size == 0 {
 		size = 15
 	}
@@ -41,7 +41,7 @@ func (repo *sqlxRepository) GetMessages(ctx context.Context, id int64, size, pag
 	}
 	limitStr = fmt.Sprintf("limit %v offset %v", size, (page-1)*size)
 	query := fmt.Sprintf("SELECT %s FROM chat.message m left join chat.channel c on m.channel_id = c.id %s %s %s", fieldsStr, whereStr, sortStr, limitStr)
-	err := repo.db.SelectContext(ctx, &result, query, conversationID)
+	err := repo.db.SelectContext(ctx, &result, query, domainID, conversationID)
 	return result, err
 }
 
