@@ -32,9 +32,6 @@ run-chat: build-chat
 	--client_request_timeout="1m" \
 	--registry="consul" \
 	--registry_address="consul" \
-	--store="redis" \
-	--store_table="chat:" \
-	--store_address="redis:6379" \
 	--broker="rabbitmq" \
 	--broker_address="amqp://rabbitmq:rabbitmq@rabbitmq:5672/" \
 	--webitel_dbo_address="postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable" \
