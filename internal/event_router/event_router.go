@@ -282,7 +282,7 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *pb.Conversation, inv
 		mes.Members = make([]*events.Member, 0, memLen)
 		for _, item := range conversation.Members {
 			mes.Members = append(mes.Members, &events.Member{
-				// ChannelID: item.ChannelId,
+				ChannelID: item.ChannelId,
 				UserID:    item.UserId,
 				Username:  item.Username,
 				Type:      item.Type,

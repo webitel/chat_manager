@@ -31,6 +31,8 @@ type Channel struct {
 	DomainID       int64          `db:"domain_id" json:"domain_id"`
 	FlowBridge     bool           `db:"flow_bridge" json:"flow_bridge"`
 	Name           string         `db:"name" json:"name"`
+	ClosedCause    sql.NullString `db:"closed_cause" json:"closed_cause,omitempty"`
+	JoinedAt       sql.NullTime   `db:"joined_at" json:"joined_at,omitempty"`
 }
 
 type Client struct {

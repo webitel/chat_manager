@@ -882,6 +882,10 @@ func (s *chatService) GetProfiles(ctx context.Context, req *pb.GetProfilesReques
 		s.log.Error().Msg(err.Error())
 		return err
 	}
+	var domainID int64
+	if user != nil {
+		domainID = user.DomainID
+	}
 	profiles, err := s.repo.GetProfiles(
 		ctx,
 		req.GetId(),
@@ -890,7 +894,7 @@ func (s *chatService) GetProfiles(ctx context.Context, req *pb.GetProfilesReques
 		req.GetFields(),
 		req.GetSort(),
 		req.GetType(),
-		user.DomainID, //req.GetDomainId(),
+		domainID, //req.GetDomainId(),
 	)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
