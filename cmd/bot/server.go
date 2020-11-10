@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"net"
 	"net/http"
 	"strings"
 
@@ -42,6 +42,7 @@ type botService struct {
 	router *mux.Router
 	urlMap map[string]int64
 	bots   map[int64]ChatBot
+	exit   chan chan error
 }
 
 func NewBotService(
@@ -49,13 +50,15 @@ func NewBotService(
 	client pbchat.ChatService,
 	router *mux.Router,
 ) *botService {
+
 	b := &botService{
 		log:    log,
 		client: client,
 		router: router,
+		urlMap: make(map[string]int64),
+		bots:   make(map[int64]ChatBot),
+		exit:   make(chan chan error),
 	}
-	b.urlMap = make(map[string]int64)
-	b.bots = make(map[int64]ChatBot)
 
 	b.router.HandleFunc("/{url_id}", b.WebhookFunc).
 		Methods("POST")
@@ -85,13 +88,45 @@ func NewBotService(
 }
 
 func (b *botService) StartWebhookServer() error {
-	b.log.Info().
-		Int("port", cfg.AppPort).
-		Msg("webhook started listening on port")
-	return http.ListenAndServe(fmt.Sprintf(":%v", cfg.AppPort), b.router) // srv.ListenAndServeTLS(cfg.CertPath, cfg.KeyPath)
+
+	srv, err := net.Listen("tcp", cfg.Address)
+
+	if err != nil {
+		return err
+	}
+
+	if log := b.log.Info(); log.Enabled() {
+		log.Msgf("Server [http] Listening on %s", srv.Addr().String())
+	}
+
+	go func() {
+		if err := http.Serve(srv, b.router); err != nil {
+			// if err != http.ErrServerClosed {
+			// 	if log := b.log.Error(); log.Enabled() {
+			// 		log.Err(err).Msg("Server [http] Shutted down due to an error")
+			// 	}
+			// 	return
+			// }
+		}
+		if log := b.log.Info(); log.Enabled() {
+			log.Err(err).Msg("Server [http] Shutted down")
+		}
+	}()
+
+	go func() {
+		ch := <-b.exit
+		ch <- srv.Close()
+	}()
+
+	return nil
 }
 
 func (b *botService) StopWebhookServer() error {
+
+	ch := make(chan error)
+	b.exit <- ch
+	<-ch // await: http.ErrServerClosed, "use of closed network connection"
+
 	b.log.Info().
 		Msg("removing webhooks")
 	for k := range b.bots {
@@ -100,6 +135,7 @@ func (b *botService) StopWebhookServer() error {
 		}
 		delete(b.bots, k)
 	}
+
 	return nil
 }
 

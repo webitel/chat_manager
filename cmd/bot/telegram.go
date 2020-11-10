@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/rs/zerolog"
 	"net/http"
 	"strconv"
+	"strings"
+
+	"github.com/rs/zerolog"
 
 	pb "github.com/webitel/protos/bot"
 	pbchat "github.com/webitel/protos/chat"
@@ -59,7 +61,9 @@ func ConfigureTelegram(profile *pbchat.Profile, client pbchat.ChatService, log *
 		return nil
 	}
 	// webhookInfo := tgbotapi.NewWebhookWithCert(fmt.Sprintf("%s/telegram/%v", cfg.TgWebhook, profile.Id), cfg.CertPath)
-	webhookInfo := tgbotapi.NewWebhook(fmt.Sprintf("%s/%s", cfg.Webhook, profile.UrlId))
+	webhookInfo := tgbotapi.NewWebhook(fmt.Sprintf("%s/%s",
+		strings.TrimRight(cfg.SiteURL, "/"), profile.UrlId,
+	))
 	_, err = bot.SetWebhook(webhookInfo)
 	if err != nil {
 		log.Fatal().Msg(err.Error())

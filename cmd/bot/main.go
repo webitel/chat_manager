@@ -1,7 +1,11 @@
 package main
 
 import (
+	"net"
+	"net/url"
 	"os"
+
+	"github.com/pkg/errors"
 
 	pb "github.com/webitel/protos/bot"
 	pbchat "github.com/webitel/protos/chat"
@@ -16,10 +20,10 @@ import (
 
 type Config struct {
 	LogLevel string
-	Webhook  string
+	SiteURL  string // Public HTTP server site URL, e.g.: "https://example.com/chat"
+	Address  string // Bind HTTP server address, e.g.: "localhost:10031"
 	CertPath string
 	KeyPath  string
-	AppPort  int
 }
 
 var (
@@ -36,6 +40,7 @@ func init() {
 }
 
 func main() {
+
 	cfg = &Config{}
 
 	service = micro.NewService(
@@ -49,15 +54,18 @@ func main() {
 				Usage:   "Log Level",
 			},
 			&cli.StringFlag{
-				Name:    "webhook_address",
-				EnvVars: []string{"WEBHOOK_ADDRESS"},
-				Usage:   "Webhook address",
+				Name:    "site_url",
+				EnvVars: []string{"WEBITEL_SITE_URL"},
+				Usage:   "Public HTTP site URL used when registering webhooks with CHAT providers.",
+				// Value: "https://example.com/chat", // TODO: use http[s]://${address} if blank
 			},
-			&cli.IntFlag{
-				Name:    "app_port",
-				EnvVars: []string{"APP_PORT"},
-				Usage:   "Local webhook port",
+			&cli.StringFlag{
+				Name:    "address",
+				EnvVars: []string{"CHATBOT_ADDRESS"},
+				Usage:   "Bind address for the HTTP server.",
+				Value:   "127.0.0.1:10030", // default
 			},
+			// TODO: remove below !
 			&cli.StringFlag{
 				Name:    "cert_path",
 				EnvVars: []string{"CERT_PATH"},
@@ -74,10 +82,10 @@ func main() {
 	service.Init(
 		micro.Action(func(c *cli.Context) error {
 			cfg.LogLevel = c.String("log_level")
-			cfg.Webhook = c.String("webhook_address")
+			cfg.SiteURL = c.String("site_url")
+			cfg.Address = c.String("address")
 			cfg.CertPath = c.String("cert_path")
 			cfg.KeyPath = c.String("key_path")
-			cfg.AppPort = c.Int("app_port")
 			// cfg.ConversationTimeout = c.Uint64("conversation_timeout")
 
 			client = pbchat.NewChatService("webitel.chat.server", service.Client())
@@ -86,9 +94,17 @@ func main() {
 			if err != nil {
 				return err
 			}
+			// CHECK: valid [host]:port address specified
+			if _, _, err := net.SplitHostPort(cfg.Address); err != nil {
+				return errors.Wrap(err, "Invalid address")
+			}
+			// CHECK: valid URL specified
+			if _, err := url.Parse(cfg.SiteURL); err != nil {
+				return errors.Wrap(err, "Invalid URL")
+			}
 			return configure()
 		}),
-		micro.AfterStart(
+		micro.BeforeStart(
 			func() error {
 				return bot.StartWebhookServer()
 			},
