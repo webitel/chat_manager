@@ -1,21 +1,22 @@
 package main
 
 import (
+
 	"net"
 	"net/url"
-	"os"
 
 	"github.com/pkg/errors"
-
-	pb "github.com/webitel/protos/bot"
-	pbchat "github.com/webitel/protos/chat"
+	"github.com/rs/zerolog"
+	"github.com/webitel/chat_manager/log"
 
 	"github.com/gorilla/mux"
 	"github.com/micro/cli/v2"
 	"github.com/micro/go-micro/v2"
 	"github.com/micro/go-micro/v2/config/cmd"
 	"github.com/micro/go-plugins/registry/consul/v2"
-	"github.com/rs/zerolog"
+
+	pb "github.com/webitel/protos/bot"
+	pbchat "github.com/webitel/protos/chat"
 )
 
 type Config struct {
@@ -28,7 +29,7 @@ type Config struct {
 
 var (
 	client  pbchat.ChatService
-	logger  *zerolog.Logger
+	logger  zerolog.Logger
 	cfg     *Config
 	service micro.Service
 	bot     ChatServer
@@ -77,6 +78,8 @@ func main() {
 				Usage:   "SSl key",
 			},
 		),
+		micro.WrapHandler(log.HandlerWrapper(&logger)),
+		micro.WrapCall(log.CallWrapper(&logger)),
 	)
 
 	service.Init(
@@ -88,12 +91,6 @@ func main() {
 			cfg.KeyPath = c.String("key_path")
 			// cfg.ConversationTimeout = c.Uint64("conversation_timeout")
 
-			client = pbchat.NewChatService("webitel.chat.server", service.Client())
-			var err error
-			logger, err = NewLogger(cfg.LogLevel)
-			if err != nil {
-				return err
-			}
 			// CHECK: valid [host]:port address specified
 			if _, _, err := net.SplitHostPort(cfg.Address); err != nil {
 				return errors.Wrap(err, "Invalid address")
@@ -102,6 +99,15 @@ func main() {
 			if _, err := url.Parse(cfg.SiteURL); err != nil {
 				return errors.Wrap(err, "Invalid URL")
 			}
+
+			stdlog, err := log.Console(cfg.LogLevel, true) // NewLogger(cfg.LogLevel)
+			if err != nil {
+				return err
+			}
+			logger = *(stdlog)
+			
+			client = pbchat.NewChatService("webitel.chat.server", service.Client())
+			
 			return configure()
 		}),
 		micro.BeforeStart(
@@ -125,9 +131,10 @@ func main() {
 
 func configure() error {
 	r := mux.NewRouter()
+	r.Use(dumpMiddleware)
 
 	bot = NewBotService(
-		logger,
+		&logger,
 		client,
 		r,
 	)
@@ -139,16 +146,4 @@ func configure() error {
 		return err
 	}
 	return nil
-}
-
-func NewLogger(logLevel string) (*zerolog.Logger, error) {
-	lvl, err := zerolog.ParseLevel(logLevel)
-	if err != nil {
-		return nil, err
-	}
-
-	l := zerolog.New(os.Stdout).With().Timestamp().Logger()
-	l = l.Level(lvl)
-
-	return &l, nil
 }

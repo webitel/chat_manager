@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/micro/go-micro/v2/errors"
 	"context"
 	"net"
 	"net/http"
@@ -16,7 +17,7 @@ import (
 type Configure func(profile *pbchat.Profile, client pbchat.ChatService, log *zerolog.Logger) ChatBot
 
 var ConfigureBotsMap = map[string]Configure{
-	"telegram":         ConfigureTelegram,
+	"telegram":         NewTelegramBot, // ConfigureTelegram,
 	"infobip-whatsapp": ConfigureInfobipWA,
 	"corezoid":         ConfigureCorezoid,
 }
@@ -31,9 +32,11 @@ type ChatServer interface {
 }
 
 type ChatBot interface {
-	Handler(r *http.Request)
+	Handler(w http.ResponseWriter, r *http.Request)
 	SendMessage(req *pb.SendMessageRequest) error
 	DeleteProfile() error
+	// // String type name e.g.: telegram, viber, facebook
+	// String() string
 }
 
 type botService struct {
@@ -139,17 +142,49 @@ func (b *botService) StopWebhookServer() error {
 	return nil
 }
 
-func (b *botService) SendMessage(ctx context.Context, req *pb.SendMessageRequest, res *pb.SendMessageResponse) error {
-	b.log.Debug().
-		Int64("profile_id", req.GetProfileId()).
-		Str("type", req.GetMessage().GetType()).
-		Str("user_id", req.GetExternalUserId()).
-		Msg("send message")
-	if err := b.bots[req.ProfileId].SendMessage(req); err != nil {
-		b.log.Error().Msg(err.Error())
+func (srv *botService) SendMessage(ctx context.Context, req *pb.SendMessageRequest, res *pb.SendMessageResponse) error {
+	// b.log.Debug().
+	// 	Int64("pid", req.GetProfileId()).
+	// 	Str("type", req.GetMessage().GetType()).
+	// 	Str("to-user", req.GetExternalUserId()).
+	// 	Msg("SEND Update")
+
+	bot := srv.bots[req.ProfileId]
+	
+	if bot == nil {
+		// TODO: try to fetch from persistent store (db)
+		srv.log.Error().
+		
+			Int64("pid", req.ProfileId).
+			Str("err", "bot: not found").
+			
+		Msg("Failed to send message")
+
+		return errors.NotFound(
+			"webitel.chat.bot.not_found",
+			"bot: profile %d not found",
+			req.ProfileId,
+		)
+	}
+
+	// perform
+	err := bot.SendMessage(req)
+	
+	if err != nil {
+		srv.log.Error().Err(err).Msg("Failed to send message")
 		return err
 	}
-	return nil
+
+	srv.log.Debug().
+	
+		Int64("pid", req.GetProfileId()).
+		Str("type", req.GetMessage().GetType()).
+		Str("chat-id", req.GetExternalUserId()).
+		Str("text", req.GetMessage().GetText()).
+	
+	Msg("SENT")
+
+	return err
 }
 
 func (b *botService) AddProfile(ctx context.Context, req *pb.AddProfileRequest, res *pb.AddProfileResponse) error {
@@ -197,5 +232,5 @@ func (b *botService) WebhookFunc(w http.ResponseWriter, r *http.Request) {
 		b.log.Error().Msg("profile id not found")
 		return
 	}
-	b.bots[profileID].Handler(r)
+	b.bots[profileID].Handler(w, r)
 }

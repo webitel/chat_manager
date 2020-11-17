@@ -1,12 +1,15 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
+	
+	
 	"fmt"
+	"sync"
 	"net/http"
 	"strconv"
 	"strings"
+	"context"
+	"encoding/json"
 
 	"github.com/rs/zerolog"
 
@@ -14,42 +17,28 @@ import (
 	pbchat "github.com/webitel/protos/chat"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-	"github.com/rs/zerolog/log"
+	
 )
 
-type telegramBot struct {
-	profileID int64
-	API       *tgbotapi.BotAPI
-	log       *zerolog.Logger
-	client    pbchat.ChatService
+// TelegramBot profile runtime
+type TelegramBot struct {
+	Profile *pbchat.Profile
+	API     *tgbotapi.BotAPI    // Telegram-server-side bot API
+	client   pbchat.ChatService // Webitel-internal-chat service API
+	log      zerolog.Logger
+	// this bot tracking active channels
+	chatMx   sync.RWMutex
+	chat     map[int64]*tgbotapi.Update
 }
 
-type telegramBody struct {
-	Message struct {
-		MessageID int64       `json:"message_id"`
-		Text      string      `json:"text"`
-		Photo     []PhotoSize `json:"photo"` // image/jpeg
-		From      struct {
-			Username  string `json:"username"`
-			ID        int64  `json:"id"`
-			FirstName string `json:"first_name"`
-			LastName  string `json:"last_name"`
-		} `json:"from"`
-		Chat struct {
-			ID int64 `json:"id"`
-		} `json:"chat"`
-	} `json:"message"`
-}
+// // TelegramChat represents single user-bot chat channel
+// type TelegramChat struct {
+// 	Bot *TelegramBot         // To: internal (Webitel)
+// 	Chat *tgbotapi.Chat      // From: external (Telegram)
+// 	Current *tgbotapi.Update // Current: latest update
+// }
 
-type PhotoSize struct {
-	FileID       string `json:"file_id"`
-	FileUniqueID string `json:"file_unique_id"`
-	Width        int64  `json:"width"`
-	Height       int64  `json:"height"`
-	FileSize     int64  `json:"file_size"`
-}
-
-func ConfigureTelegram(profile *pbchat.Profile, client pbchat.ChatService, log *zerolog.Logger) ChatBot {
+func NewTelegramBot(profile *pbchat.Profile, client pbchat.ChatService, log *zerolog.Logger) ChatBot {
 	token, ok := profile.Variables["token"]
 	if !ok {
 		log.Fatal().Msg("token not found")
@@ -61,93 +50,121 @@ func ConfigureTelegram(profile *pbchat.Profile, client pbchat.ChatService, log *
 		return nil
 	}
 	// webhookInfo := tgbotapi.NewWebhookWithCert(fmt.Sprintf("%s/telegram/%v", cfg.TgWebhook, profile.Id), cfg.CertPath)
-	webhookInfo := tgbotapi.NewWebhook(fmt.Sprintf("%s/%s",
-		strings.TrimRight(cfg.SiteURL, "/"), profile.UrlId,
-	))
-	_, err = bot.SetWebhook(webhookInfo)
+	webhook := tgbotapi.NewWebhook(
+		strings.TrimRight(cfg.SiteURL, "/") +"/"+ profile.UrlId,
+	)
+	_, err = bot.SetWebhook(webhook)
 	if err != nil {
 		log.Fatal().Msg(err.Error())
 		return nil
 	}
-	return &telegramBot{
-		profile.Id,
-		bot,
-		log,
-		client,
+	return &TelegramBot{
+		Profile: profile,
+		API:     bot,
+		client:  client,
+		log:     log.With().
+
+			Int64("pid", profile.Id).
+			Str("gate", "telegram").
+			Str("bot", bot.Self.UserName).
+			Str("uri", "/" + profile.UrlId).
+			
+		Logger(),
+		// cache: default size
+		chat:    make(map[int64]*tgbotapi.Update, 64),
 	}
 }
 
-func (b *telegramBot) DeleteProfile() error {
-	if _, err := b.API.RemoveWebhook(); err != nil {
+func (bot *TelegramBot) DeleteProfile() error {
+	if _, err := bot.API.RemoveWebhook(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (b *telegramBot) SendMessage(req *pb.SendMessageRequest) error {
-	id, err := strconv.ParseInt(req.ExternalUserId, 10, 64)
+func (bot *TelegramBot) SendMessage(req *pb.SendMessageRequest) error {
+	chatID, err := strconv.ParseInt(req.ExternalUserId, 10, 64)
 	if err != nil {
 		return err
 	}
-	msg := tgbotapi.NewMessage(id, req.GetMessage().GetText())
+	msg := tgbotapi.NewMessage(chatID, req.GetMessage().GetText())
 	// msg.ReplyToMessageID = update.Message.MessageID
-	_, err = b.API.Send(msg)
+	_, err = bot.API.Send(msg)
 	if err != nil {
+		bot.log.Error().Err(err).Msg("Failed to send message")
 		return err
 	}
+	bot.log.Debug().
+
+		Int64("chat-id", chatID).
+		Str("type", "text").
+		Str("text", req.GetMessage().GetText()).
+
+	Msg("SENT Update")
 	return nil
 }
 
-func (b *telegramBot) Handler(r *http.Request) {
-	p := strconv.Itoa(int(b.profileID))
+// Handler receives new Update message from telegram server
+func (bot *TelegramBot) Handler(w http.ResponseWriter, r *http.Request) {
+	chatbotId := strconv.FormatInt(bot.Profile.Id, 10)
 
-	update := &telegramBody{}
-	if err := json.NewDecoder(r.Body).Decode(update); err != nil {
-		log.Error().Msgf("could not decode request body: %s", err)
+	var update tgbotapi.Update
+	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+		bot.log.Error().Err(err).Msg("Failed to decode update request")
+		// FIXME: notify telegram about an error; guess: will try again to resend .this later !
+		http.Error(w, "Failed to decode update request", http.StatusBadRequest) // 400 
 		return
 	}
 
-	b.log.Debug().
-		Int64("id", update.Message.From.ID).
-		Str("username", update.Message.From.Username).
-		Str("first_name", update.Message.From.FirstName).
-		Str("last_name", update.Message.From.LastName).
-		Str("text", update.Message.Text).
-		Msg("receive message")
+	bot.log.Debug().
+
+		Int(  "telegram-id", update.Message.From.ID).
+		Str(  "username",    update.Message.From.UserName).
+		Int64("chat-id",     update.Message.Chat.ID).
+		// Str("first_name", update.Message.From.FirstName).
+		// Str("last_name", update.Message.From.LastName).
+		Str(  "text",        update.Message.Text).
+
+	Msg("RECV Update")
+
+	// region: cache latest chat update
+	// bot.set(&update)
+	// endregion
 
 	strChatID := strconv.FormatInt(update.Message.Chat.ID, 10)
 
 	username := fmt.Sprintf("%s %s", update.Message.From.FirstName, update.Message.From.LastName)
 	check := &pbchat.CheckSessionRequest{
 		ExternalId: strChatID,
-		ProfileId:  b.profileID,
+		ProfileId:  bot.Profile.Id,
 		Username:   username,
 	}
-	resCheck, err := b.client.CheckSession(context.Background(), check)
+	resCheck, err := bot.client.CheckSession(context.Background(), check)
 	if err != nil {
-		b.log.Error().Msg(err.Error())
+		bot.log.Error().Err(err).Msg("Failed to get channel")
 		return
 	}
-	b.log.Debug().
-		Bool("exists", resCheck.Exists).
+	bot.log.Debug().
+		
 		Str("channel_id", resCheck.ChannelId).
-		Int64("client_id", resCheck.ClientId).
-		Msg("check user")
+		Int64("contact_id", resCheck.ClientId).
+		Bool("new", !resCheck.Exists).
+		Msg("CHAT-Channel")
 
 	if !resCheck.Exists {
 		start := &pbchat.StartConversationRequest{
 			User: &pbchat.User{
 				UserId:     resCheck.ClientId,
 				Type:       "telegram",
-				Connection: p,
+				Connection: chatbotId, // telegram: specific contact uri
 				Internal:   false,
 			},
 			Username: check.Username,
 			DomainId: 1,
 		}
-		_, err := b.client.StartConversation(context.Background(), start)
+		_, err := bot.client.StartConversation(context.Background(), start)
 		if err != nil {
-			b.log.Error().Msg(err.Error())
+			bot.log.Error().Err(err).Msg("Failed to start new chat")
 			return
 		}
 		// if update.Message.Text != "/start" {
@@ -215,9 +232,35 @@ func (b *telegramBot) Handler(r *http.Request) {
 		message.Message = textMessage
 		// }
 
-		_, err := b.client.SendMessage(context.Background(), message)
+		_, err := bot.client.SendMessage(context.Background(), message)
 		if err != nil {
-			b.log.Error().Msg(err.Error())
+			bot.log.Error().Err(err).Msg("Failed to route message")
 		}
 	}
 }
+
+/*
+
+// chat returns cached (internaly stored) active tracking chat communication channel
+func (bot *TelegramBot) get(id int64) *tgbotapi.Update {
+	
+	bot.chatMx.RLock()
+	state := bot.chat[id]
+	bot.chatMx.RUnlock()
+
+	return state
+}
+
+// cache stores (runtime only) tracking chat communication channel
+func (bot *TelegramBot) set(state *tgbotapi.Update) {
+	
+	id := state.Message.Chat.ID
+
+	bot.chatMx.Lock()
+	bot.chat[id] = state
+	bot.chatMx.Unlock()
+
+
+}
+
+*/

@@ -9,6 +9,8 @@ require (
 	github.com/google/uuid v1.1.2
 	github.com/gorilla/mux v1.7.3
 	github.com/gorilla/websocket v1.4.2 // indirect
+	github.com/jackc/pgconn v1.7.2
+	github.com/jackc/pgx/v4 v4.9.2
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/kr/pretty v0.2.0 // indirect
 	github.com/lib/pq v1.8.0

@@ -1,9 +1,14 @@
 package main
 
 import (
+
+
 	// "net/http"
 	// _ "net/http/pprof"
 	"os"
+
+	"github.com/rs/zerolog"
+	"github.com/webitel/chat_manager/log"
 
 	pbauth "github.com/webitel/chat_manager/api/proto/auth"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
@@ -15,14 +20,13 @@ import (
 	pb "github.com/webitel/protos/chat"
 	pbmanager "github.com/webitel/protos/workflow"
 
-	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
+	// "github.com/jmoiron/sqlx"
+	// _ "github.com/lib/pq"
 	"github.com/micro/cli/v2"
 	"github.com/micro/go-micro/v2"
 	"github.com/micro/go-micro/v2/config/cmd"
 	"github.com/micro/go-plugins/broker/rabbitmq/v2"
 	"github.com/micro/go-plugins/registry/consul/v2"
-	"github.com/rs/zerolog"
 )
 
 type Config struct {
@@ -31,7 +35,7 @@ type Config struct {
 }
 
 var (
-	logger  *zerolog.Logger
+	logger  = zerolog.New(os.Stdout)
 	cfg     *Config
 	service micro.Service
 	//redisStore store.Store
@@ -101,6 +105,8 @@ func main() {
 				Usage:   "DB Connection string",
 			},
 		),
+		micro.WrapHandler(log.HandlerWrapper(&logger)),
+		micro.WrapCall(log.CallWrapper(&logger)),
 	)
 	service.Init(
 		micro.Action(func(c *cli.Context) error {
@@ -109,13 +115,14 @@ func main() {
 			//redisTable = c.String("store_table")
 			timeout = 600 //c.Uint64("conversation_timeout_sec")
 			var err error
-			logger, err = NewLogger(cfg.LogLevel)
+			stdlog, err := log.Console(cfg.LogLevel, true) // NewLogger(cfg.LogLevel)
 			if err != nil {
 				logger.Fatal().
 					Str("app", "failed to parse log level").
 					Msg(err.Error())
 				return err
 			}
+			logger = *(stdlog)
 			flowClient = pbmanager.NewFlowChatServerService("workflow", service.Client())
 			botClient = pbbot.NewBotService("webitel.chat.bot", service.Client())
 			authClient = pbauth.NewAuthService("go.webitel.app", service.Client())
@@ -148,10 +155,10 @@ func main() {
 		return
 	}
 
-	db, err := sqlx.Open("postgres", cfg.DBSource) //DbSource(cfg.DBHost, cfg.DBUser, cfg.DBName, cfg.DBPassword, cfg.DBSSLMode))
+	db, err := OpenDB(cfg.DBSource)
 	if err != nil {
 		logger.Fatal().
-			Str("app", "failed to connect db").
+			Str("app", "failed to connect db"). // This is NOT a connect; just DSN validation !
 			Msg(err.Error())
 		return
 	}
@@ -160,12 +167,12 @@ func main() {
 		Str("cfg.DBSource", cfg.DBSource).
 		Msg("db connected")
 
-	repo := pg.NewRepository(db, logger)
+	repo := pg.NewRepository(db, &logger)
 	//cache := cache.NewChatCache(service.Options().Store)
-	flow := flow.NewClient(logger, flowClient, repo)
-	auth := auth.NewClient(logger, authClient)
-	eventRouter := event.NewRouter(botClient /*flow,*/, service.Options().Broker, repo, logger)
-	serv := NewChatService(repo, logger, flow, auth, botClient, storageClient, eventRouter)
+	flow := flow.NewClient(&logger, flowClient, repo)
+	auth := auth.NewClient(&logger, authClient)
+	eventRouter := event.NewRouter(botClient /*flow,*/, service.Options().Broker, repo, &logger)
+	serv := NewChatService(repo, &logger, flow, auth, botClient, storageClient, eventRouter)
 
 	if err := pb.RegisterChatServiceHandler(service.Server(), serv); err != nil {
 		logger.Fatal().
@@ -179,24 +186,4 @@ func main() {
 			Str("app", "failed to run service").
 			Msg(err.Error())
 	}
-}
-
-// func DbSource(host, user, dbName, password, sslMode string) string {
-// 	dbinfo := fmt.Sprintf("host=%s user=%s dbname=%s sslmode=%s", host, user, dbName, sslMode)
-// 	if password != "" {
-// 		dbinfo += fmt.Sprintf(" password=%s", password)
-// 	}
-// 	return dbinfo
-// }
-
-func NewLogger(logLevel string) (*zerolog.Logger, error) {
-	lvl, err := zerolog.ParseLevel(logLevel)
-	if err != nil {
-		return nil, err
-	}
-
-	l := zerolog.New(os.Stdout).With().Timestamp().Logger()
-	l = l.Level(lvl)
-
-	return &l, nil
 }

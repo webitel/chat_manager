@@ -188,7 +188,8 @@ func (s *chatService) SendMessage(
 		return err
 	}
 	if !channel.Internal && !sent {
-		if s.flowClient.SendMessage(channel.ConversationID, reqMessage); err != nil {
+		err = s.flowClient.SendMessage(channel.ConversationID, reqMessage)
+		if err != nil {
 			return err
 		}
 	}

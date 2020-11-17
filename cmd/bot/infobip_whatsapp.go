@@ -217,7 +217,7 @@ func (b *infobipWABot) SendMessage(req *pb.SendMessageRequest) error {
 	return err
 }
 
-func (b *infobipWABot) Handler(r *http.Request) {
+func (b *infobipWABot) Handler(w http.ResponseWriter, r *http.Request) {
 	p := strconv.Itoa(int(b.profileID))
 
 	update := &InfobipWABody{}
