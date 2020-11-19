@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/webitel/chat_manager/log"
+	"github.com/webitel/chat_manager/internal/wrapper"
 
 	pbauth "github.com/webitel/chat_manager/api/proto/auth"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
@@ -123,10 +124,6 @@ func main() {
 				return err
 			}
 			logger = *(stdlog)
-			flowClient = pbmanager.NewFlowChatServerService("workflow", service.Client())
-			botClient = pbbot.NewBotService("webitel.chat.bot", service.Client())
-			authClient = pbauth.NewAuthService("go.webitel.app", service.Client())
-			storageClient = pbstorage.NewFileService("storage", service.Client())
 			return nil
 		}),
 		micro.Broker(
@@ -154,6 +151,7 @@ func main() {
 			Msg(err.Error())
 		return
 	}
+	
 
 	db, err := OpenDB(cfg.DBSource)
 	if err != nil {
@@ -169,6 +167,14 @@ func main() {
 
 	repo := pg.NewRepository(db, &logger)
 	//cache := cache.NewChatCache(service.Options().Store)
+	
+	botClient = pbbot.NewBotService("webitel.chat.bot", service.Client())
+	authClient = pbauth.NewAuthService("go.webitel.app", service.Client())
+	storageClient = pbstorage.NewFileService("storage", service.Client())
+	flowClient = pbmanager.NewFlowChatServerService("workflow",
+		wrapper.FromServiceId(service.Server().Options().Id, service.Client()),
+	)
+
 	flow := flow.NewClient(&logger, flowClient, repo)
 	auth := auth.NewClient(&logger, authClient)
 	eventRouter := event.NewRouter(botClient /*flow,*/, service.Options().Broker, repo, &logger)
