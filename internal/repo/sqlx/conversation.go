@@ -146,11 +146,12 @@ func (repo *sqlxRepository) GetConversations(
 		`, fieldsStr, messageLimitStr, whereStr, sortStr, limitStr)
 	rows, err := repo.db.QueryxContext(ctx, query, queryArgs...)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
+		// if err == sql.ErrNoRows {
+		// 	return nil, nil
+		// }
 		return nil, err
 	}
+	defer rows.Close()
 	for rows.Next() {
 		tmp := new(Conversation)
 		rows.StructScan(tmp)
@@ -163,8 +164,8 @@ func (repo *sqlxRepository) GetConversations(
 
 func (repo *sqlxRepository) getConversationInfo(ctx context.Context, id string) (members ConversationMembers, messages ConversationMessages, err error) {
 	members = ConversationMembers{}
-	err = repo.db.SelectContext(ctx, &members, `
-		select
+	err = repo.db.SelectContext(ctx, &members,
+		`select
 			   ch.id,
 			   ch.type,
 			   ch.user_id,
@@ -176,10 +177,10 @@ func (repo *sqlxRepository) getConversationInfo(ctx context.Context, id string) 
 		where ch.conversation_id = $1`, id)
 	if err != nil {
 		repo.log.Warn().Msg(err.Error())
-		if err == sql.ErrNoRows {
-			err = nil
-			return
-		}
+		// if err == sql.ErrNoRows {
+		// 	err = nil
+		// 	return
+		// }
 		return
 	}
 	messages = ConversationMessages{}
@@ -196,11 +197,11 @@ func (repo *sqlxRepository) getConversationInfo(ctx context.Context, id string) 
 		order by m.created_at desc
 		limit 10`, id)
 	if err != nil {
-		repo.log.Warn().Msg(err.Error())
 		if err == sql.ErrNoRows {
 			err = nil
 			return
 		}
+		repo.log.Warn().Msg(err.Error())
 		return
 	}
 	return

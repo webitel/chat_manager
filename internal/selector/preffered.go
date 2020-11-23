@@ -39,3 +39,32 @@ func PrefferedHost(addr string) selector.Strategy {
 	}
 }
 
+// PrefferedNode tries to return node
+// that exact matches given id
+// or selector.Random otherwise
+func PrefferedNode(id string) selector.Strategy {
+	return func(services []*registry.Service) selector.Next {
+				
+		var node *registry.Node
+		
+		lookup:
+		for _, service := range services {
+			for _, seed := range service.Nodes {
+				if seed.Id == id {
+					node = seed
+					break lookup
+				}
+			}
+		}
+
+		if node == nil {
+			return selector.Random(services)
+		}
+		
+		// logger.Info().Msg("SELECT NODE")
+		return func() (*registry.Node, error) {
+
+			return node, nil
+		}
+	}
+}

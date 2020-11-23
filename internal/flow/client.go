@@ -1,9 +1,14 @@
 package flow
 
 import (
-	"context"
-	"errors"
 
+	"errors"
+	"context"
+	// "github.com/micro/go-micro/v2/errors"
+
+	"github.com/rs/zerolog"
+
+	strategy "github.com/webitel/chat_manager/internal/selector"
 	sqlxrepo "github.com/webitel/chat_manager/internal/repo/sqlx"
 	pb "github.com/webitel/protos/chat"
 	pbmanager "github.com/webitel/protos/workflow"
@@ -11,7 +16,7 @@ import (
 	"github.com/micro/go-micro/v2/client"
 	"github.com/micro/go-micro/v2/client/selector"
 	"github.com/micro/go-micro/v2/registry"
-	"github.com/rs/zerolog"
+	
 )
 
 type BreakBridgeCause int32
@@ -58,9 +63,12 @@ func NewClient(
 func (s *flowClient) SendMessage(conversationID string, message *pb.Message) error {
 	confirmationID, err := s.chatCache.ReadConfirmation(conversationID)
 	if err != nil {
+		s.log.Error().Err(err).Str("chat-id", conversationID).Msg("Failed to get {chat.recvMessage.token} from store")
 		return err
 	}
 	if confirmationID == "" {
+		// FIXME: NO confirmation found for chat - means that we are not in {waitMessage} block ?
+		s.log.Warn().Str("chat-id", conversationID).Msg("CHAT Flow is NOT waiting for text message(s); DO NOTHING MORE!")
 		return nil
 	}
 	s.log.Debug().
@@ -89,8 +97,8 @@ func (s *flowClient) SendMessage(conversationID string, message *pb.Message) err
 		context.Background(),
 		messageReq,
 		client.WithSelectOption(
-			selector.WithFilter(
-				FilterNodes(nodeID),
+			selector.WithStrategy(
+				strategy.PrefferedNode(nodeID),
 			),
 		),
 	); err != nil || res.Error != nil {
@@ -126,15 +134,19 @@ func (s *flowClient) SendMessage(conversationID string, message *pb.Message) err
 }
 
 func (s *flowClient) Init(conversationID string, profileID, domainID int64, message *pb.Message) error {
+	
 	s.log.Debug().
 		Str("conversation_id", conversationID).
 		Int64("profile_id", profileID).
 		Int64("domain_id", domainID).
 		Msg("init conversation")
+	
 	start := &pbmanager.StartRequest{
-		ConversationId: conversationID,
-		ProfileId:      profileID,
+		
 		DomainId:       domainID,
+		ProfileId:      profileID,
+		ConversationId: conversationID,
+
 		Message: &pbmanager.Message{
 			Id:   message.GetId(),
 			Type: message.GetType(),
@@ -142,23 +154,86 @@ func (s *flowClient) Init(conversationID string, profileID, domainID int64, mess
 				Text: "start", //req.GetMessage().GetTextMessage().GetText(),
 			},
 		},
+
+		Variables: message.GetVariables(),
 	}
-	if res, err := s.client.Start(
-		context.Background(),
-		start,
+
+	if message != nil {
+		
+		switch v := message.GetValue().(type) {
+		case *pb.Message_Text: // TEXT
+			
+			messageText := v.Text
+			if messageText == "" {
+				messageText = "start" // default!
+			}
+
+			start.Message.Value =
+				&pbmanager.Message_Text{
+					Text: messageText,
+				}
+
+		case *pb.Message_File_: // FILE
+
+			start.Message.Value =
+				&pbmanager.Message_File_{
+					File: &pbmanager.Message_File{
+						Id:       v.File.GetId(),
+						Url:      v.File.GetUrl(),
+						MimeType: v.File.GetMimeType(),
+					},
+				}
+		}
+	}
+
+	// Request to start flow-routine for NEW-chat incoming message !
+	res, err := s.client.Start(
+		context.Background(), start,
 		client.WithCallWrapper(
 			s.initCallWrapper(conversationID),
 		),
-	); err != nil ||
-		res.Error != nil {
-		if res != nil {
+	)
+	
+	if err != nil {
+		
+		s.log.Error().Err(err).
+			Msg("Failed to start chat-flow routine")
+		
+		return err
+
+	} else if re := res.GetError(); re != nil {
+
+		s.log.Error().
+			Str("errno", re.GetId()).
+			Str("error", re.GetMessage()).
+			Msg("Failed to start chat-flow routine")
+
+		// return errors.New(
+		// 	re.GetId(),
+		// 	re.GetMessage(),
+		// 	502, // 502 Bad Gateway
+		// 	// The server, while acting as a gateway or proxy,
+		// 	// received an invalid response from the upstream server it accessed
+		// 	// in attempting to fulfill the request.
+		// )
+	}
+
+	return nil
+
+	/* ; err != nil || res.Error != nil { // WTF: (0_o) (?)
+		if err == nil && res.Error != nil {
+			err = 
+		}
+		
+		if res != nil { // GUESS: it will never be empty !
 			s.log.Error().Msg(res.Error.Message)
 		} else {
-			s.log.Error().Msg(err.Error())
+			s.log.Error().Err(err).Msg("Failed to start chat-flow routine")
 		}
 		return nil
 	}
 	return nil
+	*/
 }
 
 func (s *flowClient) CloseConversation(conversationID string) error {
@@ -172,8 +247,8 @@ func (s *flowClient) CloseConversation(conversationID string) error {
 			ConversationId: conversationID,
 		},
 		client.WithSelectOption(
-			selector.WithFilter(
-				FilterNodes(nodeID),
+			selector.WithStrategy(
+				strategy.PrefferedNode(nodeID),
 			),
 		),
 	); err != nil {
@@ -199,8 +274,8 @@ func (s *flowClient) BreakBridge(conversationID string, cause BreakBridgeCause) 
 			Cause:          cause.String(),
 		},
 		client.WithSelectOption(
-			selector.WithFilter(
-				FilterNodes(nodeID),
+			selector.WithStrategy(
+				strategy.PrefferedNode(nodeID),
 			),
 		),
 	); err != nil {
@@ -228,37 +303,5 @@ func (s *flowClient) initCallWrapper(conversationID string) func(client.CallFunc
 			}
 			return nil
 		}
-	}
-}
-
-func FilterNodes(id string) selector.Filter {
-	return func(old []*registry.Service) []*registry.Service {
-		var services []*registry.Service
-
-		for _, service := range old {
-			if service.Name != "workflow" {
-				continue
-			}
-
-			serv := new(registry.Service)
-			var nodes []*registry.Node
-
-			for _, node := range service.Nodes {
-				if node.Id == id {
-					nodes = append(nodes, node)
-					break
-				}
-			}
-
-			// only add service if there's some nodes
-			if len(nodes) > 0 {
-				// copy
-				*serv = *service
-				serv.Nodes = nodes
-				services = append(services, serv)
-			}
-		}
-
-		return services
 	}
 }

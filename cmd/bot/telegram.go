@@ -106,7 +106,8 @@ func (bot *TelegramBot) SendMessage(req *pb.SendMessageRequest) error {
 
 // Handler receives new Update message from telegram server
 func (bot *TelegramBot) Handler(w http.ResponseWriter, r *http.Request) {
-	chatbotId := strconv.FormatInt(bot.Profile.Id, 10)
+	// Contact: Chat-BOT profile unique ID represents contact string
+	contact := strconv.FormatInt(bot.Profile.Id, 10)
 
 	var update tgbotapi.Update
 	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
@@ -153,14 +154,21 @@ func (bot *TelegramBot) Handler(w http.ResponseWriter, r *http.Request) {
 
 	if !resCheck.Exists {
 		start := &pbchat.StartConversationRequest{
+			DomainId: bot.Profile.DomainId,
+			Username: check.Username,
 			User: &pbchat.User{
 				UserId:     resCheck.ClientId,
 				Type:       "telegram",
-				Connection: chatbotId, // telegram: specific contact uri
+				Connection: contact, // telegram: specific contact uri
 				Internal:   false,
 			},
-			Username: check.Username,
-			DomainId: 1,
+			Message: &pbchat.Message{
+				Type: "text",
+				Value: &pbchat.Message_Text{
+					Text: update.Message.Text,
+				},
+				Variables: nil, // map[string]string{},
+			},
 		}
 		_, err := bot.client.StartConversation(context.Background(), start)
 		if err != nil {

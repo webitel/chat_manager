@@ -11,16 +11,16 @@ import (
 )
 
 func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Channel, error) {
-	result := &Channel{}
-	err := repo.db.GetContext(ctx, result, "SELECT * FROM chat.channel WHERE id=$1", id)
+	res := &Channel{}
+	err := repo.db.GetContext(ctx, res, "select e.* from chat.channel e where e.id=$1", id)
 	if err != nil {
-		repo.log.Warn().Msg(err.Error())
 		if err == sql.ErrNoRows {
-			return nil, nil
+			return nil, nil // NOT Found !
 		}
+		repo.log.Error().Err(err).Msg("Failed to lookup chat.channel")
 		return nil, err
 	}
-	return result, nil
+	return res, nil
 }
 
 func (repo *sqlxRepository) GetChannels(
@@ -56,11 +56,14 @@ func (repo *sqlxRepository) GetChannels(
 	}
 	if len(queryArgs) > 0 {
 		where := " closed_at is null and"
-		for i, _ := range queryArgs {
-			where = where + fmt.Sprintf(" %s=$%v and", queryStrings[i], i+1)
+		for i := range queryArgs {
+			where = where + fmt.Sprintf(" %s=$%d and", queryStrings[i], i+1)
 		}
 		where = strings.TrimRight(where, " and")
-		err := repo.db.SelectContext(ctx, &result, fmt.Sprintf("SELECT * FROM chat.channel where%s", where), queryArgs...)
+		err := repo.db.SelectContext(ctx, &result,
+			"SELECT * FROM chat.channel WHERE" + where,
+			 queryArgs...,
+		)
 		return result, err
 	}
 	err := repo.db.SelectContext(ctx, &result, "SELECT * FROM chat.channel")
@@ -72,34 +75,34 @@ func (repo *sqlxRepository) CreateChannel(ctx context.Context, c *Channel) error
 	tmp := time.Now()
 	c.CreatedAt = tmp
 	c.UpdatedAt = tmp
-	_, err := repo.db.NamedExecContext(ctx, `insert into chat.channel (
-		id, 
-		type, 
-		conversation_id, 
-		user_id, 
-		connection, 
-		created_at, 
-		internal, 
-		closed_at, 
-		updated_at, 
-		domain_id, 
+	_, err := repo.db.NamedExecContext(ctx,
+	`INSERT INTO chat.channel (
+		id,
+		type,
+		conversation_id,
+		user_id,
+		connection,
+		created_at,
+		internal,
+		closed_at,
+		updated_at,
+		domain_id,
 		flow_bridge,
 		name
-	)
-	values (
-		:id, 
-		:type, 
-		:conversation_id, 
-		:user_id, 
-		:connection, 
-		:created_at, 
-		:internal, 
-		:closed_at, 
-		:updated_at, 
-		:domain_id, 
+	) VALUES (
+		:id,
+		:type,
+		:conversation_id,
+		:user_id,
+		:connection,
+		:created_at,
+		:internal,
+		:closed_at,
+		:updated_at,
+		:domain_id,
 		:flow_bridge,
 		:name
-		)`, *c)
+	)`, *c)
 	if err != nil {
 		return err
 	}
@@ -142,9 +145,9 @@ func (repo *sqlxRepository) CheckUserChannel(ctx context.Context, channelID stri
 	err := repo.db.GetContext(ctx, result, "SELECT * FROM chat.channel WHERE id=$1 and user_id=$2", channelID, userID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			repo.log.Warn().Msg(err.Error())
 			return nil, nil
 		}
+		repo.log.Warn().Msg(err.Error())
 		return nil, err
 	}
 	return result, nil

@@ -251,7 +251,7 @@ func (bot *corezoidBot) Handler(w http.ResponseWriter, r *http.Request) {
 	check := &pbchat.CheckSessionRequest{
 		ExternalId: strChatID,
 		ProfileId:  bot.profile.Id,
-		//Username:   update.Message.From.Username,
+		// Username:   update.Message.From.Username,
 	}
 	resCheck, err := bot.client.CheckSession(context.Background(), check)
 	if err != nil {
@@ -265,39 +265,69 @@ func (bot *corezoidBot) Handler(w http.ResponseWriter, r *http.Request) {
 		Msg("CHAT Channel")
 
 	if !resCheck.Exists {
+
+		// region: init chat-flow-routine /start message environment variables
+		env := map[string]string {
+			"action":    update.Type,
+			"channel":   update.Channel,
+		}
+
+		// HERE: passthru command-specific arguments ...
+		switch update.Type {
+		case "Предложение":
+
+			env["replyTo"] = update.ReplyWith
+		
+		case "chat":
+			// ...
+		}
+		// endregion
+
 		start := &pbchat.StartConversationRequest{
+			DomainId: bot.profile.DomainId,
+			Username: check.Username,
 			User: &pbchat.User{
 				UserId:     resCheck.ClientId,
 				Type:       update.Channel, // "telegram", // FIXME: why (?)
 				Connection: contact, // contact: profile.ID
 				Internal:   false,
 			},
-			Username: check.Username,
-			DomainId: bot.profile.DomainId, // 1, // TODO: profile.Domain.ID
+			Message: &pbchat.Message{
+				Type: "text",
+				Value: &pbchat.Message_Text{
+					Text: update.Text,
+				},
+				Variables: env,
+			},
 		}
+
 		_, err := bot.client.StartConversation(context.Background(), start)
 		if err != nil {
 			bot.log.Error().Msg(err.Error())
 			return
 		}
+
 	} else {
+
 		message := &pbchat.SendMessageRequest{
 			// Message:   textMessage,
 			AuthUserId: resCheck.ClientId,
 			ChannelId:  resCheck.ChannelId,
 		}
-		textMessage := &pbchat.Message{
+		messageText := &pbchat.Message{
 			Type: "text",
 			Value: &pbchat.Message_Text{
 				Text: update.Text,
 			},
+			// FIXME: does we need this here ? 
+			// NOTE: processing consequent message(s) ...
 			Variables: map[string]string {
 				"action":  update.Type,
 				"channel": update.Channel,
 				"replyTo": update.ReplyWith,
 			},
 		}
-		message.Message = textMessage
+		message.Message = messageText
 		// }
 
 		_, err := bot.client.SendMessage(context.Background(), message)

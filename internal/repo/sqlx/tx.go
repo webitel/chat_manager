@@ -124,7 +124,8 @@ func (repo *sqlxRepository) CreateChannelTx(
 	tmp := time.Now()
 	c.CreatedAt = tmp
 	c.UpdatedAt = tmp
-	_, err := tx.NamedExecContext(ctx, `insert into chat.channel (
+	_, err := tx.NamedExecContext(ctx,
+		`insert into chat.channel (
 			id, 
 			type, 
 			conversation_id, 
@@ -151,7 +152,9 @@ func (repo *sqlxRepository) CreateChannelTx(
 			:domain_id, 
 			:flow_bridge,
 			:name
-			)`, *c)
+			)`,
+		*c,
+	)
 	return err
 }
 

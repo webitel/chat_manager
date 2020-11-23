@@ -10,29 +10,33 @@ require (
 	github.com/gorilla/mux v1.7.3
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/jackc/pgconn v1.7.2
+	github.com/jackc/pgtype v1.6.1
 	github.com/jackc/pgx/v4 v4.9.2
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/kr/pretty v0.2.0 // indirect
-	github.com/lib/pq v1.8.0
 	github.com/micro/cli/v2 v2.1.2
 	github.com/micro/go-micro/v2 v2.9.1
 	github.com/micro/go-plugins/broker/rabbitmq/v2 v2.9.1
 	github.com/micro/go-plugins/registry/consul/v2 v2.9.1
+	github.com/micro/micro/v2 v2.9.1 // indirect
 	github.com/mitchellh/mapstructure v1.3.3 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.19.0
-	github.com/webitel/protos/bot v0.0.0-20201029223651-e8f525109e77
-	github.com/webitel/protos/chat v0.0.0-20201103011904-ddf3ee3ff9b8
+	github.com/webitel/protos/bot v0.0.0-20201123102808-d389aa72bb7a
+	github.com/webitel/protos/chat v0.0.0-20201123102808-d389aa72bb7a
 	github.com/webitel/protos/workflow v0.0.0-20201027102345-8712c66e378e
 	golang.org/x/crypto v0.0.0-20201016220609-9e8e0b390897 // indirect
-	google.golang.org/grpc v1.33.1 // indirect
+	google.golang.org/grpc v1.33.1
+	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.0.1 // indirect
 	google.golang.org/protobuf v1.25.0
-	gopkg.in/yaml.v2 v2.2.8 // indirect
+//	google.golang.org/protobuf/cmd/protoc-gen-go v1.25.0
+//	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.0.1
+//	github.com/micro/micro/v2/cmd/protoc-gen-micro v2.9.3
 )
 
 replace (
 	github.com/coreos/etcd => github.com/ozonru/etcd v3.3.20-grpc1.27-origmodule+incompatible
-	//github.com/coreos/etcd => go.etcd.io/etcd v0.5.0-alpha.5.0.20200425165423-262c93980547
-	//go.etcd.io/etcd => go.etcd.io/etcd v0.5.0-alpha.5.0.20200425165423-262c93980547
+	// github.com/coreos/etcd => go.etcd.io/etcd v0.5.0-alpha.5.0.20200425165423-262c93980547
+	// go.etcd.io/etcd => go.etcd.io/etcd v0.5.0-alpha.5.0.20200425165423-262c93980547
 	google.golang.org/grpc => google.golang.org/grpc v1.27.0
 )

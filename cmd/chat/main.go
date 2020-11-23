@@ -3,23 +3,29 @@ package main
 import (
 
 
-	// "net/http"
-	// _ "net/http/pprof"
+	"net/http"
+	_ "net/http/pprof"
+	
 	"os"
 
 	"github.com/rs/zerolog"
 	"github.com/webitel/chat_manager/log"
 	"github.com/webitel/chat_manager/internal/wrapper"
 
-	pbauth "github.com/webitel/chat_manager/api/proto/auth"
+	pb "github.com/webitel/protos/chat"
+	pbbot "github.com/webitel/protos/bot"
+	pbauth "github.com/webitel/chat_manager/api/proto/auth" // "github.com/webitel/protos/auth"
+	pbmanager "github.com/webitel/protos/workflow"
+	// import go_package= proto definition option
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
+	// ----- service clients -----
 	"github.com/webitel/chat_manager/internal/auth"
 	event "github.com/webitel/chat_manager/internal/event_router"
 	"github.com/webitel/chat_manager/internal/flow"
 	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
-	pbbot "github.com/webitel/protos/bot"
-	pb "github.com/webitel/protos/chat"
-	pbmanager "github.com/webitel/protos/workflow"
+	
+	
+	
 
 	// "github.com/jmoiron/sqlx"
 	// _ "github.com/lib/pq"
@@ -187,9 +193,18 @@ func main() {
 		return
 	}
 
+	httpsrv := http.Server{
+		Addr: "127.0.0.1:6060",
+	}
+	go func() {
+		httpsrv.ListenAndServe()
+	} ()
+
 	if err := service.Run(); err != nil {
 		logger.Fatal().
 			Str("app", "failed to run service").
 			Msg(err.Error())
 	}
+
+	httpsrv.Close()
 }

@@ -181,12 +181,13 @@ func (s *chatService) SendMessage(
 			Text: message.Text.String,
 		},
 	}
-
+	// Broadcast text message to every other channel in the room, from channel as a sender !
 	sent, err := s.eventRouter.RouteMessage(channel, reqMessage)
 	if err != nil {
 		s.log.Warn().Msg(err.Error())
 		return err
 	}
+	// Otherwise, if NO-ONE in the room - route message to the chat-flow !
 	if !channel.Internal && !sent {
 		err = s.flowClient.SendMessage(channel.ConversationID, reqMessage)
 		if err != nil {
@@ -244,7 +245,7 @@ func (s *chatService) StartConversation(
 		if err != nil {
 			return err
 		}
-		err = s.flowClient.Init(conversation.ID, profileID, req.GetDomainId(), nil)
+		err = s.flowClient.Init(conversation.ID, profileID, req.GetDomainId(), req.GetMessage())
 		if err != nil {
 			return err
 		}

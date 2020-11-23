@@ -12,7 +12,7 @@ const (
 )
 
 type BaseEvent struct {
-	ConversationID string `json:"conversation_id"`
+	ConversationID string `json:"conversation_id"` // FOXME: TO ?
 	Timestamp      int64  `json:"timestamp"`
 }
 
@@ -90,7 +90,7 @@ type Member struct {
 
 type Message struct {
 	ID        int64  `json:"id"`
-	ChannelID string `json:"channel_id,omitempty"`
+	ChannelID string `json:"channel_id,omitempty"` // FIXME: TO ?
 	Type      string `json:"type"`
 	Value     string `json:"text"`
 	CreatedAt int64  `json:"created_at,omitempty"`

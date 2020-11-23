@@ -12,10 +12,11 @@ func (repo *sqlxRepository) GetInviteByID(ctx context.Context, id string) (*Invi
 	result := &Invite{}
 	err := repo.db.GetContext(ctx, result, "SELECT * FROM chat.invite WHERE id=$1 and closed_at is null", id)
 	if err != nil {
-		repo.log.Warn().Msg(err.Error())
+		
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
+		repo.log.Warn().Msg(err.Error())
 		return nil, err
 	}
 	return result, nil

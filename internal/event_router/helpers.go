@@ -34,7 +34,7 @@ func (e *eventRouter) sendMessageToBotUser(from *pg.Channel, to *pg.Channel, mes
 	if err != nil {
 		return err
 	}
-	if client == nil || client.ExternalID.Valid == false {
+	if client == nil || !client.ExternalID.Valid {
 		return fmt.Errorf("client not found. id: %v", to.UserID)
 	}
 

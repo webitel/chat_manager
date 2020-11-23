@@ -14,10 +14,10 @@ func (repo *sqlxRepository) GetProfileByID(ctx context.Context, id int64) (*Prof
 	result := &Profile{}
 	err := repo.db.GetContext(ctx, result, "SELECT * FROM chat.profile WHERE id=$1", id)
 	if err != nil {
-		repo.log.Warn().Msg(err.Error())
 		if err == sql.ErrNoRows {
-			return nil, nil
+			return nil, nil // NOT Found !
 		}
+		repo.log.Warn().Msg(err.Error())
 		return nil, err
 	}
 	return result, nil
@@ -95,8 +95,10 @@ func (repo *sqlxRepository) CreateProfile(ctx context.Context, p *Profile) error
 	if p.UrlID == "" {
 		p.UrlID = uuid.New().String()
 	}
-	stmt, err := repo.db.PrepareNamed(`insert into chat.profile (name, schema_id, type, variables, domain_id, created_at)
-	values (:name, :schema_id, :type, :variables, :domain_id, :created_at)`)
+	stmt, err := repo.db.PrepareNamed(
+		`insert into chat.profile (name, schema_id, type, variables, domain_id, created_at)` +
+		` values (:name, :schema_id, :type, :variables, :domain_id, :created_at)`,
+	)
 	if err != nil {
 		return err
 	}
@@ -110,7 +112,8 @@ func (repo *sqlxRepository) CreateProfile(ctx context.Context, p *Profile) error
 }
 
 func (repo *sqlxRepository) UpdateProfile(ctx context.Context, p *Profile) error {
-	_, err := repo.db.NamedExecContext(ctx, `update chat.profile set
+	_, err := repo.db.NamedExecContext(ctx,
+	`update chat.profile set
 		name=:name,
 		schema_id=:schema_id,
 		type=:type,

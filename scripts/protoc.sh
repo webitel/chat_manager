@@ -1,18 +1,97 @@
-#!/bin/sh
-set -x
+#!/bin/bash
 
-#protoc -I api/proto/chat --go_out=api/proto/chat --micro_out=api/proto/chat api/proto/chat/chat.proto
-#mv ./api/proto/chat/github.com/webitel/chat_manager/api/proto/chat/* ./api/proto/chat/
-#rm -rf ./api/proto/chat/github.com
-#
-#protoc -I api/proto/flow_manager --go_out=api/proto/flow_manager --micro_out=api/proto/flow_manager api/proto/flow_manager/flow_manager.proto
-#
-#protoc -I api/proto/chat -I api/proto/bot --go_out=api/proto/bot --micro_out=api/proto/bot api/proto/bot/bot.proto
-#mv ./api/proto/bot/github.com/webitel/chat_manager/api/proto/bot/* ./api/proto/bot/
-#rm -rf ./api/proto/bot/github.com
+# verbose
+#set -x
 
-protoc -I api/proto/auth --go_out=api/proto/auth --micro_out=api/proto/auth api/proto/auth/authN.proto
+# GO111MODULE=on
+#gopath=$(go env GOMOD | xargs dirname)
+gopath=$(go env GOPATH)
 
-protoc -I api/proto/storage --go_out=api/proto/storage --micro_out=api/proto/storage api/proto/storage/file.proto
-mv ./api/proto/storage/github.com/webitel/storage/grpc_api/storage/* ./api/proto/storage/
-rm -rf ./api/proto/storage/github.com
+# for dep in  google.golang.org/protobuf/cmd/protoc-gen-go \
+#             google.golang.org/grpc/cmd/protoc-gen-go-grpc \
+#             github.com/micro/micro/v2/cmd/protoc-gen-micro
+# do
+
+#     go list -m $dep
+
+# done
+
+# GOFLAGS=-mod= \
+go list -f '{{.ImportPath}}: {{.Module.Version}}' -mod= \
+google.golang.org/protobuf/cmd/protoc-gen-go \
+google.golang.org/grpc/cmd/protoc-gen-go-grpc \
+github.com/micro/micro/v2/cmd/protoc-gen-micro
+# echo protoc: $(protoc --version)
+# echo protoc-gen-go: $(protoc-gen-go --version)
+# # echo protoc-gen-go-grpc: $(protoc-gen-go-grpc --version) # NOT-applicable
+# # echo protoc-gen-micro: $(protoc-gen-micro --version) # NOT-applicable
+
+# enable go-vendor
+#GOFLAGS=-mod=vendor
+# enable go-modules
+#GOFLAGS=-mod=
+gopkg='go list -f ''{{.Dir}}'' -mod='
+proto_path="github.com/webitel/protos"
+dist=(chat bot)
+
+# Regenerate module(s) protos
+for i in ${!dist[@]}
+do
+
+    dist[$i]=$(${gopkg} ${proto_path}/${dist[$i]})
+
+done
+
+# Target locations
+gosrc=$(go env GOMOD | xargs dirname) #$(${gopkg}) #$(${gopkg} .) #directory
+proto=$gosrc/proto
+vendor=$gosrc/vendor
+#vendor=$gopath/pkg/mod
+
+go_out=$vendor
+
+# Ensure redistributed ./vendor directory exists !
+mkdir -p $go_out
+# Import -I --proto_path parameter(s) ...
+proto_import=$(printf ' -I %s' "${dist[@]}")
+
+for src in ${dist[@]}
+do
+
+    echo "protogen: ${src}/*.proto => $go_out"
+
+    protoc $proto_import \
+    --go_out=$go_out \
+    --micro_out=$go_out \
+     \
+    $src/*.proto
+
+done
+
+# proto-auth; --go_opt=paths=source_relative
+proto_pkg="api/proto/auth"
+proto_path=$gosrc/$proto_pkg
+
+echo "protogen: ${proto_path}/*.proto => --go_opt=paths=source_relative --go_out=${proto_pkg}"
+
+protoc \
+-I $proto_path \
+--go_opt=paths=source_relative --go_out=${proto_pkg} \
+--micro_out=plugins=grpc,paths=source_relative:${proto_pkg} \
+ \
+$proto_path/*.proto
+
+
+
+# proto-storage; go_out=$vendor
+proto_pkg="api/proto/storage"
+proto_path=$gosrc/$proto_pkg
+
+echo "protogen: ${proto_path}/*.proto => $go_out"
+
+protoc \
+-I $proto_path \
+--go_opt=paths=source_relative --go_out=${proto_pkg} \
+--micro_out=plugins=grpc,paths=source_relative:${proto_pkg} \
+ \
+$proto_path/*.proto

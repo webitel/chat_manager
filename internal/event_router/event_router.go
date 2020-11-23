@@ -83,7 +83,7 @@ func (e *eventRouter) RouteCloseConversation(channel *pg.Channel, cause string) 
 			{
 				err = e.sendEventToWebitelUser(channel, item, events.CloseConversationEventType, body)
 			}
-		case "telegram", "infobip-whatsapp":
+		default: // "telegram", "infobip-whatsapp" ...
 			{
 				reqMessage := &pb.Message{
 					Type: "text",
@@ -93,22 +93,6 @@ func (e *eventRouter) RouteCloseConversation(channel *pg.Channel, cause string) 
 				}
 				err = e.sendMessageToBotUser(channel, item, reqMessage)
 			}
-		//case "corezoid":
-		//	{
-		//		reqMessage := &pb.Message{
-		//			Type: "text",
-		//			Value: &pb.Message_Text{
-		//				Text: text,
-		//			},
-		//			Variables: map[string]string{
-		//				"operator_name": channel.Name,
-		//				"action":        "close",
-		//				"channel":       "viber",
-		//			},
-		//		}
-		//		err = e.sendMessageToBotUser(channel, item, reqMessage)
-		//	}
-		default:
 		}
 		if err != nil {
 			e.log.Warn().
@@ -135,42 +119,25 @@ func (e *eventRouter) RouteCloseConversationFromFlow(conversationID *string, cau
 	}
 	for _, item := range otherChannels {
 		switch item.Type {
-		case "telegram", "infobip-whatsapp":
-			{
+		default: // "telegram", "infobip-whatsapp":
 
-				reqMessage := &pb.Message{
-					Type: "text",
-					Value: &pb.Message_Text{
-						Text: text,
-					},
-				}
-				if err := e.sendMessageToBotUser(nil, item, reqMessage); err != nil {
-					e.log.Warn().
-						Str("channel_id", item.ID).
-						Bool("internal", item.Internal).
-						Int64("user_id", item.UserID).
-						Str("conversation_id", item.ConversationID).
-						Str("type", item.Type).
-						Str("connection", item.Connection.String).
-						Msg("failed to send close conversation event to channel")
-				}
+			reqMessage := &pb.Message{
+				Type: "text",
+				Value: &pb.Message_Text{
+					Text: text,
+				},
 			}
-		//case "corezoid":
-		//	{
-		//		reqMessage := &pb.Message{
-		//			Type: "text",
-		//			Value: &pb.Message_Text{
-		//				Text: text,
-		//			},
-		//			Variables: map[string]string{
-		//				"operator_name": "bot",
-		//				"action":        "close",
-		//				"channel":       "viber",
-		//			},
-		//		}
-		//		err = e.sendMessageToBotUser(nil, item, reqMessage)
-		//	}
-		default:
+			if err := e.sendMessageToBotUser(nil, item, reqMessage); err != nil {
+				e.log.Warn().
+					Str("channel_id", item.ID).
+					Bool("internal", item.Internal).
+					Int64("user_id", item.UserID).
+					Str("conversation_id", item.ConversationID).
+					Str("type", item.Type).
+					Str("connection", item.Connection.String).
+					Msg("failed to send close conversation event to channel")
+			}
+
 		}
 	}
 	return nil
@@ -402,42 +369,16 @@ func (e *eventRouter) RouteJoinConversation(channel *pg.Channel, conversationID 
 	for _, item := range otherChannels {
 		switch item.Type {
 		case "webitel":
-			{
-				if err := e.sendEventToWebitelUser(nil, item, events.JoinConversationEventType, body); err != nil {
-					e.log.Warn().
-						Str("channel_id", item.ID).
-						Bool("internal", item.Internal).
-						Int64("user_id", item.UserID).
-						Str("conversation_id", item.ConversationID).
-						Str("type", item.Type).
-						Str("connection", item.Connection.String).
-						Msgf("failed to send join conversation event to channel: %s", err.Error())
-				}
+			if err := e.sendEventToWebitelUser(nil, item, events.JoinConversationEventType, body); err != nil {
+				e.log.Warn().
+					Str("channel_id", item.ID).
+					Bool("internal", item.Internal).
+					Int64("user_id", item.UserID).
+					Str("conversation_id", item.ConversationID).
+					Str("type", item.Type).
+					Str("connection", item.Connection.String).
+					Msgf("failed to send join conversation event to channel: %s", err.Error())
 			}
-		//case "corezoid":
-		//	{
-		//		reqMessage := &pb.Message{
-		//			Type: "text",
-		//			Value: &pb.Message_Text{
-		//				Text: "Operator joined",
-		//			},
-		//			Variables: map[string]string{
-		//				"operator_name": channel.Name,
-		//				"action":        "join",
-		//				"channel":       "viber",
-		//			},
-		//		}
-		//		if err := e.sendMessageToBotUser(channel, item, reqMessage); err != nil {
-		//			e.log.Warn().
-		//				Str("channel_id", item.ID).
-		//				Bool("internal", item.Internal).
-		//				Int64("user_id", item.UserID).
-		//				Str("conversation_id", item.ConversationID).
-		//				Str("type", item.Type).
-		//				Str("connection", item.Connection.String).
-		//				Msgf("failed to send join conversation event to channel: %s", err.Error())
-		//		}
-		//	}
 		default:
 		}
 	}
@@ -472,33 +413,18 @@ func (e *eventRouter) RouteLeaveConversation(channel *pg.Channel, conversationID
 	for _, item := range otherChannels {
 		switch item.Type {
 		case "webitel":
-			{
-				if err := e.sendEventToWebitelUser(nil, item, events.LeaveConversationEventType, body); err != nil {
-					e.log.Warn().
-						Str("channel_id", item.ID).
-						Bool("internal", item.Internal).
-						Int64("user_id", item.UserID).
-						Str("conversation_id", item.ConversationID).
-						Str("type", item.Type).
-						Str("connection", item.Connection.String).
-						Msg("failed to send leave conversation event to channel")
-				}
+
+			if err := e.sendEventToWebitelUser(nil, item, events.LeaveConversationEventType, body); err != nil {
+				e.log.Warn().
+					Str("channel_id", item.ID).
+					Bool("internal", item.Internal).
+					Int64("user_id", item.UserID).
+					Str("conversation_id", item.ConversationID).
+					Str("type", item.Type).
+					Str("connection", item.Connection.String).
+					Msg("failed to send leave conversation event to channel")
 			}
-		//case "corezoid":
-		//	{
-		//		reqMessage := &pb.Message{
-		//			Type: "text",
-		//			Value: &pb.Message_Text{
-		//				Text: "Operator left",
-		//			},
-		//			Variables: map[string]string{
-		//				"operator_name": channel.Name,
-		//				"action":        "leave",
-		//				"channel":       "viber",
-		//			},
-		//		}
-		//		err = e.sendMessageToBotUser(channel, item, reqMessage)
-		//	}
+
 		default:
 		}
 	}
@@ -539,24 +465,13 @@ func (e *eventRouter) RouteMessage(channel *pg.Channel, message *pb.Message) (bo
 				flag = true
 				err = e.sendEventToWebitelUser(channel, item, events.MessageEventType, body)
 			}
-		case "telegram", "infobip-whatsapp":
-			{
-				if channel.ID == item.ID {
-					continue
-				}
-				err = e.sendMessageToBotUser(channel, item, message)
+		default: // "telegram", "infobip-whatsapp"
+
+			if channel.ID == item.ID {
+				continue
 			}
-		//case "corezoid":
-		//	{
-		//		reqMessage := *message
-		//		reqMessage.Variables = map[string]string{
-		//			"operator_name": channel.Name,
-		//			"action":        "message",
-		//			"channel":       "viber",
-		//		}
-		//		err = e.sendMessageToBotUser(channel, item, &reqMessage)
-		//	}
-		default:
+			err = e.sendMessageToBotUser(channel, item, message)
+
 		}
 		if err != nil {
 			e.log.Warn().
@@ -584,25 +499,10 @@ func (e *eventRouter) RouteMessageFromFlow(conversationID *string, message *pb.M
 		// 	{
 		// 		e.sendToWebitelUser(channel, item, reqMessage)
 		// 	}
-		case "telegram", "infobip-whatsapp":
-			{
-				err = e.sendMessageToBotUser(nil, item, message)
-			}
-		case "corezoid":
-			{
-				m, err := e.repo.GetLastMessage(*conversationID)
-				variableBytes, err := m.Variables.MarshalJSON()
-				variables := make(map[string]string)
-				err = json.Unmarshal(variableBytes, &variables)
-				variables["text"] = m.Text.String
-				if err == nil {
-					reqMessage := *message
-					reqMessage.Variables = variables
-					err = e.sendMessageToBotUser(nil, item, &reqMessage)
-				}
+		default: // "telegram", "infobip-whatsapp"
 
-			}
-		default:
+			err = e.sendMessageToBotUser(nil, item, message)
+
 		}
 		if err != nil {
 			e.log.Error().

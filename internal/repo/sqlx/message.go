@@ -39,7 +39,7 @@ func (repo *sqlxRepository) GetMessages(ctx context.Context, id int64, size, pag
 	if page == 0 {
 		page = 1
 	}
-	limitStr = fmt.Sprintf("limit %v offset %v", size, (page-1)*size)
+	limitStr = fmt.Sprintf("limit %d offset %d", size, (page-1)*size)
 	query := fmt.Sprintf("SELECT %s FROM chat.message m left join chat.channel c on m.channel_id = c.id %s %s %s", fieldsStr, whereStr, sortStr, limitStr)
 	err := repo.db.SelectContext(ctx, &result, query, domainID, conversationID)
 	return result, err

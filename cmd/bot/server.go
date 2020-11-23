@@ -63,8 +63,12 @@ func NewBotService(
 		exit:   make(chan chan error),
 	}
 
-	b.router.HandleFunc("/{url_id}", b.WebhookFunc).
-		Methods("POST")
+	b.router.
+		Path("/{url_id}").
+		Methods("GET", "POST").
+		HandlerFunc(
+			b.WebhookFunc,
+		)
 
 	res, err := b.client.GetProfiles(context.Background(), &pbchat.GetProfilesRequest{Size: 100})
 	if err != nil || res == nil {
@@ -85,6 +89,16 @@ func NewBotService(
 			continue
 		}
 		b.bots[profile.Id] = configure(profile, b.client, b.log)
+		
+		b.log.Info().
+
+			Int64("pid", profile.Id).
+			Str("type", profile.Type).
+			Str("bot", profile.Name).
+			Str("uri", "/"+ profile.UrlId).
+
+		Msg("BOT Register")
+
 	}
 
 	return b

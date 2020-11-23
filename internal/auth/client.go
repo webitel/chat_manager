@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	pbauth "github.com/webitel/chat_manager/api/proto/auth"
+	pbauth "github.com/webitel/chat_manager/api/proto/auth" // "github.com/webitel/protos/auth"
 
 	"github.com/micro/go-micro/v2/errors"
 	"github.com/micro/go-micro/v2/metadata"
