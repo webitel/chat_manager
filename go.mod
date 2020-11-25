@@ -23,7 +23,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.19.0
 	github.com/webitel/protos/bot v0.0.0-20201123102808-d389aa72bb7a
-	github.com/webitel/protos/chat v0.0.0-20201123102808-d389aa72bb7a
+	github.com/webitel/protos/chat v0.0.0-20201125134612-f5c7f9b7e12f
 	github.com/webitel/protos/workflow v0.0.0-20201027102345-8712c66e378e
 	golang.org/x/crypto v0.0.0-20201016220609-9e8e0b390897 // indirect
 	google.golang.org/grpc v1.33.1
