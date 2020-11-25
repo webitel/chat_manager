@@ -144,14 +144,43 @@ func (bot *corezoidBot) SendMessage(req *pb.SendMessageRequest) error {
 	}
 	reply := &ctx.corezoidOutcome
 	reply.Date = localtime
+	// represents operator's name for member side
+	// TODO: How to get chat identity for some member side ?
+	vars := update.GetVariables()
+	// From: chat title in front of member
+	title, _ := vars["operator"]
+	if title == "" {
+		title = "webitel:bot" // default
+	}
 
+	const commandClose = "Conversation closed" // internal: from !
+	// NOTE: sending the last conversation message
+	closing := update.GetText() == commandClose
+	// in front of income: reaction !
 	switch channel.corezoidIncome.Type {
 	case "chat": // chatting
-		reply.Type = "answerToChat" // replyAction = startChat|closeChat|answerToChat
-		reply.From = "manager" // TODO: resolve sender name
+		// replyAction = startChat|closeChat|answerToChat
+		if closing {
+			// NOTE: internal request !
+			reply.Type = "closeChat"
+		} else {
+			// NOTE: normal texting ...
+			reply.Type = "answerToChat" 
+		}
+		reply.From = title // TODO: resolve sender name
 		reply.Text = update.GetText() // reply: message text
-	default: // {"action":"purpose"}
-		reply.From = "manager" // TODO: resolve sender name
+	case "closeChat": // Requested ?
+		if closing {
+			// NOTE: ACK ! Closed !
+			reply.Type = "closeChat"
+		} else {
+			// FIXME: continue texting ?
+			reply.Type = "answerToChat" 
+		}
+		reply.From = title // TODO: resolve sender name
+		reply.Text = update.GetText() // reply: message text
+	default: // {"action":Предложение"}
+		reply.From = title // TODO: resolve sender name
 		reply.Text = update.GetText() // reply: message text
 	}
 
@@ -188,6 +217,7 @@ func (bot *corezoidBot) SendMessage(req *pb.SendMessageRequest) error {
 
 // Handler implementes bot.Receiver interface
 func (bot *corezoidBot) Handler(w http.ResponseWriter, r *http.Request) {
+
 	// internal, machine-readable chat channel contact (string: profile ID)
 	contact := strconv.FormatInt(bot.profile.Id, 10)
 
@@ -236,40 +266,97 @@ func (bot *corezoidBot) Handler(w http.ResponseWriter, r *http.Request) {
 		Str("chat-id", update.ChatID).
 		Str("channel", update.Channel).
 		Str("action",  update.Type).
-		Str("replyTo", update.ReplyWith).
 		Str("text",    update.Text).
 
 	Msg("RECV update")
 
-	switch update.Type {
-	case "chat": // incoming chat request (!)
-	default: // "Пропозиція", "Предложение" // FIXME: request non-localized (!)
-	}
-
 	strChatID := update.ChatID //strconv.FormatInt(update.ID, 10)
 
 	check := &pbchat.CheckSessionRequest{
-		ExternalId: strChatID,
+		// gateway profile identity
 		ProfileId:  bot.profile.Id,
-		// Username:   update.Message.From.Username,
+		// external client contact
+		ExternalId: strChatID,
+		Username:   update.From,
 	}
-	resCheck, err := bot.client.CheckSession(context.Background(), check)
+	// passthru request cancellation context
+	chat, err := bot.client.CheckSession(r.Context(), check)
 	if err != nil {
-		bot.log.Error().Msg(err.Error())
+		bot.log.Error().Err(err).Msg("Failed to lookup chat channel")
 		return
 	}
 	bot.log.Debug().
-		Bool("new", !resCheck.Exists).
-		Str("channel_id", resCheck.ChannelId).
-		Int64("client_id", resCheck.ClientId).
+		Bool("new", !chat.Exists).
+		Str("channel_id", chat.ChannelId).
+		Int64("client_id", chat.ClientId).
 		Msg("CHAT Channel")
+	
+	// QUICK reaction
+	switch update.Type {
+	case "chat": // incoming chat request (!)
+	case "closeChat":
+		// TODO: break flow execution !
+		if !chat.Exists {
+			bot.log.Warn().
+			
+				Str("chat-id", update.ChatID).
+				Str("channel", update.Channel).
+				Str("action",  update.Type).
+				Str("text",    update.Text).
+			
+			Msg("CLOSE Request NO Channel; IGNORE")
+			return // TODO: NOTHING !
+		}
 
-	if !resCheck.Exists {
+		bot.log.Info().
+
+			Str("chat-id", update.ChatID).
+			Str("channel", update.Channel).
+			Str("action",  update.Type).
+			Str("text",    update.Text).
+
+		Msg("CLOSE External request; PERFORM")
+
+		_, err := bot.client.CloseConversation(
+			// cancellation
+			r.Context(),
+			// request
+			&pbchat.CloseConversationRequest{
+				ConversationId:  "",
+				CloserChannelId: chat.ChannelId,
+				Cause:           "recv:close",
+				AuthUserId:      chat.ClientId, // FIXME: ?
+			},
+			// options
+		)
+
+		if err != nil {
+			bot.log.Error().Err(err).
+
+				Str("chat-id", update.ChatID).
+				Str("channel", update.Channel).
+				Str("action",  update.Type).
+				Str("text",    update.Text).
+
+			Msg("Failed to close channel")
+			// TODO: HTTP/1.1 500
+		}
+		return
+
+	default: // "Пропозиція", "Предложение" // FIXME: request non-localized (!)
+	}
+
+	if !chat.Exists {
 
 		// region: init chat-flow-routine /start message environment variables
 		env := map[string]string {
-			"action":    update.Type,
-			"channel":   update.Channel,
+			"chat-id":     update.ChatID,
+			"channel":     update.Channel,
+			"action":      update.Type,
+			"client_name": update.From,
+			// "replyTo":  update.ReplyWith,
+			"text":        update.Text,
+			"test":        strconv.FormatBool(update.Test),
 		}
 
 		// HERE: passthru command-specific arguments ...
@@ -287,7 +374,7 @@ func (bot *corezoidBot) Handler(w http.ResponseWriter, r *http.Request) {
 			DomainId: bot.profile.DomainId,
 			Username: check.Username,
 			User: &pbchat.User{
-				UserId:     resCheck.ClientId,
+				UserId:     chat.ClientId,
 				Type:       update.Channel, // "telegram", // FIXME: why (?)
 				Connection: contact, // contact: profile.ID
 				Internal:   false,
@@ -311,21 +398,21 @@ func (bot *corezoidBot) Handler(w http.ResponseWriter, r *http.Request) {
 
 		message := &pbchat.SendMessageRequest{
 			// Message:   textMessage,
-			AuthUserId: resCheck.ClientId,
-			ChannelId:  resCheck.ChannelId,
+			AuthUserId: chat.ClientId,
+			ChannelId:  chat.ChannelId,
 		}
 		messageText := &pbchat.Message{
 			Type: "text",
 			Value: &pbchat.Message_Text{
 				Text: update.Text,
 			},
-			// FIXME: does we need this here ? 
-			// NOTE: processing consequent message(s) ...
-			Variables: map[string]string {
-				"action":  update.Type,
-				"channel": update.Channel,
-				"replyTo": update.ReplyWith,
-			},
+			// // FIXME: does we need this here ? 
+			// // NOTE: processing consequent message(s) ...
+			// Variables: map[string]string {
+			// 	"action":  update.Type,
+			// 	"channel": update.Channel,
+			// 	"replyTo": update.ReplyWith,
+			// },
 		}
 		message.Message = messageText
 		// }

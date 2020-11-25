@@ -3,6 +3,7 @@ package sqlxrepo
 import (
 	"context"
 	"database/sql"
+	"strconv"
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
@@ -10,9 +11,34 @@ import (
 	"time"
 )
 
-func (repo *sqlxRepository) GetProfileByID(ctx context.Context, id int64) (*Profile, error) {
+func (repo *sqlxRepository) GetProfileByID(ctx context.Context, id int64, uri string) (*Profile, error) {
+
+	args := make([]interface{}, 0, 2)
+	// return query param ref like: $1, $2 ... $N
+	param := func(v interface{}) string {
+		args = append(args, v)
+		return "$" + strconv.Itoa(len(args))
+	}
+	// query command text
+	query := "SELECT e.* FROM chat.profile e WHERE"
+	
+	where := make([]string, 0, 2)
+	filter := func(cond string) {
+		where = append(where, cond)
+	}
+	
+	if uri != "" {
+		filter(" e.url_id = " + param(uri))
+	}
+	// default: by id
+	if len(where) == 0 || id != 0 {
+		filter(" e.id = " + param(id))
+	}
+
+	query += strings.Join(where, " AND ")
+
 	result := &Profile{}
-	err := repo.db.GetContext(ctx, result, "SELECT * FROM chat.profile WHERE id=$1", id)
+	err := repo.db.GetContext(ctx, result, query, args...) // "SELECT * FROM chat.profile WHERE id=$1", id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil // NOT Found !

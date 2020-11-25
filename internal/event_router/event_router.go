@@ -53,6 +53,11 @@ func NewRouter(
 	}
 }
 
+// RouteCloseConversation broadcasts the last "Conversation closed"
+// message to all related chat channels.
+//
+// `channel` represents close process initiator.
+// `cause` overrides default "Conversation closed" message text
 func (e *eventRouter) RouteCloseConversation(channel *pg.Channel, cause string) error {
 	otherChannels, err := e.repo.GetChannels(context.Background(), nil, &channel.ConversationID, nil, nil, nil) //&channel.ID)
 	if err != nil {
@@ -79,11 +84,11 @@ func (e *eventRouter) RouteCloseConversation(channel *pg.Channel, cause string) 
 	for _, item := range otherChannels {
 		var err error
 		switch item.Type {
-		case "webitel":
+		case "webitel": // internal chat-bot leg
 			{
 				err = e.sendEventToWebitelUser(channel, item, events.CloseConversationEventType, body)
 			}
-		default: // "telegram", "infobip-whatsapp" ...
+		default: // "telegram", "infobip-whatsapp" ... // external chat-bot leg
 			{
 				reqMessage := &pb.Message{
 					Type: "text",
@@ -108,6 +113,9 @@ func (e *eventRouter) RouteCloseConversation(channel *pg.Channel, cause string) 
 	return nil
 }
 
+// RouteCloseConversationFromFlow same as RouteCloseConversation
+// FIXME: except of thing that `flow_manager` service has already
+//        closed all `webitel` (internal) related chat channels
 func (e *eventRouter) RouteCloseConversationFromFlow(conversationID *string, cause string) error {
 	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil)
 	if err != nil {

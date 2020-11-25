@@ -76,9 +76,9 @@ func NewTelegramBot(profile *pbchat.Profile, client pbchat.ChatService, log *zer
 }
 
 func (bot *TelegramBot) DeleteProfile() error {
-	if _, err := bot.API.RemoveWebhook(); err != nil {
-		return err
-	}
+	// if _, err := bot.API.RemoveWebhook(); err != nil {
+	// 	return err
+	// }
 	return nil
 }
 

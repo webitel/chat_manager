@@ -36,7 +36,7 @@ type Repository interface {
 }
 
 type ProfileRepository interface {
-	GetProfileByID(ctx context.Context, id int64) (*Profile, error)
+	GetProfileByID(ctx context.Context, id int64, uri string) (*Profile, error)
 	GetProfiles(
 		ctx context.Context,
 		id int64,

@@ -263,13 +263,14 @@ func (s *chatService) CloseConversation(
 		Str("cause", req.GetCause()).
 		Str("closer_channel_id", req.GetCloserChannelId()).
 		Msg("close conversation")
+
 	conversationID := req.GetConversationId()
-	if conversationID == "" {
-		return errors.BadRequest("conversation_id not found", "")
-	}
 	servName := s.authClient.GetServiceName(&ctx)
 	if servName == "workflow" {
 		// s.chatCache.DeleteCachedMessages(conversationID)
+		if conversationID == "" {
+			return errors.BadRequest("conversation_id not found", "")
+		}
 		resErrorsChan := make(chan error, 4)
 		go func() {
 			if err := s.repo.DeleteConfirmation(conversationID); err != nil {
@@ -316,6 +317,7 @@ func (s *chatService) CloseConversation(
 		s.log.Warn().Msg("channel not found")
 		return errors.BadRequest("channel not found", "")
 	}
+	conversationID = closerChannel.ConversationID // resolved from DB
 	resErrorsChan := make(chan error, 3)
 	go func() {
 		if err := s.eventRouter.RouteCloseConversation(closerChannel, req.GetCause()); err != nil {
@@ -326,7 +328,7 @@ func (s *chatService) CloseConversation(
 	}()
 	go func() {
 		if !closerChannel.Internal || closerChannel.FlowBridge {
-			if err := s.flowClient.CloseConversation(closerChannel.ConversationID); err != nil {
+			if err := s.flowClient.CloseConversation(conversationID); err != nil {
 				resErrorsChan <- err
 				return
 			}
@@ -675,6 +677,10 @@ func (s *chatService) WaitMessage(ctx context.Context, req *pb.WaitMessageReques
 	return nil
 }
 
+// CheckSession performs:
+// - Locate OR Create client contact
+// - Identify whether exists channel for
+//   requested chat-bot gateway profile.id
 func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequest, res *pb.CheckSessionResponse) error {
 	s.log.Trace().
 		Str("external_id", req.GetExternalId()).
@@ -822,7 +828,7 @@ func (s *chatService) DeleteProfile(
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	profile, err := s.repo.GetProfileByID(ctx, req.GetId())
+	profile, err := s.repo.GetProfileByID(ctx, req.GetId(), "")
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
@@ -912,20 +918,22 @@ func (s *chatService) GetProfiles(ctx context.Context, req *pb.GetProfilesReques
 }
 
 func (s *chatService) GetProfileByID(ctx context.Context, req *pb.GetProfileByIDRequest, res *pb.GetProfileByIDResponse) error {
-	s.log.Trace().
-		Int64("profile_id", req.GetId()).
-		Msg("get profile by id")
+
 	user, err := s.authClient.MicroAuthentication(&ctx)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	profile, err := s.repo.GetProfileByID(ctx, req.GetId())
+	s.log.Trace().
+		Int64("pid", req.GetId()).
+		Str("uri", req.GetUri()).
+		Msg("get profile")
+	profile, err := s.repo.GetProfileByID(ctx, req.GetId(), req.GetUri())
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		s.log.Error().Err(err).Msg("Failed to get profile")
 		return err
 	}
-	if profile.DomainID != user.DomainID {
+	if user != nil && profile.DomainID != user.DomainID {
 		s.log.Error().Msg("invalid domain id")
 		return errors.BadRequest("invalid domain id", "")
 	}
