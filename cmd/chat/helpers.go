@@ -8,10 +8,19 @@ import (
 	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
 	pb "github.com/webitel/protos/chat"
 
-	"github.com/jmoiron/sqlx"
+	// "github.com/jmoiron/sqlx"
 )
 
 func (s *chatService) closeConversation(ctx context.Context, conversationID *string) error {
+	err := s.repo.CloseConversation(ctx, *conversationID)
+	if err != nil {
+		s.log.Error().Err(err).Msg("Failed to update chat CLOSED")
+		return err
+	}
+	return nil
+}
+
+/*func (s *chatService) closeConversation(ctx context.Context, conversationID *string) error {
 	if err := s.repo.WithTransaction(func(tx *sqlx.Tx) error {
 		if err := s.repo.CloseConversationTx(ctx, tx, *conversationID); err != nil {
 			return err
@@ -25,7 +34,7 @@ func (s *chatService) closeConversation(ctx context.Context, conversationID *str
 		return err
 	}
 	return nil
-}
+}*/
 
 func transformProfileFromRepoModel(profile *pg.Profile) (*pb.Profile, error) {
 	variableBytes, err := profile.Variables.MarshalJSON()

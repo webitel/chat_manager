@@ -66,8 +66,8 @@ func (repo *sqlxRepository) ReadConfirmation(conversationID string) (string, err
 func (repo *sqlxRepository) WriteConfirmation(conversationID string, confirmationID string) error {
 	_, err := repo.db.Exec(
 		// query
-		`insert into chat.conversation_confirmation (conversation_id, confirmation_id) values ($1, $2)`+
-		` on conflict (conversation_id) do update set confirmation_id = EXCLUDED.confirmation_id`,
+		"INSERT INTO chat.conversation_confirmation (conversation_id, confirmation_id) VALUES ($1, $2)\n" +
+		"ON CONFLICT (conversation_id) DO UPDATE SET confirmation_id = EXCLUDED.confirmation_id",
 		// params ...
 		conversationID, confirmationID,
 	)
@@ -77,7 +77,7 @@ func (repo *sqlxRepository) WriteConfirmation(conversationID string, confirmatio
 func (repo *sqlxRepository) DeleteConfirmation(conversationID string) error {
 	_, err := repo.db.Exec(
 		// query
-		`delete from chat.conversation_confirmation where conversation_id=$1`,
+		"DELETE FROM chat.conversation_confirmation WHERE conversation_id=$1",
 		// params ...
 		conversationID,
 	)

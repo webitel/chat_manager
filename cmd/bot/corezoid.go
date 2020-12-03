@@ -1,6 +1,8 @@
 package main
 
 import (
+	// "github.com/micro/go-micro/v2/server"
+	// "github.com/webitel/chat_manager/internal/contact"
 
 	"sync"
 	"time"
@@ -49,7 +51,10 @@ type corezoidOutcome struct {
 	 Text      string    `json:"answer,omitempty"`          // [required] message text payload
 }
 
+// channel runtime state
 type corezoidChat struct {
+	 // ChannelID (internal: Webitel)
+	 ChannelID string
 	 // latest income message
 	 corezoidIncome
 	 // corresponding reply message
@@ -64,7 +69,8 @@ type corezoidBot struct {
 	client    pbchat.ChatService
 	// runtime cache
 	chatMx    sync.RWMutex
-	chat      map[string]*corezoidChat
+	//        map[external]state
+	channel   map[string]*corezoidChat
 }
 
 func ConfigureCorezoid(profile *pbchat.Profile, client pbchat.ChatService, log *zerolog.Logger) ChatBot {
@@ -92,7 +98,7 @@ func ConfigureCorezoid(profile *pbchat.Profile, client pbchat.ChatService, log *
 		Logger(),
 		client:    client,
 
-		chat:      make(map[string]*corezoidChat, 64),
+		channel:   make(map[string]*corezoidChat, 64),
 	}
 }
 
@@ -218,7 +224,18 @@ func (bot *corezoidBot) SendMessage(req *pb.SendMessageRequest) error {
 // Handler implementes bot.Receiver interface
 func (bot *corezoidBot) Handler(w http.ResponseWriter, r *http.Request) {
 
-	// internal, machine-readable chat channel contact (string: profile ID)
+	// // internal, machine-readable chat channel contact (string: profile ID)
+	// contact, err := contact.NodeObjectContact(
+	// 	bot.profile.Id, server.DefaultId,
+	// )
+	// if err != nil {
+	// 	bot.log.Error().Err(err).
+		
+	// 		Int64("pid", bot.profile.Id).
+	// 		Str("node", server.DefaultId).
+		
+	// 	Msg("Failed to provider channel contact string")
+	// }
 	contact := strconv.FormatInt(bot.profile.Id, 10)
 
 	var (
@@ -437,21 +454,61 @@ func (bot *corezoidBot) Handler(w http.ResponseWriter, r *http.Request) {
 }
 
 // get returns latest runtime chat state by given chatID
-func (bot *corezoidBot) get(chatID string) *corezoidChat {
+func (bot *corezoidBot) get(externalID string) *corezoidChat {
 
-	bot.chatMx.RLock()
-	state := bot.chat[chatID]
-	bot.chatMx.RUnlock()
+	bot.chatMx.RLock()   // +R
+	channel, ok := bot.channel[externalID]
+	bot.chatMx.RUnlock() // -R
 
-	return state
+	if ok && channel.ChatID == externalID {
+		return channel // CACHE: FOUND !
+	}
+
+	// res, err := bot.client.CheckSession(ctx,
+	// 	&pbchat.CheckSessionRequest{
+	// 		ProfileID: bot.profile.Id,
+	// 		ExternalId: externalID,
+	// 		Username:   "",
+	// 	},
+	// 	// callOpts,
+	// )
+
+	// if err != nil {
+	// 	// Failed looking for channel
+	// 	return err
+	// }
+
+	// if res.Exists && res.ChannelId != "" {
+
+	// 	channel := &corezoidChat{
+	// 		corezoidIncome: corezoidIncome{
+	// 			ChatID:    "",
+	// 			Channel:   "",
+	// 			Date:      time.Time{},
+	// 			Type:      "",
+	// 			Test:      false,
+	// 			From:      "",
+	// 			Text:      "",
+	// 			ReplyWith: "",
+	// 		},
+	// 		corezoidOutcome: corezoidOutcome{
+	// 			Date: time.Time{},
+	// 			Type: "",
+	// 			From: "",
+	// 			Text: "",
+	// 		},
+	// 	}
+	// }
+
+	return nil
 }
 
 // set stores given state as a latest runtime chat state
-func (bot *corezoidBot) set(ctx *corezoidChat) {
+func (bot *corezoidBot) set(channel *corezoidChat) {
 
-	id := ctx.ChatID
+	externalID := channel.ChatID
 
 	bot.chatMx.Lock()
-	bot.chat[id] = ctx
+	bot.channel[externalID] = channel
 	bot.chatMx.Unlock()
 }

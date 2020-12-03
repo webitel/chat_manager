@@ -1,6 +1,8 @@
 package util
 
 import (
+	"fmt"
+	"github.com/micro/go-micro/v2/util/log"
 	"strings"
 
 	"github.com/micro/go-micro/v2/registry"
@@ -11,20 +13,39 @@ import (
 // that matches given addr prefix
 // or any available otherwise
 func PrefferedHost(addr string) selector.Strategy {
+	
+	if addr == "" {
+		return selector.Random
+	}
+	
 	return func(services []*registry.Service) selector.Next {
 				
-		var node *registry.Node
+		var (
+			ok bool
+			node *registry.Node
+		)
 		
 		lookup:
 		for _, service := range services {
 			for _, seed := range service.Nodes {
-				if node == nil {
-					node = seed // default: first available
-				} else if strings.HasPrefix(seed.Address, addr) {
-					node = seed
+				if strings.HasPrefix(seed.Address, addr) {
+					
+					node, ok = seed, true
 					break lookup
+
+				} else if node == nil {
+					
+					node = seed // default: first available
 				}
 			}
+		}
+
+		// NOT FOUND ! PEEK: FIRST
+		if !ok && node != nil {
+			log.Warn(fmt.Sprintf(
+				"Preffered service host %q not found; peek=%s addr=%s",
+				addr, node.Id, node.Address,
+			))
 		}
 		
 		// logger.Info().Msg("SELECT NODE")
@@ -43,14 +64,19 @@ func PrefferedHost(addr string) selector.Strategy {
 // that exact matches given id
 // or selector.Random otherwise
 func PrefferedNode(id string) selector.Strategy {
+	
+	if id == "" {
+		return selector.Random
+	}
+
 	return func(services []*registry.Service) selector.Next {
-				
+
 		var node *registry.Node
 		
 		lookup:
 		for _, service := range services {
 			for _, seed := range service.Nodes {
-				if seed.Id == id {
+				if strings.HasSuffix(seed.Id, id) {
 					node = seed
 					break lookup
 				}
@@ -58,6 +84,9 @@ func PrefferedNode(id string) selector.Strategy {
 		}
 
 		if node == nil {
+			log.Warnf(fmt.Sprintf(
+				"Preffered service node %q not found; peek random", id,
+			))
 			return selector.Random(services)
 		}
 		

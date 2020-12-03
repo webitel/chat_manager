@@ -5,7 +5,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// var Default = zerolog.New(os.Stdout)
+var Default = zerolog.New(os.Stdout)
 
 // Console returns new zerolog.ConsoleWriter
 func Console(level string, color bool) (*zerolog.Logger, error) {

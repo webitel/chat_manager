@@ -48,10 +48,9 @@ func (pgxLogger) Log(ctx context.Context, rate pgx.LogLevel, text string, data m
 	switch rate {
 	// case pgx.LogLevelTrace:
 	// 	e = logger.Trace()
-	case pgx.LogLevelDebug:
+	case pgx.LogLevelDebug,
+		 pgx.LogLevelInfo:
 		e = logger.Debug()
-	case pgx.LogLevelInfo:
-		e = logger.Info()
 	case pgx.LogLevelWarn:
 		e = logger.Warn()
 	case pgx.LogLevelError:

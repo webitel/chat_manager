@@ -1,9 +1,10 @@
 package main
 
 import (
+	"fmt"
 
 	"net"
-	// "sync"
+	"sync"
 	"context"
 	"strings"
 	"net/http"
@@ -54,9 +55,11 @@ type botService struct {
 	log    *zerolog.Logger
 	client pbchat.ChatService // webitel.chat.server: client
 	router *mux.Router
-	urlMap map[string]int64
-	bots   map[int64]*chatBot
 	exit   chan chan error
+
+	index sync.RWMutex       // index: RW locker
+	hooks map[string]int64   // index: map[URI]PID
+	gates map[int64]*chatBot // index: map[PID]BOT
 
 	// mx sync.RWMutex
 	// indexBot map[int64]*chatbot
@@ -69,57 +72,78 @@ func NewBotService(
 	router *mux.Router,
 ) *botService {
 
-	b := &botService{
+	s := &botService{
+
 		log:    log,
 		client: client,
 		router: router,
-		urlMap: make(map[string]int64),
-		bots:   make(map[int64]*chatBot),
-		exit:   make(chan chan error),
+		
+		hooks: make(map[string]int64),
+		gates: make(map[int64]*chatBot),
+		exit:  make(chan chan error),
 	}
 
-	b.router.
-		Path("/{url_id}").
-		Methods("GET", "POST").
+	s.router.
+		PathPrefix("/").
+		Methods("POST", "GET").
 		HandlerFunc(
-			b.WebhookFunc,
+			s.WebhookFunc,
 		)
 
-	res, err := b.client.GetProfiles(context.Background(), &pbchat.GetProfilesRequest{Size: 100})
-	if err != nil || res == nil {
-		b.log.Fatal().Msg(err.Error())
+	// TODO:
+	// - fetch .Registry.GetService(service.Options().Name)
+	// - lookup DB for profiles, NOT in registered service nodes list; hosted!
+	list, err := s.client.GetProfiles(
+		context.TODO(),
+		&pbchat.GetProfilesRequest{Size: 100},
+	)
+
+	if err != nil || list == nil {
+		s.log.Fatal().Msg(err.Error())
 		return nil
 	}
 
-	for _, profile := range res.Items {
-		b.urlMap[profile.UrlId] = profile.Id
-		configure, ok := ConfigureBotsMap[profile.Type]
-		if !ok {
-			b.log.Warn().
-				Int64("id", profile.Id).
-				Str("type", profile.Type).
-				Str("name", profile.Name).
-				Int64("domain_id", profile.DomainId).
-				Msg("wrong profile type")
-			continue
-		}
-		b.bots[profile.Id] = &chatBot{
-			Profile: profile,
-			ChatBot: configure(profile, b.client, b.log),
-		}
+	var (
+
+		register pb.AddProfileRequest
+		response pb.AddProfileResponse
+	)
+
+	for _, profile := range list.Items {
 		
-		b.log.Info().
+		register.Profile = profile
+		
+		_ = s.AddProfile(context.TODO(), &register, &response)
+		
+		
+		// s.urlMap[profile.UrlId] = profile.Id
+		// configure, ok := ConfigureBotsMap[profile.Type]
+		// if !ok {
+		// 	b.log.Warn().
+		// 		Int64("id", profile.Id).
+		// 		Str("type", profile.Type).
+		// 		Str("name", profile.Name).
+		// 		Int64("domain_id", profile.DomainId).
+		// 		Msg("wrong profile type")
+		// 	continue
+		// }
+		// s.bots[profile.Id] = &chatBot{
+		// 	Profile: profile,
+		// 	ChatBot: configure(profile, s.client, s.log),
+		// }
+		
+		// s.log.Info().
 
-			Int64("pid", profile.Id).
-			Str("type", profile.Type).
-			Str("bot", profile.Name).
-			Str("uri", "/"+ profile.UrlId).
+		// 	Int64("pid", profile.Id).
+		// 	Str("type", profile.Type).
+		// 	Str("bot", profile.Name).
+		// 	Str("uri", "/"+ profile.UrlId).
 
-		Msg("BOT Register")
+		// Msg("BOT Register")
 
 	}
 
-	return b
+	return s
 }
 
 func (b *botService) StartWebhookServer() error {
@@ -177,6 +201,129 @@ func (b *botService) StopWebhookServer() error {
 	return nil
 }
 
+// gateway returns BOT profile runtime gateway instance
+// if runtime not found, performs lazy startup preparations
+func (s *botService) gateway(ctx context.Context, pid int64, uri string) (*chatBot, error) {
+
+	if pid == 0 {
+
+		if uri == "" {
+			return nil, fmt.Errorf("gateway: lookup.id missing")
+		}
+
+		// lookup: resolve by webhook URI
+		s.index.RLock()    // +R
+		pid = s.hooks[uri] // resolve
+		s.index.RUnlock()  // -R
+	}
+
+	if pid != 0 {
+		// lookup: running ?
+		s.index.RLock()   // +R
+		gate, ok := s.gates[pid] // runtime
+		s.index.RUnlock() // -R
+
+		if ok && gate != nil {
+			// CACHE: FOUND !
+			return gate, nil
+		}
+	}
+
+	// region: lookup persistant DB
+	res, err := s.client.GetProfileByID(
+		// bind to this request cancellation context
+		ctx,
+		// prepare request parameters
+		&pbchat.GetProfileByIDRequest{
+			Id:  pid, // LOOKUP .ID
+			Uri: uri, // LOOKUP .URI
+		},
+		// callOpts ...
+	)
+
+	if err != nil {
+
+		s.log.Error().Err(err).
+			Int64("pid", pid).
+			Msg("Failed lookup bot.profile")
+
+		return nil, err
+	}
+
+	profile := res.GetItem()
+	
+	if profile == nil || profile.Id == 0 {
+		// NOT FOUND !
+		s.log.Warn().Int64("pid", pid).Str("uri", uri).
+			Msg("PROFILE: NOT FOUND")
+		
+		return nil, errors.NotFound(
+			"chat.bot.profile.not_found",
+			"gateway: profile {id=%d, uri=%s} not found",
+			 pid, uri,
+		)
+	}
+
+	if pid != 0 && pid != profile.Id {
+		// NOT FOUND !
+		s.log.Warn().Int64("pid", pid).
+			Str("error", "mismatch profile.id requested").
+			Msg("PROFILE: NOT FOUND")
+		
+		return nil, errors.NotFound(
+			"chat.bot.profile.not_found",
+			"gateway: profile {id=%d, uri=%s} not found",
+			 pid, uri,
+		)
+	}
+
+	if uri != "" && uri != profile.UrlId {
+		// NOT FOUND !
+		s.log.Warn().Str("uri", uri).
+			Str("error", "mismatch profile.uri requested").
+			Msg("PROFILE: NOT FOUND")
+		
+		return nil, errors.NotFound(
+			"chat.bot.profile.not_found",
+			"gateway: profile {id=%d, uri=%s} not found",
+			 pid, uri,
+		)
+	}
+	// endregion
+
+	pid = profile.Id
+	// region: start runtime; add cache
+	err = s.AddProfile(
+		// bind cancellation context
+		ctx,
+		// request
+		&pb.AddProfileRequest{
+			Profile: profile,
+		},
+		// response
+		&pb.AddProfileResponse{
+			// envelope expected; but we ignore result
+		},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+	// endregion
+
+	// region: ensure running
+	s.index.RLock()   // +R
+	gate, ok := s.gates[pid] // runtime
+	s.index.RUnlock() // -R
+
+	if !ok || gate == nil {
+		return nil, fmt.Errorf("Failed startup profile gateway; something went wrong")
+	}
+	// endregion
+
+	return gate, nil
+}
+
 func (s *botService) SendMessage(ctx context.Context, req *pb.SendMessageRequest, res *pb.SendMessageResponse) error {
 	// b.log.Debug().
 	// 	Int64("pid", req.GetProfileId()).
@@ -184,39 +331,37 @@ func (s *botService) SendMessage(ctx context.Context, req *pb.SendMessageRequest
 	// 	Str("to-user", req.GetExternalUserId()).
 	// 	Msg("SEND Update")
 
-	msg := req.GetMessage()
-
-	c := s.bots[req.ProfileId]
-	
-	if c == nil {
-		// TODO: try to fetch from persistent store (db)
-		s.log.Error().
-		
-			Int64("pid", req.ProfileId).
-			Str("type", msg.GetType()).
-			Str("chat-id", req.GetExternalUserId()).
-			Str("text", msg.GetText()).
-			Str("err", "bot: profile %d not running").
-			
-		Msg("Failed to send message")
-
-		return errors.NotFound(
-			"webitel.chat.bot.not_found",
-			"bot: profile %d not running",
-			req.ProfileId,
+	pid := req.GetProfileId(); if pid == 0 {
+		return errors.BadRequest(
+			"chat.bot.send.profile_id.required",
+			"gateway: send.profile_id required but missing",
 		)
+	}
+
+	msg := req.GetMessage(); if msg == nil {
+		return errors.BadRequest(
+			"chat.bot.send.message.required",
+			"gateway: send.message required but missing",
+		)
+	}
+
+	gate, err := s.gateway(ctx, pid, "")
+
+	if err != nil {
+		return err
 	}
 
 	// perform
 	const commandClose = "Conversation closed" // internal: from !
 	// NOTE: sending the last conversation message
 	closing := msg.GetText() == commandClose
-	err := c.SendMessage(req)
+	err = gate.SendMessage(req)
 	
 	if err != nil {
+		
 		s.log.Error().Err(err).
 	
-			Int64("pid", c.Profile.Id).
+			Int64("pid", gate.Profile.Id).
 			Str("type", msg.GetType()).
 			Str("chat-id", req.GetExternalUserId()).
 			Str("text", msg.GetText()).
@@ -229,7 +374,7 @@ func (s *botService) SendMessage(ctx context.Context, req *pb.SendMessageRequest
 		
 		s.log.Warn().
 	
-			Int64("pid", c.Profile.Id).
+			Int64("pid", gate.Profile.Id).
 			Str("type", msg.GetType()).
 			Str("chat-id", req.GetExternalUserId()).
 			Str("text", msg.GetText()).
@@ -240,7 +385,7 @@ func (s *botService) SendMessage(ctx context.Context, req *pb.SendMessageRequest
 
 		s.log.Debug().
 		
-			Int64("pid", c.Profile.Id).
+			Int64("pid", gate.Profile.Id).
 			Str("type", msg.GetType()).
 			Str("chat-id", req.GetExternalUserId()).
 			Str("text", msg.GetText()).
@@ -251,120 +396,177 @@ func (s *botService) SendMessage(ctx context.Context, req *pb.SendMessageRequest
 	return err
 }
 
-func (b *botService) AddProfile(ctx context.Context, req *pb.AddProfileRequest, res *pb.AddProfileResponse) error {
+func (s *botService) AddProfile(ctx context.Context, req *pb.AddProfileRequest, res *pb.AddProfileResponse) error {
 
-	opts := req.GetProfile()
+	add := req.GetProfile()
 
-	init, ok := ConfigureBotsMap[opts.Type]
-	if !ok {
-		b.log.Warn().
+	init, ok := ConfigureBotsMap[add.Type]
+	
+	if !ok || init == nil {
+		
+		s.log.Warn().
 			
-			Int64("pid", opts.Id).
-			Int64("pdc", opts.DomainId).
+			Int64("pid", add.Id).
+			Int64("pdc", add.DomainId).
 			
-			Str("uri", "/"+opts.UrlId).
-			Str("type", opts.Type).
-			Str("name", opts.Name).
+			Str("uri", "/"+ add.UrlId).
+			Str("type", add.Type).
+			Str("name", add.Name).
 			
-			Msg("wrong profile type")
+			Msg("NOT SUPPORTED")
 		
 			return nil
 	}
 
-	bot := &chatBot{
-		Profile: opts,
-		ChatBot: init(opts, b.client, b.log),
+	srv := &chatBot{
+		Profile: add,
+		ChatBot: init(add, s.client, s.log),
 	}
 
-	b.bots[bot.Profile.Id] = bot // register: cache entry
-	b.urlMap[bot.Profile.UrlId] = bot.Profile.Id // register: service URI
-	
-	b.log.Info().
+	pid := add.GetId()
+	uri := add.GetUrlId()
 
-		Int64("pid", req.GetProfile().GetId()).
-		Int64("pdc", req.GetProfile().GetDomainId()).
-		Str("uri", "/"+ req.GetProfile().GetUrlId()).
-		Str("type", req.GetProfile().GetType()).
-		Str("name", req.GetProfile().GetName()).
+	s.index.Lock()     // +RW
+	s.gates[pid] = srv // register: cache entry
+	s.hooks[uri] = pid // register: service URI
+	s.index.Unlock()   // -RW
+	
+	s.log.Info().
+
+		Int64("pid", srv.Profile.Id).
+		Int64("pdc", srv.Profile.DomainId).
 		
-		Msg("add profile")
+		Str("uri", "/" + srv.Profile.UrlId).
+		Str("type", srv.Profile.Type).
+		Str("name", srv.Profile.Name).
+
+		Msg("REGISTER")
 
 	return nil
 }
 
-func (b *botService) DeleteProfile(ctx context.Context, req *pb.DeleteProfileRequest, res *pb.DeleteProfileResponse) error {
-	b.log.Info().
-		Int64("id", req.GetId()).
-		Msg("delete profile")
-	delete(b.urlMap, req.UrlId)
-	if err := b.bots[req.Id].DeleteProfile(); err != nil {
-		b.log.Error().Msg(err.Error())
+// FIXME: performs DEREGISTER only ?
+func (s *botService) DeleteProfile(ctx context.Context, req *pb.DeleteProfileRequest, res *pb.DeleteProfileResponse) error {
+	
+	gate, err := s.gateway(ctx, req.GetId(), req.GetUrlId())
+	
+	if err != nil {
 		return err
 	}
-	return nil
+
+	// DEREGISTER Webhook (!)
+	err = gate.DeleteProfile()
+
+	var event *zerolog.Event
+
+	if err == nil {
+
+		event = s.log.Info()
+
+	} else {
+
+		event = s.log.Error().Err(err)
+	}
+
+	event.
+
+		Int64("pid", gate.Profile.Id).
+		Int64("pdc", gate.Profile.DomainId).
+		
+		Str("uri", "/" + gate.Profile.UrlId).
+		Str("type", gate.Profile.Type).
+		Str("name", gate.Profile.Name).
+
+		Msg("DEREGISTER Webhook")
+
+	return err
+	
+	// b.log.Info().
+	// 	Int64("pid", req.GetId()).
+	// 	Msg("DEREGISTER")
+	// delete(b.urlMap, req.UrlId)
+	// if err := b.bots[req.Id].DeleteProfile(); err != nil {
+	// 	b.log.Error().Msg(err.Error())
+	// 	return err
+	// }
+	// return nil
 }
 
-func (b *botService) WebhookFunc(w http.ResponseWriter, r *http.Request) {
+// Face the gateway's hook result status.
+// Mostly, do nothing, except that you will see failure status log events
+type gatewayResponseWriter struct {
+	http.ResponseWriter
+	event zerolog.Logger
+}
+
+func (w *gatewayResponseWriter) WriteHeader(code int) {
+
+	// switch {
+	// case 200 <= code && code < 300: // 2XX - 
+	// case 300 <= code && code < 400: // 3XX - 
+	// case 400 <= code && code < 500: // 4XX - 
+	// case 500 <= code && code < 600: // 5XX - 
+	// default:
+	// }
+
+	if 0 <= code && code < 400 {
+		w.event.Debug().Int("code", code).Str("status", http.StatusText(code)).Msg("WEBHOOK")
+	} else {
+		w.event.Error().Int("code", code).Str("status", http.StatusText(code)).Msg("WEBHOOK")
+	}
+
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (s *botService) WebhookFunc(res http.ResponseWriter, req *http.Request) {
 	
-	uri := strings.TrimPrefix(r.URL.Path, "/")
-	if uri == "" {
-		b.log.Error().Msg("missing /uri")
-		http.NotFound(w, r)
+	URI := strings.TrimPrefix(req.URL.Path, "/")
+	
+	if URI == "" {
+		http.NotFound(res, req) // 404
+		s.log.Error().Str("uri", "/").Int("code", 404).Str("status", "Not Found").Msg("WEBHOOK")
 		return
 	}
-	pid, ok := b.urlMap[uri]
-	if !ok {
-		
-		// region: lookup persistant DB; lazy start
-		res, err := b.client.GetProfileByID(
-			// bind to this request cancelation context
-			r.Context(),
-			// prepare request parameters
-			&pbchat.GetProfileByIDRequest{
-				Id:  0,   // unknown
-				Uri: uri, // known
-			},
-			// go-micro client.CallOption(s) ...
-		)
 
-		if err != nil {
-			http.Error(w, "chat-bot: get profile: "+ err.Error(), http.StatusInternalServerError)
-			return
-		}
+	gate, err := s.gateway(req.Context(), 0, URI)
 
-		bot := res.Item
-		if bot.GetUrlId() != uri {
-			http.Error(w, "chat-bot: profile not found", http.StatusNotFound)
-			return
-		}
-		// endregion
+	if err != nil {
 
-		// region: runtime cache
-		err = b.AddProfile(
-			// bind cancellation context
-			r.Context(),
-			// request
-			&pb.AddProfileRequest{
-				Profile: bot,
-			},
-			// response
-			&pb.AddProfileResponse{
-				// results expected
-			},
-		)
+		// re := errors.FromError(err)
+		// switch re.Code {
+		// // case 400 <= re.Code && re.Code < 500: // 4XX - Client Error
+		// // case 500 <= re.Code && re.Code < 600: // 5XX - Server Error
+		// case 404:
+		// 	http.Error(res, err.Error(), http.StatusNotFound) // 404
+		// default:
+		// 	code := http.StatusBadGetaway // 502
+		// 	if re.Code != 
+		// }
 
-		if err != nil {
-			http.Error(w, "chat-bot: "+ err.Error(), http.StatusInternalServerError)
-			return
-		}
-		// resolve profileID
-		pid = bot.Id
-		// endregion
-
-		// b.log.Error().Msg("profile id not found")
-		// return
+		code := http.StatusBadGateway // 502
+		http.Error(res, err.Error(), code)
+		s.log.Error().Err(err).Str("uri", "/" + URI).Int("code", code).Str("status", http.StatusText(code)).Msg("WEBHOOK")
+		return
 	}
-	b.bots[pid].Handler(w, r)
+
+	res = &gatewayResponseWriter{
+		
+		ResponseWriter: res,
+		event: s.log.With().
+
+		Str("uri", "/" + URI).
+		Int64("pid", gate.Profile.Id).
+		Int64("pdc", gate.Profile.DomainId).
+
+		Str("type", gate.Profile.Type).
+		Str("name", gate.Profile.Name).
+
+		Logger(),
+	}
+
+	// PASSTHRU
+	gate.Handler(res, req)
+
 }
 
 // type Receiver interface {

@@ -1,6 +1,8 @@
 package sqlxrepo
 
 import (
+	"github.com/pkg/errors"
+	"github.com/webitel/chat_manager/internal/contact"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
@@ -24,6 +26,7 @@ type Channel struct {
 	ConversationID string         `db:"conversation_id" json:"conversation_id"`
 	UserID         int64          `db:"user_id" json:"user_id"`
 	Connection     sql.NullString `db:"connection" json:"connection,omitempty"`
+	ServiceHost    sql.NullString `db:"host" json:"host,omitempty"`
 	CreatedAt      time.Time      `db:"created_at" json:"created_at,omitempty"`
 	Internal       bool           `db:"internal" json:"internal"`
 	ClosedAt       sql.NullTime   `db:"closed_at" json:"closed_at,omitempty"`
@@ -33,6 +36,129 @@ type Channel struct {
 	Name           string         `db:"name" json:"name"`
 	ClosedCause    sql.NullString `db:"closed_cause" json:"closed_cause,omitempty"`
 	JoinedAt       sql.NullTime   `db:"joined_at" json:"joined_at,omitempty"`
+}
+
+func (m *Channel) Contact() string {
+	// default: NULL
+	contact, err := contact.NodeServiceContact(
+		m.ServiceHost.String, m.Connection.String,
+	)
+
+	if err != nil {
+		return m.Connection.String
+	}
+
+	return contact
+}
+
+func (m *Channel) ScanContact(src interface{}) error {
+	// default: NULL
+	// m.ServiceHost = ""
+	m.Connection = sql.NullString{}
+
+	if src == nil {
+		return nil // NULL
+	}
+	
+	dst := &m.Connection
+	err := dst.Scan(src)
+
+	if err != nil {
+		// return errors.Wrap(err, "sql: scan "
+		return err
+	}
+
+	if !dst.Valid {
+		return nil // NULL
+	}
+
+	// normalize
+	m.Connection.String, m.ServiceHost.String =
+		contact.ContactServiceNode(m.Connection.String)
+	
+	m.Connection.Valid = m.Connection.String != ""
+	
+	return nil
+}
+
+func (m *Channel) ScanHostname(src interface{}) error {
+	// default: CURRENT
+
+	if src == nil {
+		return nil // CURRENT
+	}
+
+	// err := ScanString(&m.ServiceHost).Scan(src)
+	err := m.ServiceHost.Scan(src)
+
+	if err != nil {
+		// m.ServiceHost = "" // NULL-ify
+		return err
+	}
+
+	m.Connection.String, _ =
+		contact.ContactServiceNode(m.Connection.String)
+
+	return nil
+}
+
+// func (m *Channel) scan(row *sql.Rows, ava []interface{}) error {
+
+func (m *Channel) Scan(row *sql.Rows) error {
+
+	// dataset.next(?)
+	if !row.Next() {
+		return row.Err()
+	}
+
+	cols, err := row.Columns()
+	if err != nil {
+		return err
+	}
+
+	var dst []interface{}
+	target := func(bind interface{}) {
+		dst = append(dst, bind)
+	}
+	for _, att := range cols {
+		switch att {
+		
+		case "id":              target(&m.ID)
+		case "type":            target(&m.Type)
+		case "name":            target(&m.Name)
+
+		case "user_id":         target(&m.UserID)
+		case "domain_id":       target(&m.DomainID)
+		case "conversation_id": target(&m.ConversationID)
+
+		// case "connection":      target(&m.Connection)
+		case "connection":      target(ScanFunc(m.ScanContact))
+		// case "host":            target(&m.ServiceHost)
+		case "hostname","host": target(ScanFunc(m.ScanHostname))
+		case "internal":        target(&m.Internal)
+
+		case "created_at":      target(&m.CreatedAt)
+		case "updated_at":      target(&m.UpdatedAt)
+		
+		case "joined_at":       target(&m.JoinedAt)
+		case "closed_at":       target(&m.ClosedAt)
+		case "closed_cause":    target(&m.ClosedCause)
+
+
+		case "flow_bridge":     target(&m.FlowBridge)
+
+		default:
+
+			return errors.Errorf("sql: scan %T column %q not supported", m, att)
+
+		}
+	}
+
+	err = row.Scan(dst...)
+
+	// POST-Scan normalization here !..
+
+	return err
 }
 
 type Client struct {

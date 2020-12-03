@@ -1,9 +1,8 @@
 package main
 
 import (
-	
-	
-	"fmt"
+
+	// "fmt"
 	"sync"
 	"net/http"
 	"strconv"
@@ -46,7 +45,13 @@ func NewTelegramBot(profile *pbchat.Profile, client pbchat.ChatService, log *zer
 	}
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
-		log.Fatal().Msg(err.Error())
+		// log.Fatal().Msg(err.Error())
+		log.Error().Err(err).
+			Int64("pid", profile.Id).
+			Str("gate", "telegram").
+			Str("bot", profile.Name).
+			Str("uri", "/" + profile.UrlId).
+			Msg("Failed to init gateway")
 		return nil
 	}
 	// webhookInfo := tgbotapi.NewWebhookWithCert(fmt.Sprintf("%s/telegram/%v", cfg.TgWebhook, profile.Id), cfg.CertPath)
@@ -117,14 +122,34 @@ func (bot *TelegramBot) Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	recvMessage := update.Message
+	if recvMessage == nil {
+		recvMessage = update.EditedMessage
+	}
+
+	if recvMessage != update.Message {
+		
+		bot.log.Warn().
+
+			Int(  "telegram-id", recvMessage.From.ID).
+			Str(  "username",    recvMessage.From.UserName).
+			Int64("chat-id",     recvMessage.Chat.ID).
+			// Str("first_name", message.From.FirstName).
+			// Str("last_name",  message.From.LastName)
+
+		Msg("IGNORE Update; NOT Message")
+		
+		return // 200 IGNORE
+	}
+
 	bot.log.Debug().
 
-		Int(  "telegram-id", update.Message.From.ID).
-		Str(  "username",    update.Message.From.UserName).
-		Int64("chat-id",     update.Message.Chat.ID).
-		// Str("first_name", update.Message.From.FirstName).
-		// Str("last_name", update.Message.From.LastName).
-		Str(  "text",        update.Message.Text).
+		Int(  "telegram-id", recvMessage.From.ID).
+		Str(  "username",    recvMessage.From.UserName).
+		Int64("chat-id",     recvMessage.Chat.ID).
+		// Str("first_name", recvMessage.From.FirstName).
+		// Str("last_name",  recvMessage.From.LastName).
+		Str(  "text",        recvMessage.Text).
 
 	Msg("RECV Update")
 
@@ -132,9 +157,17 @@ func (bot *TelegramBot) Handler(w http.ResponseWriter, r *http.Request) {
 	// bot.set(&update)
 	// endregion
 
-	strChatID := strconv.FormatInt(update.Message.Chat.ID, 10)
+	strChatID := strconv.FormatInt(recvMessage.Chat.ID, 10)
 
-	username := fmt.Sprintf("%s %s", update.Message.From.FirstName, update.Message.From.LastName)
+	username := recvMessage.From.FirstName
+	if username != "" && recvMessage.From.LastName != "" {
+		username += " " + recvMessage.From.LastName
+	}
+
+	if username == "" {
+		username = recvMessage.From.UserName
+	}
+	
 	check := &pbchat.CheckSessionRequest{
 		ExternalId: strChatID,
 		ProfileId:  bot.Profile.Id,
@@ -165,7 +198,7 @@ func (bot *TelegramBot) Handler(w http.ResponseWriter, r *http.Request) {
 			Message: &pbchat.Message{
 				Type: "text",
 				Value: &pbchat.Message_Text{
-					Text: update.Message.Text,
+					Text: recvMessage.Text,
 				},
 				Variables: nil, // map[string]string{},
 			},
@@ -234,13 +267,13 @@ func (bot *TelegramBot) Handler(w http.ResponseWriter, r *http.Request) {
 		textMessage := &pbchat.Message{
 			Type: "text",
 			Value: &pbchat.Message_Text{
-				Text: update.Message.Text,
+				Text: recvMessage.Text,
 			},
 		}
 		message.Message = textMessage
 		// }
 
-		_, err := bot.client.SendMessage(context.Background(), message)
+		_, err := bot.client.SendMessage(context.TODO(), message)
 		if err != nil {
 			bot.log.Error().Err(err).Msg("Failed to route message")
 		}

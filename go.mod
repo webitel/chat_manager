@@ -3,6 +3,7 @@ module github.com/webitel/chat_manager
 go 1.14
 
 require (
+	github.com/Masterminds/squirrel v1.5.0
 	github.com/go-telegram-bot-api/telegram-bot-api v4.6.4+incompatible
 	github.com/gogo/protobuf v1.2.2-0.20190723190241-65acae22fc9d // indirect
 	github.com/golang/protobuf v1.4.3

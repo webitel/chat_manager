@@ -44,8 +44,10 @@ func (repo *sqlxRepository) CreateMessageTx(ctx context.Context, tx *sqlx.Tx, m 
 	tmp := time.Now()
 	m.CreatedAt = tmp
 	m.UpdatedAt = tmp
-	stmt, err := tx.PrepareNamed(`insert into chat.message (channel_id, conversation_id, text, created_at, updated_at, type)
-	values (:channel_id, :conversation_id, :text, :created_at, :updated_at, :type)`)
+	stmt, err := tx.PrepareNamed(
+		"INSERT INTO chat.message (channel_id, conversation_id, text, created_at, updated_at, type)\n" +
+		"VALUES (:channel_id, :conversation_id, :text, :created_at, :updated_at, :type)",
+	)
 	if err != nil {
 		return err
 	}

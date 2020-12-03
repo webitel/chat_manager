@@ -44,13 +44,29 @@ func (repo *sqlxRepository) CreateConversation(ctx context.Context, c *Conversat
 	return err
 }
 
+// TODO: CloseConversation(ctx context.Context, id string, at time.Time) error {}
 func (repo *sqlxRepository) CloseConversation(ctx context.Context, id string) error {
+	
+	at := time.Now()
+	
+	// with cancellation context
+	_, err := repo.db.ExecContext(ctx,
+		// query statement
+		psqlSessionCloseQ,
+		// query params ...
+		at.UTC(),
+	)
+
+	return err
+}
+
+/*func (repo *sqlxRepository) CloseConversation(ctx context.Context, id string) error {
 	_, err := repo.db.ExecContext(ctx, `update chat.conversation set closed_at=$1 where id=$2`, sql.NullTime{
 		Valid: true,
 		Time:  time.Now(),
 	}, id)
 	return err
-}
+}*/
 
 func (repo *sqlxRepository) GetConversations(
 	ctx context.Context,
@@ -206,3 +222,22 @@ func (repo *sqlxRepository) getConversationInfo(ctx context.Context, id string) 
 	}
 	return
 }
+
+// postgres: chat.session.close(!)
+// $1 - conversation_id
+// $2 - local timestamp
+const psqlSessionCloseQ =
+`WITH c0 AS (
+  DELETE FROM chat.conversation_confirmation
+   WHERE conversation_id=$1
+), c1 AS (
+  DELETE FROM chat.conversation_node
+   WHERE conversation_id=$1
+), c2 AS (
+  UPDATE chat.conversation
+     SET closed_at=$2
+   WHERE id=$1
+)
+UPDATE chat.channel
+   SET closed_at=$2
+ WHERE conversation_id=$1`

@@ -101,12 +101,15 @@ func (s *chatService) SendMessage(
 	req *pb.SendMessageRequest,
 	res *pb.SendMessageResponse,
 ) error {
+	
 	s.log.Trace().
 		Str("channel_id", req.GetChannelId()).
 		Str("conversation_id", req.GetConversationId()).
 		// Bool("from_flow", req.GetFromFlow()).
 		Int64("auth_user_id", req.GetAuthUserId()).
 		Msg("send message")
+	
+	// FROM: INTERNAL (?)
 	servName := s.authClient.GetServiceName(&ctx)
 	if servName == "workflow" {
 		conversationID := req.GetConversationId()
@@ -118,33 +121,55 @@ func (s *chatService) SendMessage(
 				true,
 			},
 		}
-		resErrorsChan := make(chan error, 2)
-		go func() {
-			if err := s.repo.CreateMessage(ctx, message); err != nil {
-				resErrorsChan <- err
-			} else {
-				resErrorsChan <- nil
-			}
-		}()
-		go func() {
-			if err := s.eventRouter.RouteMessageFromFlow(&conversationID, req.GetMessage()); err != nil {
-				if err := s.flowClient.CloseConversation(conversationID); err != nil {
-					s.log.Error().Msg(err.Error())
-				}
-				resErrorsChan <- err
-			} else {
-				resErrorsChan <- nil
-			}
-		}()
-		for i := 0; i < 2; i++ {
-			if err := <-resErrorsChan; err != nil {
-				s.log.Error().Msg(err.Error())
-				return err
-			}
+
+		// s.repo.CreateMessage(ctx, message)
+		// s.eventRouter.RouteMessageFromFlow(&conversationID, req.GetMessage())
+
+		// ----- PERFORM ---------------------------------
+		// 1. Save historical .Message delivery
+		err := s.repo.CreateMessage(ctx, message)
+		if err != nil {
+			s.log.Error().Err(err).Msg("Failed to save message to history")
+			return err
 		}
+		// 2. Broadcast given .Message to all related external chat members
+		//    on behalf of internal, workflow service, channel request
+		err = s.eventRouter.RouteMessageFromFlow(&conversationID, req.GetMessage())
+		if err != nil {
+			s.log.Error().Err(err).Msg("Failed to broadcast /send message")
+			return err
+		}
+
 		return nil
+
+		// resErrorsChan := make(chan error, 2)
+		// go func() {
+		// 	if err := s.repo.CreateMessage(ctx, message); err != nil {
+		// 		resErrorsChan <- err
+		// 	} else {
+		// 		resErrorsChan <- nil
+		// 	}
+		// }()
+		// go func() {
+		// 	if err := s.eventRouter.RouteMessageFromFlow(&conversationID, req.GetMessage()); err != nil {
+		// 		if err := s.flowClient.CloseConversation(conversationID); err != nil {
+		// 			s.log.Error().Msg(err.Error())
+		// 		}
+		// 		resErrorsChan <- err
+		// 	} else {
+		// 		resErrorsChan <- nil
+		// 	}
+		// }()
+		// for i := 0; i < 2; i++ {
+		// 	if err := <-resErrorsChan; err != nil {
+		// 		s.log.Error().Msg(err.Error())
+		// 		return err
+		// 	}
+		// }
+		// return nil
 	}
 
+	// FROM: EXTERNAL (!)
 	channel, err := s.repo.CheckUserChannel(ctx, req.GetChannelId(), req.GetAuthUserId())
 	if err != nil {
 		s.log.Error().Msg(err.Error())
@@ -241,6 +266,11 @@ func (s *chatService) StartConversation(
 		return err
 	}
 	if !req.GetUser().GetInternal() {
+		// // profileID, providerNode, err :=
+		// profileID, _, err := event.ContactProfileNode(req.GetUser().GetConnection())
+		// if err != nil {
+		// 	return err
+		// }
 		profileID, err := strconv.ParseInt(req.GetUser().GetConnection(), 10, 64)
 		if err != nil {
 			return err
@@ -254,6 +284,97 @@ func (s *chatService) StartConversation(
 }
 
 func (s *chatService) CloseConversation(
+	ctx context.Context,
+	req *pb.CloseConversationRequest,
+	res *pb.CloseConversationResponse,
+) error {
+	
+	s.log.Trace().
+		Str("conversation_id", req.GetConversationId()).
+		Str("cause", req.GetCause()).
+		Str("closer_channel_id", req.GetCloserChannelId()).
+		Msg("close conversation")
+
+	conversationID := req.GetConversationId()
+	
+	// FROM: INTERNAL (?)
+	servName := s.authClient.GetServiceName(&ctx)
+	if servName == "workflow" {
+		// s.chatCache.DeleteCachedMessages(conversationID)
+		if conversationID == "" {
+			return errors.BadRequest("conversation_id not found", "")
+		}
+
+		// s.repo.DeleteConfirmation(conversationID)
+		// s.repo.DeleteConversationNode(conversationID)
+		// s.eventRouter.RouteCloseConversationFromFlow(&conversationID, req.GetCause())
+		// s.closeConversation(ctx, &conversationID)
+
+		// ----- PERFORM ---------------------------------
+		// 1. Broadcast latest "Conversation Close" message
+		//    on behalf of internal, workflow service, channel request
+		err := s.eventRouter.RouteCloseConversationFromFlow(&conversationID, req.GetCause())
+		if err != nil {
+			s.log.Error().Err(err).Msg("Failed to broadcast /close message")
+			return err
+		}
+		// 2. Mark .conversation and all its related .channel members as "closed" !
+		// NOTE: - delete: chat.confirmation; - delete: chat.flow.node
+		err = s.closeConversation(ctx, &conversationID)
+		if err != nil {
+			s.log.Error().Err(err).Msg("Failed to close chat channels")
+			return err
+		}
+
+		return nil
+	}
+	// EXTERNAL
+	closerChannel, err := s.repo.CheckUserChannel(ctx, req.GetCloserChannelId(), req.GetAuthUserId())
+	if err != nil {
+		s.log.Error().Msg(err.Error())
+		return err
+	}
+	// ensure: op-init channel FOUND(?)
+	if closerChannel == nil {
+		s.log.Warn().Msg("channel not found")
+		return errors.BadRequest("channel not found", "")
+	}
+	// ensure: channel.converaation_id MATCH(?)
+	if conversationID != "" {
+		if conversationID != closerChannel.ConversationID {
+			s.log.Warn().Str("error", "mismatch: channel.conversation_id").Msg("channel not found")
+			return errors.BadRequest("channel not found", "")
+		}
+	}
+	conversationID = closerChannel.ConversationID // resolved from DB
+	
+	// ----- PERFORM ---------------------------------
+	// 1. Broadcast latest "Conversation Close" message
+	err = s.eventRouter.RouteCloseConversation(closerChannel, req.GetCause())
+	if err != nil {
+		s.log.Error().Err(err).Msg("Failed to broadcast /close message")
+		return err
+	}
+	// 2. Send workflow channel .Break() message to stop chat.flow routine ...
+	// FIXME: - delete: chat.confirmation; - delete: chat.flow.node
+	err = s.flowClient.CloseConversation(conversationID)
+	if err != nil {
+		s.log.Error().Err(err).Msg("Failed to break chat.flow routine")
+		return err
+	}
+	// 3. Mark .conversation and all its related .channel members as "closed" !
+	// NOTE: - delete: chat.confirmation; - delete: chat.flow.node
+	err = s.closeConversation(ctx, &conversationID)
+	if err != nil {
+		s.log.Error().Err(err).Msg("Failed to close chat channels")
+		return err
+	}
+
+	// +OK
+	return nil
+}
+
+/*func (s *chatService) CloseConversation(
 	ctx context.Context,
 	req *pb.CloseConversationRequest,
 	res *pb.CloseConversationResponse,
@@ -349,7 +470,7 @@ func (s *chatService) CloseConversation(
 		}
 	}
 	return nil
-}
+}*/
 
 func (s *chatService) JoinConversation(
 	ctx context.Context,
@@ -384,6 +505,10 @@ func (s *chatService) JoinConversation(
 		UserID:         invite.UserID,
 		DomainID:       invite.DomainID,
 		Name:           user.Name,
+		JoinedAt:       sql.NullTime{
+			Time:       time.Now().UTC(),
+			Valid:      true,
+		},
 	}
 	if !invite.InviterChannelID.Valid {
 		channel.FlowBridge = true
@@ -413,27 +538,35 @@ func (s *chatService) LeaveConversation(
 	req *pb.LeaveConversationRequest,
 	res *pb.LeaveConversationResponse,
 ) error {
+	
 	channelID := req.GetChannelId()
 	conversationID := req.GetConversationId()
+	
 	s.log.Trace().
 		Str("channel_id", channelID).
 		Str("conversation_id", conversationID).
 		Int64("auth_user_id", req.GetAuthUserId()).
 		Msg("leave conversation")
+	
 	channel, err := s.repo.CheckUserChannel(ctx, req.GetChannelId(), req.GetAuthUserId())
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
+	
 	if channel == nil {
 		s.log.Warn().Msg("channel not found")
 		return errors.BadRequest("channel not found", "")
 	}
+	
+	// ----- PERFORM ---------------------------------
+	// 1. Mark given .channel.id as "closed" !
 	ch, err := s.repo.CloseChannel(ctx, channelID)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
+	// parallel
 	resErrorsChan := make(chan error, 2)
 	go func() {
 		if ch.FlowBridge {
@@ -682,15 +815,18 @@ func (s *chatService) WaitMessage(ctx context.Context, req *pb.WaitMessageReques
 // - Identify whether exists channel for
 //   requested chat-bot gateway profile.id
 func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequest, res *pb.CheckSessionResponse) error {
+	
 	s.log.Trace().
 		Str("external_id", req.GetExternalId()).
 		Int64("profile_id", req.GetProfileId()).
 		Msg("check session")
+	
 	client, err := s.repo.GetClientByExternalID(ctx, req.GetExternalId())
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
+	
 	if client == nil {
 		client, err = s.createClient(ctx, req)
 		if err != nil {
@@ -701,17 +837,21 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 		res.Exists = false
 		return nil
 	}
-	profileStr := strconv.Itoa(int(req.GetProfileId()))
+	
+	// profileStr := strconv.Itoa(int(req.GetProfileId()))
+	profileStr := strconv.FormatInt(req.GetProfileId(), 10)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
+	
 	externalBool := false
 	channel, err := s.repo.GetChannels(ctx, &client.ID, nil, &profileStr, &externalBool, nil)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
+	
 	if len(channel) > 0 {
 		res.Exists = true
 		res.ChannelId = channel[0].ID
@@ -720,6 +860,7 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 		res.Exists = false
 		res.ClientId = client.ID
 	}
+
 	return nil
 }
 
@@ -773,6 +914,8 @@ func (s *chatService) GetConversations(ctx context.Context, req *pb.GetConversat
 	res.Items = transformConversationsFromRepoModel(conversations)
 	return nil
 }
+
+
 
 func (s *chatService) CreateProfile(
 	ctx context.Context,

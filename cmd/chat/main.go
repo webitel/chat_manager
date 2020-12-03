@@ -1,6 +1,8 @@
 package main
 
 import (
+	// "github.com/webitel/chat_manager/internal/repo/postgres"
+	// "github.com/webitel/chat_manager/internal/repo/store"
 
 
 	"net/http"
@@ -127,6 +129,7 @@ func main() {
 				return err
 			}
 			logger = *(stdlog)
+			log.Default = *(stdlog)
 			return nil
 		}),
 		micro.Broker(
@@ -168,7 +171,15 @@ func main() {
 		Str("cfg.DBSource", cfg.DBSource).
 		Msg("db connected")
 
+	// v1: chain .this db transaction(s)
+	// service.Init(micro.WrapHandler(
+	// 	store.WrapDBSession(db.DB),
+	// ))
+	// v1
+	// pgstore := postgres.NewChatStore(db, &logger)
+	// v0
 	repo := pg.NewRepository(db, &logger)
+
 	//cache := cache.NewChatCache(service.Options().Store)
 	
 	botClient = pbbot.NewBotService("webitel.chat.bot", service.Client())
@@ -178,9 +189,10 @@ func main() {
 		wrapper.FromServiceId(service.Server().Options().Id, service.Client()),
 	)
 
-	flow := flow.NewClient(&logger, flowClient, repo)
+	flow := flow.NewClient(&logger, repo, flowClient)
 	auth := auth.NewClient(&logger, authClient)
 	eventRouter := event.NewRouter(botClient /*flow,*/, service.Options().Broker, repo, &logger)
+	// serv := NewChatService(pgstore, repo, &logger, flow, auth, botClient, storageClient, eventRouter)
 	serv := NewChatService(repo, &logger, flow, auth, botClient, storageClient, eventRouter)
 
 	if err := pb.RegisterChatServiceHandler(service.Server(), serv); err != nil {
@@ -189,7 +201,8 @@ func main() {
 			Msg(err.Error())
 		return
 	}
-
+	///debug/events
+	///debug/requests
 	httpsrv := http.Server{
 		Addr: "127.0.0.1:6060",
 	}
