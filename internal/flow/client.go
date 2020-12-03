@@ -12,8 +12,8 @@ import (
 
 	// strategy "github.com/webitel/chat_manager/internal/selector"
 	sqlxrepo "github.com/webitel/chat_manager/internal/repo/sqlx"
-	chat "github.com/webitel/protos/chat"
-	flow "github.com/webitel/protos/workflow"
+	chat "github.com/webitel/chat_manager/api/proto/chat"
+	flow "github.com/webitel/chat_manager/api/proto/workflow"
 
 	// "github.com/micro/go-micro/v2/client"
 	// "github.com/micro/go-micro/v2/client/selector"

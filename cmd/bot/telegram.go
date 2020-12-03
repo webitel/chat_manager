@@ -12,8 +12,8 @@ import (
 
 	"github.com/rs/zerolog"
 
-	pb "github.com/webitel/protos/bot"
-	pbchat "github.com/webitel/protos/chat"
+	pb "github.com/webitel/chat_manager/api/proto/bot"
+	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	

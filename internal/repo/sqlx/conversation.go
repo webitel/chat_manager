@@ -54,7 +54,7 @@ func (repo *sqlxRepository) CloseConversation(ctx context.Context, id string) er
 		// query statement
 		psqlSessionCloseQ,
 		// query params ...
-		at.UTC(),
+		id, at.UTC(),
 	)
 
 	return err

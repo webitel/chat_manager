@@ -1,11 +1,35 @@
 syntax = "proto3";
 
-option go_package = "github.com/webitel/storage/grpc_api/storage";
+option go_package = "github.com/webitel/chat_manager/api/proto/storage";
 
 package storage;
 
+import "google/api/annotations.proto";
+
+
 service FileService {
     rpc UploadFile (stream UploadFileRequest) returns (UploadFileResponse) {}
+    rpc UploadFileUrl (UploadFileUrlRequest) returns (UploadFileUrlResponse) {}
+}
+
+enum UploadStatusCode {
+    Unknown = 0;
+    Ok = 1;
+    Failed = 2;
+}
+
+message UploadFileUrlRequest {
+    int64 domain_id = 1;
+    string uuid = 2;
+    string name = 3;
+    string url = 4;
+}
+
+message UploadFileUrlResponse {
+    int64 file_id = 1;
+    string file_url = 2;
+    string mime_type = 4;
+    UploadStatusCode code = 5;
 }
 
 message UploadFileRequest {
@@ -25,12 +49,7 @@ message UploadFileRequest {
 }
 
 message UploadFileResponse {
-    enum UploadStatusCode {
-        Unknown = 0;
-        Ok = 1;
-        Failed = 2;
-    }
-
     int64 file_id = 1;
-    UploadStatusCode code = 2;
+    string file_url = 2;
+    UploadStatusCode code = 3;
 }

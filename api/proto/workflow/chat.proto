@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+//conversation - string
+// invite_id - string
+//
+
+package workflow;
+
+option go_package = "github.com/webitel/chat_manager/api/proto/workflow";
+
+service FlowChatServerService {
+    rpc Start(StartRequest) returns (StartResponse) {}
+    rpc Break(BreakRequest) returns (BreakResponse) {}
+    rpc BreakBridge(BreakBridgeRequest) returns (BreakBridgeResponse) {}
+    rpc ConfirmationMessage(ConfirmationMessageRequest) returns (ConfirmationMessageResponse) {}
+}
+
+message BreakBridgeRequest {
+    string conversation_id = 1;
+    string cause = 2;
+}
+
+message BreakBridgeResponse {
+    Error error = 1;
+}
+
+message Message {
+    int64 id = 1;
+    string type = 2;
+
+    message File {
+        int64 id = 1;
+        string url = 2;
+        string mime_type = 3;
+    }
+
+
+    oneof value {
+        string text = 3;
+        File file = 4;
+    }
+}
+
+message StartRequest {
+    string conversation_id = 1;
+    int64 profile_id = 2;
+    int64 domain_id = 3;
+    Message message = 4;
+    map<string, string>  variables = 5;
+}
+
+message Error {
+    string id = 1;
+    string message = 2;
+}
+
+message StartResponse {
+    Error error = 1;
+}
+
+message BreakRequest {
+    string conversation_id = 1;
+}
+
+message BreakResponse {
+    Error error = 1;
+}
+
+message ConfirmationMessageRequest {
+    string conversation_id = 1;
+    string confirmation_id = 2;
+    repeated Message messages = 3;
+}
+
+message ConfirmationMessageResponse {
+    Error error = 1;
+}

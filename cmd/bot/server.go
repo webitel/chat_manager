@@ -11,8 +11,8 @@ import (
 
 	"github.com/micro/go-micro/v2/errors"
 
-	pb "github.com/webitel/protos/bot"
-	pbchat "github.com/webitel/protos/chat"
+	pb "github.com/webitel/chat_manager/api/proto/bot"
+	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"

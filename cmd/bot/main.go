@@ -15,8 +15,8 @@ import (
 	"github.com/micro/go-micro/v2/config/cmd"
 	"github.com/micro/go-plugins/registry/consul/v2"
 
-	pb "github.com/webitel/protos/bot"
-	pbchat "github.com/webitel/protos/chat"
+	pb "github.com/webitel/chat_manager/api/proto/bot"
+	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 )
 
 type Config struct {
@@ -132,6 +132,15 @@ func main() {
 func configure() error {
 	r := mux.NewRouter()
 	r.Use(dumpMiddleware)
+
+	// // region: v1
+	// srv := NewService(&logger, client)
+
+	// srv.Addr = cfg.Address
+	// srv.URL = cfg.SiteURL
+
+	// r.PathPrefix("/").Methods("GET", "POST").Handler(srv)
+	// // endregion
 
 	bot = NewBotService(
 		&logger,

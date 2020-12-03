@@ -14,10 +14,10 @@ import (
 	"github.com/webitel/chat_manager/log"
 	"github.com/webitel/chat_manager/internal/wrapper"
 
-	pb "github.com/webitel/protos/chat"
-	pbbot "github.com/webitel/protos/bot"
-	pbauth "github.com/webitel/chat_manager/api/proto/auth" // "github.com/webitel/protos/auth"
-	pbmanager "github.com/webitel/protos/workflow"
+	pb "github.com/webitel/chat_manager/api/proto/chat"
+	pbbot "github.com/webitel/chat_manager/api/proto/bot"
+	pbauth "github.com/webitel/chat_manager/api/proto/auth" // "github.com/webitel/chat_manager/api/proto/auth"
+	pbmanager "github.com/webitel/chat_manager/api/proto/workflow"
 	// import go_package= proto definition option
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	// ----- service clients -----

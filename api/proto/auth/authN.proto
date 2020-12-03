@@ -5,6 +5,8 @@ syntax="proto3";
 
 package api;
 
+option go_package = "github.com/webitel/protos/auth";
+
 service Auth {
     // The UserInfo Endpoint is an OAuth 2.0 Protected Resource that returns Claims about the authenticated End-User.
     rpc UserInfo(UserinfoRequest) returns (Userinfo) {

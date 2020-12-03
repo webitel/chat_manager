@@ -6,6 +6,7 @@ package storage
 import (
 	fmt "fmt"
 	proto "github.com/golang/protobuf/proto"
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	math "math"
 )
 
@@ -43,6 +44,7 @@ func NewFileServiceEndpoints() []*api.Endpoint {
 
 type FileService interface {
 	UploadFile(ctx context.Context, opts ...client.CallOption) (FileService_UploadFileService, error)
+	UploadFileUrl(ctx context.Context, in *UploadFileUrlRequest, opts ...client.CallOption) (*UploadFileUrlResponse, error)
 }
 
 type fileService struct {
@@ -98,15 +100,27 @@ func (x *fileServiceUploadFile) Send(m *UploadFileRequest) error {
 	return x.stream.Send(m)
 }
 
+func (c *fileService) UploadFileUrl(ctx context.Context, in *UploadFileUrlRequest, opts ...client.CallOption) (*UploadFileUrlResponse, error) {
+	req := c.c.NewRequest(c.name, "FileService.UploadFileUrl", in)
+	out := new(UploadFileUrlResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for FileService service
 
 type FileServiceHandler interface {
 	UploadFile(context.Context, FileService_UploadFileStream) error
+	UploadFileUrl(context.Context, *UploadFileUrlRequest, *UploadFileUrlResponse) error
 }
 
 func RegisterFileServiceHandler(s server.Server, hdlr FileServiceHandler, opts ...server.HandlerOption) error {
 	type fileService interface {
 		UploadFile(ctx context.Context, stream server.Stream) error
+		UploadFileUrl(ctx context.Context, in *UploadFileUrlRequest, out *UploadFileUrlResponse) error
 	}
 	type FileService struct {
 		fileService
@@ -157,4 +171,8 @@ func (x *fileServiceUploadFileStream) Recv() (*UploadFileRequest, error) {
 		return nil, err
 	}
 	return m, nil
+}
+
+func (h *fileServiceHandler) UploadFileUrl(ctx context.Context, in *UploadFileUrlRequest, out *UploadFileUrlResponse) error {
+	return h.FileServiceHandler.UploadFileUrl(ctx, in, out)
 }

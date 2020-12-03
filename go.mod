@@ -19,16 +19,18 @@ require (
 	github.com/micro/go-micro/v2 v2.9.1
 	github.com/micro/go-plugins/broker/rabbitmq/v2 v2.9.1
 	github.com/micro/go-plugins/registry/consul/v2 v2.9.1
-	github.com/micro/micro/v2 v2.9.1 // indirect
 	github.com/mitchellh/mapstructure v1.3.3 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.19.0
-	github.com/webitel/protos/bot v0.0.0-20201123102808-d389aa72bb7a
-	github.com/webitel/protos/chat v0.0.0-20201125134612-f5c7f9b7e12f
-	github.com/webitel/protos/workflow v0.0.0-20201027102345-8712c66e378e
+	github.com/webitel/protos v0.0.0-20201202095009-c02062b5637d // indirect
+	github.com/webitel/protos/bot v0.0.0-20201202095009-c02062b5637d // indirect
+	github.com/webitel/protos/chat v0.0.0-20201202095009-c02062b5637d
+	github.com/webitel/protos/engine v0.0.0-20201202095009-c02062b5637d // indirect
+	github.com/webitel/protos/storage v0.0.0-20201202095009-c02062b5637d // indirect
+	github.com/webitel/protos/workflow v0.0.0-20201202095009-c02062b5637d // indirect
 	golang.org/x/crypto v0.0.0-20201016220609-9e8e0b390897 // indirect
+	google.golang.org/genproto v0.0.0-20201021134325-0d71844de594
 	google.golang.org/grpc v1.33.1
-	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.0.1 // indirect
 	google.golang.org/protobuf v1.25.0
 //	google.golang.org/protobuf/cmd/protoc-gen-go v1.25.0
 //	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.0.1
