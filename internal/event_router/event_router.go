@@ -460,8 +460,8 @@ func (e *eventRouter) RouteMessage(channel *pg.Channel, message *pb.Message) (bo
 			ID:        message.GetId(),
 			Type:      message.GetType(),
 			Value:     message.GetText(),
-			//CreatedAt: 0,
-			//UpdatedAt: 0,
+			CreatedAt: time.Now().Unix() * 1000,
+			UpdatedAt: time.Now().Unix() * 1000,
 		},
 	})
 	flag := false
