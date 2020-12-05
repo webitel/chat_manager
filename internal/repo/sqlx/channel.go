@@ -2,10 +2,10 @@ package sqlxrepo
 
 import (
 
-	"fmt"
+	// "fmt"
 	"time"
 	"context"
-	// "strings"
+	"strings"
 	"strconv"
 	"database/sql"
 
@@ -19,7 +19,7 @@ import (
 	"github.com/webitel/chat_manager/internal/contact"
 )
 
-/*func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Channel, error) {
+func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Channel, error) {
 	
 	search := SearchOptions{
 		// prepare filter(s)
@@ -36,6 +36,8 @@ import (
 	list, err := GetChannels(repo.db, ctx, &search)
 
 	if err != nil {
+		repo.log.Error().Err(err).Str("id", id).
+			Msg("Failed lookup DB chat.channel")
 		return nil, err
 	}
 
@@ -57,10 +59,10 @@ import (
 	}
 
 	return obj, nil
-}*/
+}
 
 
-func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Channel, error) {
+/*func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Channel, error) {
 	
 	res := &Channel{}
 	err := repo.db.GetContext(ctx, res, "select e.* from chat.channel e where e.id=$1", id)
@@ -78,9 +80,9 @@ func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Cha
 	}
 	
 	return res, nil
-}
+}*/
 
-/*func (repo *sqlxRepository) GetChannels(
+func (repo *sqlxRepository) GetChannels(
 	ctx context.Context,
 	userID *int64,
 	conversationID *string,
@@ -141,9 +143,9 @@ func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Cha
 	}
 
 	return list, err
-}*/
+}
 
-func (repo *sqlxRepository) GetChannels(
+/*func (repo *sqlxRepository) GetChannels(
 	ctx context.Context,
 	userID *int64,
 	conversationID *string,
@@ -208,9 +210,13 @@ func (repo *sqlxRepository) GetChannels(
 	// list, err := ChannelList(rows, 0)
 
 	// return list, err
-}
+}*/
 
 func (repo *sqlxRepository) CreateChannel(ctx context.Context, c *Channel) error {
+	return NewChannel(repo.db, ctx, c)
+}
+
+/*func (repo *sqlxRepository) CreateChannel(ctx context.Context, c *Channel) error {
 	c.ID = uuid.New().String()
 	now := time.Now().UTC()
 	c.CreatedAt = now
@@ -289,7 +295,7 @@ func (repo *sqlxRepository) CreateChannel(ctx context.Context, c *Channel) error
 	}
 	_, err = repo.db.ExecContext(ctx, `update chat.conversation set updated_at=$1 where id=$2`, now, c.ConversationID)
 	return err
-}
+}*/
 
 func (repo *sqlxRepository) CloseChannel(ctx context.Context, id string) (*Channel, error) {
 	
@@ -397,20 +403,28 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 	stmt = psql.Select().
 	From("chat.channel c").
 	Columns(
+		
 		"c.id",
 		"c.type",
-		"c.conversation_id",
-		"c.user_id",
-		"c.connection",
-		"c.created_at",
-		"c.internal",
-		"c.closed_at",
-		"c.domain_id",
-		"c.flow_bridge",
-		"c.updated_at",
 		"c.name",
+		
+		"c.user_id",
+		"c.domain_id",
+		
+		"c.conversation_id",
+		"c.connection",
+		"c.internal",
+		"c.host",
+		
+		"c.created_at",
+		"c.updated_at",
+		
 		"c.joined_at",
+		"c.closed_at",
 		"c.closed_cause",
+		
+		"c.flow_bridge",
+
 	)
 
 	// region: apply filters
@@ -420,9 +434,30 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 	// 	return err == nil
 	// }
 
+	// TODO: !!!
+	// uniqueID := func(s string) (interface{}, error) {
+	// 	// n := len(s)
+	// 	// if n < 32 || n > 36 {
+
+	// 	// }
+	// 	id, err := uuid.Parse(s)
+		
+	// 	if err != nil {
+	// 		return nil, err // uuid.Must(!)
+	// 	} else {
+	// 		return id.String(), nil // normalized(!)
+	// 	}
+	// }
+
 	if q, ok := req.Params["id"]; ok && q != nil {
 		switch q := q.(type) {
 		case string: // UUID
+
+			// id, err := uniqueID(q)
+			// if err != nil {
+			// 	return err
+			// }
+			// stmt = stmt.Where("c.id="+param(id))
 
 			req.Size = 1 // normalized !
 			stmt = stmt.Where("c.id="+param(q))
@@ -587,10 +622,11 @@ func ChannelList(rows *sql.Rows, limit int) ([]*Channel, error) {
 
 		if 0 < limit && len(list) == limit {
 			// indicate next page exists !
-			list = append(list, nil)
+			// if rows.Next() {
+				list = append(list, nil)
+			// }
 			break
 		}
-
 
 		if len(page) != 0 {
 
@@ -687,6 +723,65 @@ func GetChannels(dcx sqlx.ExtContext, ctx context.Context, req *SearchOptions) (
 	return list, err
 }
 
+// NewChannel creates NEW channel record and attach it to the related conversation
+func NewChannel(dcx sqlx.ExtContext, ctx context.Context, channel *Channel) error {
+
+	at := time.Now().UTC()
+	// Generate NEW unique UUID for this channel
+	channel.ID = uuid.New().String()
+	channel.CreatedAt = at
+	channel.UpdatedAt = at
+	// normalizing ...
+	if channel.ServiceHost.String != "" {
+		channel.Connection.String, _ =
+			contact.ContactServiceNode(channel.Connection.String)
+	} else {
+		channel.Connection.String, channel.ServiceHost.String =
+			contact.ContactServiceNode(channel.Connection.String)
+	}
+
+	// channel.Connection.Valid = channel.Connection.String != ""
+	// channel.ServiceHost.Valid = channel.ServiceHost.String != ""
+
+	for _, param := range []*sql.NullString{
+		&channel.Connection, &channel.ServiceHost,
+	} {
+		param.Valid = param.String != ""
+	}
+
+	_, err := dcx.ExecContext(
+		// cancellation context
+		ctx,
+		// statement query
+		psqlChannelNewQ,
+		// statement params ...
+		channel.ID,
+		channel.Type,
+		channel.Name,
+
+		channel.UserID,
+		channel.DomainID,
+
+		channel.ConversationID,
+		channel.Internal,
+
+		channel.Connection,
+		channel.ServiceHost,
+
+		channel.CreatedAt,
+		channel.UpdatedAt,
+
+		channel.ClosedAt, // nil,
+		channel.FlowBridge,
+	)
+
+	if err != nil {
+		return err
+	}
+	// +OK
+	return nil
+}
+
 // postgres: chat.channel.close(!)
 // $1 - channel_id
 // $2 - local timestamp
@@ -694,4 +789,37 @@ const psqlChannelCloseQ =
 `WITH closed AS (UPDATE chat.channel c SET closed_at=$2 WHERE c.id=$1 RETURNING c.*)
 UPDATE chat.conversation s SET updated_at=$2 FROM closed c WHERE s.id=c.conversation_id
 RETURNING c.*
+`
+
+// Create NEW channel and attach to related conversation
+// $1  - id
+// $2  - type
+// $3  - name
+// $4  - user_id
+// $5  - domain_id
+// $6  - conversation_id
+// $7  - internal
+// $8  - connection
+// $9  - host
+// $10 - created_at
+// $11 - updated_at
+// $12 - closed_at
+// $13 - flow_bridge
+const psqlChannelNewQ =
+`WITH created AS (
+ INSERT INTO chat.channel (
+   id, type, name, user_id, domain_id,
+   conversation_id, internal, connection, host,
+   created_at, updated_at, closed_at, flow_bridge
+ ) VALUES (
+   $1, $2, $3, $4, $5,
+   $6, $7, $8, $9,
+   $10, $11, $12, $13
+ )
+ RETURNING conversation_id
+)
+UPDATE chat.conversation s
+   SET updated_at=$10
+  FROM created AS c
+ WHERE s.id=c.conversation_id
 `

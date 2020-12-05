@@ -44,7 +44,7 @@ type Client interface {
 	CloseConversation(conversationID string) error
 }
 
-// Agent "workflow" (internal: chat.bot) channel service provider
+// Agent "workflow" (internal: chat@bot) channel service provider
 type Agent struct {
 	Log *zerolog.Logger
 	Store sqlxrepo.CacheRepository

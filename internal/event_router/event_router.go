@@ -439,12 +439,12 @@ func (e *eventRouter) RouteLeaveConversation(channel *pg.Channel, conversationID
 	return nil
 }
 
-func (e *eventRouter) RouteMessage(channel *pg.Channel, message *pb.Message) (bool, error) {
-	otherChannels, err := e.repo.GetChannels(context.Background(), nil, &channel.ConversationID, nil, nil, nil) //&channel.ID)
+func (e *eventRouter) RouteMessage(sender *pg.Channel, message *pb.Message) (bool, error) {
+	members, err := e.repo.GetChannels(context.TODO(), nil, &sender.ConversationID, nil, nil, nil) //&channel.ID)
 	if err != nil {
 		return false, err
 	}
-	if otherChannels == nil {
+	if len(members) == 0 {
 		// if !channel.Internal {
 		// 	return e.flowClient.SendMessage(channel.ConversationID, reqMessage)
 		// }
@@ -452,11 +452,11 @@ func (e *eventRouter) RouteMessage(channel *pg.Channel, message *pb.Message) (bo
 	}
 	body, _ := json.Marshal(events.MessageEvent{
 		BaseEvent: events.BaseEvent{
-			ConversationID: channel.ConversationID,
+			ConversationID: sender.ConversationID,
 			Timestamp:      time.Now().Unix() * 1000,
 		},
 		Message: events.Message{
-			ChannelID: channel.ID,
+			ChannelID: sender.ID,
 			ID:        message.GetId(),
 			Type:      message.GetType(),
 			Value:     message.GetText(),
@@ -465,36 +465,38 @@ func (e *eventRouter) RouteMessage(channel *pg.Channel, message *pb.Message) (bo
 		},
 	})
 	flag := false
-	for _, item := range otherChannels {
+	for _, member := range members {
 		var err error
-		switch item.Type {
+		switch member.Type {
 		case "webitel":
 			{
 				flag = true
-				err = e.sendEventToWebitelUser(channel, item, events.MessageEventType, body)
+				err = e.sendEventToWebitelUser(sender, member, events.MessageEventType, body)
 			}
 		default: // "telegram", "infobip-whatsapp"
 
-			if channel.ID == item.ID {
+			if sender.ID == member.ID {
 				continue
 			}
-			err = e.sendMessageToBotUser(channel, item, message)
+			err = e.sendMessageToBotUser(sender, member, message)
 
 		}
 		if err != nil {
 			e.log.Warn().
-				Str("channel_id", item.ID).
-				Bool("internal", item.Internal).
-				Int64("user_id", item.UserID).
-				Str("conversation_id", item.ConversationID).
-				Str("type", item.Type).
-				Str("connection", item.Connection.String).
+				Str("channel_id", member.ID).
+				Bool("internal", member.Internal).
+				Int64("user_id", member.UserID).
+				Str("conversation_id", member.ConversationID).
+				Str("type", member.Type).
+				Str("connection", member.Connection.String).
 				Msg("failed to send message to channel")
 		}
 	}
 	return flag, nil
 }
 
+// conversationID unifies [chat@bot] channel identification
+// so, conversationID - unique chat channel sender ID (routine@workflow)
 func (e *eventRouter) RouteMessageFromFlow(conversationID *string, message *pb.Message) error {
 	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil)
 	if err != nil {

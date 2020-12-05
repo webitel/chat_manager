@@ -106,17 +106,17 @@ func (m *Channel) ScanHostname(src interface{}) error {
 
 func (m *Channel) Scan(row *sql.Rows) error {
 
-	// dataset.next(?)
-	if !row.Next() {
-		return row.Err()
-	}
+	// // dataset.next(?)
+	// if !row.Next() {
+	// 	return row.Err()
+	// }
 
 	cols, err := row.Columns()
 	if err != nil {
 		return err
 	}
 
-	var dst []interface{}
+	dst := make([]interface{}, 0, len(cols))
 	target := func(bind interface{}) {
 		dst = append(dst, bind)
 	}
@@ -131,10 +131,10 @@ func (m *Channel) Scan(row *sql.Rows) error {
 		case "domain_id":       target(&m.DomainID)
 		case "conversation_id": target(&m.ConversationID)
 
-		// case "connection":      target(&m.Connection)
-		case "connection":      target(ScanFunc(m.ScanContact))
-		// case "host":            target(&m.ServiceHost)
-		case "hostname","host": target(ScanFunc(m.ScanHostname))
+		case "connection":      target(&m.Connection)
+		// case "connection":      target(ScanFunc(m.ScanContact))
+		case "hostname","host": target(&m.ServiceHost)
+		//case "hostname","host": target(ScanFunc(m.ScanHostname))
 		case "internal":        target(&m.Internal)
 
 		case "created_at":      target(&m.CreatedAt)

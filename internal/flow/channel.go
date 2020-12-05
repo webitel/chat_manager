@@ -22,7 +22,7 @@ import (
 
 
 // Channel [FROM] chat.srv [TO] workflow
-// CHAT communication channel
+// CHAT communication channel; chat@bot
 type Channel struct {
 	// Client
 	Log   *zerolog.Logger
@@ -106,7 +106,7 @@ func (c *Channel) call(next client.CallFunc) client.CallFunc {
 		// 
 		if err != nil {
 			if c.Host != "" {
-				c.Log.Debug().
+				c.Log.Warn().
 					Str("host", node.Id).
 					Msg("LOST")
 			}
@@ -123,7 +123,7 @@ func (c *Channel) call(next client.CallFunc) client.CallFunc {
 				return err
 			}
 
-			c.Log.Debug().
+			c.Log.Info().
 				Str("host", c.Host).
 				Msg("HOSTED")
 		
@@ -135,7 +135,7 @@ func (c *Channel) call(next client.CallFunc) client.CallFunc {
 				return err
 			}
 
-			c.Log.Debug().
+			c.Log.Info().
 				Str("peer", c.Host).
 				Str("host", node.Id).
 				Msg("RE-HOST")
@@ -220,6 +220,7 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 			Msg("Failed to delivery chat@bot messages")
 
 		switch re.Error.Id {
+		// "Chat: grpc.chat.conversation.not_found, Conversation %!d(string=0d882ad8-523a-4ed1-b36c-8c3f046e218e) not found"
 		case "grpc.chat.conversation.not_found": // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
 			// // FIXME: RE-start chat@bot routine (?)
 			// // RESET

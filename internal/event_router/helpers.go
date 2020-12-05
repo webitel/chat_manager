@@ -8,29 +8,29 @@ import (
 	"fmt"
 	"strconv"
 
-	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
-	pbbot "github.com/webitel/chat_manager/api/proto/bot"
-	pb "github.com/webitel/chat_manager/api/proto/chat"
+	store "github.com/webitel/chat_manager/internal/repo/sqlx"
+	gate "github.com/webitel/chat_manager/api/proto/bot"
+	chat "github.com/webitel/chat_manager/api/proto/chat"
 
 	"github.com/micro/go-micro/v2/broker"
 	// selector "github.com/micro/go-micro/v2/client/selector"
 	// strategy "github.com/webitel/chat_manager/internal/selector"
 )
 
-func (e *eventRouter) sendEventToWebitelUser(from *pg.Channel, to *pg.Channel, eventType string, body []byte) error {
+func (c *eventRouter) sendEventToWebitelUser(from *store.Channel, to *store.Channel, event string, body []byte) error {
 	msg := &broker.Message{
 		Header: map[string]string{
 			"content_type": "text/json",
 		},
 		Body: body,
 	}
-	if err := e.broker.Publish(fmt.Sprintf("event.%s.%v.%v", eventType, to.DomainID, to.UserID), msg); err != nil {
+	if err := c.broker.Publish(fmt.Sprintf("event.%s.%v.%v", event, to.DomainID, to.UserID), msg); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (e *eventRouter) sendMessageToBotUser(from *pg.Channel, to *pg.Channel, message *pb.Message) error {
+func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channel, message *chat.Message) error {
 	
 	// // profile[@svhost]
 	// profileID, serviceHost, err := ContactProfileNode(to.Connection.String)
@@ -55,7 +55,7 @@ func (e *eventRouter) sendMessageToBotUser(from *pg.Channel, to *pg.Channel, mes
 		return err
 	}
 
-	client, err := e.repo.GetClientByID(context.Background(), to.UserID)
+	client, err := c.repo.GetClientByID(context.Background(), to.UserID)
 	if err != nil {
 		return err
 	}
@@ -63,14 +63,34 @@ func (e *eventRouter) sendMessageToBotUser(from *pg.Channel, to *pg.Channel, mes
 		return fmt.Errorf("client not found. id: %v", to.UserID)
 	}
 
-	botMessage := &pbbot.SendMessageRequest{
+	sendMessage := gate.SendMessageRequest{
 		ProfileId:      profileID,
 		ExternalUserId: client.ExternalID.String,
 		Message:        message,
 	}
-	// if _, err := e.botClient.SendMessage(context.Background(), botMessage, callOpts...); err != nil {
-	if _, err := e.botClient.SendMessage(context.Background(), botMessage); err != nil {
+
+	// // if _, err := e.botClient.SendMessage(context.Background(), botMessage, callOpts...); err != nil {
+	// if _, err := c.botClient.SendMessage(context.Background(), &sendMessage); err != nil {
+	// 	return err
+	// }
+	// return nil
+
+	recepient := channel{to, c.log}
+	serviceNode := recepient.Hostname()
+	_, err = c.botClient.SendMessage(
+
+		context.TODO(), &sendMessage,
+		// callOptions ...
+		recepient.sendOptions,
+	)
+
+	if err != nil {
 		return err
 	}
+
+	if serviceNode != "" && serviceNode != recepient.Hostname() {
+		// RE-HOSTED! TODO: update DB channel state .host
+	}
+
 	return nil
 }

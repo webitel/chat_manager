@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
+	// "github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -30,6 +30,10 @@ func (repo *sqlxRepository) WithTransaction(txFunc func(*sqlx.Tx) error) (err er
 }
 
 func (repo *sqlxRepository) CreateConversationTx(ctx context.Context, tx *sqlx.Tx, c *Conversation) error {
+	return NewSession(tx, ctx, c)
+}
+
+/*func (repo *sqlxRepository) CreateConversationTx(ctx context.Context, tx *sqlx.Tx, c *Conversation) error {
 	c.ID = uuid.New().String()
 	tmp := time.Now()
 	c.CreatedAt = tmp
@@ -37,7 +41,7 @@ func (repo *sqlxRepository) CreateConversationTx(ctx context.Context, tx *sqlx.T
 	_, err := tx.NamedExecContext(ctx, `insert into chat.conversation (id, title, created_at, closed_at, updated_at, domain_id)
 	values (:id, :title, :created_at, :closed_at, :updated_at, :domain_id)`, *c)
 	return err
-}
+}*/
 
 func (repo *sqlxRepository) CreateMessageTx(ctx context.Context, tx *sqlx.Tx, m *Message) error {
 	m.ID = 0
@@ -118,7 +122,11 @@ func (repo *sqlxRepository) GetChannelsTx(
 	return result, err
 }
 
-func (repo *sqlxRepository) CreateChannelTx(
+func (repo *sqlxRepository) CreateChannelTx(ctx context.Context, tx *sqlx.Tx, c *Channel) error {
+	return NewChannel(tx, ctx, c)
+}
+
+/*func (repo *sqlxRepository) CreateChannelTx(
 	ctx context.Context,
 	tx *sqlx.Tx,
 	c *Channel) error {
@@ -158,7 +166,7 @@ func (repo *sqlxRepository) CreateChannelTx(
 		*c,
 	)
 	return err
-}
+}*/
 
 func (repo *sqlxRepository) CloseChannelsTx(ctx context.Context, tx *sqlx.Tx, conversationID string) error {
 	_, err := tx.ExecContext(ctx, `update chat.channel set closed_at=$1 where conversation_id=$2`, sql.NullTime{

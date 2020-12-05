@@ -1,11 +1,18 @@
 package main
 
 import (
+	
+	"fmt"
+	"time"
+	"strconv"
 	"context"
 	"database/sql"
-	"fmt"
-	"strconv"
-	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/jmoiron/sqlx"
+
+	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/go-micro/v2/metadata"
 
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/internal/auth"
@@ -14,10 +21,6 @@ import (
 	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
 	pbbot "github.com/webitel/chat_manager/api/proto/bot"
 	pb "github.com/webitel/chat_manager/api/proto/chat"
-
-	"github.com/jmoiron/sqlx"
-	"github.com/micro/go-micro/v2/errors"
-	"github.com/rs/zerolog"
 )
 
 type Service interface {
@@ -108,7 +111,7 @@ func (s *chatService) SendMessage(
 		// Bool("from_flow", req.GetFromFlow()).
 		Int64("auth_user_id", req.GetAuthUserId()).
 		Msg("send message")
-	
+
 	// FROM: INTERNAL (?)
 	servName := s.authClient.GetServiceName(&ctx)
 	if servName == "workflow" {
@@ -222,11 +225,28 @@ func (s *chatService) SendMessage(
 	return nil
 }
 
+// StartConversation starts NEW chat@bot(workflow/schema) session
+// ON one side there will be req.Username with the start req.Message channel as initiator (leg: A)
+// ON other side there will be flow_manager.schema (chat@bot) channel to communicate with
 func (s *chatService) StartConversation(
 	ctx context.Context,
 	req *pb.StartConversationRequest,
 	res *pb.StartConversationResponse,
 ) error {
+
+	// TODO: keep track .sender.host to be able to respond to
+	//       the same .sender service node for .this unique chat channel
+	//       that will be created !
+
+	// // FIXME: this is always invoked by webitel.chat.bot service ?
+	// // Gathering metadata to identify start req.Message sender NEW channel !...
+	md, _ := metadata.FromContext(ctx)
+	senderHostname := md["Micro-From-Id"] // provider channel host !
+	senderProvider := md["Micro-From-Service"] // provider channel type !
+	if senderProvider != "webitel.chat.bot" {
+		// LOG: this is the only case expected for now !..
+	}
+
 	s.log.Trace().
 		Int64("domain_id", req.GetDomainId()).
 		Str("user.connection", req.GetUser().GetConnection()).
@@ -235,10 +255,16 @@ func (s *chatService) StartConversation(
 		Str("username", req.GetUsername()).
 		Bool("user.internal", req.GetUser().GetInternal()).
 		Msg("start conversation")
+
 	channel := &pg.Channel{
 		Type: req.GetUser().GetType(),
 		// ConversationID: conversation.ID,
 		UserID: req.GetUser().GetUserId(),
+		ServiceHost: sql.NullString{
+			// senderProvider +"-"+ senderHostname,
+			senderHostname, // contact/from: node-id
+			true,
+		},
 		Connection: sql.NullString{
 			req.GetUser().GetConnection(),
 			true,
@@ -247,9 +273,11 @@ func (s *chatService) StartConversation(
 		DomainID: req.GetDomainId(),
 		Name:     req.GetUsername(),
 	}
+
 	conversation := &pg.Conversation{
 		DomainID: req.GetDomainId(),
 	}
+
 	if err := s.repo.WithTransaction(func(tx *sqlx.Tx) error {
 		if err := s.repo.CreateConversationTx(ctx, tx, conversation); err != nil {
 			return err
@@ -265,6 +293,7 @@ func (s *chatService) StartConversation(
 		s.log.Error().Msg(err.Error())
 		return err
 	}
+
 	if !req.GetUser().GetInternal() {
 		// // profileID, providerNode, err :=
 		// profileID, _, err := event.ContactProfileNode(req.GetUser().GetConnection())
@@ -280,6 +309,7 @@ func (s *chatService) StartConversation(
 			return err
 		}
 	}
+
 	return nil
 }
 

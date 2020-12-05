@@ -1,13 +1,16 @@
 package sqlxrepo
 
 import (
-	"context"
-	"database/sql"
+
 	"fmt"
-	"strings"
 	"time"
+	"strings"
+	"context"
 
 	"github.com/google/uuid"
+
+	"database/sql"
+	"github.com/jmoiron/sqlx"
 )
 
 //type StringIDs []string
@@ -34,7 +37,11 @@ func (repo *sqlxRepository) GetConversationByID(ctx context.Context, id string) 
 	return conversation, nil
 }
 
-func (repo *sqlxRepository) CreateConversation(ctx context.Context, c *Conversation) error {
+func (repo *sqlxRepository) CreateConversation(ctx context.Context, session *Conversation) error {
+	return NewSession(repo.db, ctx, session)
+}
+
+/*func (repo *sqlxRepository) CreateConversation(ctx context.Context, c *Conversation) error {
 	c.ID = uuid.New().String()
 	tmp := time.Now()
 	c.CreatedAt = tmp
@@ -42,7 +49,7 @@ func (repo *sqlxRepository) CreateConversation(ctx context.Context, c *Conversat
 	_, err := repo.db.NamedExecContext(ctx, `insert into chat.conversation (id, title, created_at, closed_at, updated_at, domain_id)
 	values (:id, :title, :created_at, :closed_at, :updated_at, :domain_id)`, *c)
 	return err
-}
+}*/
 
 // TODO: CloseConversation(ctx context.Context, id string, at time.Time) error {}
 func (repo *sqlxRepository) CloseConversation(ctx context.Context, id string) error {
@@ -223,6 +230,45 @@ func (repo *sqlxRepository) getConversationInfo(ctx context.Context, id string) 
 	return
 }
 
+// NewSession creates NEW chat session DB record
+func NewSession(dcx sqlx.ExtContext, ctx context.Context, session *Conversation) error {
+
+	at := time.Now().UTC()
+	// Generate NEW unique UUID for this brand NEW chat session
+	session.ID = uuid.New().String()
+	
+	session.CreatedAt = at
+	session.UpdatedAt = at
+
+	// FIXME:
+	session.Title.Valid = true // NOTNULL
+	session.Title.String =
+		strings.TrimSpace(
+			session.Title.String,
+		)
+
+	_, err := dcx.ExecContext(
+		// cancellation context
+		ctx,
+		// statement query
+		psqlSessionNewQ,
+		// statement params ...
+		session.ID,
+		session.DomainID,
+		session.Title,
+
+		session.CreatedAt,
+		session.UpdatedAt,
+		session.ClosedAt, // nil,
+	)
+
+	if err != nil {
+		return err
+	}
+	// +OK
+	return nil
+}
+
 // postgres: chat.session.close(!)
 // $1 - conversation_id
 // $2 - local timestamp
@@ -240,4 +286,19 @@ const psqlSessionCloseQ =
 )
 UPDATE chat.channel
    SET closed_at=$2
- WHERE conversation_id=$1`
+ WHERE conversation_id=$1
+`
+
+// postgres: chat.session.create(!)
+// $1  - session.id
+// $2  - session.domain_id
+// $3  - session.title
+// $4  - session.created_at
+// $5  - session.updated_at
+// $6  - session.closed_at // FIXME: NULL ?
+const psqlSessionNewQ =
+`INSERT INTO chat.conversation (
+  id, domain_id, title, created_at, updated_at, closed_at
+) VALUES (
+  $1, $2, $3, $4, $5, $6
+)`

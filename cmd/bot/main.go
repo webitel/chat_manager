@@ -7,7 +7,9 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
+
 	"github.com/webitel/chat_manager/log"
+	"github.com/webitel/chat_manager/internal/wrapper"
 
 	"github.com/gorilla/mux"
 	"github.com/micro/cli/v2"
@@ -106,7 +108,9 @@ func main() {
 			}
 			logger = *(stdlog)
 			
-			client = pbchat.NewChatService("webitel.chat.server", service.Client())
+			sender := service.Client() // Micro-From-Service: webitel.chat.bot
+			sender = wrapper.FromServiceId(service.Server().Options().Id, sender) // Micro-From-Id: server.DefaultId
+			client = pbchat.NewChatService("webitel.chat.server", sender)
 			
 			return configure()
 		}),

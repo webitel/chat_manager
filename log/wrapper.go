@@ -30,6 +30,7 @@ func HandlerWrapper(log *zerolog.Logger) server.HandlerWrapper {
 				"Remote",
 				"User-Agent",
 				"From-Service",
+				"Micro-From-Id",
 				"Micro-From-Service",
 			} {
 				if v, ok := md[key]; ok {
