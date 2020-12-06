@@ -173,12 +173,12 @@ func (s *chatService) SendMessage(
 	}
 
 	// FROM: EXTERNAL (!)
-	channel, err := s.repo.CheckUserChannel(ctx, req.GetChannelId(), req.GetAuthUserId())
+	sender, err := s.repo.CheckUserChannel(ctx, req.GetChannelId(), req.GetAuthUserId())
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	if channel == nil {
+	if sender == nil {
 		s.log.Warn().Msg("channel not found")
 		return errors.BadRequest("channel not found", "")
 	}
@@ -186,10 +186,10 @@ func (s *chatService) SendMessage(
 	message := &pg.Message{
 		Type: "text",
 		ChannelID: sql.NullString{
-			channel.ID,
+			sender.ID,
 			true,
 		},
-		ConversationID: channel.ConversationID,
+		ConversationID: sender.ConversationID,
 		Text: sql.NullString{
 			req.GetMessage().GetText(),
 			true,
@@ -202,22 +202,23 @@ func (s *chatService) SendMessage(
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	reqMessage := &pb.Message{
-		Id:   message.ID,
-		Type: message.Type,
-		Value: &pb.Message_Text{
-			Text: message.Text.String,
-		},
-	}
+	// reqMessage := &pb.Message{
+	// 	Id:   message.ID,
+	// 	Type: message.Type,
+	// 	Value: &pb.Message_Text{
+	// 		Text: message.Text.String,
+	// 	},
+	// }
 	// Broadcast text message to every other channel in the room, from channel as a sender !
-	sent, err := s.eventRouter.RouteMessage(channel, reqMessage)
+	sent, err := s.eventRouter.RouteMessage(sender, req.Message)
 	if err != nil {
 		s.log.Warn().Msg(err.Error())
 		return err
 	}
 	// Otherwise, if NO-ONE in the room - route message to the chat-flow !
-	if !channel.Internal && !sent {
-		err = s.flowClient.SendMessage(channel.ConversationID, reqMessage)
+	if !sender.Internal && !sent {
+		// err = s.flowClient.SendMessage(channel.ConversationID, reqMessage)
+		err = s.flowClient.SendMessage(sender, req.Message)
 		if err != nil {
 			return err
 		}
@@ -256,7 +257,7 @@ func (s *chatService) StartConversation(
 		Bool("user.internal", req.GetUser().GetInternal()).
 		Msg("start conversation")
 
-	channel := &pg.Channel{
+	channel := pg.Channel{
 		Type: req.GetUser().GetType(),
 		// ConversationID: conversation.ID,
 		UserID: req.GetUser().GetUserId(),
@@ -283,7 +284,7 @@ func (s *chatService) StartConversation(
 			return err
 		}
 		channel.ConversationID = conversation.ID
-		if err := s.repo.CreateChannelTx(ctx, tx, channel); err != nil {
+		if err := s.repo.CreateChannelTx(ctx, tx, &channel); err != nil {
 			return err
 		}
 		res.ConversationId = conversation.ID
@@ -295,16 +296,17 @@ func (s *chatService) StartConversation(
 	}
 
 	if !req.GetUser().GetInternal() {
-		// // profileID, providerNode, err :=
-		// profileID, _, err := event.ContactProfileNode(req.GetUser().GetConnection())
+		// // // profileID, providerNode, err :=
+		// // profileID, _, err := event.ContactProfileNode(req.GetUser().GetConnection())
+		// // if err != nil {
+		// // 	return err
+		// // }
+		// profileID, err := strconv.ParseInt(req.GetUser().GetConnection(), 10, 64)
 		// if err != nil {
 		// 	return err
 		// }
-		profileID, err := strconv.ParseInt(req.GetUser().GetConnection(), 10, 64)
-		if err != nil {
-			return err
-		}
-		err = s.flowClient.Init(conversation.ID, profileID, req.GetDomainId(), req.GetMessage())
+		// err = s.flowClient.Init(conversation.ID, profileID, req.GetDomainId(), req.GetMessage())
+		err := s.flowClient.Init(&channel, req.GetMessage())
 		if err != nil {
 			return err
 		}
@@ -388,6 +390,7 @@ func (s *chatService) CloseConversation(
 	// 2. Send workflow channel .Break() message to stop chat.flow routine ...
 	// FIXME: - delete: chat.confirmation; - delete: chat.flow.node
 	err = s.flowClient.CloseConversation(conversationID)
+	// err = s.flowClient.CloseConversation(closerChannel)
 	if err != nil {
 		s.log.Error().Err(err).Msg("Failed to break chat.flow routine")
 		return err
@@ -569,24 +572,32 @@ func (s *chatService) LeaveConversation(
 	res *pb.LeaveConversationResponse,
 ) error {
 	
+	userID := req.GetAuthUserId()
 	channelID := req.GetChannelId()
 	conversationID := req.GetConversationId()
 	
 	s.log.Trace().
+		Int64("auth_user_id", userID).
 		Str("channel_id", channelID).
 		Str("conversation_id", conversationID).
-		Int64("auth_user_id", req.GetAuthUserId()).
 		Msg("leave conversation")
 	
-	channel, err := s.repo.CheckUserChannel(ctx, req.GetChannelId(), req.GetAuthUserId())
+	sender, err := s.repo.CheckUserChannel(ctx, channelID, userID)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
 	
-	if channel == nil {
+	if sender == nil {
 		s.log.Warn().Msg("channel not found")
 		return errors.BadRequest("channel not found", "")
+	}
+
+	if conversationID != "" {
+		if conversationID != sender.ConversationID {
+			s.log.Warn().Msg("conversation not found")
+			return errors.BadRequest("conversation not found", "")
+		}
 	}
 	
 	// ----- PERFORM ---------------------------------

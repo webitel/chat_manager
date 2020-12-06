@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"strconv"
 
 	"errors"
 	"context"
@@ -9,7 +10,7 @@ import (
 	"github.com/rs/zerolog"
 
 	strategy "github.com/webitel/chat_manager/internal/selector"
-	sqlxrepo "github.com/webitel/chat_manager/internal/repo/sqlx"
+	store "github.com/webitel/chat_manager/internal/repo/sqlx"
 	
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	bot "github.com/webitel/chat_manager/api/proto/workflow"
@@ -26,28 +27,26 @@ import (
 type Channel struct {
 	// Client
 	Log   *zerolog.Logger
-
+	// Host that routine .this chat@workflow channel
 	Host string // preffered: "workflow" service-node-id
 	Agent bot.FlowChatServerService
-	Store sqlxrepo.CacheRepository
+	Store store.CacheRepository
 	// Session
-	
-	
-	// Chat *sqlxrepo.Channel // Conversation
-	ID string
-	User *chat.User // TODO: flow schema @bot info
-	
-	DomainID int64
+	ID string // Chat.ConversationID
+	// Chat reflects unique originator's chat@webitel.chat.bot channel
+	Chat store.Channel // embedded: originator (sender)
+	// User *chat.User // TODO: flow schema @bot info
 	ProfileID int64 // Disclose profile.schema.id
+	// DomainID int64 // Chat.DomainID
 	
 	Invite string // SESSION ID
 	Pending string // .WaitMessage(token)
 
-	Created int64
-	Updated int64
-	Started int64
-	Joined int64
-	Closed int64
+	// Created int64
+	// Updated int64
+	// Started int64
+	// Joined int64
+	// Closed int64
 
 	// // LATEST
 	// Update *chat.Message
@@ -57,7 +56,7 @@ type Channel struct {
 func NewChannel(
 
 	log *zerolog.Logger,
-	store sqlxrepo.CacheRepository,
+	store store.CacheRepository,
 	agent bot.FlowChatServerService,
 
 ) *Channel {
@@ -67,6 +66,33 @@ func NewChannel(
 		Store: store,
 		Agent: agent,
 	}
+}
+
+// ChatID unique chat channel id
+// in front of @workflow service
+func (c *Channel) ChatID() string {
+	if c.ID == "" {
+		c.ID = c.Chat.ConversationID
+	}
+	return c.ID
+}
+
+// DomainID that .this channel chat belongs to ...
+func (c *Channel) DomainID() int64 {
+	return c.Chat.DomainID
+}
+
+// UserID defines end-user for .this channel {.ProfileID}
+// This MUST be the flow ${schema.id} which acts as a webitel @bot
+func (c *Channel) UserID() int64 {
+
+	if c.ProfileID == 0 {
+		if originator := c.Chat.Connection.String; originator != "" {
+			c.ProfileID, _ = strconv.ParseInt(originator, 10, 64)
+		}
+	}
+
+	return c.ProfileID
 }
 
 func (c *Channel) peer() selector.SelectOption {
@@ -147,11 +173,15 @@ func (c *Channel) call(next client.CallFunc) client.CallFunc {
 	}
 }
 
+func (c *Channel) sendOptions(opts *client.CallOptions) {
+	client.WithSelectOption(c.peer())(opts)
+	client.WithCallWrapper(c.call)(opts)
+}
+
 func (c *Channel) Send(message *chat.Message) (err error) {
 	
 	pending := c.Pending // token
 	if pending == "" {
-		
 		pending, err = c.Store.ReadConfirmation(c.ID)
 		
 		if err != nil {
@@ -180,54 +210,46 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 			},
 		},
 	}
-	messageReq := &bot.ConfirmationMessageRequest{
+	sendMessage := &bot.ConfirmationMessageRequest{
 		ConversationId: c.ID,
 		ConfirmationId: pending,
 		Messages:       messages,
 	}
-
-	/*if res, err := c.Agent.ConfirmationMessage(
-		context.TODO(), messageReq,
-		client.WithCallWrapper(c.call),
-		client.WithSelectOption(c.peer()),
-	); err != nil || res.Error != nil {
-		if res != nil {
-			return errors.New(res.Error.Message)
-		}
-		return err
-	}
-	// s.chatCache.DeleteConfirmation(conversationID)
-	c.Pending = ""
-	c.Store.DeleteConfirmation(c.ID)
-	return nil*/
-
+	// PERFORM
 	re, err := c.Agent.
 	ConfirmationMessage(
-		context.TODO(), messageReq,
-		client.WithCallWrapper(c.call),
-		client.WithSelectOption(c.peer()),
+		context.TODO(), sendMessage,
+		// client.WithCallWrapper(c.call),
+		// client.WithSelectOption(c.peer()),
+		c.sendOptions,
 	)
-		
+
 	if err != nil {
 		return err
 	}
 	
 	if re.Error != nil {
 
-		c.Log.Error().
-			Str("error", re.Error.Message).
-			Str("channel-id", c.ID).
-			Msg("Failed to delivery chat@bot messages")
-
 		switch re.Error.Id {
 		// "Chat: grpc.chat.conversation.not_found, Conversation %!d(string=0d882ad8-523a-4ed1-b36c-8c3f046e218e) not found"
 		case "grpc.chat.conversation.not_found": // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
-			// // FIXME: RE-start chat@bot routine (?)
-			// // RESET
-			// c.Host = ""
-			// c.Pending = ""
+			// FIXME: RE-start chat@bot routine (?)
+			// RESET
+			c.Host = ""
+			c.Pending = ""
+
+			_ = c.Store.DeleteConfirmation(c.ID)
+			_ = c.Store.DeleteConversationNode(c.ID)
+			
+			c.Log.Warn().
+				Int64("pid", c.UserID()). // recepient: schema@bot.profile (internal)
+				Int64("pdc", c.DomainID()).
+				Str("channel-id", c.ChatID()). // sender: originator user@bot.profile (external)
+				Str("cause", "grpc.chat.conversation.not_found").
+				Msg(">>> RE-START! <<<")
+			
 			// TODO: ensure this.(ID|ProfileID|DomainID)
-			// err = c.Start(message)
+			err = c.Start(message)
 			
 			// if err != nil {
 			// 	c.Log.Error().Err(err).Str("channel-id", c.ID).Msg("RE-START Failed")
@@ -235,15 +257,23 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 			// 	c.Log.Info().Str("channel-id", c.ID).Msg("RE-START!")
 			// }
 
-			// return err
+			return err // break
 
+		default:
+
+			c.Log.Error().
+				Int64("pdc", c.DomainID()).
+				Int64("pid", c.UserID()). // recepient: schema@bot.profile (internal)
+				Str("channel-id", c.ChatID()). // sender: originator user@bot.profile (external)
+				Str("error", re.Error.Message).
+				Msg("SEND chat@bot") // TO: workflow
 		}
 		// default:
 		return errors.New(re.Error.Message)
 	}
 	// s.chatCache.DeleteConfirmation(conversationID)
 	c.Pending = ""
-	c.Store.DeleteConfirmation(c.ID)
+	_ = c.Store.DeleteConfirmation(c.ChatID())
 	return nil
 
 	// s.log.Debug().
@@ -348,19 +378,19 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 func (c *Channel) Start(message *chat.Message) error {
 	
 	c.Log.Debug().
-		Str("conversation_id", c.ID).
-		Int64("profile_id", c.ProfileID).
-		Int64("domain_id", c.DomainID).
+		Str("conversation_id", c.ChatID()).
+		Int64("profile_id", c.UserID()).
+		Int64("domain_id", c.DomainID()).
 		Msg("init conversation")
 	
 	const commandStart = "start"
 	messageText := commandStart
 	start := &bot.StartRequest{
 		
-		DomainId:       c.DomainID,
+		DomainId:       c.DomainID(),
 		// FIXME: why flow_manager need to know about some external chat-bot profile identity ?
-		ProfileId:      c.ProfileID,
-		ConversationId: c.ID,
+		ProfileId:      c.UserID(),
+		ConversationId: c.ChatID(),
 
 		Message: &bot.Message{
 			Id:   message.GetId(),
@@ -390,7 +420,7 @@ func (c *Channel) Start(message *chat.Message) error {
 
 		case *chat.Message_File_: // FILE
 
-			messageText = "File"
+			// messageText = "File"
 			start.Message.Value =
 				&bot.Message_File_{
 					File: &bot.Message_File{
@@ -409,7 +439,8 @@ func (c *Channel) Start(message *chat.Message) error {
 		// channel context
 		context.Background(), start,
 		// callOptions
-		client.WithCallWrapper(c.call),
+		c.sendOptions,
+		// client.WithCallWrapper(c.call),
 		// client.WithSelectOption(selector.Random),
 	)
 
@@ -445,11 +476,11 @@ func (c *Channel) Start(message *chat.Message) error {
 	}
 
 	c.Log.Info().
-	Int64("pdc", c.DomainID).
-	Int64("pid", c.ProfileID).
-	Str("host", c.Host).
-	Str("channel-id", c.ID).
-	Msg(">>>>> START <<<<<")
+		Int64("pdc", c.DomainID()).
+		Int64("pid", c.UserID()).
+		Str("host", c.Host).
+		Str("channel-id", c.ID).
+		Msg(">>>>> START <<<<<")
 
 	return nil
 
@@ -585,8 +616,9 @@ func (c *Channel) Close() error {
 		context.TODO(), &bot.BreakRequest{
 			ConversationId: c.ID,
 		},
-		client.WithSelectOption(c.peer()),
-		client.WithCallWrapper(c.call),
+		// client.WithSelectOption(c.peer()),
+		// client.WithCallWrapper(c.call),
+		c.sendOptions,
 	); err != nil {
 		return err
 	} else if res != nil && res.Error != nil {
@@ -594,11 +626,11 @@ func (c *Channel) Close() error {
 	}
 
 	c.Log.Warn().
-	Int64("pdc", c.DomainID).
-	Int64("pid", c.ProfileID).
-	Str("host", c.Host).
-	Str("channel-id", c.ID).
-	Msg("<<<<< CLOSE >>>>>")
+		Int64("pdc", c.DomainID()).
+		Int64("pid", c.UserID()).
+		Str("host", c.Host).
+		Str("channel-id", c.ChatID()).
+		Msg("<<<<< CLOSE >>>>>")
 	// //s.chatCache.DeleteCachedMessages(conversationID)
 	// s.chatCache.DeleteConfirmation(conversationID)
 	// s.chatCache.DeleteConversationNode(conversationID)
@@ -637,8 +669,9 @@ func (c *Channel) BreakBridge(cause BreakBridgeCause) error {
 			ConversationId: c.ID,
 			Cause:          cause.String(),
 		},
-		client.WithSelectOption(c.peer()),
-		client.WithCallWrapper(c.call),
+		// client.WithSelectOption(c.peer()),
+		// client.WithCallWrapper(c.call),
+		c.sendOptions,
 	); err != nil {
 		return err
 	} else if res != nil && res.Error != nil {
@@ -646,11 +679,12 @@ func (c *Channel) BreakBridge(cause BreakBridgeCause) error {
 	}
 
 	c.Log.Warn().
-	Int64("pdc", c.DomainID).
-	Int64("pid", c.ProfileID).
-	Str("host", c.Host).
-	Str("channel-id", c.ID).
-	Msg("<<<<< BREAK >>>>>")
+		Int64("pdc", c.DomainID()).
+		Int64("pid", c.UserID()).
+		Str("host", c.Host).
+		Str("channel-id", c.ChatID()).
+		Msg("<<<<< BREAK >>>>>")
+
 	return nil
 }
 

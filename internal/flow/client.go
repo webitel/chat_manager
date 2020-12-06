@@ -1,8 +1,9 @@
 package flow
 
 import (
-	"time"
+
 	"sync"
+	"strconv"
 
 	// "errors"
 	// "context"
@@ -11,7 +12,7 @@ import (
 	"github.com/rs/zerolog"
 
 	// strategy "github.com/webitel/chat_manager/internal/selector"
-	sqlxrepo "github.com/webitel/chat_manager/internal/repo/sqlx"
+	store "github.com/webitel/chat_manager/internal/repo/sqlx"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	flow "github.com/webitel/chat_manager/api/proto/workflow"
 
@@ -38,16 +39,20 @@ func (c BreakBridgeCause) String() string {
 }
 
 type Client interface {
-	SendMessage(conversationID string, message *chat.Message) error
-	Init(conversationID string, profileID, domainID int64, message *chat.Message) error
+	// SendMessage(conversationID string, message *chat.Message) error
+	SendMessage(sender *store.Channel, message *chat.Message) error
+	// Init(conversationID string, profileID, domainID int64, message *chat.Message) error
+	Init(sender *store.Channel, message *chat.Message) error
 	BreakBridge(conversationID string, cause BreakBridgeCause) error
 	CloseConversation(conversationID string) error
+	// BreakBridge(sender *store.Channel, cause BreakBridgeCause) error
+	// CloseConversation(sender *store.Channel) error
 }
 
 // Agent "workflow" (internal: chat@bot) channel service provider
 type Agent struct {
 	Log *zerolog.Logger
-	Store sqlxrepo.CacheRepository
+	Store store.CacheRepository
 	Client flow.FlowChatServerService
 	// cache: memory
 	sync.RWMutex // REFLOCK
@@ -58,7 +63,7 @@ type Agent struct {
 func NewClient(
 
 	log *zerolog.Logger,
-	store sqlxrepo.CacheRepository,
+	store store.CacheRepository,
 	client flow.FlowChatServerService,
 
 ) *Agent {
@@ -163,7 +168,18 @@ func (c *Agent) GetChannel(conversationID string) (*Channel, error) {
 	return channel, nil
 }
 
-func (c *Agent) SendMessage(conversationID string, message *chat.Message) error {
+func (c *Agent) delChannel(conversationID string) (ok bool) {
+	
+	c.Lock()   // +RW
+	if _, ok = c.channel[conversationID]; ok {
+		delete(c.channel, conversationID)
+	}
+	c.Unlock() // -RW
+
+	return ok
+}
+
+/*func (c *Agent) SendMessage(conversationID string, message *chat.Message) error {
 	
 	channel, err := c.GetChannel(conversationID)
 	if err != nil {
@@ -248,10 +264,108 @@ func (c *Agent) SendMessage(conversationID string, message *chat.Message) error 
 	// 	s.log.Error().Msg(err.Error())
 	// }
 	// return nil
+}*/
+
+func (c *Agent) SendMessage(sender *store.Channel, message *chat.Message) error {
+	
+	channel, err := c.GetChannel(sender.ConversationID)
+	if err != nil {
+		return err
+	}
+
+	// region: RECOVERY state
+	if channel.DomainID() == 0 {
+		channel.Chat.DomainID = sender.DomainID
+	}
+
+	if channel.ProfileID == 0 {
+		// RESTORE: recepient processing ...
+		// NOTE: sender for now is webitel.chat.bot channel only !
+		schemaProfileID, err := strconv.ParseInt(sender.Connection.String, 10, 64)
+		if err != nil {
+			return err
+		}
+		// preset: resolved !
+		channel.ProfileID = schemaProfileID
+	}
+	// endregion
+
+	// PERFORM !
+	err = channel.Send(message)
+
+	if err != nil {
+		// NOTE: remove to be renewed next time ...
+		_ = c.delChannel(channel.ID)
+		return err
+	}
+
+	return nil
 }
 
 // Init chat => flow chat-channel communication state
-func (c *Agent) Init(conversationID string, profileID, domainID int64, message *chat.Message) error {
+func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
+	
+	// now := time.Now()
+	// date := now.UTC().Unix()
+
+	// resolve end-user for .this NEW channel: flow.schema.id
+	schemaProfileID, err := strconv.ParseInt(
+		sender.Connection.String, 10, 64,
+	)
+
+	if err != nil {
+		// MUST: be valid profile@webitel.chat.bot channel as a sender !
+		return err
+	}
+
+	channel := &Channel {
+		
+		Log:   c.Log,
+		Host:  "", // PEEK
+		Agent: c.Client,
+		Store: c.Store,
+		// ChannelID: reflects .start channel member.id
+		ID: sender.ConversationID,
+		Chat: *(sender),
+		// User: &chat.User{
+		// 	UserId:     0, // profile.schema.id
+		// 	Type:       "chatflow",
+		// 	Connection: "",
+		// 	Internal:   true,
+		// },
+		
+		// DomainID: sender.DomainID,
+		ProfileID: schemaProfileID, 
+
+		Invite:  "", // .Invite(!) token
+		Pending: "", // .WaitMessage(!) token
+		
+		// Created: date,
+		// Updated: date,
+		// Started: 0,
+		// Joined:  0,
+		// Closed:  0,
+	}
+
+	c.Log.Debug().
+		Str("conversation_id", channel.ChatID()).
+		Int64("profile_id", channel.UserID()).
+		Int64("domain_id", channel.DomainID()).
+		Msg("init conversation")
+
+	err = channel.Start(message)
+	if err != nil {
+		return err
+	}
+
+	c.Lock()   // +RW
+	c.channel[channel.ID] = channel
+	c.Unlock() // -RW
+
+	return nil
+}
+
+/*func (c *Agent) Init(conversationID string, profileID, domainID int64, message *chat.Message) error {
 	
 	c.Log.Debug().
 		Str("conversation_id", conversationID).
@@ -259,7 +373,7 @@ func (c *Agent) Init(conversationID string, profileID, domainID int64, message *
 		Int64("domain_id", domainID).
 		Msg("init conversation")
 	
-	/*start := &bot.StartRequest{
+	// *start := &bot.StartRequest{
 		
 		DomainId:       domainID,
 		// FIXME: why flow_manager need to know about some external chat-bot profile identity ?
@@ -303,7 +417,7 @@ func (c *Agent) Init(conversationID string, profileID, domainID int64, message *
 					},
 				}
 		}
-	}*/
+	}* //
 
 	now := time.Now()
 	date := now.UTC().Unix()
@@ -381,7 +495,7 @@ func (c *Agent) Init(conversationID string, profileID, domainID int64, message *
 
 	// return nil
 
-	// /* ; err != nil || res.Error != nil { // WTF: (0_o) (?)
+	// / ; err != nil || res.Error != nil { // WTF: (0_o) (?)
 	// 	if err == nil && res.Error != nil {
 	// 		err = 
 	// 	}
@@ -394,8 +508,8 @@ func (c *Agent) Init(conversationID string, profileID, domainID int64, message *
 	// 	return nil
 	// }
 	// return nil
-	// */
-}
+	// /
+}*/
 
 func (c *Agent) CloseConversation(conversationID string) error {
 	
@@ -411,9 +525,10 @@ func (c *Agent) CloseConversation(conversationID string) error {
 		return err
 	}
 
-	c.Lock()   // +RW
-	delete(c.channel, channel.ID)
-	c.Unlock() // -RW
+	// c.Lock()   // +RW
+	// delete(c.channel, channel.ID)
+	// c.Unlock() // -RW
+	c.delChannel(channel.ID)
 	
 	return nil
 
