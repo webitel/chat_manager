@@ -347,11 +347,11 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 		// Closed:  0,
 	}
 
-	c.Log.Debug().
-		Str("conversation_id", channel.ChatID()).
-		Int64("profile_id", channel.UserID()).
-		Int64("domain_id", channel.DomainID()).
-		Msg("init conversation")
+	// c.Log.Debug().
+	// 	Str("conversation_id", channel.ChatID()).
+	// 	Int64("profile_id", channel.UserID()).
+	// 	Int64("domain_id", channel.DomainID()).
+	// 	Msg("init conversation")
 
 	err = channel.Start(message)
 	if err != nil {

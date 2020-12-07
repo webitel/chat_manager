@@ -43,7 +43,7 @@ func HandlerWrapper(log *zerolog.Logger) server.HandlerWrapper {
 
 			span := trace.Logger()
 
-			span.Trace().Msg("<<<<< SERVE <<<<<<")
+			// span.Trace().Msg("<<<<< SERVE <<<<<<")
 			
 			// Serve Request
 			start := time.Now()
@@ -60,7 +60,7 @@ func HandlerWrapper(log *zerolog.Logger) server.HandlerWrapper {
 
 			event.
 				Str("spent", spent.String()).
-				Msg("----- SERVED -----")
+				Msg("<<<<< SERVE <<<<<") // Msg("----- SERVED -----")
 
 			return err
 		}
@@ -91,7 +91,7 @@ func CallWrapper(log *zerolog.Logger) client.CallWrapper {
 				EmbedObject(clientRequest{req}).
 				Logger()
 
-			span.Trace().Msg(">>>>> CALL >>>>>>>")
+			// span.Trace().Msg(">>>>> CALL >>>>>>>")
 				
 			// Serve Request
 			start := time.Now()
@@ -107,7 +107,7 @@ func CallWrapper(log *zerolog.Logger) client.CallWrapper {
 
 			event.
 				Str("spent", spent.String()).
-				Msg("----- CALLED -----")
+				Msg(">>>>> CALL >>>>>>") // Msg("----- CALLED -----")
 
 			return err
 		}
