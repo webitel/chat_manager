@@ -182,8 +182,10 @@ func (s *chatService) SendMessage(
 		s.log.Warn().Msg("channel not found")
 		return errors.BadRequest("channel not found", "")
 	}
-
-	message := &pg.Message{
+	// original message to be re- send
+	recvMessage := req.Message
+	// historical saved store.Message
+	sendMessage := pg.Message{
 		Type: "text",
 		ChannelID: sql.NullString{
 			sender.ID,
@@ -191,26 +193,27 @@ func (s *chatService) SendMessage(
 		},
 		ConversationID: sender.ConversationID,
 		Text: sql.NullString{
-			req.GetMessage().GetText(),
+			recvMessage.GetText(),
 			true,
 		},
 	}
-	if req.GetMessage().Variables != nil {
-		message.Variables.Scan(req.GetMessage().Variables)
+	if recvMessage.Variables != nil {
+		sendMessage.Variables.Scan(recvMessage.Variables)
 	}
-	if err := s.repo.CreateMessage(ctx, message); err != nil {
-		s.log.Error().Msg(err.Error())
+	if err := s.repo.CreateMessage(ctx, &sendMessage); err != nil {
+		s.log.Error().Err(err).Msg("Failed to store .SendMessage() history")
 		return err
 	}
-	// reqMessage := &pb.Message{
-	// 	Id:   message.ID,
-	// 	Type: message.Type,
-	// 	Value: &pb.Message_Text{
-	// 		Text: message.Text.String,
-	// 	},
-	// }
+	// populate normalized value(s)
+	recvMessage = &pb.Message{
+		Id:   sendMessage.ID,
+		Type: sendMessage.Type,
+		Value: &pb.Message_Text{
+			Text: sendMessage.Text.String,
+		},
+	}
 	// Broadcast text message to every other channel in the room, from channel as a sender !
-	sent, err := s.eventRouter.RouteMessage(sender, req.Message)
+	sent, err := s.eventRouter.RouteMessage(sender, recvMessage)
 	if err != nil {
 		s.log.Warn().Msg(err.Error())
 		return err
@@ -218,7 +221,7 @@ func (s *chatService) SendMessage(
 	// Otherwise, if NO-ONE in the room - route message to the chat-flow !
 	if !sender.Internal && !sent {
 		// err = s.flowClient.SendMessage(channel.ConversationID, reqMessage)
-		err = s.flowClient.SendMessage(sender, req.Message)
+		err = s.flowClient.SendMessage(sender, recvMessage)
 		if err != nil {
 			return err
 		}

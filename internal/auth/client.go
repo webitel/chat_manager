@@ -12,11 +12,14 @@ import (
 )
 
 const (
-	botServiceKey       = `Micro-From-Service`
-	botServiceName      = `webitel.chat.bot`
-	engineServiceName   = `engine`
-	workflowServiceName = `workflow`
-	serviceKey          = `From-Service`
+
+	hdrFromMicroService = `Micro-From-Service`
+	hdrFromService      = `From-Service`
+
+	serviceChatSrv      = `webitel.chat.server`
+	serviceChatGate     = `webitel.chat.bot`
+	serviceChatFlow     = `workflow`
+	serviceEngine       = `engine`
 
 	h2pDomainId      = `x-webitel-dc`
 	h2pDomainName    = `x-webitel-domain`
@@ -62,19 +65,22 @@ func (c *client) GetServiceName(rpc *context.Context) string {
 	if len(md) == 0 {
 		return ""
 	}
-	serviceName := md[serviceKey]
+	serviceName := md[hdrFromService]
 	return serviceName
 }
 
 func (c *client) MicroAuthentication(rpc *context.Context) (*User, error) {
-	// metadata binding ...
+	// request metadata binding ...
 	md, _ := metadata.FromContext(*rpc)
 	if len(md) == 0 {
 		return nil, errors.Unauthorized("no metadata", "")
 	}
-	serviceName, ok := md[botServiceKey]
-	if ok && (serviceName == botServiceName ||
-		serviceName == workflowServiceName) {
+	microFromService, _ := md[hdrFromMicroService]
+	switch microFromService {
+	case serviceChatFlow,
+		 serviceChatGate,
+		 serviceChatSrv: // NOTE: webitel.chat.bot passthru original context while searching for gateways URI
+
 		return nil, nil
 	}
 	// context authorization credentials
