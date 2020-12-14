@@ -122,7 +122,7 @@ func (c *Channel) lookup(services []*registry.Service) selector.Next {
 		} else if node != "" {
 
 			c.Host = node
-			perform = "RECOVER"
+			perform = "LOCATE"
 
 			// c.Log.Info().
 			// 	Int64("pid", c.UserID()). // channel: schema@bot.profile (external)
@@ -176,25 +176,25 @@ func (c *Channel) lookup(services []*registry.Service) selector.Next {
 
 		return selector.Random(services)
 	}
+
+	var event *zerolog.Event
+
+	if perform == "LOCATE" {
+		event = c.Log.Info()
+	} else {
+		event = c.Log.Trace()
+	}
+
+	event.
+		Int64("pid", c.UserID()). // channel: schema@bot.profile (external)
+		Int64("pdc", c.DomainID()). // channel: primary domain component id
+		Str("chat-id", c.ChatID()). // channel: chat@workflow.schema.bot (internal)
+		Str("channel", "chatflow").
+		Str("host", c.Host). // WANTED
+		Str("addr", peer.Address). // FOUND
+		Msg(perform)
 	
 	return func() (*registry.Node, error) {
-
-		var event *zerolog.Event
-
-		if perform == "RECOVER" {
-			event = c.Log.Info()
-		} else {
-			event = c.Log.Trace()
-		}
-
-		event.
-			Int64("pid", c.UserID()). // channel: schema@bot.profile (external)
-			Int64("pdc", c.DomainID()). // channel: primary domain component id
-			Str("chat-id", c.ChatID()). // channel: chat@workflow.schema.bot (internal)
-			Str("channel", "chatflow").
-			Str("host", c.Host). // WANTED
-			Str("addr", peer.Address). // FOUND
-			Msg(perform)
 
 		return peer, nil
 	}

@@ -55,7 +55,7 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 		return err
 	}
 
-	client, err := c.repo.GetClientByID(context.Background(), to.UserID)
+	client, err := c.repo.GetClientByID(context.TODO(), to.UserID)
 	if err != nil {
 		return err
 	}
@@ -76,7 +76,7 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 	// return nil
 
 	recepient := channel{to, c.log}
-	serviceNode := recepient.Hostname()
+	requestNode := recepient.Hostname()
 	_, err = c.botClient.SendMessage(
 
 		context.TODO(), &sendMessage,
@@ -85,11 +85,23 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 	)
 
 	if err != nil {
+		// FIXME: clear running .host ? got an error !
 		return err
 	}
 
-	if serviceNode != "" && serviceNode != recepient.Hostname() {
+	respondNode := recepient.Hostname()
+	if requestNode != respondNode {
 		// RE-HOSTED! TODO: update DB channel state .host
+		err := c.repo.UpdateChannelHost(context.TODO(), recepient.ID, respondNode)
+		if err != nil {
+			c.log.Error().Err(err).
+
+				Str("chat-id", client.ExternalID.String).
+				Str("channel-id", client.ExternalID.String).
+
+				Msg("RELOCATE")
+			// panic(err)
+		}
 	}
 
 	return nil

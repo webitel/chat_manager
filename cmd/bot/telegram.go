@@ -1,135 +1,220 @@
 package main
 
 import (
-
-	// "fmt"
-	"sync"
-	"net/http"
+	"github.com/micro/go-micro/v2/errors"
 	"strconv"
-	"strings"
-	"context"
 	"encoding/json"
-
-	"github.com/rs/zerolog"
-
-	pb "github.com/webitel/chat_manager/api/proto/bot"
-	pbchat "github.com/webitel/chat_manager/api/proto/chat"
-
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	
+	"context"
+	"strings"
+	"net/http"
+
+	// gate "github.com/webitel/chat_manager/api/proto/bot"
+	chat "github.com/webitel/chat_manager/api/proto/chat"
+	telegram "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
-// TelegramBot profile runtime
-type TelegramBot struct {
-	Profile *pbchat.Profile
-	API     *tgbotapi.BotAPI    // Telegram-server-side bot API
-	client   pbchat.ChatService // Webitel-internal-chat service API
-	log      zerolog.Logger
-	// this bot tracking active channels
-	chatMx   sync.RWMutex
-	chat     map[int64]*tgbotapi.Update
+func init() {
+	// NewProvider(telegram)
+	Register("telegram", NewTelegramBotV1)
 }
 
-// // TelegramChat represents single user-bot chat channel
-// type TelegramChat struct {
-// 	Bot *TelegramBot         // To: internal (Webitel)
-// 	Chat *tgbotapi.Chat      // From: external (Telegram)
-// 	Current *tgbotapi.Update // Current: latest update
-// }
+// Telegram BOT chat provider
+type TelegramBotV1 struct {
+	*Gateway
+	*telegram.BotAPI
+}
 
-func NewTelegramBot(profile *pbchat.Profile, client pbchat.ChatService, log *zerolog.Logger) ChatBot {
-	token, ok := profile.Variables["token"]
+// String "telegram" provider's name
+func (_ *TelegramBotV1) String() string {
+	return "telegram"
+}
+
+// NewTelegramBotV1 initialize new agent.profile service provider
+func NewTelegramBotV1(agent *Gateway) Provider {
+
+	token, ok := agent.Profile.Variables["token"]
 	if !ok {
-		log.Fatal().Msg("token not found")
+		agent.Log.Fatal().Msg("token not found")
 		return nil
 	}
-	bot, err := tgbotapi.NewBotAPI(token)
+	client := &http.Client{
+		Transport: &transportDump{
+			r: http.DefaultTransport,
+			WithBody: true,
+		},
+	}
+
+	bot, err := telegram.NewBotAPIWithClient(token, client)
+	
 	if err != nil {
 		// log.Fatal().Msg(err.Error())
-		log.Error().Err(err).
-			Int64("pid", profile.Id).
+		agent.Log.Error().Err(err).
+			Int64("pid", agent.Profile.Id).
 			Str("gate", "telegram").
-			Str("bot", profile.Name).
-			Str("uri", "/" + profile.UrlId).
+			Str("bot", agent.Profile.Name).
+			Str("uri", "/" + agent.Profile.UrlId).
 			Msg("Failed to init gateway")
 		return nil
 	}
-	// webhookInfo := tgbotapi.NewWebhookWithCert(fmt.Sprintf("%s/telegram/%v", cfg.TgWebhook, profile.Id), cfg.CertPath)
-	webhook := tgbotapi.NewWebhook(
-		strings.TrimRight(cfg.SiteURL, "/") +"/"+ profile.UrlId,
-	)
-	_, err = bot.SetWebhook(webhook)
+
+	return &TelegramBotV1{
+		Gateway: agent,
+		BotAPI: bot,
+	}
+}
+
+// Register Telegram Bot Webhook endpoint URI
+func (c *TelegramBotV1) Register(ctx context.Context, linkURL string) error {
+
+	// // webhookInfo := tgbotapi.NewWebhookWithCert(fmt.Sprintf("%s/telegram/%v", cfg.TgWebhook, profile.Id), cfg.CertPath)
+	// linkURL := strings.TrimRight(c.Gateway.Internal.URL, "/") +
+	// 	("/" + c.Gateway.Profile.UrlId)
+	
+	webhook := telegram.NewWebhook(linkURL)
+	_, err := c.BotAPI.SetWebhook(webhook)
+	
 	if err != nil {
-		log.Fatal().Msg(err.Error())
+		c.Gateway.Log.Error().Err(err).Msg("Failed to .Register webhook")
+		return err
+	}
+
+	return nil
+}
+
+// Deregister Telegram Bot Webhook endpoint URI
+func (c *TelegramBotV1) Deregister(ctx context.Context) error {
+	
+	res, err := c.BotAPI.RemoveWebhook()
+	
+	if err != nil {
+		return err
+	}
+
+	if !res.Ok {
+
+	}
+
+	return nil
+}
+
+// SendNotify implements provider.Sender interface for Telegram
+func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
+	// send *gate.SendMessageRequest
+	// externalID, err := strconv.ParseInt(send.ExternalUserId, 10, 64)
+	
+	channel := notify.Chat
+	chatID, err := strconv.ParseInt(channel.ChatID, 10, 64)
+	if err != nil {
+		return errors.InternalServerError(
+			"chat.gateway.telegram.chat.id.invalid",
+			"telegram: invalid chat %s unique identifier; expect integer values", channel.ChatID)
+	}
+
+	var update telegram.Chattable
+	// TODO: resolution for various notify content !
+	switch notify.Event {
+	case "text", "": // default
+	
+		sendMessage := notify.Message
+		update = telegram.NewMessage(chatID, sendMessage.GetText())
+	
+	case "file":
+	case "send":
+	case "edit":
+	case "read":
+	case "seen":
+
+	case "join":
+	case "kick":
+
+	case "typing":
+	case "upload":
+
+	case "invite":
+	case "closed":
+		// SEND: notify meesage text
+		sendMessage := notify.Message
+		update = telegram.NewMessage(chatID, sendMessage.GetText())
+	
+	default:
+
+	}
+
+	if update == nil {
+		channel.Log.Warn().Str("notify", notify.Event).Str("error", "notify: not implemented").Msg("IGNORE")
 		return nil
 	}
-	return &TelegramBot{
-		Profile: profile,
-		API:     bot,
-		client:  client,
-		log:     log.With().
+	
+	_, err = c.BotAPI.Send(update)
 
-			Int64("pid", profile.Id).
-			Str("gate", "telegram").
-			Str("bot", bot.Self.UserName).
-			Str("uri", "/" + profile.UrlId).
-			
-		Logger(),
-		// cache: default size
-		chat:    make(map[int64]*tgbotapi.Update, 64),
+	if err != nil {
+		switch e := err.(type) {
+		case telegram.Error:
+			const (
+				// HTTP/1.1 403 Forbidden
+				// Content-Length: 84
+				// Access-Control-Allow-Origin: *
+				// Access-Control-Expose-Headers: Content-Length,Content-Type,Date,Server,Connection
+				// Connection: keep-alive
+				// Content-Type: application/json
+				// Date: Fri, 11 Dec 2020 11:13:29 GMT
+				// Server: nginx/1.16.1
+				// Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+				// 
+				// {"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}
+				ErrBlockedByUser = "Forbidden: bot was blocked by the user"
+				// HTTP/1.1 429 Too Many Requests
+				// Content-Length: 109
+				// Access-Control-Allow-Origin: *
+				// Access-Control-Expose-Headers: Content-Length,Content-Type,Date,Server,Connection
+				// Connection: keep-alive
+				// Content-Type: application/json
+				// Date: Fri, 11 Dec 2020 13:12:39 GMT
+				// Retry-After: 1
+				// Server: nginx/1.16.1
+				// Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+				// 
+				// {"ok":false,"error_code":429,"description":"Too Many Requests: retry after 1","parameters":{"retry_after":1}}
+				ErrTooManyRequests = "Too Many Requests: " // retry after 1
+			)
+			// HTTP/1.1 403 Forbidden
+			if e.Message == ErrBlockedByUser {
+				// DO: .CloseConversation(!) cause: blocked by the user
+				// REMOVE: runtime state
+				_ = channel.Close() // ("telegram:bot: blocked by the user")
+			}
+			// HTTP/1.1 429 Too Many Requests
+			if strings.HasPrefix(e.Message, ErrTooManyRequests) {
+				// TODO: breaker !
+			}
+		}
+		// c.Gateway.Log.Error().Err(err).Msg("Failed to send message")
+		return err
 	}
-}
 
-func (bot *TelegramBot) DeleteProfile() error {
-	// if _, err := bot.API.RemoveWebhook(); err != nil {
-	// 	return err
-	// }
 	return nil
 }
 
-func (bot *TelegramBot) SendMessage(req *pb.SendMessageRequest) error {
-	chatID, err := strconv.ParseInt(req.ExternalUserId, 10, 64)
+// WebHook implementes provider.Receiver interface for Telegram
+func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request) {
+
+	var recvUpdate telegram.Update
+	err := json.NewDecoder(notice.Body).Decode(&recvUpdate)
+
 	if err != nil {
-		return err
-	}
-	msg := tgbotapi.NewMessage(chatID, req.GetMessage().GetText())
-	// msg.ReplyToMessageID = update.Message.MessageID
-	_, err = bot.API.Send(msg)
-	if err != nil {
-		bot.log.Error().Err(err).Msg("Failed to send message")
-		return err
-	}
-	bot.log.Debug().
-
-		Int64("chat-id", chatID).
-		Str("type", "text").
-		Str("text", req.GetMessage().GetText()).
-
-	Msg("SENT Update")
-	return nil
-}
-
-// Handler receives new Update message from telegram server
-func (bot *TelegramBot) Handler(w http.ResponseWriter, r *http.Request) {
-	// Contact: Chat-BOT profile unique ID represents contact string
-	contact := strconv.FormatInt(bot.Profile.Id, 10)
-
-	var update tgbotapi.Update
-	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
-		bot.log.Error().Err(err).Msg("Failed to decode update request")
-		// FIXME: notify telegram about an error; guess: will try again to resend .this later !
-		http.Error(w, "Failed to decode update request", http.StatusBadRequest) // 400 
-		return
+		http.Error(reply, "Failed to decode telegram .Update message", http.StatusBadRequest)
+		return // 400 Bad Request
 	}
 
-	recvMessage := update.Message
+	recvMessage := recvUpdate.Message
 	if recvMessage == nil {
-		recvMessage = update.EditedMessage
+		recvMessage = recvUpdate.EditedMessage
 	}
 
-	if recvMessage != update.Message {
+	if recvMessage != recvUpdate.Message {
 		
-		bot.log.Warn().
+		c.Gateway.Log.Warn().
 
 			Int(  "telegram-id", recvMessage.From.ID).
 			Str(  "username",    recvMessage.From.UserName).
@@ -137,171 +222,77 @@ func (bot *TelegramBot) Handler(w http.ResponseWriter, r *http.Request) {
 			// Str("first_name", message.From.FirstName).
 			// Str("last_name",  message.From.LastName)
 
-		Msg("IGNORE Update; NOT Message")
+		Msg("IGNORE Update; NOT A Text Message")
 		
 		return // 200 IGNORE
 	}
 
-	bot.log.Debug().
+	// sender
+	sender := recvMessage.Chat
+	user := recvMessage.From
 
-		Int(  "telegram-id", recvMessage.From.ID).
-		Str(  "username",    recvMessage.From.UserName).
-		Int64("chat-id",     recvMessage.Chat.ID).
-		// Str("first_name", recvMessage.From.FirstName).
-		// Str("last_name",  recvMessage.From.LastName).
-		Str(  "text",        recvMessage.Text).
+	// region: contact
+	contact := &Account{
+		ID:        0, // LOOKUP
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
+		Username:  user.UserName,
+		Channel:   "telegram",
+		Contact:   strconv.Itoa(user.ID),
+	}
 
-	Msg("RECV Update")
+	// username := recvMessage.From.FirstName
+	// if username != "" && recvMessage.From.LastName != "" {
+	// 	username += " " + recvMessage.From.LastName
+	// }
 
-	// region: cache latest chat update
-	// bot.set(&update)
+	// if username == "" {
+	// 	username = recvMessage.From.UserName
+	// }
 	// endregion
 
-	strChatID := strconv.FormatInt(recvMessage.Chat.ID, 10)
+	// region: channel
+	chatID := strconv.FormatInt(sender.ID, 10)
+	channel, err := c.Gateway.GetChannel(
+		notice.Context(), chatID, contact,
+	)
 
-	username := recvMessage.From.FirstName
-	if username != "" && recvMessage.From.LastName != "" {
-		username += " " + recvMessage.From.LastName
-	}
-
-	if username == "" {
-		username = recvMessage.From.UserName
-	}
-	
-	check := &pbchat.CheckSessionRequest{
-		ExternalId: strChatID,
-		ProfileId:  bot.Profile.Id,
-		Username:   username,
-	}
-	resCheck, err := bot.client.CheckSession(context.Background(), check)
 	if err != nil {
-		bot.log.Error().Err(err).Msg("Failed to get channel")
-		return
+		// Failed locate chat channel !
+		re := errors.FromError(err); if re.Code == 0 {
+			re.Code = (int32)(http.StatusBadGateway)
+		}
+		http.Error(reply, re.Detail, (int)(re.Code))
+		return // 503 Bad Gateway
 	}
-	bot.log.Debug().
-		
-		Str("channel_id", resCheck.ChannelId).
-		Int64("contact_id", resCheck.ClientId).
-		Bool("new", !resCheck.Exists).
-		Msg("CHAT-Channel")
 
-	if !resCheck.Exists {
-		start := &pbchat.StartConversationRequest{
-			DomainId: bot.Profile.DomainId,
-			Username: check.Username,
-			User: &pbchat.User{
-				UserId:     resCheck.ClientId,
-				Type:       "telegram",
-				Connection: contact, // telegram: specific contact uri
-				Internal:   false,
-			},
-			Message: &pbchat.Message{
-				Type: "text",
-				Value: &pbchat.Message_Text{
-					Text: recvMessage.Text,
-				},
-				Variables: nil, // map[string]string{},
-			},
-		}
-		_, err := bot.client.StartConversation(context.Background(), start)
-		if err != nil {
-			bot.log.Error().Err(err).Msg("Failed to start new chat")
-			return
-		}
-		// if update.Message.Text != "/start" {
-		// 	textMessage := &pbchat.Message{
-		// 		Type: "text",
-		// 		Value: &pbchat.Message_TextMessage_{
-		// 			TextMessage: &pbchat.Message_TextMessage{
-		// 				Text: update.Message.Text,
-		// 			},
-		// 		},
-		// 	}
-		// 	message := &pbchat.SendMessageRequest{
-		// 		Message:   textMessage,
-		// 		ChannelId: resStart.ChannelId,
-		// 		FromFlow:  false,
-		// 	}
-		// 	_, err = b.client.SendMessage(context.Background(), message)
-		// 	if err != nil {
-		// 		b.log.Error().Msg(err.Error())
-		// 	}
-		// }
-	} else {
-		message := &pbchat.SendMessageRequest{
-			// Message:   textMessage,
-			AuthUserId: resCheck.ClientId,
-			ChannelId:  resCheck.ChannelId,
-		}
-		// if update.Message.Photo != nil {
-		// 	fileURL, err := b.telegramBots[profileID].GetFileDirectURL(
-		// 		update.Message.Photo[len(update.Message.Photo)-1].FileID,
-		// 	)
-		// 	if err != nil {
-		// 		log.Error().Msg(err.Error())
-		// 		return
-		// 	}
-		// 	fileRes, err := http.Get(fileURL)
-		// 	if err != nil {
-		// 		log.Error().Msg(err.Error())
-		// 		return
-		// 	}
-		// 	defer fileRes.Body.Close()
-		// 	if fileRes.StatusCode != 200 {
-		// 		log.Error().Int("status", fileRes.StatusCode).Msgf("failed to download image")
-		// 		return
-		// 	}
-		// 	f, err := ioutil.ReadAll(fileRes.Body)
-		// 	// m, _, err := image.Decode(fileRes.Body)
-		// 	// if err != nil {
-		// 	// 	log.Error().Msg(err.Error())
-		// 	// 	return
-		// 	// }
-		// 	fileMessage := &pbchat.Message{
-		// 		Type: "text",
-		// 		Value: &pbchat.Message_Text{
-		// 			Text: update.Message.Text,
-		// 		},
-		// 	}
-		// } else {
-		textMessage := &pbchat.Message{
-			Type: "text",
-			Value: &pbchat.Message_Text{
+	// channel.Title = sender.Title
+	// contact.ID = channel.ContactID
+
+	// endregion
+
+	sendUpdate := Update{
+		Title:   channel.Title,
+		// ChatID: strconv.FormatInt(recvMessage.Chat.ID, 10),
+		Chat:    channel,
+		User:    contact,
+		Message: &chat.Message{
+			Id:    0, // INCOME: NEW(!)
+			Type:  "text",
+			Value: &chat.Message_Text{
 				Text: recvMessage.Text,
 			},
-		}
-		message.Message = textMessage
-		// }
-
-		_, err := bot.client.SendMessage(context.TODO(), message)
-		if err != nil {
-			bot.log.Error().Err(err).Msg("Failed to route message")
-		}
+			Variables: nil, // map[string]string{},
+		},
 	}
+
+	err = c.Gateway.Read(notice.Context(), &sendUpdate)
+
+	if err != nil {
+		http.Error(reply, "Failed to deliver telegram .Update message", http.StatusInternalServerError)
+		return // 502 Bad Gateway
+	}
+
+	reply.WriteHeader(http.StatusOK)
+	return // 200 OK
 }
-
-/*
-
-// chat returns cached (internaly stored) active tracking chat communication channel
-func (bot *TelegramBot) get(id int64) *tgbotapi.Update {
-	
-	bot.chatMx.RLock()
-	state := bot.chat[id]
-	bot.chatMx.RUnlock()
-
-	return state
-}
-
-// cache stores (runtime only) tracking chat communication channel
-func (bot *TelegramBot) set(state *tgbotapi.Update) {
-	
-	id := state.Message.Chat.ID
-
-	bot.chatMx.Lock()
-	bot.chat[id] = state
-	bot.chatMx.Unlock()
-
-
-}
-
-*/

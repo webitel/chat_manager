@@ -30,11 +30,12 @@ type Config struct {
 }
 
 var (
-	client  pbchat.ChatService
+	agent  pbchat.ChatService
 	logger  zerolog.Logger
 	cfg     *Config
 	service micro.Service
-	bot     ChatServer
+	// bot     ChatServer // V0
+	srv     *Service   // V1
 )
 
 func init() {
@@ -110,18 +111,18 @@ func main() {
 			
 			sender := service.Client() // Micro-From-Service: webitel.chat.bot
 			sender = wrapper.FromServiceId(service.Server().Options().Id, sender) // Micro-From-Id: server.DefaultId
-			client = pbchat.NewChatService("webitel.chat.server", sender)
+			agent = pbchat.NewChatService("webitel.chat.server", sender)
 			
 			return configure()
 		}),
 		micro.BeforeStart(
 			func() error {
-				return bot.StartWebhookServer()
+				return srv.Start()
 			},
 		),
 		micro.AfterStop(
 			func() error {
-				return bot.StopWebhookServer()
+				return srv.Close()
 			},
 		),
 	)
@@ -134,29 +135,25 @@ func main() {
 }
 
 func configure() error {
+	
 	r := mux.NewRouter()
 	r.Use(dumpMiddleware)
 
-	// // region: v1
-	// srv := NewService(&logger, client)
-
-	// srv.Addr = cfg.Address
-	// srv.URL = cfg.SiteURL
-
-	// r.PathPrefix("/").Methods("GET", "POST").Handler(srv)
-	// // endregion
-
-	bot = NewBotService(
-		&logger,
-		client,
-		r,
-	)
-
-	if err := pb.RegisterBotServiceHandler(service.Server(), bot); err != nil {
+	srv = NewService(&logger, agent)
+	
+	err := pb.RegisterBotServiceHandler(service.Server(), srv)
+	
+	if err != nil {
 		logger.Fatal().
 			Str("app", "failed to register service").
 			Msg(err.Error())
 		return err
 	}
+
+	srv.URL = cfg.SiteURL
+	srv.Addr = cfg.Address
+
+	r.PathPrefix("/").Methods("GET", "POST").Handler(srv)
+
 	return nil
 }

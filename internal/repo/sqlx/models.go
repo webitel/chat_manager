@@ -36,6 +36,8 @@ type Channel struct {
 	Name           string         `db:"name" json:"name"`
 	ClosedCause    sql.NullString `db:"closed_cause" json:"closed_cause,omitempty"`
 	JoinedAt       sql.NullTime   `db:"joined_at" json:"joined_at,omitempty"`
+
+	Properties     map[string]string `db:"props" json:"props,omitempty"`
 }
 
 func (m *Channel) Contact() string {
@@ -144,8 +146,9 @@ func (m *Channel) Scan(row *sql.Rows) error {
 		case "closed_at":       target(&m.ClosedAt)
 		case "closed_cause":    target(&m.ClosedCause)
 
-
 		case "flow_bridge":     target(&m.FlowBridge)
+
+		case "props":           target(ScanProperties(&m.Properties))
 
 		default:
 

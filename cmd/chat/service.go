@@ -276,6 +276,8 @@ func (s *chatService) StartConversation(
 		Internal: req.GetUser().GetInternal(),
 		DomainID: req.GetDomainId(),
 		Name:     req.GetUsername(),
+
+		Properties: req.GetMessage().GetVariables(),
 	}
 
 	conversation := &pg.Conversation{
@@ -598,8 +600,8 @@ func (s *chatService) LeaveConversation(
 
 	if conversationID != "" {
 		if conversationID != sender.ConversationID {
-			s.log.Warn().Msg("conversation not found")
-			return errors.BadRequest("conversation not found", "")
+			s.log.Warn().Msg("channel.conversation_id mismatch")
+			return errors.BadRequest("channel.conversation_id mismatch", "")
 		}
 	}
 	
@@ -865,19 +867,19 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 		Int64("profile_id", req.GetProfileId()).
 		Msg("check session")
 	
-	client, err := s.repo.GetClientByExternalID(ctx, req.GetExternalId())
+	contact, err := s.repo.GetClientByExternalID(ctx, req.GetExternalId())
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
 	
-	if client == nil {
-		client, err = s.createClient(ctx, req)
+	if contact == nil {
+		contact, err = s.createClient(ctx, req)
 		if err != nil {
 			s.log.Error().Msg(err.Error())
 			return err
 		}
-		res.ClientId = client.ID
+		res.ClientId = contact.ID
 		res.Exists = false
 		return nil
 	}
@@ -890,19 +892,21 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 	}
 	
 	externalBool := false
-	channel, err := s.repo.GetChannels(ctx, &client.ID, nil, &profileStr, &externalBool, nil)
+	channels, err := s.repo.GetChannels(ctx, &contact.ID, nil, &profileStr, &externalBool, nil)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
 	
-	if len(channel) > 0 {
-		res.Exists = true
-		res.ChannelId = channel[0].ID
-		res.ClientId = client.ID
+	if len(channels) != 0 {
+		channel := channels[0]
+		res.ClientId = contact.ID
+		res.ChannelId = channel.ID
+		res.Exists = channel.ID != ""
+		res.Properties = channel.Properties
 	} else {
+		res.ClientId = contact.ID
 		res.Exists = false
-		res.ClientId = client.ID
 	}
 
 	return nil
@@ -1119,6 +1123,17 @@ func (s *chatService) GetProfileByID(ctx context.Context, req *pb.GetProfileByID
 	if err != nil {
 		s.log.Error().Err(err).Msg("Failed to get profile")
 		return err
+	}
+	if profile == nil {
+
+		s.log.Warn().Int64("pid", req.GetId()).Str("uri", req.GetUri()).
+			Msg("Profile Not Found")
+
+		return errors.NotFound(
+			"chat.gateway.profile.not_found",
+			"chat: gateway profile id=%d uri=/%s not found",
+			req.GetId(), req.GetUri(),
+		)
 	}
 	if user != nil && profile.DomainID != user.DomainID {
 		s.log.Error().Msg("invalid domain id")

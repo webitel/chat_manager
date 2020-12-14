@@ -1,38 +1,39 @@
 package main
 
 import (
-	// "github.com/micro/go-micro/v2/server"
-	// "github.com/webitel/chat_manager/internal/contact"
 
-	"sync"
 	"time"
-
 	"bytes"
 	"context"
+	"strings"
 	"strconv"
+
 	"net/http"
-	// "io/ioutil"
-
 	"encoding/json"
+
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
-	"github.com/golang/protobuf/proto"
-	merror "github.com/micro/go-micro/v2/errors"
-
-	pb "github.com/webitel/chat_manager/api/proto/bot"
-	pbchat "github.com/webitel/chat_manager/api/proto/chat"
-
 	"github.com/rs/zerolog/log"
+	// "github.com/golang/protobuf/proto"
+	errs "github.com/micro/go-micro/v2/errors"
+
+	// gate "github.com/webitel/chat_manager/api/proto/bot"
+	chat "github.com/webitel/chat_manager/api/proto/chat"
+
 )
 
+func init() {
+	// NewProvider(corezoid)
+	Register("corezoid", NewCorezoidBot)
+}
+
 // chat request: command/message
-type corezoidIncome struct {
+type corezoidRequest struct {
 
 	ChatID    string    `json:"id,omitempty"`          // [required] chat.channel.user.id
 	Channel   string    `json:"channel,omitempty"`     // [required] underlaying provider name e.g.: telegram, viber, messanger (facebook), skype, slack
 
 	Date      time.Time `json:"-"`                     // [internal] received local timestamp
-	Type      string    `json:"action,omitempty"`      // [required] command request !
+	Event     string    `json:"action,omitempty"`      // [required] command request !
 	Test      bool      `json:"test,omitempty"`        // [optional] bot development indicatior ! TOBE: removed in production !
 
 	From      string    `json:"client_name,omitempty"` // [required] chat.username; remote::display
@@ -42,7 +43,7 @@ type corezoidIncome struct {
 }
 
 // chat response: reply/event/message
-type corezoidOutcome struct {
+type corezoidReply struct {
 	 // outcome: response
 	 Date      time.Time `json:"-"`                         // [internal] sent local timestamp
 	 // {action:"chat"} => oneof {replyAction:(startChat|closeChat|answerToChat)} else ignore
@@ -52,103 +53,272 @@ type corezoidOutcome struct {
 }
 
 // channel runtime state
-type corezoidChat struct {
-	 // ChannelID (internal: Webitel)
-	 ChannelID string
-	 // latest income message
-	 corezoidIncome
+type corezoidChatV1 struct {
+	//  // ChannelID (internal: Webitel)
+	//  ChannelID string
+	 // Request message; latest
+	 corezoidRequest // json:",embedded"
 	 // corresponding reply message
-	 corezoidOutcome
+	 corezoidReply // json:",embedded"
 }
 
-// Corezoid Bot runtime
-type corezoidBot struct {
-	profile   *pbchat.Profile // config
-	URI       string // this chat-bot back-channel service URL (host::proxy)
-	log       zerolog.Logger
-	client    pbchat.ChatService
-	// runtime cache
-	chatMx    sync.RWMutex
-	//        map[external]state
-	channel   map[string]*corezoidChat
+// Corezoid Chat-Bot gateway runtime driver
+type CorezoidBot struct {
+	// URL to communicate with a back-channel service provider (proxy)
+	URL string
+	// Client HTTP to communicate with member, remote
+	Client *http.Client
+	// Gateway service agent
+	Gateway *Gateway
 }
 
-func ConfigureCorezoid(profile *pbchat.Profile, client pbchat.ChatService, log *zerolog.Logger) ChatBot {
-	//token, ok := profile.Variables["token"]
-	//if !ok {
-	//	b.log.Fatal().Msg("token not found")
-	//	return nil
-	//}
-	url, ok := profile.Variables["url"]
-	if !ok {
+// NewCorezoidBot initialize new chat service provider
+// corresponding to agent.Profile configuration
+func NewCorezoidBot(agent *Gateway) Provider {
+
+	config := agent.Profile
+	profile := config.GetVariables()
+	url, ok := profile["url"]; if !ok {
 		log.Fatal().Msg("url not found")
 		return nil
 	}
-	return &corezoidBot{
+	return &CorezoidBot{
 
-		profile:   proto.Clone(profile).(*pbchat.Profile),
-		URI:       url,
-		log:       log.With().
+		URL:     url,
 
-			Int64("pid", profile.Id).
-			Str("gate", "corezoid").
-			Str("bot", "АТБ chat-bot").
-			Str("uri", "/" + profile.UrlId).
+		Client: &http.Client{
+			Transport: &transportDump{
+				r: http.DefaultTransport,
+				WithBody: true,
+			},
+		},
 		
-		Logger(),
-		client:    client,
-
-		channel:   make(map[string]*corezoidChat, 64),
+		Gateway: agent,
 	}
 }
 
-func (bot *corezoidBot) DeleteProfile() error {
+// String "corezoid" provider name
+func (_ *CorezoidBot) String() string {
+	return "corezoid"
+}
+
+// Deregister NOT supported
+func (_ *CorezoidBot) Deregister(ctx context.Context) error {
 	return nil
 }
 
-// SendMessage implements bot.Sender interface
-func (bot *corezoidBot) SendMessage(req *pb.SendMessageRequest) error {
+// Register NOT supported
+func (_ *CorezoidBot) Register(ctx context.Context, uri string) error {
+	return nil
+}
+
+// WebHook implementes provider.Receiver interface
+func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 	var (
 
-		chatID = req.GetExternalUserId()
-		update = req.GetMessage()
-		localtime = time.Now()
+		update corezoidRequest // command/message
+		localtime = time.Now() // timestamp
 	)
 
-	// region: try to get chat latest state
-	channel := bot.get(chatID)
-	if channel == nil || channel.ChatID != chatID {
-		// TODO: preload from persistent db store
+	if err := json.NewDecoder(notice.Body).Decode(&update); err != nil {
+		log.Error().Err(err).Msg("Failed to decode update request")
+		err = errors.Wrap(err, "Failed to decode update request")
+		http.Error(reply, err.Error(), http.StatusBadRequest) // 400 
+		return
+	}
 
-		bot.log.Error().
-			Str("chat-id", chatID).
-			Str(zerolog.ErrorFieldName, "chat: no runtime context found").
-		Msg("Failed to send update")
+	if update.ChatID == "" {
+		log.Error().Msg("Got request with no chat.id; ignore")
+		http.Error(reply, "request: chat.id required but missing", http.StatusBadRequest) // 400
+		return
+	}
 
-		return merror.NotFound(
-			"webitel.chat.send.not_found",
-			"chat: channel id:%s: no runtime context found",
-			 chatID,
-		)
+	update.Date = localtime
+
+	// region: runtime state update
+	state := &corezoidChatV1{
+		corezoidRequest: update, // as latest
+		// corezoidOutcome: {} // NULLify
 	}
 	// endregion
 
-	// var reply corezoidReply
-	// // populate channel request context
-	// reply.corezoidUpdate = state.Current
-	
-	// reply.ID       = chatID
-	// reply.Text     = req.GetMessage().GetVariables()["text"]
-	// reply.Action   = req.GetMessage().GetVariables()["action"]
-	// reply.Channel  = req.GetMessage().GetVariables()["channel"]
-	// reply.ReplyTo  = req.GetMessage().GetVariables()["replyTo"]
+	c.Gateway.Log.Debug().
 
-	// prepare channel response details
-	ctx := corezoidChat{ // shallowcopy value(s)
-		corezoidIncome: channel.corezoidIncome,
+		Str("chat-id", update.ChatID).
+		Str("channel", update.Channel).
+		Str("action",  update.Event).
+		Str("text",    update.Text).
+
+	Msg("RECV update")
+
+	// region: contact
+	username := strings.TrimSuffix(update.From, "("+ update.Channel +")")
+	username = strings.TrimSpace(username)
+	if username == "" {
+		username = "noname"
 	}
-	reply := &ctx.corezoidOutcome
+
+	contact := &Account{
+		ID:        0, // LOOKUP
+		FirstName: "",
+		LastName:  "",
+		Username:  username,
+		Channel:   update.Channel,
+		Contact:   update.ChatID,
+	}
+	// endregion
+	
+	// region: channel
+	chatID := update.ChatID
+	channel, err := c.Gateway.GetChannel(
+		notice.Context(), chatID, contact,
+	)
+
+	if err != nil {
+		c.Gateway.Log.Error().
+			Str("error", "lookup: "+ err.Error()).
+			Msg("CHANNEL")
+		
+		http.Error(reply, errors.Wrap(err, "Failed lookup chat channel").Error(), http.StatusInternalServerError)
+		return
+	}
+	// RESET: Latest, NEW state !
+	channel.Properties = state
+	// endregion
+
+	// region: init chat-flow-routine /start message environment variables
+	props := map[string]string {
+		"chat-id":     update.ChatID,
+		"channel":     update.Channel,
+		"action":      update.Event,
+		"client_name": update.From,
+		// "replyTo":  update.ReplyWith,
+		"text":        update.Text,
+		"test":        strconv.FormatBool(update.Test),
+	}
+
+	// REACTION !
+	switch update.Event {
+	case "chat": // incoming chat request (!)
+	case "closeChat":
+		// TODO: break flow execution !
+		if channel.IsNew() {
+
+			channel.Log.Warn().Msg("CLOSE Request NO Channel; IGNORE")
+			return // TODO: NOTHING !
+		}
+
+		channel.Log.Info().Msg("CLOSE External request; PERFORM")
+
+		// DO: .CloseConversation(!)
+		// cause := commandCloseRecvDisposiotion
+		err = channel.Close() // (cause) // default: /close request
+		
+		if err != nil {
+			// RESPOND (SEND): err: ${detail}
+			http.Error(reply, errors.Wrap(err, "/close").Error(), http.StatusInternalServerError)
+			return // 500 Internal Server Error
+		}
+
+		return
+
+	case "Предложение":
+	
+		props["replyTo"] = update.ReplyWith
+
+	default:
+		// UNKNOWN !
+		c.Gateway.Log.Warn().
+			Str("error", update.Event +": incoming chat.action not implemented").
+			Msg("IGNORE")
+
+		return // HTTP/1.1 200 OK // to avoid redeliver !
+	}
+	
+	recvUpdate := Update {
+	
+		ID:     0, // NEW
+		Title:  username,
+		// ChatID: update.ChatID,
+		Chat:   channel, // SENDER (!)
+		// Contact: update.Channel,
+		User:   contact,
+		
+		Event:   "text",
+		Message: &chat.Message{
+			Id:    0, // NEW
+			Type:  "text",
+			Value: &chat.Message_Text{
+				Text: update.Text,
+			},
+			Variables: props,
+		},
+		// not applicable yet !
+		Edited:           0,
+		EditedMessageID:  0,
+		
+		// JoinMembersCount: 0,
+		// KickMembersCount: 0,
+	}
+
+	// PERFORM: receive incoming update from external chat channel !
+	err = c.Gateway.Read(notice.Context(), &recvUpdate)
+
+	if err != nil {
+		
+		http.Error(reply, errors.Wrap(err, "Failed to deliver chat update").Error(), http.StatusInternalServerError)
+		return // HTTP/1.1 500 Server Internal Error
+	}
+
+	reply.WriteHeader(http.StatusOK)
+	return // HTTP/1.1 200 OK
+}
+
+// SendNotify implements provider.Sender interface
+func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
+
+	var (
+
+		localtime = time.Now()
+		recepient = notify.Chat // recepient
+
+		update = notify.Message
+	)
+
+
+	// region: try to get chat latest state
+	var chat *corezoidChatV1
+	switch props := recepient.Properties.(type) {
+	case *corezoidChatV1:
+		chat = props
+	case map[string]string:
+		develop, _ := strconv.ParseBool(props["test"])
+		chat = &corezoidChatV1{
+			corezoidRequest: corezoidRequest{
+				ChatID:    recepient.ChatID,
+				Channel:   props["channel"], // notify.User.Channel
+				Date:      localtime,
+				Event:     props["action"],
+				Test:      develop,
+				From:      props["client_name"],
+				Text:      props["text"], // RECOVER
+				ReplyWith: props["replyTo"],
+			},
+		}
+		// RECOVERED !
+		recepient.Properties = chat
+	default:
+		if recepient.Properties != nil {
+			return errs.InternalServerError(
+				"chat.gateway.corezoid.channel.recover.error",
+				"corezoid: channel %T recover %T state invalid",
+				 chat, props,
+			)
+		}
+	}
+	// prepare reply message envelope !
+	reply := &chat.corezoidReply
 	reply.Date = localtime
 	// represents operator's name for member side
 	// TODO: How to get chat identity for some member side ?
@@ -159,356 +329,113 @@ func (bot *corezoidBot) SendMessage(req *pb.SendMessageRequest) error {
 		title = "webitel:bot" // default
 	}
 
-	const commandClose = "Conversation closed" // internal: from !
-	// NOTE: sending the last conversation message
-	closing := update.GetText() == commandClose
-	// in front of income: reaction !
-	switch channel.corezoidIncome.Type {
-	case "chat": // chatting
-		// replyAction = startChat|closeChat|answerToChat
-		if closing {
-			// NOTE: internal request !
-			reply.Type = "closeChat"
-		} else {
-			// NOTE: normal texting ...
-			reply.Type = "answerToChat" 
+	// region: event specific reaction !
+	switch notify.Event {
+	case "text", "": // default
+		// reaction:
+		switch chat.corezoidRequest.Event {
+		case "chat": // chatting
+			// replyAction = startChat|closeChat|answerToChat
+			reply.Type = "answerToChat"
+			reply.Text = update.GetText() // reply: message text
+			reply.From = title // TODO: resolve sender name
+		
+		// case "closeChat": // Requested ?
+		// 	reply.Type = "closeChat"
+		// 	reply.Text = update.GetText() // reply: message text
+		// 	reply.From = title // TODO: resolve sender name
+			
+		case "Предложение":
+			
+			reply.From = title // TODO: resolve sender name
+			reply.Text = update.GetText() // reply: message text
+
+		default:
+			// panic(errors.Errorf("corezoid: send %q within %q state invalid", notify.Event, chat.corezoidRequest.Event))
+			recepient.Log.Warn().Str("notice", 
+				chat.corezoidRequest.Event + 
+				": reaction to chat event=text not implemented",
+			).Msg("IGNORE")
+			return nil
 		}
-		reply.From = title // TODO: resolve sender name
-		reply.Text = update.GetText() // reply: message text
-	case "closeChat": // Requested ?
-		if closing {
-			// NOTE: ACK ! Closed !
+	
+	// case "file":
+	// case "send":
+	// case "edit":
+	// case "read":
+	// case "seen":
+
+	// case "join":
+	// case "kick":
+
+	// case "typing":
+	// case "upload":
+
+	// case "invite":
+	case "closed":
+		// SEND: typical text notification !
+		switch chat.corezoidRequest.Event {
+		case "chat", "closeChat":
+			// replyAction = startChat|closeChat|answerToChat
 			reply.Type = "closeChat"
-		} else {
-			// FIXME: continue texting ?
-			reply.Type = "answerToChat" 
+			reply.Text = update.GetText() // reply: message text
+			reply.From = title // TODO: resolve sender name
+		
+		default:
+			
+			recepient.Log.Warn().Str("notice", 
+				chat.corezoidRequest.Event + 
+				": reaction to chat event :closed: intentionally disabled",
+			).Msg("IGNORE")
+			return nil
 		}
-		reply.From = title // TODO: resolve sender name
-		reply.Text = update.GetText() // reply: message text
-	default: // {"action":Предложение"}
-		reply.From = title // TODO: resolve sender name
-		reply.Text = update.GetText() // reply: message text
+	
+	default:
+
+		recepient.Log.Warn().Str("notice", 
+			"corezoid: reaction to chat event="+ notify.Event +" not implemented",
+		).Msg("IGNORE")
+		return nil
 	}
+	// endregion
 
 	// encode result body
-	body, err := json.Marshal(ctx)
+	body, err := json.Marshal(chat)
 	if err != nil {
 		// 500 Failed to encode update request
 		return err
 	}
 
-	corezoidReq, err := http.NewRequest(http.MethodPost, bot.URI, bytes.NewReader(body))
+	corezoidReq, err := http.NewRequest(http.MethodPost, c.URL, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
-	corezoidReq.Header.Set("Content-Type", "application/json")
-	//corezoidReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", profile.token))
 
-	res, err := http.DefaultClient.Do(corezoidReq)
+	corezoidReq.Header.Set("Content-Type", "application/json; chatset=utf-8")
+
+	client := c.Client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	// DO: SEND !
+	res, err := c.Client.Do(corezoidReq)
+	
 	if err != nil {
 		return err
 	}
+
 	// _, err = ioutil.ReadAll(corezoidRes.Body)
-	
 	code := res.StatusCode
 	if 200 <= code && code < 300 {
 		// Success (!)
 		// store latest context response
 		// adjust := channel.corezoidOutcome // continuation for latest reply message -if- !adjust.Date.IsZero()
-		channel.corezoidOutcome = *(reply) // shallowcopy
-	}
+		chat.corezoidReply = *(reply) // shallowcopy
 	
-	return nil
-}
-
-// Handler implementes bot.Receiver interface
-func (bot *corezoidBot) Handler(w http.ResponseWriter, r *http.Request) {
-
-	// // internal, machine-readable chat channel contact (string: profile ID)
-	// contact, err := contact.NodeObjectContact(
-	// 	bot.profile.Id, server.DefaultId,
-	// )
-	// if err != nil {
-	// 	bot.log.Error().Err(err).
-		
-	// 		Int64("pid", bot.profile.Id).
-	// 		Str("node", server.DefaultId).
-		
-	// 	Msg("Failed to provider channel contact string")
-	// }
-	contact := strconv.FormatInt(bot.profile.Id, 10)
-
-	var (
-
-		// update corezoidUpdate // payload
-		update corezoidIncome // command/message
-		localtime = time.Now() // timestamp
-	)
-
-	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
-		log.Error().Err(err).Msg("Failed to decode update request")
-		err = errors.Wrap(err, "Failed to decode update request")
-		http.Error(w, err.Error(), http.StatusBadRequest) // 400 
-		return
-	}
-
-	if update.ChatID == "" {
-		log.Error().Msg("Got request with no chat.id; ignore")
-		http.Error(w, "request: chat.id required but missing", http.StatusBadRequest) // 400
-		return
-	}
-
-	update.Date = localtime
-
-	// region: runtime state update
-	// state := bot.get(update.ChatID)
-	// if state == nil {
-	// 	state = &corezoidChat{
-	// 		corezoidIncome: update, // as latest
-	// 	}
-	// } else {
-	// 	// TODO: re-init, continue but new context
-	// 	state.corezoidIncome = update // shallowcopy
-	// 	state.corezoidOutcome
-	// }
-	state := &corezoidChat{
-		corezoidIncome: update, // as latest
-		// corezoidOutcome: {} // NULLify
-	}
-	bot.set(state) // store runtime state
-	// endregion
-
-	bot.log.Debug().
-
-		Str("chat-id", update.ChatID).
-		Str("channel", update.Channel).
-		Str("action",  update.Type).
-		Str("text",    update.Text).
-
-	Msg("RECV update")
-
-	strChatID := update.ChatID //strconv.FormatInt(update.ID, 10)
-
-	check := &pbchat.CheckSessionRequest{
-		// gateway profile identity
-		ProfileId:  bot.profile.Id,
-		// external client contact
-		ExternalId: strChatID,
-		Username:   update.From,
-	}
-	// passthru request cancellation context
-	chat, err := bot.client.CheckSession(r.Context(), check)
-	if err != nil {
-		bot.log.Error().Err(err).Msg("Failed to lookup chat channel")
-		return
-	}
-	bot.log.Debug().
-		Bool("new", !chat.Exists).
-		Str("channel_id", chat.ChannelId).
-		Int64("client_id", chat.ClientId).
-		Msg("CHAT Channel")
-	
-	// QUICK reaction
-	switch update.Type {
-	case "chat": // incoming chat request (!)
-	case "closeChat":
-		// TODO: break flow execution !
-		if !chat.Exists {
-			bot.log.Warn().
-			
-				Str("chat-id", update.ChatID).
-				Str("channel", update.Channel).
-				Str("action",  update.Type).
-				Str("text",    update.Text).
-			
-			Msg("CLOSE Request NO Channel; IGNORE")
-			return // TODO: NOTHING !
-		}
-
-		bot.log.Info().
-
-			Str("chat-id", update.ChatID).
-			Str("channel", update.Channel).
-			Str("action",  update.Type).
-			Str("text",    update.Text).
-
-		Msg("CLOSE External request; PERFORM")
-
-		_, err := bot.client.CloseConversation(
-			// cancellation
-			r.Context(),
-			// request
-			&pbchat.CloseConversationRequest{
-				ConversationId:  "",
-				CloserChannelId: chat.ChannelId,
-				Cause:           "recv:close",
-				AuthUserId:      chat.ClientId, // FIXME: ?
-			},
-			// options
-		)
-
-		if err != nil {
-			bot.log.Error().Err(err).
-
-				Str("chat-id", update.ChatID).
-				Str("channel", update.Channel).
-				Str("action",  update.Type).
-				Str("text",    update.Text).
-
-			Msg("Failed to close channel")
-			// TODO: HTTP/1.1 500
-		}
-		return
-
-	default: // "Пропозиція", "Предложение" // FIXME: request non-localized (!)
-	}
-
-	if !chat.Exists {
-
-		// region: init chat-flow-routine /start message environment variables
-		env := map[string]string {
-			"chat-id":     update.ChatID,
-			"channel":     update.Channel,
-			"action":      update.Type,
-			"client_name": update.From,
-			// "replyTo":  update.ReplyWith,
-			"text":        update.Text,
-			"test":        strconv.FormatBool(update.Test),
-		}
-
-		// HERE: passthru command-specific arguments ...
-		switch update.Type {
-		case "Предложение":
-
-			env["replyTo"] = update.ReplyWith
-		
-		case "chat":
-			// ...
-		}
-		// endregion
-
-		start := &pbchat.StartConversationRequest{
-			DomainId: bot.profile.DomainId,
-			Username: check.Username,
-			User: &pbchat.User{
-				UserId:     chat.ClientId,
-				Type:       update.Channel, // "telegram", // FIXME: why (?)
-				Connection: contact, // contact: profile.ID
-				Internal:   false,
-			},
-			Message: &pbchat.Message{
-				Type: "text",
-				Value: &pbchat.Message_Text{
-					Text: update.Text,
-				},
-				Variables: env,
-			},
-		}
-
-		_, err := bot.client.StartConversation(context.Background(), start)
-		if err != nil {
-			bot.log.Error().Msg(err.Error())
-			return
-		}
-
 	} else {
 
-		message := &pbchat.SendMessageRequest{
-			// Message:   textMessage,
-			AuthUserId: chat.ClientId,
-			ChannelId:  chat.ChannelId,
-		}
-		messageText := &pbchat.Message{
-			Type: "text",
-			Value: &pbchat.Message_Text{
-				Text: update.Text,
-			},
-			// // FIXME: does we need this here ? 
-			// // NOTE: processing consequent message(s) ...
-			// Variables: map[string]string {
-			// 	"action":  update.Type,
-			// 	"channel": update.Channel,
-			// 	"replyTo": update.ReplyWith,
-			// },
-		}
-		message.Message = messageText
-		// }
-
-		_, err := bot.client.SendMessage(context.Background(), message)
-		if err != nil {
-			bot.log.Error().Msg(err.Error())
-		}
+		recepient.Log.Error().Int("code", code).Str("status", res.Status).Str("error", "send: failure").Msg("SEND")
 	}
-
-	// // QUICK TEST
-	// response := *(update) // shallowcopy
-	// response.Answer = update.Text // ECHO
-	// // FIXME: relpy here ?
-	// w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	// err = json.NewEncoder(w).Encode(response)
-	// if err != nil {
-	// 	panic(errors.Wrap(err, "Failed to write response"))
-	// }
 	
-	// go corezoidDelayedResponse(b, *(update), time.Second * 10)
-}
-
-// get returns latest runtime chat state by given chatID
-func (bot *corezoidBot) get(externalID string) *corezoidChat {
-
-	bot.chatMx.RLock()   // +R
-	channel, ok := bot.channel[externalID]
-	bot.chatMx.RUnlock() // -R
-
-	if ok && channel.ChatID == externalID {
-		return channel // CACHE: FOUND !
-	}
-
-	// res, err := bot.client.CheckSession(ctx,
-	// 	&pbchat.CheckSessionRequest{
-	// 		ProfileID: bot.profile.Id,
-	// 		ExternalId: externalID,
-	// 		Username:   "",
-	// 	},
-	// 	// callOpts,
-	// )
-
-	// if err != nil {
-	// 	// Failed looking for channel
-	// 	return err
-	// }
-
-	// if res.Exists && res.ChannelId != "" {
-
-	// 	channel := &corezoidChat{
-	// 		corezoidIncome: corezoidIncome{
-	// 			ChatID:    "",
-	// 			Channel:   "",
-	// 			Date:      time.Time{},
-	// 			Type:      "",
-	// 			Test:      false,
-	// 			From:      "",
-	// 			Text:      "",
-	// 			ReplyWith: "",
-	// 		},
-	// 		corezoidOutcome: corezoidOutcome{
-	// 			Date: time.Time{},
-	// 			Type: "",
-	// 			From: "",
-	// 			Text: "",
-	// 		},
-	// 	}
-	// }
-
 	return nil
-}
-
-// set stores given state as a latest runtime chat state
-func (bot *corezoidBot) set(channel *corezoidChat) {
-
-	externalID := channel.ChatID
-
-	bot.chatMx.Lock()
-	bot.channel[externalID] = channel
-	bot.chatMx.Unlock()
 }

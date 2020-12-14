@@ -306,24 +306,60 @@ func (repo *sqlxRepository) CloseChannel(ctx context.Context, id string) (*Chann
 	var (
 
 		now = time.Now()
-		res = &Channel{}
+		// res = &Channel{}
 	)
 
-	err := repo.db.GetContext(ctx, res, psqlChannelCloseQ, id, now.UTC())
 	
-	if err != nil {
-		
-		if err == sql.ErrNoRows {
-			return nil, nil // NOT FOUND !
-		}
+	rows, err := repo.db.QueryContext(ctx, psqlChannelCloseQ, id, now.UTC())
 
-		repo.log.Warn().Err(err).
-			Msg("Failed to mark channel closed")
-		
+	if err != nil {
 		return nil, err
 	}
+
+	defer rows.Close()
+	// Fetch !
+	list, err := ChannelList(rows, 1)
+	// Error ?
+	err = schemaChannelError(err)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var obj *Channel
+	if size := len(list); size != 0 {
+		if size != 1 {
+			// NOTE: page .next exists !
+			// return nil, errors.Conflict(
+			// 	"chat.channel.search.id.conflict",
+			// 	"chat: got too much records looking for channel "+ id,
+			// )
+			return nil, errors.New("too much records affected")
+		}
+		obj = list[0]
+	}
+
+	if obj == nil || !strings.EqualFold(id, obj.ID) {
+		obj = nil // NOT FOUND !
+	}
+
+	return obj, nil
 	
-	return res, nil
+	// err := repo.db.GetContext(ctx, res, psqlChannelCloseQ, id, now.UTC())
+
+	// if err != nil {
+		
+	// 	if err == sql.ErrNoRows {
+	// 		return nil, nil // NOT FOUND !
+	// 	}
+
+	// 	repo.log.Warn().Err(err).
+	// 		Msg("Failed to mark channel closed")
+		
+	// 	return nil, err
+	// }
+	
+	// return res, nil
 }
 
 /*func (repo *sqlxRepository) CloseChannel(ctx context.Context, id string) (*Channel, error) {
@@ -357,6 +393,46 @@ func (repo *sqlxRepository) CloseChannels(ctx context.Context, conversationID st
 }
 
 func (repo *sqlxRepository) CheckUserChannel(ctx context.Context, channelID string, userID int64) (*Channel, error) {
+	search := SearchOptions{
+		// prepare filter(s)
+		Params: map[string]interface{}{
+			"id":      channelID, // MUST
+			"user.id": userID,
+		},
+		Fields: []string{"id","*"}, // NOT applicable
+		Sort:   []string{},
+		Page:   0,
+		Size:   1, // GET(!)
+	}
+
+	// PERFORM SELECT ...
+	list, err := GetChannels(repo.db, ctx, &search)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var obj *Channel
+	if size := len(list); size != 0 {
+		if size != 1 {
+			// NOTE: page .next exists !
+			// return nil, errors.Conflict(
+			// 	"chat.channel.search.id.conflict",
+			// 	"chat: got too much records looking for channel "+ id,
+			// )
+			return nil, errors.New("got too much records")
+		}
+		obj = list[0]
+	}
+
+	if obj == nil || !strings.EqualFold(channelID, obj.ID) {
+		obj = nil // NOT FOUND !
+	}
+
+	return obj, nil
+}
+
+/*func (repo *sqlxRepository) CheckUserChannel(ctx context.Context, channelID string, userID int64) (*Channel, error) {
 	result := &Channel{}
 	err := repo.db.GetContext(ctx, result, "SELECT * FROM chat.channel WHERE id=$1 and user_id=$2", channelID, userID)
 	if err != nil {
@@ -367,12 +443,20 @@ func (repo *sqlxRepository) CheckUserChannel(ctx context.Context, channelID stri
 		return nil, err
 	}
 	return result, nil
-}
+}*/
 
 func (repo *sqlxRepository) UpdateChannel(ctx context.Context, channelID string) (int64, error) {
 	updatedAt := time.Now()
 	_, err := repo.db.ExecContext(ctx, `update chat.channel set updated_at=$1 where id=$2`, updatedAt, channelID)
 	return updatedAt.Unix() * 1000, err
+}
+
+func (repo *sqlxRepository) UpdateChannelHost(ctx context.Context, channelID, host string) error {
+	_, err := repo.db.ExecContext(ctx,
+		`UPDATE chat.channel AS c SET host=$2 WHERE c.id=$1`,
+		 channelID, host,
+	)
+	return err
 }
 
 
@@ -415,6 +499,7 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 		"c.connection",
 		"c.internal",
 		"c.host",
+		"c.props", // Chat.StartConversation(.message.variables)
 		
 		"c.created_at",
 		"c.updated_at",
@@ -768,6 +853,8 @@ func NewChannel(dcx sqlx.ExtContext, ctx context.Context, channel *Channel) erro
 		channel.Connection,
 		channel.ServiceHost,
 
+		NullProperties(channel.Properties), // $10
+
 		channel.CreatedAt,
 		channel.UpdatedAt,
 
@@ -801,25 +888,26 @@ RETURNING c.*
 // $7  - internal
 // $8  - connection
 // $9  - host
-// $10 - created_at
-// $11 - updated_at
-// $12 - closed_at
-// $13 - flow_bridge
+// $10 - props
+// $11 - created_at
+// $12 - updated_at
+// $13 - closed_at
+// $14 - flow_bridge
 const psqlChannelNewQ =
 `WITH created AS (
  INSERT INTO chat.channel (
    id, type, name, user_id, domain_id,
-   conversation_id, internal, connection, host,
+   conversation_id, internal, connection, host, props,
    created_at, updated_at, closed_at, flow_bridge
  ) VALUES (
    $1, $2, $3, $4, $5,
-   $6, $7, $8, $9,
-   $10, $11, $12, $13
+   $6, $7, $8, $9, $10,
+   $11, $12, $13, $14
  )
  RETURNING conversation_id
 )
 UPDATE chat.conversation s
-   SET updated_at=$10
+   SET updated_at=$11
   FROM created AS c
  WHERE s.id=c.conversation_id
 `

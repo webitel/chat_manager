@@ -4,6 +4,8 @@ package webitel.chat.server;
 
 option go_package = "github.com/webitel/chat_manager/api/proto/chat";
 
+import "chat.v1.proto";
+
 service ChatService {
   rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {}
   rpc StartConversation(StartConversationRequest) returns (StartConversationResponse) {}
@@ -92,7 +94,7 @@ message Channel {
   bool internal = 5;
   int64 domain_id = 6;
   string connection = 7;
-  int64 user_id = 8;  
+  int64 user_id = 8;
 }
 
 message User {
@@ -142,6 +144,12 @@ message CheckSessionResponse {
   bool exists = 1;
   string channel_id = 2;
   int64 client_id = 3;
+  // chat channel state
+  
+  // Account .this channel end-user contact
+  Account account = 4;
+  // Properties defined in .StartConversationRequest.message.variables
+  map<string,string> properties = 5; // optional: extra context
 }
 
 message SendMessageRequest {

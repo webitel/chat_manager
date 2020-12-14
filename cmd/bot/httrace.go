@@ -15,7 +15,7 @@ type transportDump struct {
 }
 
 func (d *transportDump) RoundTrip(h *http.Request) (*http.Response, error) {
-	reqId, _ := uuid.NewRandom()
+	reqId, _ := uuid.NewRandom() // fmt.Sprintf("%p", h.Context())
 	dump, _ := httputil.DumpRequestOut(h, d.WithBody)
 	stdlog.Tracef("\t>>>>> OUTBOUND (%s) >>>>>\n\n%s\n\n", reqId, dump)
 	resp, err := d.r.RoundTrip(h)
@@ -40,7 +40,7 @@ func init() {
 func dumpMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		
-		reqId, _ := uuid.NewRandom()
+		reqId, _ := uuid.NewRandom() // fmt.Sprintf("%p", h.Context())
 		
 		if dump, err := httputil.DumpRequest(r, true); err != nil {
 			stdlog.Tracef("httputil.DumpRequest(error): %v", err)
