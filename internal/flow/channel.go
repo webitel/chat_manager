@@ -434,7 +434,7 @@ func (c *Channel) Start(message *chat.Message) error {
 					File: &bot.Message_File{
 						Id:       e.File.GetId(),
 						Url:      e.File.GetUrl(),
-						MimeType: e.File.GetMimeType(),
+						MimeType: e.File.GetMime(),
 					},
 				}
 		}

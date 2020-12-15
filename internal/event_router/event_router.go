@@ -274,7 +274,7 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *pb.Conversation, inv
 				ID:        conversation.Messages[0].Id,
 				ChannelID: conversation.Messages[0].ChannelId,
 				Type:      conversation.Messages[0].Type,
-				Value:     conversation.Messages[0].Text,
+				Text:      conversation.Messages[0].Text,
 				CreatedAt: conversation.Messages[0].CreatedAt,
 				UpdatedAt: conversation.Messages[0].UpdatedAt,
 			},
@@ -450,7 +450,7 @@ func (e *eventRouter) RouteMessage(sender *pg.Channel, message *pb.Message) (boo
 		// }
 		return false, nil
 	}
-	body, _ := json.Marshal(events.MessageEvent{
+	msg :=events.MessageEvent{
 		BaseEvent: events.BaseEvent{
 			ConversationID: sender.ConversationID,
 			Timestamp:      time.Now().Unix() * 1000,
@@ -459,11 +459,29 @@ func (e *eventRouter) RouteMessage(sender *pg.Channel, message *pb.Message) (boo
 			ChannelID: sender.ID,
 			ID:        message.GetId(),
 			Type:      message.GetType(),
-			Value:     message.GetText(),
 			CreatedAt: time.Now().Unix() * 1000,
 			UpdatedAt: time.Now().Unix() * 1000,
 		},
-	})
+	}
+
+	switch message.Value.(type){
+	 case *pb.Message_Text:
+		msg.Text = message.GetText()
+
+	case *pb.Message_File_:
+		msg.File = &events.File{
+			ID:     message.GetFile().Id,
+			Mime :  message.GetFile().Mime,
+			Name :  message.GetFile().Name,
+			Size :  message.GetFile().Size,
+		}
+
+	default:
+
+	}
+
+	body, _ := json.Marshal(msg)
+
 	flag := false
 	for _, member := range members {
 		var err error

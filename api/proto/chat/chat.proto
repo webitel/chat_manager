@@ -40,7 +40,11 @@ message Message {
   message File {
     int64 id = 1;
     string url = 2;
-    string mime_type = 3;
+    string mime = 3;
+
+    string name = 4;
+    int64 size = 5;
+    
   }
 
   oneof value {

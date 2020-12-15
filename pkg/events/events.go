@@ -92,7 +92,15 @@ type Message struct {
 	ID        int64  `json:"id"`
 	ChannelID string `json:"channel_id,omitempty"` // FIXME: TO ?
 	Type      string `json:"type"`
-	Value     string `json:"value"`
+	Text      string `json:"text,omitempty"`
+	File	  *File  `json:"file,omitempty"`
 	CreatedAt int64  `json:"created_at,omitempty"`
 	UpdatedAt int64  `json:"updated_at,omitempty"`
+}
+
+type File struct {
+	ID        int64  `json:"id"`
+	Size      int64  `json:"size"`
+	Mime      string `json:"mime"`
+	Name      string `json:"name"`
 }

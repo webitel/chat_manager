@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"context"
 	"database/sql"
+	"encoding/json"
 
 	"github.com/rs/zerolog"
 	"github.com/jmoiron/sqlx"
@@ -117,13 +118,36 @@ func (s *chatService) SendMessage(
 	if servName == "workflow" {
 		conversationID := req.GetConversationId()
 		message := &pg.Message{
-			Type:           "text",
 			ConversationID: conversationID,
-			Text: sql.NullString{
-				req.GetMessage().GetText(),
-				true,
-			},
 		}
+
+		switch req.Message.Value.(type) {
+			case *pb.Message_Text: // ASSERT(.Type=="text")
+				message.Type = "text"
+				message.Text = sql.NullString{
+					req.GetMessage().GetText(),
+					true,
+				}
+		
+			case *pb.Message_File_:
+				message.Type = "file"
+				message.Text = sql.NullString{
+					req.GetMessage().GetFile().Url,
+					true,
+				}
+
+				body, err := json.Marshal(req.Message.GetFile())
+				if err != nil {
+					s.log.Error().Msg(err.Error())
+				}
+
+				err = message.Variables.Scan(body)
+				if err!=nil{
+					s.log.Error().Msg(err.Error())
+				}
+		
+			default:
+			}
 
 		// s.repo.CreateMessage(ctx, message)
 		// s.eventRouter.RouteMessageFromFlow(&conversationID, req.GetMessage())
@@ -186,17 +210,63 @@ func (s *chatService) SendMessage(
 	recvMessage := req.Message
 	// historical saved store.Message
 	sendMessage := pg.Message{
-		Type: "text",
 		ChannelID: sql.NullString{
 			sender.ID,
 			true,
 		},
 		ConversationID: sender.ConversationID,
-		Text: sql.NullString{
-			recvMessage.GetText(),
-			true,
-		},
 	}
+
+	switch e := recvMessage.Value.(type) {
+
+		case *pb.Message_Text: // ASSERT(.Type=="text")
+		sendMessage.Type = "text"
+		sendMessage.Text = sql.NullString{
+				req.GetMessage().GetText(),
+				true,
+			}
+	
+		case *pb.Message_File_:
+			if !sender.Internal {
+				fileMessaged := &pbstorage.UploadFileUrlRequest{
+					DomainId: sender.DomainID,
+					Name:     req.Message.GetFile().Name,
+					Url:      req.Message.GetFile().Url,
+					Uuid:     sender.ConversationID,
+					Mime:     req.Message.GetFile().Mime,
+				}
+		
+				res, err := s.storageClient.UploadFileUrl(context.Background(), fileMessaged)
+				if err != nil {
+					s.log.Error().Err(err).Msg("Failed sand message to UploadFileUrl")
+					return err
+				}
+				
+				e.File.Url = res.Url
+				e.File.Id = res.Id
+				e.File.Mime = res.Mime
+				e.File.Size = res.Size
+			}
+
+			// shallowcopy
+			saveFile := *(e.File)
+			saveFile.Url = "" // sanitize .url path
+
+			body, err := json.Marshal(saveFile)
+			if err != nil {
+				s.log.Error().Msg(err.Error())
+			}
+
+			sendMessage.Type = "file"
+			err = sendMessage.Variables.Scan(body)
+			if err!=nil{
+				s.log.Error().Msg(err.Error())
+			}
+	
+		default:
+	
+	}
+
 	if recvMessage.Variables != nil {
 		sendMessage.Variables.Scan(recvMessage.Variables)
 	}
@@ -204,14 +274,15 @@ func (s *chatService) SendMessage(
 		s.log.Error().Err(err).Msg("Failed to store .SendMessage() history")
 		return err
 	}
+	recvMessage.Id = sendMessage.ID
 	// populate normalized value(s)
-	recvMessage = &pb.Message{
-		Id:   sendMessage.ID,
-		Type: sendMessage.Type,
-		Value: &pb.Message_Text{
-			Text: sendMessage.Text.String,
-		},
-	}
+	// recvMessage = &pb.Message{
+	// 	Id:   sendMessage.ID,
+	// 	Type: sendMessage.Type,
+	// 	Value: &pb.Message_Text{
+	// 		Text: sendMessage.Text.String,
+	// 	},
+	// }
 	// Broadcast text message to every other channel in the room, from channel as a sender !
 	sent, err := s.eventRouter.RouteMessage(sender, recvMessage)
 	if err != nil {

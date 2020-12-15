@@ -366,18 +366,6 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 	}
 
 	sendMessage := notify.GetMessage()
-	messageText := sendMessage.GetText()
-
-	action := "text"
-	closed := IsCommandClose(messageText) 
-	
-	if closed {
-		// unify chat.closed reply text
-		action = "closed"
-		messageText = action // chat: closed
-		sendMessage.Value.(*chat.Message_Text).Text = messageText
-	}
-
 	sendUpdate := Update{
 		// attributes
 		ID:      sendMessage.GetId(),
@@ -386,7 +374,7 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 		Chat:    recepient, // TO: !
 		User:    nil, // &Account{} // UNKNOWN // TODO: reg.GetUser() as a sender
 		// event arguments
-		Event:   action,
+		//Event:   action,
 		Message: sendMessage,
 		// not applicable yet !
 		Edited:          0,
@@ -396,15 +384,30 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 		JoinMembers: nil,
 		KickMembers: nil,
 	}
+	switch sendMessage.Value.(type){
+	case *chat.Message_Text:
+		messageText := sendMessage.GetText()
 
-	if !recepient.IsNew() && closed {
-		// NOTE: Closed by the webitel.chat.server !
-		defer func() {
-			// Mark "closed" DO NOT SEND .CloseConversation() request !
-			recepient.Closed = time.Now().Unix() // SENT: COMMITTED !
-			// REMOVE: runtime state !
-			_ = recepient.Close() // (messageText)
-		} ()
+		sendUpdate.Event = "text"
+		closed := IsCommandClose(messageText) 
+		
+		if closed {
+			// unify chat.closed reply text
+			sendUpdate.Event = "closed"
+			messageText = "closed" // chat: closed
+			sendMessage.Value.(*chat.Message_Text).Text = messageText
+		}
+		if !recepient.IsNew() && closed {
+			// NOTE: Closed by the webitel.chat.server !
+			defer func() {
+				// Mark "closed" DO NOT SEND .CloseConversation() request !
+				recepient.Closed = time.Now().Unix() // SENT: COMMITTED !
+				// REMOVE: runtime state !
+				_ = recepient.Close() // (messageText)
+			} ()
+		}
+	case *chat.Message_File_:
+		sendUpdate.Event = "file"
 	}
 
 	// PERFORM: deliver TO .remote (provider) side
@@ -418,7 +421,7 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 		event = recepient.Log.Error().Err(err)
 	}
 
-	event.Str("text", messageText).Msg("<<<<< SEND <<<<<<")
+	event.Str("messageType", sendUpdate.Event).Msg("<<<<< SEND <<<<<<")
 
 	if err != nil {
 		return err

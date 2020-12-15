@@ -1,17 +1,21 @@
 package main
 
 import (
-	"github.com/micro/go-micro/v2/errors"
-	"strconv"
 	"encoding/json"
-	
+	"strconv"
+
+	"github.com/micro/go-micro/v2/errors"
+
 	"context"
-	"strings"
+	"io/ioutil"
 	"net/http"
+	// "net/url"
+	"path/filepath"
+	"strings"
 
 	// gate "github.com/webitel/chat_manager/api/proto/bot"
-	chat "github.com/webitel/chat_manager/api/proto/chat"
 	telegram "github.com/go-telegram-bot-api/telegram-bot-api"
+	chat "github.com/webitel/chat_manager/api/proto/chat"
 )
 
 func init() {
@@ -38,14 +42,14 @@ func NewTelegramBotV1(agent *Gateway) Provider {
 		agent.Log.Fatal().Msg("token not found")
 		return nil
 	}
-	client := &http.Client{
-		Transport: &transportDump{
-			r: http.DefaultTransport,
-			WithBody: true,
-		},
-	}
+	// client := &http.Client{
+	// 	Transport: &transportDump{
+	// 		r: http.DefaultTransport,
+	// 		WithBody: true,
+	// 	},
+	// }
 
-	bot, err := telegram.NewBotAPIWithClient(token, client)
+	bot, err := telegram.NewBotAPIWithClient(token, http.DefaultClient) // client)
 	
 	if err != nil {
 		// log.Fatal().Msg(err.Error())
@@ -114,12 +118,54 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 	var update telegram.Chattable
 	// TODO: resolution for various notify content !
 	switch notify.Event {
-	case "text", "": // default
+	case "text": // default
 	
 		sendMessage := notify.Message
 		update = telegram.NewMessage(chatID, sendMessage.GetText())
 	
 	case "file":
+		sendMessage := notify.Message.GetFile()
+		switch e := sendMessage.Mime; {
+
+		case strings.HasPrefix(e, "image"):
+
+			// uploadFileURL, err := url.Parse(sendMessage.Url)
+			// if err != nil {
+			// 	panic("sendFile: "+ err.Error())
+			// }
+
+			// channel.Log.Debug().Str("url", uploadFileURL.String()).Msg("sendFile")
+			// update = telegram.NewPhotoUpload(chatID, *(uploadFileURL))
+
+
+			data, err := getBytes(sendMessage.Url)
+			if err != nil {
+				return err
+			}
+
+			file := telegram.FileBytes{
+				Name: sendMessage.Name,
+				Bytes: data,
+			}
+
+			uploadPhoto := telegram.NewPhotoUpload(chatID, file)
+			uploadPhoto.Caption = notify.Message.GetText()
+
+			update = uploadPhoto
+
+		default:
+			data, err :=getBytes(sendMessage.Url)
+			if err != nil {
+				return err
+			}
+
+			file := telegram.FileBytes{
+				Name: sendMessage.Name,
+				Bytes: data,
+			}
+
+			update = telegram.NewDocumentUpload(chatID, file)
+	}
 	case "send":
 	case "edit":
 	case "read":
@@ -194,6 +240,19 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 	}
 
 	return nil
+}
+func getBytes(url string)([]byte, error){
+	response, e := http.Get(url)
+	if e != nil {
+		return nil, e
+	}
+	defer response.Body.Close()
+
+	data, er := ioutil.ReadAll(response.Body)
+	if er != nil {
+		return nil, er
+	}
+	return data, nil
 }
 
 // WebHook implementes provider.Receiver interface for Telegram
@@ -270,20 +329,106 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 	// contact.ID = channel.ContactID
 
 	// endregion
-
 	sendUpdate := Update{
 		Title:   channel.Title,
 		// ChatID: strconv.FormatInt(recvMessage.Chat.ID, 10),
 		Chat:    channel,
 		User:    contact,
-		Message: &chat.Message{
-			Id:    0, // INCOME: NEW(!)
-			Type:  "text",
+	}
+	switch  {
+
+	case recvMessage.Text!="":
+		sendUpdate.Message = &chat.Message{
+			Type: "text",
 			Value: &chat.Message_Text{
 				Text: recvMessage.Text,
 			},
-			Variables: nil, // map[string]string{},
-		},
+		}
+	case recvMessage.Document!=nil:
+		file := recvMessage.Document
+		
+		URL, err := c.BotAPI.GetFileDirectURL(file.FileID)
+		if err!=nil{
+			return
+		}
+
+		sendUpdate.Message = &chat.Message{
+			Type: "file",
+			Value: &chat.Message_File_{
+				File: &chat.Message_File{
+					Url:   URL,
+					Name:  file.FileName,
+					Mime: file.MimeType,
+				},
+			},
+		}
+
+	case recvMessage.Audio!=nil:
+		file := recvMessage.Audio
+		
+		URL, err := c.BotAPI.GetFileDirectURL(file.FileID)
+		if err!=nil{
+			return
+		}
+
+		sendUpdate.Message = &chat.Message{
+			Type: "audio",
+			Value: &chat.Message_File_{
+				File: &chat.Message_File{
+					Url:   URL,
+					Name:  file.Title,
+					Mime: file.MimeType,
+				},
+			},
+		}
+	case recvMessage.Photo!=nil:
+		photos := *recvMessage.Photo
+		
+		fc:=telegram.FileConfig{
+			FileID: photos[len(photos)-1].FileID,
+		}
+		file,_ := c.BotAPI.GetFile(fc)
+
+		title :=filepath.Base(file.FilePath)
+
+		getURL := file.Link(c.Token)
+		sendUpdate.Message = &chat.Message{
+			Type: "image",
+			Value: &chat.Message_File_{
+				File: &chat.Message_File{
+					Url:   getURL,
+					Name:  title,
+					Mime: "image/jpg",
+				},
+			},
+		}
+
+	case recvMessage.Video!=nil:
+		file := recvMessage.Video
+		
+		fc:=telegram.FileConfig{
+			FileID: file.FileID,
+		}
+		f,_ := c.BotAPI.GetFile(fc)
+
+		title :=filepath.Base(f.FilePath)
+
+		URL := f.Link(c.Token)
+
+		sendUpdate.Message = &chat.Message{
+			Type: "video",
+			Value: &chat.Message_File_{
+				File: &chat.Message_File{
+					Url:   URL,
+					Name:  title,
+					Mime: file.MimeType,
+				},
+			},
+		}
+		
+	default:
+		http.Error(reply, "Unknown type message", http.StatusBadRequest) // 400 
+		return
 	}
 
 	err = c.Gateway.Read(notice.Context(), &sendUpdate)
