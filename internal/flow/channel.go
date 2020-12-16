@@ -1,25 +1,24 @@
 package flow
 
 import (
+
+	"context"
 	"strings"
 	"strconv"
-
-	"errors"
-	"context"
-	// "github.com/micro/go-micro/v2/errors"
+	"net/http"
 
 	"github.com/rs/zerolog"
 
-	// strategy "github.com/webitel/chat_manager/internal/selector"
-	store "github.com/webitel/chat_manager/internal/repo/sqlx"
-	
-	chat "github.com/webitel/chat_manager/api/proto/chat"
-	bot "github.com/webitel/chat_manager/api/proto/workflow"
-
+	"github.com/micro/go-micro/v2/errors"
 	"github.com/micro/go-micro/v2/client"
 	"github.com/micro/go-micro/v2/client/selector"
 	"github.com/micro/go-micro/v2/registry"
-	
+
+	chat "github.com/webitel/chat_manager/api/proto/chat"
+	bot "github.com/webitel/chat_manager/api/proto/workflow"
+	store "github.com/webitel/chat_manager/internal/repo/sqlx"
+	// strategy "github.com/webitel/chat_manager/internal/selector"
+
 )
 
 
@@ -318,7 +317,7 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 		Messages:       messages,
 	}
 	// PERFORM
-	re, err := c.Agent.
+	res, err := c.Agent.
 	ConfirmationMessage(
 		// canellation context
 		context.TODO(),
@@ -331,12 +330,14 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 	if err != nil {
 		return err
 	}
-	
-	if re.Error != nil {
 
-		switch re.Error.Id {
+	re := chatFlowError(res.GetError())
+
+	if re != nil {
+
+		switch re.Id {
 		// "Chat: grpc.chat.conversation.not_found, Conversation %!d(string=0d882ad8-523a-4ed1-b36c-8c3f046e218e) not found"
-		case "grpc.chat.conversation.not_found": // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
+		case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
 			// FIXME: RE-start chat@bot routine (?)
 			// RESET
 			c.Host = ""
@@ -369,11 +370,11 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 				Int64("pdc", c.DomainID()).
 				Int64("pid", c.UserID()). // recepient: schema@bot.profile (internal)
 				Str("channel-id", c.ChatID()). // sender: originator user@bot.profile (external)
-				Str("error", re.Error.Message).
+				Str("error", re.Detail).
 				Msg("SEND chat@bot") // TO: workflow
 		}
-		// default:
-		return errors.New(re.Error.Message)
+		
+		return re // errors.New(re.Error.Message)
 	}
 	// USED(!) remove ...
 	c.Pending = ""
@@ -494,7 +495,7 @@ func (c *Channel) Start(message *chat.Message) error {
 // Close .this channel @workflow.Break(!)
 func (c *Channel) Close() error {
 
-	if res, err := c.Agent.Break(
+	res, err := c.Agent.Break(
 		// cancellation context
 		context.TODO(),
 		// request
@@ -504,10 +505,25 @@ func (c *Channel) Close() error {
 		// callOptions ...
 		c.sendOptions,
 
-	); err != nil {
+	)
+	
+	if err != nil {
 		return err
-	} else if res != nil && res.Error != nil {
-		return errors.New(res.Error.Message)
+	}
+	
+	re := chatFlowError(res.GetError())
+
+	if re != nil {
+
+		switch re.Id {
+		case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
+			// NOTE: got Not Found ! make idempotent !
+			return nil // no matter !
+
+		default:
+
+			return re // Failure !
+		}
 	}
 
 	c.Log.Warn().
@@ -525,7 +541,7 @@ func (c *Channel) Close() error {
 // BreakBridge .this channel @workflow.BreakBridge(!)
 func (c *Channel) BreakBridge(cause BreakBridgeCause) error {
 
-	if res, err := c.Agent.BreakBridge(
+	res, err := c.Agent.BreakBridge(
 		// cancellation context
 		context.TODO(),
 		// request
@@ -536,10 +552,25 @@ func (c *Channel) BreakBridge(cause BreakBridgeCause) error {
 		// callOptions
 		c.sendOptions,
 
-	); err != nil {
+	)
+	
+	if err != nil {
 		return err
-	} else if res != nil && res.Error != nil {
-		return errors.New(res.Error.Message)
+	}
+	
+	re := chatFlowError(res.GetError())
+
+	if re != nil {
+
+		switch re.Id {
+		case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
+			// NOTE: got Not Found ! make idempotent !
+			return nil // no matter !
+
+		default:
+
+			return re // Failure !
+		}
 	}
 
 	c.Log.Warn().
@@ -550,4 +581,42 @@ func (c *Channel) BreakBridge(cause BreakBridgeCause) error {
 		Msg("<<<<< BREAK >>>>>")
 
 	return nil
+}
+
+
+const (
+
+	errnoSessionNotFound = "grpc.chat.conversation.not_found"
+)
+
+func chatFlowError(err *bot.Error) *errors.Error {
+	
+	if err == nil || (err.Id == "" && err.Message == "") {
+		return nil
+	}
+	
+	switch err.GetId() {
+	// "Chat: grpc.chat.conversation.not_found, Conversation %!d(string=0d882ad8-523a-4ed1-b36c-8c3f046e218e) not found"
+	case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
+		
+		code := http.StatusNotFound
+
+		return &errors.Error{
+			Id:     err.Id,
+			Code:   (int32)(code),
+			Detail: err.Message,
+			Status: http.StatusText(code),
+		}
+
+	// default:
+	}
+
+	code := http.StatusInternalServerError
+
+	return &errors.Error{
+		Id:     err.Id,
+		Code:   (int32)(code),
+		Detail: err.Message,
+		Status: http.StatusText(code),
+	}
 }

@@ -105,6 +105,7 @@ api/proto/workflow/%.pb.micro.go: api/proto/workflow/%.proto
 proto: \
 api/proto/workflow/chat.proto api/proto/workflow/chat.pb.micro.go \
 api/proto/storage/file.proto api/proto/storage/file.pb.micro.go \
+api/proto/chat/chat.v1.proto api/proto/chat/chat.v1.pb.micro.go \
 api/proto/chat/chat.proto api/proto/chat/chat.pb.micro.go \
 api/proto/bot/bot.proto api/proto/bot/bot.pb.micro.go \
 api/proto/auth/authN.pb.micro.go

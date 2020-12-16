@@ -266,6 +266,23 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 		return // 400 Bad Request
 	}
 
+	// region: handle incoming update
+	// if recvUpdate.Message != nil {                   // *Message            `json:"message"`
+
+	// } else if recvUpdate.EditedMessage != nil {      // *Message            `json:"edited_message"`
+
+	// } else if recvUpdate.ChannelPost != nil {        // *Message            `json:"channel_post"`
+	// } else if recvUpdate.EditedChannelPost != nil {  // *Message            `json:"edited_channel_post"`
+	// } else if recvUpdate.InlineQuery != nil {        // *InlineQuery        `json:"inline_query"`
+	// } else if recvUpdate.ChosenInlineResult != nil { // *ChosenInlineResult `json:"chosen_inline_result"`
+	// } else if recvUpdate.CallbackQuery != nil {      // *CallbackQuery      `json:"callback_query"`
+	// } else if recvUpdate.ShippingQuery != nil {      // *ShippingQuery      `json:"shipping_query"`
+	// } else if recvUpdate.PreCheckoutQuery != nil {   // *PreCheckoutQuery   `json:"pre_checkout_query"`
+	// } else {
+
+	// }
+	// endregion
+
 	recvMessage := recvUpdate.Message
 	if recvMessage == nil {
 		recvMessage = recvUpdate.EditedMessage
@@ -330,21 +347,38 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 
 	// endregion
 	sendUpdate := Update{
-		Title:   channel.Title,
+		
 		// ChatID: strconv.FormatInt(recvMessage.Chat.ID, 10),
 		Chat:    channel,
 		User:    contact,
+
+		Title:   channel.Title,
 	}
+
+	// region: handle message
+	// if recvMessage.Text != "" {             // string       `json:"text"`
+	// } else if recvMessage.Photo != nil {    // *[]PhotoSize `json:"photo"`
+	// } else if recvMessage.Video != nil {    // *Video       `json:"video"`
+	// } else if recvMessage.Audio != nil {    // *Audio       `json:"audio"`
+	// } else if recvMessage.Document != nil { // *Document    `json:"document"`
+	// } else {
+
+	// }
+	// endregion
+
 	switch  {
 
-	case recvMessage.Text!="":
+	case recvMessage.Text != "":
 		sendUpdate.Message = &chat.Message{
 			Type: "text",
 			Value: &chat.Message_Text{
 				Text: recvMessage.Text,
 			},
+			// Variables: map[string]string {
+			// 	"message_id": strconv.Itoa(recvMessage.MessageID),
+			// },
 		}
-	case recvMessage.Document!=nil:
+	case recvMessage.Document != nil:
 		file := recvMessage.Document
 		
 		URL, err := c.BotAPI.GetFileDirectURL(file.FileID)
@@ -363,7 +397,7 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 			},
 		}
 
-	case recvMessage.Audio!=nil:
+	case recvMessage.Audio != nil:
 		file := recvMessage.Audio
 		
 		URL, err := c.BotAPI.GetFileDirectURL(file.FileID)
@@ -381,7 +415,7 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 				},
 			},
 		}
-	case recvMessage.Photo!=nil:
+	case recvMessage.Photo != nil:
 		photos := *recvMessage.Photo
 		
 		fc:=telegram.FileConfig{
@@ -403,7 +437,7 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 			},
 		}
 
-	case recvMessage.Video!=nil:
+	case recvMessage.Video != nil:
 		file := recvMessage.Video
 		
 		fc:=telegram.FileConfig{
@@ -427,8 +461,12 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 		}
 		
 	default:
-		http.Error(reply, "Unknown type message", http.StatusBadRequest) // 400 
+		// ACK: HTTP/1.1 200 OK
+		reply.WriteHeader(http.StatusOK)
+		// IGNORE: not applicable yet !
+		channel.Log.Warn().Str("notice", "message: is not a text, photo, audio, video or file document; skip").Msg("IGNORE")
 		return
+		
 	}
 
 	err = c.Gateway.Read(notice.Context(), &sendUpdate)
@@ -441,3 +479,7 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 	reply.WriteHeader(http.StatusOK)
 	return // 200 OK
 }
+
+// func receiveMessage(e *telegram.Message) {}
+
+// func receiveEditedMessage(e *telegram.Message) {}

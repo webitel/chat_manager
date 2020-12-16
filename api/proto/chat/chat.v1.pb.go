@@ -25,7 +25,7 @@ const (
 // of the legacy proto package is being used.
 const _ = proto.ProtoPackageIsVersion4
 
-// Account contact info
+// Account contact info to replace legacy chat.Client info
 type Account struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

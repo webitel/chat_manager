@@ -6,7 +6,6 @@ package storage
 import (
 	fmt "fmt"
 	proto "github.com/golang/protobuf/proto"
-	_ "google.golang.org/genproto/googleapis/api/annotations"
 	math "math"
 )
 

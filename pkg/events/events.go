@@ -12,7 +12,7 @@ const (
 )
 
 type BaseEvent struct {
-	ConversationID string `json:"conversation_id"` // FOXME: TO ?
+	ConversationID string `json:"conversation_id"` // TO: channel.ID ! recepient !
 	Timestamp      int64  `json:"timestamp"`
 }
 
@@ -48,9 +48,11 @@ type InviteConversationEvent struct {
 
 type UserInvitationEvent struct {
 	BaseEvent
-	InviteID     string `json:"invite_id"`
 	Title        string `json:"title"`
-	Conversation `json:"conversation"`
+	InviteID     string `json:"invite_id"`
+	TimeoutSec   int64  `json:"timeout_sec"`
+	Variables    map[string]string `json:"variables"`
+	Conversation Conversation `json:"conversation"`
 	Members      []*Member  `json:"members"`
 	Messages     []*Message `json:"messages"`
 }
@@ -89,8 +91,8 @@ type Member struct {
 }
 
 type Message struct {
-	ID        int64  `json:"id"`
-	ChannelID string `json:"channel_id,omitempty"` // FIXME: TO ?
+	ID        int64  `json:"id"` // Unique Message.ID; TODO: within chat session !
+	ChannelID string `json:"channel_id,omitempty"` // FROM: channel.ID ! sender !
 	Type      string `json:"type"`
 	Text      string `json:"text,omitempty"`
 	File	  *File  `json:"file,omitempty"`

@@ -227,15 +227,16 @@ func (c *ConversationMessages) Value() (driver.Value, error) {
 }
 
 type Invite struct {
-	ID               string         `db:"id" json:"id"`
-	ConversationID   string         `db:"conversation_id" json:"conversation_id"`
-	UserID           int64          `db:"user_id" json:"user_id"`
-	Title            sql.NullString `db:"title" json:"title,omitempty"`
-	TimeoutSec       int64          `db:"timeout_sec" json:"timeout_sec"`
-	InviterChannelID sql.NullString `db:"inviter_channel_id" json:"inviter_channel_id,omitempty"`
-	ClosedAt         sql.NullTime   `db:"closed_at" json:"closed_at,omitempty"`
-	CreatedAt        time.Time      `db:"created_at" json:"created_at,omitempty"`
-	DomainID         int64          `db:"domain_id" json:"domain_id"`
+	ID               string            `db:"id" json:"id"`
+	ConversationID   string            `db:"conversation_id" json:"conversation_id"`
+	UserID           int64             `db:"user_id" json:"user_id"`
+	Title            sql.NullString    `db:"title" json:"title,omitempty"`
+	TimeoutSec       int64             `db:"timeout_sec" json:"timeout_sec"`
+	InviterChannelID sql.NullString    `db:"inviter_channel_id" json:"inviter_channel_id,omitempty"`
+	ClosedAt         sql.NullTime      `db:"closed_at" json:"closed_at,omitempty"`
+	CreatedAt        time.Time         `db:"created_at" json:"created_at,omitempty"`
+	DomainID         int64             `db:"domain_id" json:"domain_id"`
+	Variables        Properties        `db:"props" json:"props"`
 }
 
 type Message struct {

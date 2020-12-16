@@ -87,7 +87,8 @@ func (ctx pgxLogdata) MarshalZerologObject(e *zerolog.Event) {
 			params, _ := v.([]interface{})
 			e = e.Str("params", fmt.Sprintf("%+v", params))
 		case "time":
-			e = e.Dur("time", v.(time.Duration))
+			// e = e.Dur("time", v.(time.Duration))
+			e = e.Str("spent", v.(time.Duration).String())
 		case "rowCount":
 			e = e.Int("rows", v.(int))
 		case "commandTag":

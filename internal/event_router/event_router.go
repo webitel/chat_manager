@@ -235,13 +235,15 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *pb.Conversation, inv
 		},
 		InviteID: invite.ID,
 		Title:    invite.Title.String,
+		TimeoutSec: invite.TimeoutSec,
+		Variables: invite.Variables,
 		Conversation: events.Conversation{
 			ID: conversation.Id,
+			Title: conversation.Title,
 			//DomainID:  conversation.DomainId,
 			CreatedAt: conversation.CreatedAt,
 			UpdatedAt: conversation.UpdatedAt,
 			//ClosedAt:  conversation.ClosedAt,
-			Title: conversation.Title,
 		},
 	}
 	// if conversation.CreatedAt != 0 {

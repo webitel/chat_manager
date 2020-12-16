@@ -568,6 +568,7 @@ func (c *Agent) BreakBridge(conversationID string, cause BreakBridgeCause) error
 	err = channel.BreakBridge(cause)
 	
 	if err != nil {
+		// NOTE: ignore "grpc.chat.conversation.not_found" !
 		return err
 	}
 	

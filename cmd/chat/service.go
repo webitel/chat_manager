@@ -618,6 +618,7 @@ func (s *chatService) JoinConversation(
 			Time:       time.Now().UTC(),
 			Valid:      true,
 		},
+		Properties:     invite.Variables,
 	}
 	if !invite.InviterChannelID.Valid {
 		channel.FlowBridge = true
@@ -740,15 +741,15 @@ func (s *chatService) InviteToConversation(
 	}
 	domainID := req.GetDomainId()
 	invite := &pg.Invite{
-		ConversationID: req.GetConversationId(),
 		UserID:         req.GetUser().GetUserId(),
-		TimeoutSec:     req.GetTimeoutSec(),
 		DomainID:       domainID,
+		Variables:      req.GetVariables(),
+		TimeoutSec:     req.GetTimeoutSec(),
+		ConversationID: req.GetConversationId(),
 	}
 	if title := req.GetTitle(); title != "" {
 		invite.Title = sql.NullString{
-			title,
-			true,
+			String: title, Valid: true,
 		}
 	}
 	if req.GetInviterChannelId() != "" {
