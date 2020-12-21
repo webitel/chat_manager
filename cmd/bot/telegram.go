@@ -1,17 +1,19 @@
 package main
 
 import (
-	"encoding/json"
-	"strconv"
-
-	"github.com/micro/go-micro/v2/errors"
 
 	"context"
-	"io/ioutil"
-	"net/http"
-	// "net/url"
-	"path/filepath"
 	"strings"
+	"strconv"
+
+	// "net/url"
+	"net/http"
+	"io/ioutil"
+	
+	"path/filepath"
+	"encoding/json"
+
+	"github.com/micro/go-micro/v2/errors"
 
 	// gate "github.com/webitel/chat_manager/api/proto/bot"
 	telegram "github.com/go-telegram-bot-api/telegram-bot-api"
@@ -106,14 +108,26 @@ func (c *TelegramBotV1) Deregister(ctx context.Context) error {
 func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 	// send *gate.SendMessageRequest
 	// externalID, err := strconv.ParseInt(send.ExternalUserId, 10, 64)
-	
-	channel := notify.Chat
+
+	var (
+
+		channel = notify.Chat // recepient
+		// localtime = time.Now()
+	)
+
+	// region: recover latest chat channel state
 	chatID, err := strconv.ParseInt(channel.ChatID, 10, 64)
 	if err != nil {
 		return errors.InternalServerError(
 			"chat.gateway.telegram.chat.id.invalid",
 			"telegram: invalid chat %s unique identifier; expect integer values", channel.ChatID)
 	}
+
+	if channel.Title == "" {
+		// FIXME: .GetChannel() does not provide full contact info on recover,
+		//                      just it's unique identifier ...  =(
+	}
+	// endregion
 
 	var update telegram.Chattable
 	// TODO: resolution for various notify content !
@@ -165,9 +179,11 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 			}
 
 			update = telegram.NewDocumentUpload(chatID, file)
-	}
-	case "send":
+		}
+	
 	case "edit":
+	case "send":
+	
 	case "read":
 	case "seen":
 

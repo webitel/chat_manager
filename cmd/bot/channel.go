@@ -21,15 +21,19 @@ type Channel struct {
 
 	Host string // webitel.chat.server node-id serving .this channel
 
+	Title   string // chat channel title
+	ChatID  string // chat.external.id (provider:chat.id) .ExternalID  .AuthUserID
+	Account Account // chat.external.user.contact
+
 	ChannelID string  // chat.channel.id  .ID
 	SessionID string  // chat.session.id  .ConverationID
 	// Contact  *Account // chat.channel.user
 	Properties interface{} // driver channel bindings
 	
-	Title  string // chat channel title
-	ChatID string // chat.external.id (provider:chat.id) .ExternalID  .AuthUserID
-	Username string // chat channel username
-	ContactID int64   // internal.user.id
+	// Title  string // chat channel title
+	// ChatID string // chat.external.id (provider:chat.id) .ExternalID  .AuthUserID
+	// Username string // chat channel username
+	// ContactID int64   // internal.user.id
 
 	// Closed indicates that .this channel was previously closed at timestamp
 	Closed int64
@@ -49,6 +53,10 @@ func (c *Channel) DomainID() int64 {
 func (c *Channel) ProfileID() int64 {
 	return c.Gateway.Profile.GetId()
 }
+
+// func (c *Channel) AccountID() int64 {
+// 	return c.Account.ID
+// }
 
 // BotID defines workflow.schema.id internal @bot end-user
 func (c *Channel) BotID() int64 {
@@ -73,7 +81,7 @@ func (c *Channel) Close() (err error) {
 	e, ok := c.Gateway.external[c.ChatID]
 	if ok = ok && e == c; ok && c.Closed != 0 {
 		delete(c.Gateway.external, c.ChatID)
-		delete(c.Gateway.internal, c.ContactID)
+		// delete(c.Gateway.internal, c.ContactID)
 	}
 	c.Gateway.Unlock() // -RW
 
@@ -116,7 +124,7 @@ func (c *Channel) Close() (err error) {
 		close := chat.CloseConversationRequest{
 			ConversationId:  c.SessionID,
 			CloserChannelId: c.ChannelID,
-			AuthUserId:      c.ContactID,
+			AuthUserId:      c.Account.ID, // c.ContactID,
 			Cause:           cause,
 		}
 		// PERFORM: close request !
@@ -131,7 +139,7 @@ func (c *Channel) Close() (err error) {
 			e, ok := c.Gateway.external[c.ChatID]
 			if ok = ok && e == c; ok {
 				delete(c.Gateway.external, c.ChatID)
-				delete(c.Gateway.internal, c.ContactID)
+				delete(c.Gateway.internal, c.Account.ID) // c.ContactID)
 			}
 			c.Gateway.Unlock() // -RW
 
@@ -158,19 +166,23 @@ func (c *Channel) Close() (err error) {
 // Start NEW external chat channel
 func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 
-	username := c.Username
-	if username == "" {
-		username = c.Title
+	// title := c.Username
+	// if title == "" {
+	// 	title = c.Title
+	// }
+
+	if c.Title == "" {
+		c.Title = c.Account.DisplayName()
 	}
 
 	providerID := strconv.FormatInt(c.ProfileID(), 10)
 
 	start := chat.StartConversationRequest{
 		DomainId: c.DomainID(),
-		Username: username,
+		Username: c.Title, // title, // used: as channel title
 		User: &chat.User{
-			UserId:     c.ContactID,
-			Type:       c.Provider(),
+			UserId:     c.Account.ID, // c.ContactID,
+			Type:       c.Account.Channel, // c.Provider(),
 			Connection: providerID, // contact: profile.ID
 			Internal:   false,
 		},
@@ -188,7 +200,7 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 	span := agent.Log.With().
 	
 		Str("chat-id", c.ChatID).
-		Str("username", username).
+		Str("username", c.Title). // title).
 
 		Logger()
 
@@ -205,7 +217,7 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 	}
 
 	c.Closed    = 0 // RE- NEW!
-	c.Username  = username
+	// c.Username  = title
 	c.ChannelID = chat.ChannelId
 	c.SessionID = chat.ConversationId
 
@@ -235,7 +247,7 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 
 	c.Gateway.Lock()   // +RW
 	c.Gateway.external[c.ChatID] = c
-	c.Gateway.internal[c.ContactID] = c
+	c.Gateway.internal[c.Account.ID] = c // [c.ContactID] = c
 	c.Gateway.Unlock() // -RW
 
 	c.Log.Info().Msg(">>>>> START <<<<<")
@@ -281,7 +293,7 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 		&chat.SendMessageRequest{
 
 			Message:        message,
-			AuthUserId:     c.ContactID,
+			AuthUserId:     c.Account.ID, // c.ContactID,
 
 			ChannelId:      c.ChannelID,
 			ConversationId: c.SessionID,

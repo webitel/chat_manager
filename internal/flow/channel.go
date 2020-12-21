@@ -147,6 +147,7 @@ func (c *Channel) lookup(services []*registry.Service) selector.Next {
 	if c.Host == "" {
 		// START
 		return selector.Random(services)
+		// return strategy.PrefferedHost("10.9.8.111")(services)
 	}
 	
 	var peer *registry.Node
@@ -174,6 +175,7 @@ func (c *Channel) lookup(services []*registry.Service) selector.Next {
 			Msg(perform)
 
 		return selector.Random(services)
+		// return strategy.PrefferedHost("10.9.8.111")(services)
 	}
 
 	var event *zerolog.Event
@@ -439,24 +441,27 @@ func (c *Channel) Start(message *chat.Message) error {
 	
 	_, err := c.Agent.Start(
 		// channel context
-		context.Background(), start,
+		context.TODO(), start,
 		// callOptions
 		c.sendOptions,
 	)
 
-	// event := zerolog.Dict().
-	// Int64("pdc", c.DomainID).
-	// Int64("pid", c.ProfileID).
-	// Str("channel-id", c.ID)
-
 	if err != nil {
-		
+
 		c.Log.Error().Err(err).
 			Msg("Failed to /start chat@bot routine")
-		
+
 		return err
 
 	}
+
+	// var re *errors.Error
+	
+	// if err != nil {
+	// 	re = errors.FromError(err)
+	// } else {
+	// 	re = chatFlowError(res.GetError())
+	// }
 	
 	// if re := res.GetError(); re != nil {
 
@@ -499,10 +504,24 @@ func (c *Channel) Close() error {
 		c.sendOptions,
 
 	)
-	
+
+	// var re *errors.Error
+
 	if err != nil {
-		return err
-	}
+		re := errors.FromError(err)
+		switch re.Id {
+		case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
+			// NOTE: got Not Found ! make idempotent !
+			return nil // no matter !
+
+		default:
+
+			return re // Failure !
+		}
+
+	} // else {
+	// 	re = chatFlowError(res.GetError())
+	// }
 	
 	// re := chatFlowError(res.GetError())
 
@@ -546,10 +565,24 @@ func (c *Channel) BreakBridge(cause BreakBridgeCause) error {
 		c.sendOptions,
 
 	)
-	
+
 	if err != nil {
-		return err
-	}
+		re := errors.FromError(err)
+		switch re.Id {
+		case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
+			// NOTE: got Not Found ! make idempotent !
+			return nil // FIXME: no matter !
+			// Affected ON .LeaveConversation, after .workflow service,
+			// that run .this chat session - was stopped !
+
+		default:
+
+			return re // Failure !
+		}
+	
+	} // else {
+	// 	re = chatFlowError(res.GetError())
+	// }
 	
 	// re := chatFlowError(res.GetError())
 

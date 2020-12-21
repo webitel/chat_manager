@@ -8,6 +8,7 @@ import (
 	"strings"
 	"net/http"
 
+	"encoding/json"
 	"github.com/rs/zerolog"
 
 	gate "github.com/webitel/chat_manager/api/proto/bot"
@@ -266,14 +267,13 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 		// if contact.GetUsername() == "noname" {
 		// 	panic("channel: contact required")
 		// }
-
+		title := contact.DisplayName()
 		lookup := chat.CheckSessionRequest{
 			// gateway profile identity
 			ProfileId:  c.Profile.Id,
 			// external client contact
 			ExternalId: chatID,
-			//Username:   contact.Username,
-			Username:   contact.FirstName + " " + contact.LastName,
+			Username:   title,
 		}
 		// passthru request cancellation context
 		chat, err := c.Internal.Client.CheckSession(ctx, &lookup)
@@ -289,13 +289,14 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 
 			channel = &Channel{
 				// RECOVER
-				ChannelID:  chat.ChannelId, // chat.channel.id
+				ChannelID: chat.ChannelId, // chat.channel.id
 				
-				ContactID:  contact.ID,  // user.contact.id
-				Username:   contact.Username,
+				Account:  *(contact),
+				// ContactID:  contact.ID,  // user.contact.id
+				// Username:   contact.Username,
 				
-				Title:      contact.Username,
-				ChatID:     chatID, // .provider.chat
+				Title:     title, // contact.Username,
+				ChatID:    chatID, // .provider.chat
 
 				Gateway:    c, // .profile.id
 				Properties: chat.Properties,
@@ -313,8 +314,8 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 			}
 
 			c.Lock()   // +RW
-			c.internal[channel.ContactID] = channel
 			c.external[channel.ChatID] = channel
+			c.internal[channel.Account.ID] = channel // [channel.ContactID] = channel
 			c.Unlock() // -RW
 
 			channel.Log.Info().Msg("RECOVER")
@@ -328,10 +329,11 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 
 				ChannelID:  "", // NEW: chat.channelId == ""
 				
-				ContactID:  contact.ID,  // user.contact.id
-				Username:   contact.Username,
+				Account:  *(contact),
+				// ContactID:  contact.ID,  // user.contact.id
+				// Username:   contact.Username,
 				
-				Title:      contact.Username,
+				Title:      title, // contact.Username,
 				ChatID:     chatID, // .provider.chat
 
 				Gateway:    c, // .profile.id
@@ -425,18 +427,54 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 	var event *zerolog.Event
 	
 	if err == nil {
+		// FIXME: .GetChannel() does not provide full contact info on recover,
+		//                      just it's unique identifier ...  =(
+		// if recepient.Title == "" {
+		// 	recepient.Title = recepient.Account.DisplayName()
+		// }
 		event = recepient.Log.Debug()
 	} else {
 		event = recepient.Log.Error().Err(err)
 	}
 
-	event.Str("messageType", sendUpdate.Event).Msg("<<<<< SEND <<<<<<")
+	event.
+		
+		Str("send", sendUpdate.Event).
+		Str("text", sendUpdate.Message.GetText()).
+		EmbedObject(ZerologJSON("file", sendUpdate.Message.GetFile())).
+		
+		Msg("<<<<< SEND <<<<<<")
 
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+type zerologFunc func(event *zerolog.Event)
+func (fn zerologFunc) MarshalZerologObject(event *zerolog.Event) {
+	fn(event)
+}
+
+func ZerologJSON(key string, obj interface{}) zerolog.LogObjectMarshaler {
+	return zerologFunc(func(event *zerolog.Event) {
+		
+		if obj == nil {
+			event.Str(key, "")
+			return
+		}
+		
+		data, err := json.Marshal(obj)
+		
+		if err != nil {
+			event.Err(err)
+			return
+		}
+
+		event.RawJSON(key, data)
+
+	})
 }
 
 // Read notification [FROM] external: chat.provider [TO] internal: chat.server

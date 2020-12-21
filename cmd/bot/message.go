@@ -23,31 +23,42 @@ func (e *Account) IsUser() bool {
 	return e.Channel == "user"
 }
 
-func (e *Account) GetUsername() string {
+// func (e *Account) GetUsername() string {
 
-	e.Username  = strings.TrimSpace(e.Username)
-	
-	if e.Username == "" {
+// 	e.Username = strings.TrimSpace(e.Username)
+// 	return e.Username
+// }
 
-		e.FirstName = strings.TrimSpace(e.FirstName)
-		e.LastName  = strings.TrimSpace(e.LastName)
-		
-		e.Username = e.FirstName
-		
-		if e.LastName != "" {
-			if e.Username == "" {
-				e.Username = e.LastName
+func (e *Account) DisplayName() string {
+
+	e.FirstName = strings.TrimSpace(e.FirstName)
+	e.LastName  = strings.TrimSpace(e.LastName)
+	e.Username = strings.TrimSpace(e.Username)
+
+	displayName := e.FirstName
+
+	for _, lastName := range []string{e.LastName, e.Username} {
+		if lastName != "" && lastName != displayName {
+
+			if displayName == "" {
+
+				displayName = lastName
+				continue
+
 			} else {
-				e.Username += " " + e.LastName
+
+				displayName += " " + lastName
+				break
 			}
-		}
-		
-		if e.Username == "" {
-			e.Username = "noname"
+
 		}
 	}
 
-	return e.Username
+	if displayName == "" {
+		displayName = "noname"
+	}
+
+	return displayName
 }
 
 // Update represents unified message eventArgs

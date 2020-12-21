@@ -1,7 +1,7 @@
 # non-falat if not exists
 -include .env
 
-GO111MODULE="on"
+GO111MODULE=on
 
 GOPKG=$(shell go list -m)
 GOSRC=$(shell go list -f '{{.Dir}}' -m)
@@ -123,6 +123,8 @@ clean: clean-proto
 # start all unit tests
 tests:
 	go test ./...
+
+.PHONY: chat-srv chat-bot
 
 chat-srv: proto
 	@echo "  >  Building binary: chat-srv"

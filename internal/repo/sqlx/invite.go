@@ -34,26 +34,61 @@ func (repo *sqlxRepository) GetInvites(ctx context.Context, userID int64) ([]*In
 	return res, err
 }
 
-func (repo *sqlxRepository) CreateInvite(ctx context.Context, m *Invite) error {
-	m.ID = uuid.New().String()
-	m.CreatedAt = time.Now()
-	_, err := repo.db.ExecContext(ctx,
-		"INSERT INTO chat.invite ("+
-		  "id, conversation_id, user_id, title, timeout_sec, inviter_channel_id, created_at, domain_id, props" +
-		") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-		m.ID,
-		m.ConversationID,
-		m.UserID,
-		m.Title,
-		m.TimeoutSec,
-		m.InviterChannelID,
-		m.CreatedAt,
-		m.DomainID,
-		m.Variables,
-	)
+func (repo *sqlxRepository) CreateInvite(ctx context.Context, m *Invite) (err error) {
+	
+	if m.ID == "" {
+		m.ID = uuid.New().String()
+	}
+	if m.CreatedAt.IsZero() {
+		m.CreatedAt = time.Now()
+	}
+	m.CreatedAt = m.CreatedAt.UTC()
+	
+	if m.Title.String == "" {
+		// TODO: get .FROM inviter channel contact display name
+		_, err = repo.db.ExecContext(ctx,
+			"WITH sender AS ("+
+			"SELECT COALESCE(contact.name, NULLIF(account.name,''), account.username, channel.name) AS display"+
+			" FROM chat.channel" +
+			" LEFT JOIN chat.client AS contact ON (contact.id, false) = (channel.user_id, channel.internal)"+
+			" LEFT JOIN directory.wbt_user AS account ON (account.id, true) = (channel.user_id, channel.internal)"+
+			" WHERE channel.id = $1"+
+			") "+
+			"INSERT INTO chat.invite ("+
+			  "id, conversation_id, user_id, title, timeout_sec, inviter_channel_id, created_at, domain_id, props" +
+			") VALUES ($1, $2, $3, COALESCE((SELECT display FROM sender), 'noname'), $4, $5, $6, $7, $8)",
+			m.ID,
+			m.ConversationID,
+			m.UserID,
+			m.TimeoutSec,
+			m.InviterChannelID,
+			m.CreatedAt,
+			m.DomainID,
+			m.Variables,
+		)
+
+	} else { // typical logic }
+
+		_, err = repo.db.ExecContext(ctx,
+			"INSERT INTO chat.invite ("+
+			"id, conversation_id, user_id, title, timeout_sec, inviter_channel_id, created_at, domain_id, props" +
+			") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+			m.ID,
+			m.ConversationID,
+			m.UserID,
+			m.Title,
+			m.TimeoutSec,
+			m.InviterChannelID,
+			m.CreatedAt,
+			m.DomainID,
+			m.Variables,
+		)
+	}
+
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 

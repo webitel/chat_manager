@@ -152,13 +152,13 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 	Msg("RECV update")
 
-	// region: contact
-	username := strings.TrimSuffix(update.From, "("+ update.Channel +")")
+	// region: extract end-user contact info
+	username := strings.TrimSuffix(update.From," ("+ update.Channel +")")
 	username = strings.TrimSpace(username)
 	if username == "" {
 		username = "noname"
 	}
-
+	// fill account info
 	contact := &Account{
 		ID:        0, // LOOKUP
 		FirstName: "",
@@ -282,11 +282,10 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 		recepient = notify.Chat // recepient
 
 		update = notify.Message
+		chat *corezoidChatV1
 	)
 
-
-	// region: try to get chat latest state
-	var chat *corezoidChatV1
+	// region: recover chat latest state
 	switch props := recepient.Properties.(type) {
 	case *corezoidChatV1:
 		chat = props
@@ -296,17 +295,42 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 			corezoidRequest: corezoidRequest{
 				ChatID:    recepient.ChatID,
 				Channel:   props["channel"], // notify.User.Channel
-				Date:      localtime,
+				Date:      localtime, // RECOVERED(!)
 				Event:     props["action"],
 				Test:      develop,
 				From:      props["client_name"],
-				Text:      props["text"], // RECOVER
-				ReplyWith: props["replyTo"],
+				Text:      props["text"], // /start
+				ReplyWith: props["replyTo"], // optional: action related attribute
 			},
+		}
+		if recepient.Title == "" {
+			// region: extract end-user contact info
+			username := chat.corezoidRequest.From
+			username = strings.TrimSuffix(username," ("+ chat.Channel +")")
+			username = strings.TrimSpace(username)
+			if username == "" {
+				username = "noname"
+			}
+			// contact := &Account{
+			// 	ID:        recepient.Account.ID, // MUST
+			// 	FirstName: "",
+			// 	LastName:  "",
+			// 	Username:  username,
+			// 	Channel:   chat.Channel,
+			// 	Contact:   chat.ChatID,
+			// }
+			// fill account info
+			recepient.Account.Channel = chat.Channel
+			recepient.Account.Contact = chat.ChatID
+			recepient.Account.Username = username
+			// endregion
+			recepient.Title = recepient.Account.DisplayName()
 		}
 		// RECOVERED !
 		recepient.Properties = chat
+	
 	default:
+	
 		if recepient.Properties != nil {
 			return errs.InternalServerError(
 				"chat.gateway.corezoid.channel.recover.error",
