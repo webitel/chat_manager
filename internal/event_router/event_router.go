@@ -92,9 +92,7 @@ func (e *eventRouter) RouteCloseConversation(channel *pg.Channel, cause string) 
 			{
 				reqMessage := &pb.Message{
 					Type: "text",
-					Value: &pb.Message_Text{
-						Text: text,
-					},
+					Text: text,
 				}
 				err = e.sendMessageToBotUser(channel, item, reqMessage)
 			}
@@ -131,9 +129,7 @@ func (e *eventRouter) RouteCloseConversationFromFlow(conversationID *string, cau
 
 			reqMessage := &pb.Message{
 				Type: "text",
-				Value: &pb.Message_Text{
-					Text: text,
-				},
+				Text: text,
 			}
 			if err := e.sendMessageToBotUser(nil, item, reqMessage); err != nil {
 				e.log.Warn().
@@ -466,20 +462,16 @@ func (e *eventRouter) RouteMessage(sender *pg.Channel, message *pb.Message) (boo
 		},
 	}
 
-	switch message.Value.(type){
-	 case *pb.Message_Text:
-		msg.Text = message.GetText()
-
-	case *pb.Message_File_:
+	if message.File != nil{
 		msg.File = &events.File{
 			ID:     message.GetFile().Id,
 			Mime :  message.GetFile().Mime,
 			Name :  message.GetFile().Name,
 			Size :  message.GetFile().Size,
 		}
-
-	default:
-
+		msg.Text = message.GetText()
+	}else{
+		msg.Text = message.GetText()
 	}
 
 	body, _ := json.Marshal(msg)

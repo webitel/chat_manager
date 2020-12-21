@@ -5,7 +5,7 @@ import (
 	"context"
 	"strings"
 	"strconv"
-	"net/http"
+	// "net/http"
 
 	"github.com/rs/zerolog"
 
@@ -302,22 +302,23 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 		Str("confirmation_id", string(pending)).
 		Msg("send confirmed messages")
 	
-		messages := []*bot.Message{
-		{
-			Id:   message.GetId(),
-			Type: message.GetType(),
-			Value: &bot.Message_Text{
-				Text: message.GetText(),
-			},
-		},
-	}
+		// messages := []*bot.Message{
+		// 	{
+		// 		Id:   message.GetId(),
+		// 		Type: message.GetType(),
+		// 		Value: &bot.Message_Text{
+		// 			Text: message.GetText(),
+		// 		},
+		// 	},
+		// }
 	sendMessage := &bot.ConfirmationMessageRequest{
 		ConversationId: c.ID,
 		ConfirmationId: pending,
-		Messages:       messages,
+		// Messages:       messages,
+		Messages: []*chat.Message{message},
 	}
 	// PERFORM
-	res, err := c.Agent.
+	_, err = c.Agent.
 	ConfirmationMessage(
 		// canellation context
 		context.TODO(),
@@ -327,14 +328,11 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 		c.sendOptions,
 	)
 
+	
 	if err != nil {
-		return err
-	}
 
-	re := chatFlowError(res.GetError())
-
-	if re != nil {
-
+		re := errors.FromError(err)
+		
 		switch re.Id {
 		// "Chat: grpc.chat.conversation.not_found, Conversation %!d(string=0d882ad8-523a-4ed1-b36c-8c3f046e218e) not found"
 		case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
@@ -376,6 +374,7 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 		
 		return re // errors.New(re.Error.Message)
 	}
+
 	// USED(!) remove ...
 	c.Pending = ""
 	_ = c.Store.DeleteConfirmation(c.ChatID())
@@ -393,58 +392,52 @@ func (c *Channel) Start(message *chat.Message) error {
 		Msg("init conversation")
 	
 	const commandStart = "start"
-	messageText := commandStart
+	//messageText := commandStart
 	start := &bot.StartRequest{
 		
 		DomainId:       c.DomainID(),
 		// FIXME: why flow_manager need to know about some external chat-bot profile identity ?
 		ProfileId:      c.UserID(),
 		ConversationId: c.ChatID(),
+		Message: message,
+		// Message: &bot.Message{
+		// 	Id:   message.GetId(),
+		// 	Type: message.GetType(),
+		// 	Value: &bot.Message_Text{
+		// 		Text: messageText, // req.GetMessage().GetTextMessage().GetText(),
+		// 	},
+		// },
 
-		Message: &bot.Message{
-			Id:   message.GetId(),
-			Type: message.GetType(),
-			Value: &bot.Message_Text{
-				Text: messageText, // req.GetMessage().GetTextMessage().GetText(),
-			},
-		},
-
-		Variables: message.GetVariables(),
+		//Variables: message.GetVariables(),
 	}
 
 
-	if message != nil {
+	// if message != nil {
 		
-		switch e := message.GetValue().(type) {
-		case *chat.Message_Text: // TEXT
+	// 	if message.File != nil{
+	// 		start.Message.Value =
+	// 			&bot.Message_File_{
+	// 				File: &bot.Message_File{
+	// 					Id:       message.File.GetId(),
+	// 					Url:      message.File.GetUrl(),
+	// 					MimeType: message.File.GetMime(),
+	// 				},
+	// 			}
+	// 	}else{
+	// 		if message.Text != "" {
+	// 			messageText = message.Text
+	// 		}
 			
-			if e.Text != "" {
-				messageText = e.Text
-			}
-			
-			start.Message.Value =
-				&bot.Message_Text{
-					Text: messageText,
-				}
-
-		case *chat.Message_File_: // FILE
-
-			// messageText = "File"
-			start.Message.Value =
-				&bot.Message_File_{
-					File: &bot.Message_File{
-						Id:       e.File.GetId(),
-						Url:      e.File.GetUrl(),
-						MimeType: e.File.GetMime(),
-					},
-				}
-		}
-	}
+	// 		start.Message.Value = &bot.Message_Text{
+	// 			Text: messageText,
+	// 		}
+	// 	}
+	// }
 
 	// Request to start flow-routine for NEW-chat incoming message !
 	c.Host = "lookup" // NEW: selector.Random
 	
-	res, err := c.Agent.Start(
+	_, err := c.Agent.Start(
 		// channel context
 		context.Background(), start,
 		// callOptions
@@ -465,22 +458,22 @@ func (c *Channel) Start(message *chat.Message) error {
 
 	}
 	
-	if re := res.GetError(); re != nil {
+	// if re := res.GetError(); re != nil {
 
-		c.Log.Error().
-			Str("errno", re.GetId()).
-			Str("error", re.GetMessage()).
-			Msg("Failed to /start chat@bot routine")
+	// 	c.Log.Error().
+	// 		Str("errno", re.GetId()).
+	// 		Str("error", re.GetMessage()).
+	// 		Msg("Failed to /start chat@bot routine")
 
-		// return errors.New(
-		// 	re.GetId(),
-		// 	re.GetMessage(),
-		// 	502, // 502 Bad Gateway
-		// 	// The server, while acting as a gateway or proxy,
-		// 	// received an invalid response from the upstream server it accessed
-		// 	// in attempting to fulfill the request.
-		// )
-	}
+	// 	// return errors.New(
+	// 	// 	re.GetId(),
+	// 	// 	re.GetMessage(),
+	// 	// 	502, // 502 Bad Gateway
+	// 	// 	// The server, while acting as a gateway or proxy,
+	// 	// 	// received an invalid response from the upstream server it accessed
+	// 	// 	// in attempting to fulfill the request.
+	// 	// )
+	// }
 
 	c.Log.Info().
 		Int64("pdc", c.DomainID()).
@@ -495,7 +488,7 @@ func (c *Channel) Start(message *chat.Message) error {
 // Close .this channel @workflow.Break(!)
 func (c *Channel) Close() error {
 
-	res, err := c.Agent.Break(
+	_, err := c.Agent.Break(
 		// cancellation context
 		context.TODO(),
 		// request
@@ -511,20 +504,20 @@ func (c *Channel) Close() error {
 		return err
 	}
 	
-	re := chatFlowError(res.GetError())
+	// re := chatFlowError(res.GetError())
 
-	if re != nil {
+	// if re != nil {
 
-		switch re.Id {
-		case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
-			// NOTE: got Not Found ! make idempotent !
-			return nil // no matter !
+	// 	switch re.Id {
+	// 	case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
+	// 		// NOTE: got Not Found ! make idempotent !
+	// 		return nil // no matter !
 
-		default:
+	// 	default:
 
-			return re // Failure !
-		}
-	}
+	// 		return re // Failure !
+	// 	}
+	// }
 
 	c.Log.Warn().
 		Int64("pdc", c.DomainID()).
@@ -541,7 +534,7 @@ func (c *Channel) Close() error {
 // BreakBridge .this channel @workflow.BreakBridge(!)
 func (c *Channel) BreakBridge(cause BreakBridgeCause) error {
 
-	res, err := c.Agent.BreakBridge(
+	_, err := c.Agent.BreakBridge(
 		// cancellation context
 		context.TODO(),
 		// request
@@ -558,20 +551,20 @@ func (c *Channel) BreakBridge(cause BreakBridgeCause) error {
 		return err
 	}
 	
-	re := chatFlowError(res.GetError())
+	// re := chatFlowError(res.GetError())
 
-	if re != nil {
+	// if re != nil {
 
-		switch re.Id {
-		case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
-			// NOTE: got Not Found ! make idempotent !
-			return nil // no matter !
+	// 	switch re.Id {
+	// 	case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
+	// 		// NOTE: got Not Found ! make idempotent !
+	// 		return nil // no matter !
 
-		default:
+	// 	default:
 
-			return re // Failure !
-		}
-	}
+	// 		return re // Failure !
+	// 	}
+	// }
 
 	c.Log.Warn().
 		Int64("pdc", c.DomainID()).
@@ -589,34 +582,34 @@ const (
 	errnoSessionNotFound = "grpc.chat.conversation.not_found"
 )
 
-func chatFlowError(err *bot.Error) *errors.Error {
+// func chatFlowError(err *chat.Error) *errors.Error {
 	
-	if err == nil || (err.Id == "" && err.Message == "") {
-		return nil
-	}
+// 	if err == nil || (err.Id == "" && err.Message == "") {
+// 		return nil
+// 	}
 	
-	switch err.GetId() {
-	// "Chat: grpc.chat.conversation.not_found, Conversation %!d(string=0d882ad8-523a-4ed1-b36c-8c3f046e218e) not found"
-	case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
+// 	switch err.GetId() {
+// 	// "Chat: grpc.chat.conversation.not_found, Conversation %!d(string=0d882ad8-523a-4ed1-b36c-8c3f046e218e) not found"
+// 	case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
 		
-		code := http.StatusNotFound
+// 		code := http.StatusNotFound
 
-		return &errors.Error{
-			Id:     err.Id,
-			Code:   (int32)(code),
-			Detail: err.Message,
-			Status: http.StatusText(code),
-		}
+// 		return &errors.Error{
+// 			Id:     err.Id,
+// 			Code:   (int32)(code),
+// 			Detail: err.Message,
+// 			Status: http.StatusText(code),
+// 		}
 
-	// default:
-	}
+// 	// default:
+// 	}
 
-	code := http.StatusInternalServerError
+// 	code := http.StatusInternalServerError
 
-	return &errors.Error{
-		Id:     err.Id,
-		Code:   (int32)(code),
-		Detail: err.Message,
-		Status: http.StatusText(code),
-	}
-}
+// 	return &errors.Error{
+// 		Id:     err.Id,
+// 		Code:   (int32)(code),
+// 		Detail: err.Message,
+// 		Status: http.StatusText(code),
+// 	}
+// }

@@ -5,6 +5,7 @@ package webitel.chat.bot;
 option go_package = "github.com/webitel/chat_manager/api/proto/bot";
 
 import "chat.proto";
+import "message.proto";
 
 service BotService {
   rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {}
@@ -20,7 +21,7 @@ message SendMessageRequest {
 }
 
 message SendMessageResponse {
-  webitel.chat.server.Error error = 1;
+ // webitel.chat.server.Error error = 1;
 }
 
 message AddProfileRequest {
@@ -28,7 +29,7 @@ message AddProfileRequest {
 }
 
 message AddProfileResponse {
-  webitel.chat.server.Error error = 1;
+  //webitel.chat.server.Error error = 1;
 }
 
 message DeleteProfileRequest {
@@ -37,5 +38,5 @@ message DeleteProfileRequest {
 }
 
 message DeleteProfileResponse {
-  webitel.chat.server.Error error = 1;
+  //webitel.chat.server.Error error = 1;
 }

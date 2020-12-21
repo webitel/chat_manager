@@ -121,16 +121,8 @@ func (s *chatService) SendMessage(
 			ConversationID: conversationID,
 		}
 
-		switch req.Message.Value.(type) {
-			case *pb.Message_Text: // ASSERT(.Type=="text")
-				message.Type = "text"
-				message.Text = sql.NullString{
-					req.GetMessage().GetText(),
-					true,
-				}
-		
-			case *pb.Message_File_:
-				message.Type = "file"
+		if req.Message.File != nil{
+			message.Type = "file"
 				message.Text = sql.NullString{
 					req.GetMessage().GetFile().Url,
 					true,
@@ -145,9 +137,13 @@ func (s *chatService) SendMessage(
 				if err!=nil{
 					s.log.Error().Msg(err.Error())
 				}
-		
-			default:
+		}else{
+			message.Type = "text"
+			message.Text = sql.NullString{
+				req.GetMessage().GetText(),
+				true,
 			}
+		}
 
 		// s.repo.CreateMessage(ctx, message)
 		// s.eventRouter.RouteMessageFromFlow(&conversationID, req.GetMessage())
@@ -217,54 +213,48 @@ func (s *chatService) SendMessage(
 		ConversationID: sender.ConversationID,
 	}
 
-	switch e := recvMessage.Value.(type) {
+	if recvMessage.File != nil{
+		if !sender.Internal {
+			fileMessaged := &pbstorage.UploadFileUrlRequest{
+				DomainId: sender.DomainID,
+				Name:     req.Message.GetFile().Name,
+				Url:      req.Message.GetFile().Url,
+				Uuid:     sender.ConversationID,
+				Mime:     req.Message.GetFile().Mime,
+			}
+	
+			res, err := s.storageClient.UploadFileUrl(context.Background(), fileMessaged)
+			if err != nil {
+				s.log.Error().Err(err).Msg("Failed sand message to UploadFileUrl")
+				return err
+			}
+			
+			recvMessage.File.Url = res.Url
+			recvMessage.File.Id = res.Id
+			recvMessage.File.Mime = res.Mime
+			recvMessage.File.Size = res.Size
+		}
 
-		case *pb.Message_Text: // ASSERT(.Type=="text")
+		// shallowcopy
+		saveFile := *(recvMessage.File)
+		saveFile.Url = "" // sanitize .url path
+
+		body, err := json.Marshal(saveFile)
+		if err != nil {
+			s.log.Error().Msg(err.Error())
+		}
+
+		sendMessage.Type = "file"
+		err = sendMessage.Variables.Scan(body)
+		if err!=nil{
+			s.log.Error().Msg(err.Error())
+		}
+	} else {
 		sendMessage.Type = "text"
 		sendMessage.Text = sql.NullString{
-				req.GetMessage().GetText(),
-				true,
-			}
-	
-		case *pb.Message_File_:
-			if !sender.Internal {
-				fileMessaged := &pbstorage.UploadFileUrlRequest{
-					DomainId: sender.DomainID,
-					Name:     req.Message.GetFile().Name,
-					Url:      req.Message.GetFile().Url,
-					Uuid:     sender.ConversationID,
-					Mime:     req.Message.GetFile().Mime,
-				}
-		
-				res, err := s.storageClient.UploadFileUrl(context.Background(), fileMessaged)
-				if err != nil {
-					s.log.Error().Err(err).Msg("Failed sand message to UploadFileUrl")
-					return err
-				}
-				
-				e.File.Url = res.Url
-				e.File.Id = res.Id
-				e.File.Mime = res.Mime
-				e.File.Size = res.Size
-			}
-
-			// shallowcopy
-			saveFile := *(e.File)
-			saveFile.Url = "" // sanitize .url path
-
-			body, err := json.Marshal(saveFile)
-			if err != nil {
-				s.log.Error().Msg(err.Error())
-			}
-
-			sendMessage.Type = "file"
-			err = sendMessage.Variables.Scan(body)
-			if err!=nil{
-				s.log.Error().Msg(err.Error())
-			}
-	
-		default:
-	
+			req.GetMessage().GetText(),
+			true,
+		}
 	}
 
 	if recvMessage.Variables != nil {

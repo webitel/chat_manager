@@ -242,15 +242,15 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 	return nil
 }
 func getBytes(url string)([]byte, error){
-	response, e := http.Get(url)
-	if e != nil {
-		return nil, e
+	response, err := http.Get(url)
+	if err != nil {
+		return nil, err
 	}
 	defer response.Body.Close()
 
-	data, er := ioutil.ReadAll(response.Body)
-	if er != nil {
-		return nil, er
+	data, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
 	}
 	return data, nil
 }
@@ -283,25 +283,47 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 	// }
 	// endregion
 
-	recvMessage := recvUpdate.Message
-	if recvMessage == nil {
-		recvMessage = recvUpdate.EditedMessage
-	}
+	// recvMessage := recvUpdate.Message
+	// if recvMessage == nil {
+	// 	recvMessage = recvUpdate.EditedMessage
+	// }
+	var recvMessage *telegram.Message
 
-	if recvMessage != recvUpdate.Message {
-		
+	if recvUpdate.Message != nil {
+		recvMessage = recvUpdate.Message
+
+	}else if recvUpdate.EditedMessage != nil {
 		c.Gateway.Log.Warn().
 
-			Int(  "telegram-id", recvMessage.From.ID).
-			Str(  "username",    recvMessage.From.UserName).
-			Int64("chat-id",     recvMessage.Chat.ID).
-			// Str("first_name", message.From.FirstName).
-			// Str("last_name",  message.From.LastName)
+		 		Int(  "telegram-id", recvMessage.From.ID).
+		 		Str(  "username",    recvMessage.From.UserName).
+		 		Int64("chat-id",     recvMessage.Chat.ID).
+		 		// Str("first_name", message.From.FirstName).
+		 		// Str("last_name",  message.From.LastName)
+	
+		 	Msg("IGNORE Update; NOT A Text Message")
+			
+		return // 200 IGNORE
 
-		Msg("IGNORE Update; NOT A Text Message")
-		
+	}else if recvUpdate.CallbackQuery != nil {
+		// TODO Button
 		return // 200 IGNORE
 	}
+
+	// if recvMessage != recvUpdate.Message {
+		
+	// 	c.Gateway.Log.Warn().
+
+	// 		Int(  "telegram-id", recvMessage.From.ID).
+	// 		Str(  "username",    recvMessage.From.UserName).
+	// 		Int64("chat-id",     recvMessage.Chat.ID).
+	// 		// Str("first_name", message.From.FirstName).
+	// 		// Str("last_name",  message.From.LastName)
+
+	// 	Msg("IGNORE Update; NOT A Text Message")
+		
+	// 	return // 200 IGNORE
+	// }
 
 	// sender
 	sender := recvMessage.Chat
@@ -366,21 +388,10 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 	// }
 	// endregion
 
-	switch  {
+	if recvMessage.Document != nil {
 
-	case recvMessage.Text != "":
-		sendUpdate.Message = &chat.Message{
-			Type: "text",
-			Value: &chat.Message_Text{
-				Text: recvMessage.Text,
-			},
-			// Variables: map[string]string {
-			// 	"message_id": strconv.Itoa(recvMessage.MessageID),
-			// },
-		}
-	case recvMessage.Document != nil:
 		file := recvMessage.Document
-		
+			
 		URL, err := c.BotAPI.GetFileDirectURL(file.FileID)
 		if err!=nil{
 			return
@@ -388,16 +399,16 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 
 		sendUpdate.Message = &chat.Message{
 			Type: "file",
-			Value: &chat.Message_File_{
-				File: &chat.Message_File{
-					Url:   URL,
-					Name:  file.FileName,
-					Mime: file.MimeType,
-				},
+			File: &chat.File{
+				Url:   URL,
+				Name:  file.FileName,
+				Mime: file.MimeType,
 			},
+			Text: recvMessage.Caption,
 		}
 
-	case recvMessage.Audio != nil:
+	}else if recvMessage.Audio != nil {
+
 		file := recvMessage.Audio
 		
 		URL, err := c.BotAPI.GetFileDirectURL(file.FileID)
@@ -406,38 +417,40 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 		}
 
 		sendUpdate.Message = &chat.Message{
-			Type: "audio",
-			Value: &chat.Message_File_{
-				File: &chat.Message_File{
-					Url:   URL,
-					Name:  file.Title,
-					Mime: file.MimeType,
-				},
+			Type: "file",
+			File: &chat.File{
+				Url:   URL,
+				Name:  file.Title,
+				Mime: file.MimeType,
 			},
+			Text: recvMessage.Caption,
 		}
-	case recvMessage.Photo != nil:
+
+	}else if recvMessage.Photo != nil {
+
 		photos := *recvMessage.Photo
 		
 		fc:=telegram.FileConfig{
 			FileID: photos[len(photos)-1].FileID,
 		}
-		file,_ := c.BotAPI.GetFile(fc)
+		
+		file, _ := c.BotAPI.GetFile(fc)
 
 		title :=filepath.Base(file.FilePath)
 
 		getURL := file.Link(c.Token)
 		sendUpdate.Message = &chat.Message{
-			Type: "image",
-			Value: &chat.Message_File_{
-				File: &chat.Message_File{
-					Url:   getURL,
-					Name:  title,
-					Mime: "image/jpg",
-				},
+			Type: "file",
+			File: &chat.File{
+				Url:   getURL,
+				Name:  title,
+				Mime: "image/jpg",
 			},
+			Text: recvMessage.Caption,
 		}
 
-	case recvMessage.Video != nil:
+	}else if recvMessage.Video != nil {
+
 		file := recvMessage.Video
 		
 		fc:=telegram.FileConfig{
@@ -450,23 +463,28 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 		URL := f.Link(c.Token)
 
 		sendUpdate.Message = &chat.Message{
-			Type: "video",
-			Value: &chat.Message_File_{
-				File: &chat.Message_File{
-					Url:   URL,
-					Name:  title,
-					Mime: file.MimeType,
-				},
+			Type: "file",
+			File: &chat.File{
+				Url:   URL,
+				Name:  title,
+				Mime: file.MimeType,
 			},
+			Text: recvMessage.Caption,
 		}
-		
-	default:
+
+	} else if  recvMessage.Text != ""{
+
+		sendUpdate.Message = &chat.Message{
+			Type: "text",
+			Text: recvMessage.Text,
+		}
+
+	} else{
 		// ACK: HTTP/1.1 200 OK
 		reply.WriteHeader(http.StatusOK)
 		// IGNORE: not applicable yet !
 		channel.Log.Warn().Str("notice", "message: is not a text, photo, audio, video or file document; skip").Msg("IGNORE")
 		return
-		
 	}
 
 	err = c.Gateway.Read(notice.Context(), &sendUpdate)

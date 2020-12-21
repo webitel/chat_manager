@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package webitel.chat.server; 
+
+option go_package = "github.com/webitel/chat_manager/api/proto/chat";
+
+// message Error {
+
+//     string id = 1;
+//     string message = 2;
+// }
+
+// Account contact info to replace legacy chat.Client info
+message Account {
+    // Unique IDentifier
+    int64  id = 1;
+    // Channel communication type
+    string channel = 2; // e.g.: user, flow, mobile, telegram, facebook, viber, skype ...
+    // Channel specific contact string
+    string contact = 3; // optional: channel specific contact string
+
+    string first_name = 4; // optional
+    string last_name = 5; // optional
+    string username = 6; // required
+}
+
+message Message {
+
+    int64 id = 1;    // required: update unique identifier (internal)
+    string type = 2; // optional: update message type, e.g.: text, file etc. TODO: REMOVE; use oneof field instead
+
+    // oneof value {
+    string text = 3;
+    File file = 4;
+    // }
+
+    map<string, string> variables = 5; // optional: extra context
+
+    repeated Buttons buttons = 6;
+    Account contact = 7;
+}
+
+message File {
+
+    int64 id = 1;
+    string url = 2;
+    string mime = 3;
+
+    string name = 4;
+    int64 size = 5;
+}
+  
+message Buttons {
+
+    repeated Button button = 1;
+}
+
+message Button {
+
+    string caption  = 1;
+    string text = 2;
+    string type = 3;
+    string url = 4;
+    string code = 5;
+}
+
+// message Contact {
+
+//     string phone_number  = 1;
+// }

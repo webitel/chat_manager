@@ -249,9 +249,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		Message: &chat.Message{
 			Id:    0, // NEW
 			Type:  "text",
-			Value: &chat.Message_Text{
-				Text: update.Text,
-			},
+			Text: update.Text,
 			Variables: props,
 		},
 		// not applicable yet !

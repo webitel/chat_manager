@@ -4,7 +4,8 @@ package webitel.chat.server;
 
 option go_package = "github.com/webitel/chat_manager/api/proto/chat";
 
-import "chat.v1.proto";
+// import "chat.v1.proto";
+import "message.proto";
 
 service ChatService {
   rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {}
@@ -26,35 +27,6 @@ service ChatService {
   rpc DeleteProfile(DeleteProfileRequest) returns (DeleteProfileResponse) {}
   rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse) {}
   rpc GetHistoryMessages(GetHistoryMessagesRequest) returns (GetHistoryMessagesResponse) {}
-}
-
-message Error {
-  string id = 1;
-  string message = 2;
-}
-
-message Message {
-
-  int64 id = 1;    // required: update unique identifier (internal)
-  string type = 2; // optional: update message type, e.g.: text, file etc. TODO: REMOVE; use oneof field instead
-
-  message File {
-
-    int64 id = 1;
-    string url = 2;
-    string mime = 3;
-
-    string name = 4;
-    int64 size = 5;
-
-  }
-
-  oneof value {
-      string text = 3;
-      File file = 4;
-  }
-
-  map<string, string> variables = 5; // optional: extra context
 }
 
 message Profile {
@@ -137,7 +109,7 @@ message WaitMessageRequest {
 message WaitMessageResponse {
   int64 timeout_sec = 1;
   repeated Message messages = 2;
-  Error error = 3;
+  //Error error = 3;
 }
 
 message CheckSessionRequest {

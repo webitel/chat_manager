@@ -45,6 +45,16 @@ func (c *Gateway) Register(ctx context.Context, force bool) error {
 	linkURL := strings.TrimRight(c.Internal.URL, "/") +
 		("/" + c.Profile.UrlId)
 
+	// region: pre-register for callback(s) within register process
+	pid := c.Profile.Id
+	uri := c.Profile.UrlId
+
+	c.Internal.indexMx.Lock()      // +RW
+	c.Internal.profiles[pid] = c   // register: cache entry
+	c.Internal.gateways[uri] = pid // register: service URI
+	c.Internal.indexMx.Unlock()    // -RW
+	// endregion
+
 	// REGISTER public webhook, callback URL
 	err := c.External.Register(ctx, linkURL)
 
@@ -52,17 +62,11 @@ func (c *Gateway) Register(ctx context.Context, force bool) error {
 
 	if err == nil {
 
-		pid := c.Profile.Id
-		uri := c.Profile.UrlId
-
-		c.Internal.indexMx.Lock()      // +RW
-		c.Internal.profiles[pid] = c   // register: cache entry
-		c.Internal.gateways[uri] = pid // register: service URI
-		c.Internal.indexMx.Unlock()    // -RW
-
 		event = c.Log.Info()
 
 	} else {
+
+		_ = c.Remove()
 
 		event = c.Log.Error().Err(err)
 	}
@@ -268,7 +272,8 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 			ProfileId:  c.Profile.Id,
 			// external client contact
 			ExternalId: chatID,
-			Username:   contact.Username,
+			//Username:   contact.Username,
+			Username:   contact.FirstName + " " + contact.LastName,
 		}
 		// passthru request cancellation context
 		chat, err := c.Internal.Client.CheckSession(ctx, &lookup)
@@ -384,8 +389,13 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 		JoinMembers: nil,
 		KickMembers: nil,
 	}
-	switch sendMessage.Value.(type){
-	case *chat.Message_Text:
+
+	if sendMessage.File != nil{
+		
+		sendUpdate.Event = "file"
+
+	}else if sendMessage.Text != ""{
+
 		messageText := sendMessage.GetText()
 
 		sendUpdate.Event = "text"
@@ -395,7 +405,8 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 			// unify chat.closed reply text
 			sendUpdate.Event = "closed"
 			messageText = "closed" // chat: closed
-			sendMessage.Value.(*chat.Message_Text).Text = messageText
+			//sendMessage.Value.(*chat.Message_Text).Text = messageText
+			sendMessage.Text = messageText
 		}
 		if !recepient.IsNew() && closed {
 			// NOTE: Closed by the webitel.chat.server !
@@ -406,8 +417,6 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 				_ = recepient.Close() // (messageText)
 			} ()
 		}
-	case *chat.Message_File_:
-		sendUpdate.Event = "file"
 	}
 
 	// PERFORM: deliver TO .remote (provider) side
