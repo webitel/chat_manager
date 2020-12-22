@@ -66,6 +66,7 @@ type corezoidChatV1 struct {
 type CorezoidBot struct {
 	// URL to communicate with a back-channel service provider (proxy)
 	URL string
+	accessToken string // validate all incoming requests for precense X-Access-Token
 	// Client HTTP to communicate with member, remote
 	Client *http.Client
 	// Gateway service agent
@@ -78,13 +79,18 @@ func NewCorezoidBot(agent *Gateway) Provider {
 
 	config := agent.Profile
 	profile := config.GetVariables()
+	
 	url, ok := profile["url"]; if !ok {
 		log.Fatal().Msg("url not found")
 		return nil
 	}
+
+	authZ := profile["access_token"]
+
 	return &CorezoidBot{
 
-		URL:     url,
+		URL:         url,
+		accessToken: authZ,
 
 		Client: &http.Client{
 			Transport: &transportDump{
@@ -115,6 +121,17 @@ func (_ *CorezoidBot) Register(ctx context.Context, uri string) error {
 // WebHook implementes provider.Receiver interface
 func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
+	// region: X-Access-Token validation
+	if c.accessToken != "" {
+		authzToken := notice.Header.Get("X-Access-Token")
+		if authzToken != c.accessToken {
+			http.Error(reply, "Invalid access token", http.StatusForbidden)
+			c.Gateway.Log.Error().Str("error", "invalid access token").Msg("FORBIDDEN")
+			return
+		}
+	}
+	// endregion
+	
 	var (
 
 		update corezoidRequest // command/message
