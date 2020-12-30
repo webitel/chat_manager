@@ -62,7 +62,12 @@ func (repo *sqlxRepository) CreateMessage(ctx context.Context, m *Message) error
 
 func (repo *sqlxRepository) GetMessages(ctx context.Context, id int64, size, page int32, fields, sort []string, domainID int64, conversationID string) ([]*Message, error) {
 	result := []*Message{}
-	fieldsStr, whereStr, sortStr, limitStr := "m.*, c.user_id, c.type as user_type", "where c.domain_id=$1 and m.conversation_id=$2", "order by created_at desc", ""
+	fieldsStr, whereStr, sortStr, limitStr := 
+		"m.id, m.channel_id, m.conversation_id, m.text, m.created_at, m.updated_at, m.type, m.variables, "+
+		  "c.user_id, c.type as user_type",
+		"where c.domain_id=$1 and m.conversation_id=$2",
+		"order by created_at desc",
+		""
 	if size == 0 {
 		size = 15
 	}

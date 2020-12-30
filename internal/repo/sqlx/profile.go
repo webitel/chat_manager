@@ -115,15 +115,15 @@ func (repo *sqlxRepository) GetProfiles(ctx context.Context, id int64, size, pag
 	return result, err
 }
 
-func (repo *sqlxRepository) CreateProfile(ctx context.Context, p *Profile) error {
+/*func (repo *sqlxRepository) CreateProfile(ctx context.Context, p *Profile) error {
 	p.ID = 0
 	p.CreatedAt = time.Now()
 	if p.UrlID == "" {
 		p.UrlID = uuid.New().String()
 	}
 	stmt, err := repo.db.PrepareNamed(
-		`insert into chat.profile (name, schema_id, type, variables, domain_id, created_at)` +
-		` values (:name, :schema_id, :type, :variables, :domain_id, :created_at)`,
+		`insert into chat.profile (name, schema_id, type, variables, domain_id, created_at, url_id)` +
+		` values (:name, :schema_id, :type, :variables, :domain_id, :created_at, :url_id)`,
 	)
 	if err != nil {
 		return err
@@ -134,6 +134,44 @@ func (repo *sqlxRepository) CreateProfile(ctx context.Context, p *Profile) error
 		return err
 	}
 	p.ID = id
+	return nil
+}*/
+
+func (repo *sqlxRepository) CreateProfile(ctx context.Context, p *Profile) error {
+	
+	p.ID = 0
+	p.CreatedAt = time.Now().UTC()
+	
+	if p.UrlID == "" {
+		p.UrlID = uuid.New().String()
+	}
+
+	err := repo.db.GetContext(ctx, &p.ID,
+		// query
+		"INSERT INTO chat.profile (name, schema_id, type, variables, domain_id, created_at, url_id)" +
+		" VALUES ($1, $2, $3, $4, $5, $6, $7)" +
+		" RETURNING id",
+		// params ...
+		p.Name, // :name,
+		p.SchemaID, // :schema_id,
+		p.Type, // :type,
+		p.Variables, // :variables,
+		p.DomainID, // :domain_id,
+		p.CreatedAt, // :created_at,
+		p.UrlID, // :url_id
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			panic("gateway: failed to store NEW bot profile; something went wrong")
+		}
+		return err
+	}
+
+	if p.ID == 0 {
+		panic("gateway: failed to store NEW bot profile; got <zero> identifier")
+	}
+
 	return nil
 }
 

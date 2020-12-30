@@ -67,7 +67,30 @@ func transformProfileToRepoModel(profile *pb.Profile) (*pg.Profile, error) {
 			true,
 		},
 	}
-	result.Variables.Scan(profile.Variables)
+	// {"":""} {}
+	props := profile.GetVariables()
+	if props != nil {
+		delete(props, "")
+		if len(props) == 0 {
+			props = nil
+		}
+	}
+	// reset: normalized !
+	profile.Variables = props
+
+	if props != nil {
+
+		data, err := json.Marshal(props)
+		
+		if err == nil {
+			err = result.Variables.Scan(data)
+		}
+
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return result, nil
 }
 
