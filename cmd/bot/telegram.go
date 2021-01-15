@@ -2,7 +2,7 @@ package main
 
 import (
 
-	"time"
+	// "time"
 	"context"
 	"strings"
 	"strconv"
@@ -561,15 +561,15 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 		
 		return
 	}
-	// EDITED ?
-	if (recvMessage == recvUpdate.EditedMessage) {
-		const (
-			timestamp = time.Second      //      seconds = 1e9
-			precision = time.Millisecond // milliseconds = 1e6
-		)
-		sendMessage.UpdatedAt = 
-			(int64)(recvMessage.EditDate)*(int64)(timestamp/precision)
-	}
+	// // EDITED ?
+	// if (recvMessage == recvUpdate.EditedMessage) {
+	// 	const (
+	// 		timestamp = time.Second      //      seconds = 1e9
+	// 		precision = time.Millisecond // milliseconds = 1e6
+	// 	)
+	// 	sendMessage.UpdatedAt = 
+	// 		(int64)(recvMessage.EditDate)*(int64)(timestamp/precision)
+	// }
 
 	// TODO: ForwardFromMessageID | ReplyToMessageID !
 	if recvMessage.ForwardFromMessageID != 0 {

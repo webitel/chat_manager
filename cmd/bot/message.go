@@ -102,10 +102,10 @@ func (e *Update) IsCommandClose() bool {
 		case "closed":
 			return true
 		case "text":
-			if e.Message.UpdatedAt == 0 {
+			// if e.Message.UpdatedAt == 0 {
 				text := e.Message.GetText()
 				return IsCommandClose(text)
-			}
+			// }
 		}
 	}
 
