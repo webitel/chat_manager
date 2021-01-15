@@ -457,7 +457,7 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 		client = http.DefaultClient
 	}
 	// DO: SEND !
-	res, err := c.Client.Do(corezoidReq)
+	res, err := client.Do(corezoidReq)
 	
 	if err != nil {
 		return err

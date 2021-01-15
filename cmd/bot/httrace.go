@@ -14,13 +14,43 @@ type transportDump struct {
 	WithBody bool
 }
 
-func (d *transportDump) RoundTrip(h *http.Request) (*http.Response, error) {
+func (d *transportDump) RoundTrip(req *http.Request) (*http.Response, error) {
+
+	// region: DUMP Request
 	reqId, _ := uuid.NewRandom() // fmt.Sprintf("%p", h.Context())
-	dump, _ := httputil.DumpRequestOut(h, d.WithBody)
-	stdlog.Tracef("\t>>>>> OUTBOUND (%s) >>>>>\n\n%s\n\n", reqId, dump)
-	resp, err := d.r.RoundTrip(h)
-	dump, _ = httputil.DumpResponse(resp, d.WithBody)
-	stdlog.Tracef("\t>>>>> RESPONSE (%s) >>>>>\n\n%s\n\n", reqId, dump)
+	dump, err := httputil.DumpRequestOut(req, d.WithBody && req.ContentLength > 0)
+	
+	tracef := stdlog.Tracef
+	if err != nil {
+		tracef = stdlog.Errorf
+		dump = []byte("httputil.DumpRequestOut: "+ err.Error())
+	}
+	tracef("\t>>>>> OUTBOUND (%s) >>>>>\n\n%s\n\n", reqId, dump)
+	// endregion
+	
+	// PERFORM !
+	resp, err := d.r.RoundTrip(req)
+	
+	if err != nil {
+		tracef = stdlog.Errorf
+		dump = []byte("error: "+ err.Error())
+		tracef("\t>>>>> RESPONSE (%s) >>>>>\n\n%s\n\n", reqId, dump)
+		// Failure(!)
+		return resp, err
+	}
+
+	// region: DUMP Response
+	dump, err = httputil.DumpResponse(resp, d.WithBody && resp.ContentLength > 0)
+	
+	tracef = stdlog.Tracef
+	if err != nil {
+		tracef = stdlog.Errorf
+		dump = []byte("httputil.DumpResponse: "+ err.Error())
+	}
+	tracef("\t>>>>> RESPONSE (%s) >>>>>\n\n%s\n\n", reqId, dump)
+	// endregion
+
+	// Success(!)
 	return resp, err
 }
 
