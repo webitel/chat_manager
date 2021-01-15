@@ -2,6 +2,7 @@ package main
 
 import (
 
+	"time"
 	"context"
 	"strings"
 	"strconv"
@@ -16,8 +17,8 @@ import (
 	"github.com/micro/go-micro/v2/errors"
 
 	// gate "github.com/webitel/chat_manager/api/proto/bot"
-	telegram "github.com/go-telegram-bot-api/telegram-bot-api"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
+	telegram "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
 func init() {
@@ -37,37 +38,51 @@ func (_ *TelegramBotV1) String() string {
 }
 
 // NewTelegramBotV1 initialize new agent.profile service provider
-func NewTelegramBotV1(agent *Gateway) Provider {
+func NewTelegramBotV1(agent *Gateway) (Provider, error) {
 
 	token, ok := agent.Profile.Variables["token"]
+	
 	if !ok {
-		agent.Log.Fatal().Msg("token not found")
-		return nil
+		
+		return nil, errors.BadRequest(
+			"chat.gateway.telegram.token.required",
+			"telegram: bot API token required",
+		)
 	}
-	// client := &http.Client{
+
+	var (
+		
+		err error
+		botAPI *telegram.BotAPI
+		httpClient *http.Client
+	)
+
+	// httpClient = &http.Client{
 	// 	Transport: &transportDump{
 	// 		r: http.DefaultTransport,
 	// 		WithBody: true,
 	// 	},
 	// }
 
-	bot, err := telegram.NewBotAPIWithClient(token, http.DefaultClient) // client)
-	
+	if httpClient == nil {
+		botAPI, err = telegram.NewBotAPI(token)
+	} else {
+		botAPI, err = telegram.NewBotAPIWithClient(token, httpClient)
+	}
+
 	if err != nil {
-		// log.Fatal().Msg(err.Error())
-		agent.Log.Error().Err(err).
-			Int64("pid", agent.Profile.Id).
-			Str("gate", "telegram").
-			Str("bot", agent.Profile.Name).
-			Str("uri", "/" + agent.Profile.UrlId).
-			Msg("Failed to init gateway")
-		return nil
+
+		return nil, errors.New(
+			"chat.gateway.telegram.bot.error",
+			"telegram: "+ err.Error(),
+			 http.StatusBadGateway,
+		)
 	}
 
 	return &TelegramBotV1{
 		Gateway: agent,
-		BotAPI: bot,
-	}
+		BotAPI: botAPI,
+	}, nil
 }
 
 // Register Telegram Bot Webhook endpoint URI
@@ -134,14 +149,15 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 	switch notify.Event {
 	case "text": // default
 	
-		sendMessage := notify.Message
-		update = telegram.NewMessage(chatID, sendMessage.GetText())
+		messageText := notify.Message.GetText()
+		update = telegram.NewMessage(chatID, messageText)
 	
 	case "file":
-		sendMessage := notify.Message.GetFile()
-		switch e := sendMessage.Mime; {
 
-		case strings.HasPrefix(e, "image"):
+		doc := notify.Message.GetFile()
+
+		switch mimeType := doc.Mime; {
+		case strings.HasPrefix(mimeType, "image"):
 
 			// uploadFileURL, err := url.Parse(sendMessage.Url)
 			// if err != nil {
@@ -152,13 +168,13 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 			// update = telegram.NewPhotoUpload(chatID, *(uploadFileURL))
 
 
-			data, err := getBytes(sendMessage.Url)
+			data, err := getBytes(doc.Url)
 			if err != nil {
 				return err
 			}
 
 			file := telegram.FileBytes{
-				Name: sendMessage.Name,
+				Name:  doc.Name,
 				Bytes: data,
 			}
 
@@ -168,13 +184,14 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 			update = uploadPhoto
 
 		default:
-			data, err :=getBytes(sendMessage.Url)
+
+			data, err := getBytes(doc.Url)
 			if err != nil {
 				return err
 			}
 
 			file := telegram.FileBytes{
-				Name: sendMessage.Name,
+				Name:  doc.Name,
 				Bytes: data,
 			}
 
@@ -195,8 +212,9 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 
 	case "invite":
 	case "closed":
-		// SEND: notify meesage text
+		// SEND: notify message text
 		sendMessage := notify.Message
+		// NOTE: sendMessage.Type = 'close'
 		update = telegram.NewMessage(chatID, sendMessage.GetText())
 	
 	default:
@@ -204,11 +222,11 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 	}
 
 	if update == nil {
-		channel.Log.Warn().Str("notify", notify.Event).Str("error", "notify: not implemented").Msg("IGNORE")
+		channel.Log.Warn().Str("notify", notify.Event).Str("error", "notify: sent message type not supported").Msg("IGNORE")
 		return nil
 	}
 	
-	_, err = c.BotAPI.Send(update)
+	sentMessage, err := c.BotAPI.Send(update)
 
 	if err != nil {
 		switch e := err.(type) {
@@ -255,9 +273,18 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 		return err
 	}
 
+	sentBindings := map[string]string {
+		"chat_id":    channel.ChatID,
+		"message_id": strconv.Itoa(sentMessage.MessageID),
+	}
+	// attach sent message external bindings
+	notify.Message.Variables = sentBindings
+
 	return nil
 }
-func getBytes(url string)([]byte, error){
+
+func getBytes(url string) ([]byte, error) {
+	
 	response, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -284,9 +311,7 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 
 	// region: handle incoming update
 	// if recvUpdate.Message != nil {                   // *Message            `json:"message"`
-
 	// } else if recvUpdate.EditedMessage != nil {      // *Message            `json:"edited_message"`
-
 	// } else if recvUpdate.ChannelPost != nil {        // *Message            `json:"channel_post"`
 	// } else if recvUpdate.EditedChannelPost != nil {  // *Message            `json:"edited_channel_post"`
 	// } else if recvUpdate.InlineQuery != nil {        // *InlineQuery        `json:"inline_query"`
@@ -294,40 +319,44 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 	// } else if recvUpdate.CallbackQuery != nil {      // *CallbackQuery      `json:"callback_query"`
 	// } else if recvUpdate.ShippingQuery != nil {      // *ShippingQuery      `json:"shipping_query"`
 	// } else if recvUpdate.PreCheckoutQuery != nil {   // *PreCheckoutQuery   `json:"pre_checkout_query"`
-	// } else {
-
-	// }
+	// } else {}
 	// endregion
 
-	// recvMessage := recvUpdate.Message
-	// if recvMessage == nil {
-	// 	recvMessage = recvUpdate.EditedMessage
-	// }
-	var recvMessage *telegram.Message
+	recvMessage := recvUpdate.Message // NEW (!)
+	if recvMessage == nil {
+		recvMessage = recvUpdate.EditedMessage // EDITED (!)
+	}
+	
+	if recvMessage == nil {
+		// NOTE: this is NOT either NEW nor EDIT message update; skip processing ...
+		// Quick Release Request !
+		code := http.StatusOK // 200
+		reply.WriteHeader(code)
 
-	if recvUpdate.Message != nil {
-		recvMessage = recvUpdate.Message
-
-	}else if recvUpdate.EditedMessage != nil {
 		c.Gateway.Log.Warn().
 
-		 		Int(  "telegram-id", recvMessage.From.ID).
-		 		Str(  "username",    recvMessage.From.UserName).
-		 		Int64("chat-id",     recvMessage.Chat.ID).
-		 		// Str("first_name", message.From.FirstName).
-		 		// Str("last_name",  message.From.LastName)
-	
-		 	Msg("IGNORE Update; NOT A Text Message")
-			
-		return // 200 IGNORE
+			Int("code", code).
+			Str("status", http.StatusText(code)).
+			Str("notice", "Update is NOT either NEW nor EDIT Message").
 
-	}else if recvUpdate.CallbackQuery != nil {
-		// TODO Button
-		return // 200 IGNORE
+			Msg("IGNORE; NOT a Message Update")
+
+		return
 	}
+	
+	
+	
+	
+	
+	
+	
+	// var recvMessage *telegram.Message
 
-	// if recvMessage != recvUpdate.Message {
-		
+	// if recvUpdate.Message != nil {
+	// 	recvMessage = recvUpdate.Message
+
+	// } else if recvUpdate.EditedMessage != nil {
+	// 	recvMessage = recvUpdate.EditedMessage
 	// 	c.Gateway.Log.Warn().
 
 	// 		Int(  "telegram-id", recvMessage.From.ID).
@@ -337,22 +366,42 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 	// 		// Str("last_name",  message.From.LastName)
 
 	// 	Msg("IGNORE Update; NOT A Text Message")
-		
+			
+	// 	return // 200 IGNORE
+
+	// } else if recvUpdate.CallbackQuery != nil {
+	// 	// TODO Button
 	// 	return // 200 IGNORE
 	// }
 
-	// sender
-	sender := recvMessage.Chat
-	user := recvMessage.From
+	// // if recvMessage != recvUpdate.Message {
+		
+	// // 	c.Gateway.Log.Warn().
+
+	// // 		Int(  "telegram-id", recvMessage.From.ID).
+	// // 		Str(  "username",    recvMessage.From.UserName).
+	// // 		Int64("chat-id",     recvMessage.Chat.ID).
+	// // 		// Str("first_name", message.From.FirstName).
+	// // 		// Str("last_name",  message.From.LastName)
+
+	// // 	Msg("IGNORE Update; NOT A Text Message")
+		
+	// // 	return // 200 IGNORE
+	// // }
+
+	// sender: user|chat
+	senderFrom := recvMessage.From
+	senderChat := recvMessage.Chat
+	
 
 	// region: contact
 	contact := &Account{
 		ID:        0, // LOOKUP
-		FirstName: user.FirstName,
-		LastName:  user.LastName,
-		Username:  user.UserName,
+		FirstName: senderFrom.FirstName,
+		LastName:  senderFrom.LastName,
+		Username:  senderFrom.UserName,
 		Channel:   "telegram",
-		Contact:   strconv.Itoa(user.ID),
+		Contact:   strconv.Itoa(senderFrom.ID),
 	}
 
 	// username := recvMessage.From.FirstName
@@ -366,7 +415,7 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 	// endregion
 
 	// region: channel
-	chatID := strconv.FormatInt(sender.ID, 10)
+	chatID := strconv.FormatInt(senderChat.ID, 10)
 	channel, err := c.Gateway.GetChannel(
 		notice.Context(), chatID, contact,
 	)
@@ -384,88 +433,96 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 	// contact.ID = channel.ContactID
 
 	// endregion
-	sendUpdate := Update{
+	sendUpdate := Update {
 		
 		// ChatID: strconv.FormatInt(recvMessage.Chat.ID, 10),
 		Chat:    channel,
 		User:    contact,
 
 		Title:   channel.Title,
+
+		Message: new(chat.Message),
 	}
 
-	// region: handle message
-	// if recvMessage.Text != "" {             // string       `json:"text"`
-	// } else if recvMessage.Photo != nil {    // *[]PhotoSize `json:"photo"`
-	// } else if recvMessage.Video != nil {    // *Video       `json:"video"`
-	// } else if recvMessage.Audio != nil {    // *Audio       `json:"audio"`
-	// } else if recvMessage.Document != nil { // *Document    `json:"document"`
-	// } else {
+	sendMessage := sendUpdate.Message
 
-	// }
+	// region: handle message
+	// if recvMessage.Document != nil {        // *Document    `json:"document"`
+	// } else if recvMessage.Photo != nil {    // *[]PhotoSize `json:"photo"`
+	// } else if recvMessage.Audio != nil {    // *Audio       `json:"audio"`
+	// } else if recvMessage.Video != nil {    // *Video       `json:"video"`
+	// } else if recvMessage.Text != "" {      // string       `json:"text"`
+	// } else {}
 	// endregion
 
 	if recvMessage.Document != nil {
 
-		file := recvMessage.Document
-			
-		URL, err := c.BotAPI.GetFileDirectURL(file.FileID)
-		if err!=nil{
+		doc := recvMessage.Document
+		URL, err := c.BotAPI.GetFileDirectURL(doc.FileID)
+		if err != nil {
+			// FIXME: respond with 200 OK ?
 			return
 		}
-
-		sendUpdate.Message = &chat.Message{
-			Type: "file",
-			File: &chat.File{
-				Url:   URL,
-				Name:  file.FileName,
-				Mime: file.MimeType,
-			},
-			Text: recvMessage.Caption,
+		// Prepare internal message content
+		sendMessage.Type = "file"
+		sendMessage.File = &chat.File {
+			Url:  URL,
+			Size: (int64)(doc.FileSize),
+			Mime: doc.MimeType,
+			Name: doc.FileName,
 		}
+		sendMessage.Text = recvMessage.Caption
 
-	}else if recvMessage.Audio != nil {
-
-		file := recvMessage.Audio
-		
-		URL, err := c.BotAPI.GetFileDirectURL(file.FileID)
-		if err!=nil{
-			return
-		}
-
-		sendUpdate.Message = &chat.Message{
-			Type: "file",
-			File: &chat.File{
-				Url:   URL,
-				Name:  file.Title,
-				Mime: file.MimeType,
-			},
-			Text: recvMessage.Caption,
-		}
-
-	}else if recvMessage.Photo != nil {
-
+	} else if recvMessage.Photo != nil {
+		// Message is a photo, available sizes of the photo
 		photos := *recvMessage.Photo
-		
-		fc:=telegram.FileConfig{
+		// Peek the biggest, last one ...
+		photo := telegram.FileConfig{
 			FileID: photos[len(photos)-1].FileID,
 		}
 		
-		file, _ := c.BotAPI.GetFile(fc)
-
-		title :=filepath.Base(file.FilePath)
-
-		getURL := file.Link(c.Token)
-		sendUpdate.Message = &chat.Message{
-			Type: "file",
-			File: &chat.File{
-				Url:   getURL,
-				Name:  title,
-				Mime: "image/jpg",
-			},
-			Text: recvMessage.Caption,
+		doc, err := c.BotAPI.GetFile(photo)
+		if err != nil {
+			// FIXME: respond with 200 OK ?
+			return
 		}
+		// Get filename from available filepath
+		name := filepath.Base(doc.FilePath)
+		switch name {
+		case "/", ".": // unknown(!)
+			name = ""
+		}
+		// Get URL available for our bot profile
+		URL := doc.Link(c.Token)
+		// Prepare internal message content
+		sendMessage.Type = "file"
+		sendMessage.File = &chat.File {
+			Url:  URL,
+			Size: (int64)(doc.FileSize),
+			Mime: "image/jpg",
+			Name: name,
+		}
+		sendMessage.Text = recvMessage.Caption
 
-	}else if recvMessage.Video != nil {
+	} else if recvMessage.Audio != nil {
+
+		doc := recvMessage.Audio
+		URL, err := c.BotAPI.GetFileDirectURL(doc.FileID)
+		if err != nil {
+			// FIXME: respond with 200 OK ?
+			return
+		}
+		// Prepare internal message content
+		sendMessage.Type = "file"
+		sendMessage.File = &chat.File {
+			Url:  URL,
+			Size: (int64)(doc.FileSize),
+			Mime: doc.MimeType,
+			Name: doc.Title,
+		}
+		sendMessage.Text = recvMessage.Caption
+
+	} else if recvMessage.Video != nil {
 
 		file := recvMessage.Video
 		
@@ -488,30 +545,55 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 			Text: recvMessage.Caption,
 		}
 
-	} else if  recvMessage.Text != ""{
+	} else if recvMessage.Text != "" {
+		// Prepare internal message content
+		sendMessage.Type = "text"
+		sendMessage.Text = recvMessage.Text
 
-		sendUpdate.Message = &chat.Message{
-			Type: "text",
-			Text: recvMessage.Text,
-		}
-
-	} else{
+	} else {
 		// ACK: HTTP/1.1 200 OK
-		reply.WriteHeader(http.StatusOK)
+		code := http.StatusOK
+		reply.WriteHeader(code)
 		// IGNORE: not applicable yet !
-		channel.Log.Warn().Str("notice", "message: is not a text, photo, audio, video or file document; skip").Msg("IGNORE")
+		channel.Log.Warn().
+			Str("notice", "message: is NOT a text, photo, audio, video or file document").
+			Msg("IGNORE")
+		
 		return
+	}
+	// EDITED ?
+	if (recvMessage == recvUpdate.EditedMessage) {
+		const (
+			timestamp = time.Second      //      seconds = 1e9
+			precision = time.Millisecond // milliseconds = 1e6
+		)
+		sendMessage.UpdatedAt = 
+			(int64)(recvMessage.EditDate)*(int64)(timestamp/precision)
+	}
+
+	// TODO: ForwardFromMessageID | ReplyToMessageID !
+	if recvMessage.ForwardFromMessageID != 0 {
+		// sendMessage.ForwardFromMessageId = recvMessage.ForwardFromMessageID
+	} else if recvMessage.ReplyToMessage != nil {
+		// sendMessage.ReplyToMessageId = recvMessage.ReplyToMessage.MessageID
+	}
+	sendMessage.Variables = map[string]string{
+		"chat_id":    chatID,
+		"message_id": strconv.Itoa(recvMessage.MessageID),
 	}
 
 	err = c.Gateway.Read(notice.Context(), &sendUpdate)
 
 	if err != nil {
-		http.Error(reply, "Failed to deliver telegram .Update message", http.StatusInternalServerError)
+
+		code := http.StatusInternalServerError
+		http.Error(reply, "Failed to deliver telegram .Update message", code)
 		return // 502 Bad Gateway
 	}
 
-	reply.WriteHeader(http.StatusOK)
-	return // 200 OK
+	code := http.StatusOK
+	reply.WriteHeader(code)
+	return // HTTP/1.1 200 OK
 }
 
 // func receiveMessage(e *telegram.Message) {}

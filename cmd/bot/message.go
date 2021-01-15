@@ -16,7 +16,7 @@ type Account struct {
 }
 
 func (e *Account) IsBot() bool {
-	return e.Channel == "flow"
+	return e.Channel == "bot" // "flow"
 }
 
 func (e *Account) IsUser() bool {
@@ -87,7 +87,7 @@ type Update struct {
 
 const (
 	// chat.Close() command dispositions
-	commandCloseRecvDisposiotion = "/close"              // by external end-user request; command represents successfull reply
+	commandCloseRecvDisposiotion = "/close"              // by external: end-user request
 	commandCloseSendDisposiotion = "Conversation closed" // by internal: .chat.server channel
 )
 
@@ -97,17 +97,24 @@ const (
 func (e *Update) IsCommandClose() bool {
 
 	if e.Message != nil {
-		
-		text := e.Message.GetText()
-		return IsCommandClose(text)
+
+		switch e.Message.Type {
+		case "closed":
+			return true
+		case "text":
+			if e.Message.UpdatedAt == 0 {
+				text := e.Message.GetText()
+				return IsCommandClose(text)
+			}
+		}
 	}
-	
+
 	return false
 }
 
 // IsCommandClose indicates whether 
 // given text represents the chat.closed
-// channel notification text
+// channel notification or command text
 func IsCommandClose(text string) bool {
 	return text == commandCloseSendDisposiotion ||
 			text == commandCloseRecvDisposiotion

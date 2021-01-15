@@ -153,9 +153,12 @@ func (srv *Service) Close() error {
 // ServeHTTP handler to deal with external chat channel notifications
 func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	uri := strings.TrimLeft(r.URL.Path, "/")
+	srv.Log.Debug().
+		Str("uri", r.URL.Path).
+		Str("method", r.Method).
+		Msg("<<<<< WEBHOOK <<<<<")
 
-	srv.Log.Debug().Str("uri", uri).Str("method", r.Method).Msg("<<<<< WEBHOOK <<<<<")
+	uri := strings.TrimLeft(r.URL.Path, "/")
 
 	srv.indexMx.RLock()   // +R
 	pid, ok := srv.gateways[uri]
@@ -431,24 +434,32 @@ func (srv *Service) SendMessage(ctx context.Context, req *gate.SendMessageReques
 		return err
 	}
 
-	// // perform
-	// const commandClose = "Conversation closed" // internal: from !
-	// // NOTE: sending the last conversation message
-	// closing := msg.GetText() == commandClose
+	// perform
 	err = c.Send(ctx, req)
 	
-	// if err != nil {
+	if err != nil {
 		
-	// 	srv.Log.Error().Err(err).
+		// srv.Log.Error().Err(err).
 	
-	// 		Int64("pid", gate.Profile.Id).
-	// 		Str("type", msg.GetType()).
-	// 		Str("chat-id", req.GetExternalUserId()).
-	// 		Str("text", msg.GetText()).
+		// 	Int64("pid", gate.Profile.Id).
+		// 	Str("type", msg.GetType()).
+		// 	Str("chat-id", req.GetExternalUserId()).
+		// 	Str("text", msg.GetText()).
 		
-	// 	Msg("Failed to send message")
-	// 	return err
+		// Msg("Failed to send message")
+		return err
+	}
+
+	// sentBinding := req.GetMessage().GetVariables()
+	// if sentBinding != nil {
+	// 	delete(sentBinding, "")
+	// 	if len(sentBinding) != 0 {
+	// 		// populate SENT message external bindings
+	// 		rsp.Bindings = sentBinding
+	// 	}
 	// }
+	// // +OK
+	return nil
 	
 	// if closing {
 		
@@ -473,52 +484,57 @@ func (srv *Service) SendMessage(ctx context.Context, req *gate.SendMessageReques
 	// 	Msg("SENT")
 	// }
 
-	return err
+	// return err
 	
-	panic("not implemented") // TODO: Implement
+	// panic("not implemented") // TODO: Implement
 }
 
 // AddProfile register new profile gateway
 func (srv *Service) AddProfile(ctx context.Context, req *gate.AddProfileRequest, res *gate.AddProfileResponse) error {
 
+
 	add := req.GetProfile()
 
-	start := GetProvider(add.Type)
-	
-	if start == nil {
-		
-		srv.Log.Warn().
-			
-			Int64("pid", add.Id).
-			Int64("pdc", add.DomainId).
-			Int64("bot", add.SchemaId).
-			
-			Str("uri", "/" + add.UrlId).
-			
-			Str("title", add.Name).
-			Str("channel", add.Type).
-			
-			Msg("NOT SUPPORTED")
-		
-			return errors.New(
-				"chat.provider.not_supported",
-				"gateway: provider "+ add.Type +" not supported",
-				 http.StatusNotImplemented,
-			)
+	// region: validate profile
+	if add == nil {
+		return errors.BadRequest(
+			"chat.gateway.add.profile.required",
+			"gateway: profile to add is missing",
+		)
 	}
-
-	agent := &Gateway{
-
-		Profile:  add,
-		Internal: srv,
-
-		internal: make(map[int64]*Channel), // map[internal.user.id]
-	 	external: make(map[string]*Channel), // map[provider.user.id]
+	if add.Id == 0 {
+		return errors.BadRequest(
+			"chat.gateway.add.profile.id.required",
+			"gateway: add profile.id is missing",
+		)
 	}
+	if add.Type == "" {
+		return errors.BadRequest(
+			"chat.gateway.add.profile.type.required",
+			"gateway: add profile.type is missing",
+		)
+	}
+	if add.DomainId == 0 {
+		return errors.BadRequest(
+			"chat.gateway.add.profile.domain.required",
+			"gateway: add profile.domain_id is missing",
+		)
+	}
+	if add.SchemaId == 0 {
+		return errors.BadRequest(
+			"chat.gateway.add.profile.schema.required",
+			"gateway: add profile.schema_id is missing",
+		)
+	}
+	if add.UrlId == "" {
+		return errors.BadRequest(
+			"chat.gateway.add.profile.url.required",
+			"gateway: add profile.url is missing",
+		)
+	}
+	// endregion
 
-	agent.External = start(agent)
-	
-	logger := srv.Log.With().
+	log := srv.Log.With().
 
 		Int64("pid", add.Id).
 		Int64("pdc", add.DomainId).
@@ -531,13 +547,72 @@ func (srv *Service) AddProfile(ctx context.Context, req *gate.AddProfileRequest,
 
 		Logger()
 
-	agent.Log = &logger
+	// Find provider by code name
+	start := GetProvider(add.Type)
+
+	if start == nil {
+		
+		log.Warn().Msg("NOT SUPPORTED")
+		
+		return errors.New(
+			"chat.gateway.provider.not_supported",
+			"gateway: provider "+ add.Type +" not supported",
+			 http.StatusNotImplemented,
+		)
+	}
+
+	agent := &Gateway{
+
+		Log:     &log,
+		Profile:  add,
+		Internal: srv,
+
+		internal: make(map[int64]*Channel), // map[internal.user.id]
+	 	external: make(map[string]*Channel), // map[provider.user.id]
+	}
+
+	var err error
+	
+	agent.External, err = start(agent)
+
+	if err != nil {
+		
+		agent.External = nil
+		re := errors.FromError(err)
+		
+		if re.Code == 0 {
+			// NOTE: is NOT err.(*errors.Error)
+			code := http.StatusInternalServerError
+			re.Id = "chat.gateway."+ add.Type +".start.error"
+			// re.Detail = err.Error()
+			re.Code = (int32)(code)
+			re.Status = http.StatusText(code)
+		}
+
+		log.Error().Str("error", re.Detail).Msg("STARTUP")
+		
+		return re
+	}
 
 	force := true // REGISTER WebHook(!)
-	err := agent.Register(ctx, force)
+	err = agent.Register(ctx, force)
 	
 	if err != nil {
-		return err
+
+		re := errors.FromError(err)
+
+		if re.Code == 0 {
+			// NOTE: is NOT err.(*errors.Error)
+			code := http.StatusBadGateway
+			re.Id = "chat.gateway."+ add.Type +".register.error"
+			// re.Detail = err.Error()
+			re.Code = (int32)(code)
+			re.Status = http.StatusText(code)
+		}
+
+		log.Error().Str("error", re.Detail).Msg("REGISTER")
+
+		return re
 	}
 
 	return nil

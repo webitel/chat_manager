@@ -391,25 +391,27 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 		JoinMembers: nil,
 		KickMembers: nil,
 	}
+	// RECV closed
+	closed := sendMessage.Type == "closed" // TODO: !!!
 
-	if sendMessage.File != nil{
+	if sendMessage.File != nil {
 		
 		sendUpdate.Event = "file"
 
-	}else if sendMessage.Text != ""{
+	} else if sendMessage.Text != "" {
 
 		messageText := sendMessage.GetText()
 
 		sendUpdate.Event = "text"
-		closed := IsCommandClose(messageText) 
+		closed = closed || IsCommandClose(messageText) 
 		
 		if closed {
 			// unify chat.closed reply text
 			sendUpdate.Event = "closed"
-			messageText = "closed" // chat: closed
-			//sendMessage.Value.(*chat.Message_Text).Text = messageText
-			sendMessage.Text = messageText
+			// messageText = "closed" // chat: closed
+			sendMessage.Text = "closed"
 		}
+
 		if !recepient.IsNew() && closed {
 			// NOTE: Closed by the webitel.chat.server !
 			defer func() {

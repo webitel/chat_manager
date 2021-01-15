@@ -8,6 +8,8 @@ import (
 	"strings"
 	"strconv"
 
+	"net"
+	"net/url"
 	"net/http"
 	"encoding/json"
 
@@ -75,32 +77,87 @@ type CorezoidBot struct {
 
 // NewCorezoidBot initialize new chat service provider
 // corresponding to agent.Profile configuration
-func NewCorezoidBot(agent *Gateway) Provider {
+func NewCorezoidBot(agent *Gateway) (Provider, error) {
 
 	config := agent.Profile
 	profile := config.GetVariables()
-	
-	url, ok := profile["url"]; if !ok {
-		log.Fatal().Msg("url not found")
-		return nil
+
+	host, _ := profile["url"]
+
+	if host == "" {
+
+		return nil, errs.BadRequest(
+			"chat.gateway.corezoid.host_url.required",
+			"corezoid: provider host URL required",
+		)
 	}
 
+	hostURL, err := url.Parse(host)
+
+	if err != nil {
+
+		return nil, errs.BadRequest(
+			"chat.gateway.corezoid.host_url.invalid",
+			"corezoid:host: "+ err.Error(),
+		)
+	}
+	// RESET: normalized !
+	host = hostURL.String()
+	// X-Access-Token: Authorization required ?
 	authZ := profile["access_token"]
+
+	// region: HTTP client/proxy
+	var (
+
+		client *http.Client
+		proxy = profile["http_proxy"]
+	)
+
+	if proxy != "" {
+		
+		proxyURL, err := url.Parse(proxy)
+
+		if err != nil {
+
+			return nil, errs.BadRequest(
+				"chat.gateway.corezoid.proxy_url.invalid",
+				"corezoid: proxy: "+ err.Error(),
+			)
+		}
+
+		// adding the proxy settings to the Transport object
+		// Keep SYNC default values with net/http.DefaultTransport
+		transport := &http.Transport{
+			Proxy: http.ProxyURL(proxyURL), // ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+				DualStack: true,
+			}).DialContext,
+			ForceAttemptHTTP2:     true,
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		}
+
+		// adding the Transport object to the httpClient
+		client = &http.Client{
+			Transport: transport,
+		}
+	}
+
+	// endregion
 
 	return &CorezoidBot{
 
-		URL:         url,
+		URL:         host,
 		accessToken: authZ,
+		// NOTE: net/http.DefaultClient used if <nil> pointer
+		Client:      client,
+		Gateway:     agent,
 
-		Client: &http.Client{
-			Transport: &transportDump{
-				r: http.DefaultTransport,
-				WithBody: true,
-			},
-		},
-		
-		Gateway: agent,
-	}
+	},  nil
 }
 
 // String "corezoid" provider name

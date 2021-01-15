@@ -49,7 +49,7 @@ type Provider interface {
 }
 
 // NewProvider factory method
-type NewProvider func(agent *Gateway) Provider
+type NewProvider func(agent *Gateway) (Provider, error)
 
 // Well-known providers registry
 var providers = make(map[string]NewProvider)

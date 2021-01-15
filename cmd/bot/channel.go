@@ -81,7 +81,7 @@ func (c *Channel) Close() (err error) {
 	e, ok := c.Gateway.external[c.ChatID]
 	if ok = ok && e == c; ok && c.Closed != 0 {
 		delete(c.Gateway.external, c.ChatID)
-		// delete(c.Gateway.internal, c.ContactID)
+		delete(c.Gateway.internal, c.Account.ID) // delete(c.Gateway.internal, c.ContactID)
 	}
 	c.Gateway.Unlock() // -RW
 
@@ -292,11 +292,12 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 		ctx, // operation cancellation context
 		&chat.SendMessageRequest{
 
-			Message:        message,
-			AuthUserId:     c.Account.ID, // c.ContactID,
+			AuthUserId:     c.Account.ID, // senderFromID
 
-			ChannelId:      c.ChannelID,
-			ConversationId: c.SessionID,
+			ChannelId:      c.ChannelID,  // senderChatID
+			ConversationId: c.SessionID,  // targetChatID
+
+			Message:        message,      // Message
 		},
 		// callOptions ...
 		c.sendOptions,
