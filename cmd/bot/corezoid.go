@@ -297,7 +297,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 		return
 
-	case "Предложение":
+	case "Предложение", "Жалоба":
 	
 		props["replyTo"] = update.ReplyWith
 
@@ -441,7 +441,7 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 		// 	reply.Text = update.GetText() // reply: message text
 		// 	reply.From = title // TODO: resolve sender name
 			
-		case "Предложение":
+		case "Предложение", "Жалоба":
 			
 			reply.From = title // TODO: resolve sender name
 			reply.Text = update.GetText() // reply: message text
