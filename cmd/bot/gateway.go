@@ -146,91 +146,12 @@ func (c *Gateway) Remove() bool {
 // WebHook implements basic provider.Receiver interface
 // Just delegates control to the underlaying service provider
 func (c *Gateway) WebHook(reply http.ResponseWriter, notice *http.Request) {
-
+	// Delegate process to provider ...
 	c.External.WebHook(reply, notice)
-	return
-
-	// // receiver, _ := c.External.(interface{
-	// // 	RecvNotice(http.ResponseWriter, *http.Request) (*Notice, error)
-	// // })
-
-	// receiver := c.External
-
-	// update, err := receiver.WebHook(reply, notice)
-
-	// if err != nil {
-	// 	// http.Error(res, errors.Wrap(err, "Failed to decode message received").Error(), http.StatusInternalServerError)
-	// 	return
-	// }
-
-	// channel, err := c.GetChannel(notice.Context(), c.Profile.Id, 0, update.ExternalID)
-	
-	// if err != nil {
-	// 	// http.Error(res, errors.Wrap(err, "Failed to lookup sender channel").Error(), http.StatusInternalServerError)
-	// 	return
-	// }
-
-	// if channel == nil {
-
-	// 	channel, err = c.NewChannel(update.ExternalID, "", 0, update.Message)
-	
-	// } else {
-
-	// 	err = channel.SendMessage(update.Message)
-	
-	// }
+	// NOTE: if provider did not manualy respond to incoming update request,
+	//       next "return" statement will respond with HTTP 200 OK status result by default !
+	// return
 }
-
-
-/*func (c *Gateway) NewChannel(externalID, username string, contactID int64, message *chat.Message) (*Channel, error) {
-
-	start := &chat.StartConversationRequest{
-		DomainId: c.DomainID(),
-		Username: username,
-		User: &chat.User{
-			UserId:     contactID,
-			Type:       c.Profile.Type, // "telegram", // FIXME: why (?)
-			Connection: strconv.FormatInt(c.Profile.Id, 10), // contact: profile.ID
-			Internal:   false,
-		},
-		Message: message, // start
-		// Message: &chat.Message{
-		// 	Type: "text",
-		// 	Value: &chat.Message_Text{
-		// 		Text: "/start",
-		// 	},
-		// 	// Variables: env,
-		// },
-	}
-	// PERFORM: /start chatflow routine
-	chat, err := c.Internal.Client.StartConversation(context.TODO(), start)
-	
-	if err != nil {
-		c.Log.Error().Err(err).Msg("Failed to /start external chat")
-		return nil, err
-	}
-
-	channel := &Channel{
-		
-		ChatID:     externalID,
-		Title:      username,
-
-		Username:   username,
-		ContactID:  contactID,
-
-		ChannelID:  chat.ChannelId,
-		SessionID:  chat.ConversationId,
-
-		Gateway:    c,
-	}
-
-	c.Lock()   // +RW
-	c.external[channel.ChatID] = channel
-	c.internal[channel.ContactID] = channel
-	c.Unlock() // -RW
-
-	return channel, nil
-}*/
 
 // GetChannel lookup for given .Profile.ID + .externalID unique channel state
 // If NOT found internal cache entry, will attempt to lookup into persistent DB store
@@ -289,14 +210,11 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 
 			channel = &Channel{
 				// RECOVER
-				ChannelID: chat.ChannelId, // chat.channel.id
-				
-				Account:  *(contact),
-				// ContactID:  contact.ID,  // user.contact.id
-				// Username:   contact.Username,
-				
-				Title:     title, // contact.Username,
-				ChatID:    chatID, // .provider.chat
+				Title:      title,          // contact.username,
+				ChatID:     chatID,         // provider.chat.id
+
+				Account:   *(contact),      // user.contact.id
+				ChannelID:  chat.ChannelId, // chat.channel.id
 
 				Gateway:    c, // .profile.id
 				Properties: chat.Properties,
@@ -349,8 +267,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 					Logger(),
 			}
 			// .IsNew() == true
-			
-			return channel, nil // .IsNew() == true
+			return channel, nil
 		}
 	}
 
@@ -391,6 +308,13 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 		JoinMembers: nil,
 		KickMembers: nil,
 	}
+
+	if recepient.Account.ID != 0 {
+		// shallowcopy
+		contact := recepient.Account
+		sendUpdate.User = &contact
+	}
+
 	// RECV closed
 	closed := sendMessage.Type == "closed" // TODO: !!!
 
@@ -482,18 +406,17 @@ func ZerologJSON(key string, obj interface{}) zerolog.LogObjectMarshaler {
 // Read notification [FROM] external: chat.provider [TO] internal: chat.server
 func (c *Gateway) Read(ctx context.Context, notify *Update) error {
 
-	sender := notify.Chat
+	// sender: chat/user
+	channel := notify.Chat
 	contact := notify.User
 
-	if contact.Channel == "" {
-		contact.Channel = sender.Provider()
-	}
-
 	if contact == nil {
-		panic("sender: user <nil>")
+		panic("channel: chat user <nil> contact")
 	}
 
-	channel := notify.Chat
+	if contact.Channel == "" {
+		contact.Channel = channel.Provider()
+	}
 
 	// TODO: transform envelope due to event mime-type code name
 	sendMessage := notify.Message
@@ -507,32 +430,3 @@ func (c *Gateway) Read(ctx context.Context, notify *Update) error {
 
 	return nil // ACK(+)
 }
-
-/*func (c *Gateway) RecvMessage(notice *chat.SendMessageRequest) (*Channel, error) {
-
-	message := &pbchat.SendMessageRequest{
-		// Message:   textMessage,
-		AuthUserId: chat.ClientId,
-		ChannelId:  chat.ChannelId,
-	}
-	messageText := &pbchat.Message{
-		Type: "text",
-		Value: &pbchat.Message_Text{
-			Text: update.Text,
-		},
-		// // FIXME: does we need this here ? 
-		// // NOTE: processing consequent message(s) ...
-		// Variables: map[string]string {
-		// 	"action":  update.Type,
-		// 	"channel": update.Channel,
-		// 	"replyTo": update.ReplyWith,
-		// },
-	}
-	message.Message = messageText
-	// }
-
-	_, err := bot.client.SendMessage(context.Background(), message)
-	if err != nil {
-		bot.log.Error().Msg(err.Error())
-	}
-}*/

@@ -4,10 +4,10 @@ package webitel.chat.server;
 
 option go_package = "github.com/webitel/chat_manager/api/proto/chat";
 
-// import "chat.v1.proto";
 import "message.proto";
 
 service ChatService {
+
   rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {}
   rpc StartConversation(StartConversationRequest) returns (StartConversationResponse) {}
   rpc CloseConversation(CloseConversationRequest) returns (CloseConversationResponse) {}
@@ -83,8 +83,13 @@ message User {
 }
 
 message UpdateChannelRequest {
+  // Chat channel FROM unique identifier
   string channel_id = 1;
   int64 auth_user_id = 2;
+  // You may specify date which will implies messages partial READ,
+  // until last seen message.created_at date, OR leave it blank that
+  // implies READ ALL messages operation (until this request timestamp)
+  int64 read_until = 3;
 }
 
 message UpdateChannelResponse {}
@@ -95,10 +100,16 @@ message HistoryMessage {
   // int64 conversation_id = 3;
 //  int64 from_user_id = 2;
 //  string from_user_type = 3;
-  string text = 4;
   string type = 5;
+  string text = 4;
+  File   file = 8;
+
   int64 created_at = 6;
   int64 updated_at = 7;
+  
+  // int64 reply_to_message_id = 10;
+  // string forward_from_chat_id = 12;
+  // int64 forward_from_message_id = 13;
 }
 
 message WaitMessageRequest {
@@ -132,10 +143,15 @@ message CheckSessionResponse {
 message SendMessageRequest {
   // User from = 1;
   Message message = 1;
+  // Sender chat unique id
   string channel_id = 2;
   //  bool from_flow = 3;
+
+  // Target chat unique id
   string conversation_id = 3;
   int64 auth_user_id = 4;
+  // // Edit message operation indication !
+  // bool edit = 5; // == (0 != .message.updated_at)
 }
 
 message SendMessageResponse {
@@ -146,8 +162,10 @@ message StartConversationRequest {
   User user = 1;
   int64 domain_id = 2;
   string username = 3;
-  // MESSAGE: the very first
+  // Message to start conversation with ...
   Message message = 4;
+  // Properties (variables) to start conversation chat@bot channel with ...
+  map<string,string> properties = 5;
 }
 
 message StartConversationResponse {
@@ -316,3 +334,33 @@ message GetHistoryMessagesResponse {
   bool next = 2; // search: has {next} page ?
   repeated HistoryMessage items = 3;
 }
+
+
+// message StatusMessageRequest {
+
+//     // Status text, e.g: uploading, typing etc.
+//     string status = 1;
+//     // Expires for temporary (short time lived) status messages in seconds
+//     int64 expires = 2;
+// }
+
+// message SendMessageRequest {
+
+//     // Text of the message to be sent, 1-4096
+//     string text = 1;
+//     // File to send. Pass an HTTP .URL as a string for Webitel to get a file from the Internet,
+//     // or upload a new one using storage.FileService.UploadFile()
+//     File file = 2;
+//     // If the message is a reply, ID of the original message
+//     int64 reply_to_message_id = 3;
+//     // Pass True, if the message should be sent even if the specified replied-to message is not found
+//     bool allow_sending_without_reply = 4;
+// }
+
+// message ForwardMessageRequest {
+
+//     // Unique identifier for the chat where the original message was sent
+//     string from_chat_id = 1;
+//     // Message identifier in the chat specified in from_chat_id
+//     int64 from_message_id = 2;
+// }

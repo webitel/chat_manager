@@ -2,7 +2,7 @@ package main
 
 import (
 
-	// "time"
+	"time"
 	"context"
 	"strings"
 	"strconv"
@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"encoding/json"
 
+	"github.com/webitel/chat_manager/app"
 	"github.com/micro/go-micro/v2/errors"
 
 	// gate "github.com/webitel/chat_manager/api/proto/bot"
@@ -113,7 +114,11 @@ func (c *TelegramBotV1) Deregister(ctx context.Context) error {
 	}
 
 	if !res.Ok {
-
+		return errors.New(
+			"chat.gateway.deregister.telegram.error", 
+			"telegram: "+ res.Description,
+			 (int32)(res.ErrorCode), // FIXME: 502 Bad Gateway ?
+		)
 	}
 
 	return nil
@@ -390,18 +395,18 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 	// // }
 
 	// sender: user|chat
-	senderFrom := recvMessage.From
+	senderUser := recvMessage.From
 	senderChat := recvMessage.Chat
-	
 
 	// region: contact
 	contact := &Account{
 		ID:        0, // LOOKUP
-		FirstName: senderFrom.FirstName,
-		LastName:  senderFrom.LastName,
-		Username:  senderFrom.UserName,
 		Channel:   "telegram",
-		Contact:   strconv.Itoa(senderFrom.ID),
+		Contact:   strconv.Itoa(senderUser.ID),
+
+		FirstName: senderUser.FirstName,
+		LastName:  senderUser.LastName,
+		Username:  senderUser.UserName,
 	}
 
 	// username := recvMessage.From.FirstName
@@ -436,9 +441,9 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 	sendUpdate := Update {
 		
 		// ChatID: strconv.FormatInt(recvMessage.Chat.ID, 10),
-		Chat:    channel,
+		
 		User:    contact,
-
+		Chat:    channel,
 		Title:   channel.Title,
 
 		Message: new(chat.Message),
@@ -524,23 +529,22 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 
 	} else if recvMessage.Video != nil {
 
-		file := recvMessage.Video
-		
-		fc:=telegram.FileConfig{
-			FileID: file.FileID,
+		doc := recvMessage.Video
+		cfg := telegram.FileConfig{
+			FileID: doc.FileID,
 		}
-		f,_ := c.BotAPI.GetFile(fc)
 
-		title :=filepath.Base(f.FilePath)
+		file, _ := c.BotAPI.GetFile(cfg)
+		title := filepath.Base(file.FilePath)
 
-		URL := f.Link(c.Token)
+		URL := file.Link(c.Token)
 
 		sendUpdate.Message = &chat.Message{
 			Type: "file",
 			File: &chat.File{
-				Url:   URL,
-				Name:  title,
-				Mime: file.MimeType,
+				Url:  URL,
+				Name: title,
+				Mime: doc.MimeType,
 			},
 			Text: recvMessage.Caption,
 		}
@@ -561,21 +565,36 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 		
 		return
 	}
-	// // EDITED ?
-	// if (recvMessage == recvUpdate.EditedMessage) {
-	// 	const (
-	// 		timestamp = time.Second      //      seconds = 1e9
-	// 		precision = time.Millisecond // milliseconds = 1e6
-	// 	)
-	// 	sendMessage.UpdatedAt = 
-	// 		(int64)(recvMessage.EditDate)*(int64)(timestamp/precision)
-	// }
+	// EDITED ?
+	if (recvMessage == recvUpdate.EditedMessage) {
+		var (
+			timestamp = time.Second       //      seconds = 1e9
+			precision = app.TimePrecision // milliseconds = 1e6
+		)
+		sendMessage.UpdatedAt = 
+			(int64)(recvMessage.EditDate)*(int64)(timestamp/precision)
+	}
 
 	// TODO: ForwardFromMessageID | ReplyToMessageID !
 	if recvMessage.ForwardFromMessageID != 0 {
+
 		// sendMessage.ForwardFromMessageId = recvMessage.ForwardFromMessageID
+		sendMessage.ForwardFromVariables = map[string]string{
+			// FIXME: guess, this can by any telegram-user-related chat,
+			//        so we may fail to find corresponding internal message for given binding map
+			"chat_id":    strconv.FormatInt(recvMessage.ForwardFromChat.ID, 10),
+			"message_id": strconv.Itoa(recvMessage.ForwardFromMessageID),
+		}
+
 	} else if recvMessage.ReplyToMessage != nil {
+
 		// sendMessage.ReplyToMessageId = recvMessage.ReplyToMessage.MessageID
+		sendMessage.ReplyToVariables = map[string]string{
+			// FIXME: the same chatID ? Is it correct ?
+			"chat_id":    chatID,
+			"message_id": strconv.Itoa(recvMessage.ReplyToMessage.MessageID),
+		}
+
 	}
 	sendMessage.Variables = map[string]string{
 		"chat_id":    chatID,
@@ -593,7 +612,7 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 
 	code := http.StatusOK
 	reply.WriteHeader(code)
-	return // HTTP/1.1 200 OK
+	// return // HTTP/1.1 200 OK
 }
 
 // func receiveMessage(e *telegram.Message) {}

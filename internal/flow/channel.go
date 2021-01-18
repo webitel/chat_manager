@@ -211,6 +211,7 @@ func (c *Channel) call(next client.CallFunc) client.CallFunc {
 		err := next(ctx, node, req, rsp, opts)
 		// 
 		if err != nil {
+			
 			if c.Host != "" {
 				c.Log.Warn().
 					Int64("pid", c.UserID()). // channel: schema@bot.profile (external)
@@ -223,6 +224,16 @@ func (c *Channel) call(next client.CallFunc) client.CallFunc {
 					Msg("LOST")
 			}
 			c.Host = ""
+
+			re := errors.FromError(err)
+			if re.Id == "go.micro.client" {
+				if strings.HasPrefix(re.Detail, "service ") {
+					if strings.HasSuffix(re.Detail, ": "+ selector.ErrNotFound.Error()) {
+						// "{\"id\":\"go.micro.client\",\"code\":500,\"detail\":\"service workflow: not found\",\"status\":\"Internal Server Error\"}"
+					}
+				}
+			}
+
 			return err
 		}
 
@@ -295,7 +306,7 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 	// Flow.WaitMessage() 
 	if pending == "" {
 		// FIXME: NO confirmation found for chat - means that we are not in {waitMessage} block ?
-		c.Log.Warn().Str("chat-id", c.ID).Msg("CHAT Flow is NOT waiting for text message(s); DO NOTHING MORE!")
+		c.Log.Warn().Str("chat-id", c.ID).Msg("CHAT Flow is NOT waiting for message(s); DO NOTHING MORE!")
 		return nil
 	}
 	
@@ -401,7 +412,7 @@ func (c *Channel) Start(message *chat.Message) error {
 		// FIXME: why flow_manager need to know about some external chat-bot profile identity ?
 		ProfileId:      c.UserID(),
 		ConversationId: c.ChatID(),
-		Message: message,
+		Message:        message,
 		// Message: &bot.Message{
 		// 	Id:   message.GetId(),
 		// 	Type: message.GetType(),

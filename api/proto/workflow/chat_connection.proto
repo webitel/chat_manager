@@ -23,25 +23,8 @@ message BreakBridgeRequest {
 }
 
 message BreakBridgeResponse {
-    //webitel.chat.server.Error error = 1;
+
 }
-
-// message Message {
-//     int64 id = 1;
-//     string type = 2;
-
-//     message File {
-//         int64 id = 1;
-//         string url = 2;
-//         string mime_type = 3;
-//     }
-
-
-//     oneof value {
-//         string text = 3;
-//         File file = 4;
-//     }
-// }
 
 message StartRequest {
     string conversation_id = 1;
@@ -51,13 +34,8 @@ message StartRequest {
    // map<string, string>  variables = 5;
 }
 
-// message Error {
-//     string id = 1;
-//     string message = 2;
-// }
-
 message StartResponse {
-    //webitel.chat.server.Error error = 1;
+
 }
 
 message BreakRequest {
@@ -65,7 +43,7 @@ message BreakRequest {
 }
 
 message BreakResponse {
-    //webitel.chat.server.Error error = 1;
+
 }
 
 message ConfirmationMessageRequest {
@@ -75,5 +53,5 @@ message ConfirmationMessageRequest {
 }
 
 message ConfirmationMessageResponse {
-    //webitel.chat.server.Error error = 1;
+
 }

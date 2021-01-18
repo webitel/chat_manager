@@ -10,12 +10,12 @@ option go_package = "github.com/webitel/chat_manager/api/proto/chat";
 //     string message = 2;
 // }
 
-// Account contact info to replace legacy chat.Client info
+// Account contact info to extend and replace legacy chat.Client message type
 message Account {
     // Unique IDentifier
     int64  id = 1;
     // Channel communication type
-    string channel = 2; // e.g.: user, flow, mobile, telegram, facebook, viber, skype ...
+    string channel = 2; // e.g.: bot, user, phone, telegram, facebook, viber, skype ...
     // Channel specific contact string
     string contact = 3; // optional: channel specific contact string
 
@@ -25,19 +25,38 @@ message Account {
 }
 
 message Message {
-
-    int64 id = 1;    // required: update unique identifier (internal)
-    string type = 2; // optional: update message type, e.g.: text, file etc. TODO: REMOVE; use oneof field instead
-
-    // oneof value {
+    // Unique message identifier inside this chat
+    int64 id = 1;
+    // Type of this Message to notify e.g.: text, file, read, status etc.
+    string type = 2;
+    // Text of the message to be sent, 1-4096
     string text = 3;
+    // File to send. Pass an HTTP .URL as a string for Webitel to get a file from the Internet,
+    // or upload a new one using storage.FileService.UploadFile()
     File file = 4;
-    // }
-
-    map<string, string> variables = 5; // optional: extra context
-
+    // Optional. This Message extra properties
+    map<string, string> variables = 5;
+    // Reply Markup Buttons SET
     repeated Buttons buttons = 6;
+    // End-User extra contact info
     Account contact = 7;
+
+    // Optional. Send message date (epochtime ms) Generates by the service.
+    int64 created_at = 8;
+    // Optional. Edit message date (epochtime ms) Generates by the service.
+    // For "read" messages, you can specify the date the last READ message was created_at
+    int64 updated_at = 9;
+    // Optional. If the message is a reply,
+    // this is the ID of the original message
+    int64 reply_to_message_id = 10;
+    // External message sent-binding to be able to identify corresponding internal message
+    map<string,string> reply_to_variables = 11;
+    // Unique identifier for the chat where the original message was sent
+    string forward_from_chat_id = 12;
+    // Message identifier in the chat specified in from_chat_id
+    int64 forward_from_message_id = 13;
+    // External message sent-binding to be able to identify corresponding internal message
+    map<string,string> forward_from_variables = 14;
 }
 
 message File {
@@ -49,7 +68,7 @@ message File {
     string name = 4;
     int64 size = 5;
 }
-  
+
 message Buttons {
 
     repeated Button button = 1;

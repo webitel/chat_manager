@@ -18,7 +18,7 @@ import (
 )
 
 
-// Channel represents unique chat@workflow communication channel
+// Channel represents unique chat@gateway communication channel
 // FROM: [internal:webite.chat.srv] 
 // TO:   [external:webitel.chat.bot] gateway service
 type channel struct {

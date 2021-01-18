@@ -41,7 +41,7 @@ func (repo *sqlxRepository) CreateConversationTx(ctx context.Context, tx *sqlx.T
 	_, err := tx.NamedExecContext(ctx, `insert into chat.conversation (id, title, created_at, closed_at, updated_at, domain_id)
 	values (:id, :title, :created_at, :closed_at, :updated_at, :domain_id)`, *c)
 	return err
-}*/
+}
 
 func (repo *sqlxRepository) CreateMessageTx(ctx context.Context, tx *sqlx.Tx, m *Message) error {
 	m.ID = 0
@@ -62,6 +62,10 @@ func (repo *sqlxRepository) CreateMessageTx(ctx context.Context, tx *sqlx.Tx, m 
 	}
 	m.ID = id
 	return nil
+}*/
+
+func (repo *sqlxRepository) CreateMessageTx(ctx context.Context, tx *sqlx.Tx, m *Message) error {
+	return SaveMessage(ctx, tx, m)
 }
 
 func (repo *sqlxRepository) GetChannelByIDTx(ctx context.Context, tx *sqlx.Tx, id string) (*Channel, error) {

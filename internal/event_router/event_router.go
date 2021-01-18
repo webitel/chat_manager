@@ -1,47 +1,52 @@
 package event_router
 
 import (
-	"context"
-	"encoding/json"
+
 	"fmt"
 	"time"
+	"context"
+	"encoding/json"
 
-	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
-	"github.com/webitel/chat_manager/pkg/events"
-	pbbot "github.com/webitel/chat_manager/api/proto/bot"
-	pb "github.com/webitel/chat_manager/api/proto/chat"
-
-	"github.com/micro/go-micro/v2/broker"
 	"github.com/rs/zerolog"
+	"github.com/micro/go-micro/v2/broker"
+
+	"github.com/webitel/chat_manager/app"
+	"github.com/webitel/chat_manager/pkg/events"
+
+	gate "github.com/webitel/chat_manager/api/proto/bot"
+	chat "github.com/webitel/chat_manager/api/proto/chat"
+	store "github.com/webitel/chat_manager/internal/repo/sqlx"
 )
 
 type eventRouter struct {
-	botClient pbbot.BotService
+	botClient gate.BotService
 	// flowClient flow.Client
 	broker broker.Broker
-	repo   pg.Repository
+	repo   store.Repository
 	log    *zerolog.Logger
 }
 
 type Router interface {
-	RouteCloseConversation(channel *pg.Channel, cause string) error
+	RouteCloseConversation(channel *store.Channel, cause string) error
 	RouteCloseConversationFromFlow(conversationID *string, cause string) error
 	RouteDeclineInvite(userID *int64, conversationID *string) error
 	RouteInvite(conversationID *string, userID *int64) error
-	RouteJoinConversation(channel *pg.Channel, conversationID *string) error
-	RouteLeaveConversation(channel *pg.Channel, conversationID *string) error
-	RouteMessage(channel *pg.Channel, message *pb.Message) (bool, error)
-	RouteMessageFromFlow(conversationID *string, message *pb.Message) error
-	SendInviteToWebitelUser(conversation *pb.Conversation, invite *pg.Invite) error
+	RouteJoinConversation(channel *store.Channel, conversationID *string) error
+	RouteLeaveConversation(channel *store.Channel, conversationID *string) error
+	RouteMessage(channel *store.Channel, message *chat.Message) (bool, error)
+	RouteMessageFromFlow(conversationID *string, message *chat.Message) error
+	SendInviteToWebitelUser(conversation *chat.Conversation, invite *store.Invite) error
 	SendDeclineInviteToWebitelUser(domainID *int64, conversationID *string, userID *int64, inviteID *string) error
-	SendUpdateChannel(channel *pg.Channel, updated_at int64) error
+	SendUpdateChannel(channel *store.Channel, updated_at int64) error
+	// Override 
+	SendMessageToGateway(target *app.Channel, message *chat.Message) error
 }
 
 func NewRouter(
-	botClient pbbot.BotService,
+	botClient gate.BotService,
 	// flowClient flow.Client,
 	broker broker.Broker,
-	repo pg.Repository,
+	repo store.Repository,
 	log *zerolog.Logger,
 ) Router {
 	return &eventRouter{
@@ -58,7 +63,7 @@ func NewRouter(
 //
 // `channel` represents close process initiator.
 // `cause` overrides default "Conversation closed" message text
-func (e *eventRouter) RouteCloseConversation(channel *pg.Channel, cause string) error {
+func (e *eventRouter) RouteCloseConversation(channel *store.Channel, cause string) error {
 	otherChannels, err := e.repo.GetChannels(context.Background(), nil, &channel.ConversationID, nil, nil, nil) //&channel.ID)
 	if err != nil {
 		return err
@@ -90,8 +95,8 @@ func (e *eventRouter) RouteCloseConversation(channel *pg.Channel, cause string) 
 			}
 		default: // "telegram", "infobip-whatsapp" ... // external chat-bot leg
 			{
-				reqMessage := &pb.Message{
-					Type: "text",
+				reqMessage := &chat.Message{
+					Type: "closed", // "text",
 					Text: text,
 				}
 				err = e.sendMessageToBotUser(channel, item, reqMessage)
@@ -113,7 +118,8 @@ func (e *eventRouter) RouteCloseConversation(channel *pg.Channel, cause string) 
 
 // RouteCloseConversationFromFlow same as RouteCloseConversation
 // FIXME: except of thing that `flow_manager` service has already
-//        closed all `webitel` (internal) related chat channels
+//        closed all `webitel` (internal) related chat channels.
+// NOTE:  that is NOT the truth !  =(
 func (e *eventRouter) RouteCloseConversationFromFlow(conversationID *string, cause string) error {
 	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil)
 	if err != nil {
@@ -125,10 +131,32 @@ func (e *eventRouter) RouteCloseConversationFromFlow(conversationID *string, cau
 	}
 	for _, item := range otherChannels {
 		switch item.Type {
+		case "webitel":
+		{
+			body, _ := json.Marshal(events.CloseConversationEvent{
+				BaseEvent: events.BaseEvent{
+					ConversationID: *conversationID, // channel.ConversationID,
+					Timestamp:      time.Now().Unix() * 1000,
+				},
+				FromChannelID: *conversationID, // channel.ID,
+				Cause:         cause,
+			})
+			err = e.sendEventToWebitelUser(nil, item, events.CloseConversationEventType, body)
+			if err != nil {
+				e.log.Warn().
+					Str("channel_id", item.ID).
+					Bool("internal", item.Internal).
+					Int64("user_id", item.UserID).
+					Str("conversation_id", item.ConversationID).
+					Str("type", item.Type).
+					Str("connection", item.Connection.String).
+					Msg("failed to send close conversation event to 'webitel' channel")
+			}
+		}
 		default: // "telegram", "infobip-whatsapp":
 
-			reqMessage := &pb.Message{
-				Type: "text",
+			reqMessage := &chat.Message{
+				Type: "closed", // "text",
 				Text: text,
 			}
 			if err := e.sendMessageToBotUser(nil, item, reqMessage); err != nil {
@@ -139,7 +167,7 @@ func (e *eventRouter) RouteCloseConversationFromFlow(conversationID *string, cau
 					Str("conversation_id", item.ConversationID).
 					Str("type", item.Type).
 					Str("connection", item.Connection.String).
-					Msg("failed to send close conversation event to channel")
+					Msg("failed to send close conversation event to 'gateway' channel")
 			}
 
 		}
@@ -223,19 +251,22 @@ func (e *eventRouter) RouteInvite(conversationID *string, userID *int64) error {
 	return nil
 }
 
-func (e *eventRouter) SendInviteToWebitelUser(conversation *pb.Conversation, invite *pg.Invite) error {
+func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, invite *store.Invite) error {
+	
+	// const precision = (int64)(time.Millisecond)
+	
 	mes := events.UserInvitationEvent{
 		BaseEvent: events.BaseEvent{
 			ConversationID: conversation.Id,
-			Timestamp:      time.Now().Unix() * 1000,
+			Timestamp:      app.DateTimestamp(invite.CreatedAt), // .UnixNano()/precision, // time.Now().Unix() * 1000,
 		},
-		InviteID: invite.ID,
-		Title:    invite.Title.String,
-		TimeoutSec: invite.TimeoutSec,
-		Variables: invite.Variables,
+		InviteID:     invite.ID,
+		Title:        invite.Title.String,
+		TimeoutSec:   invite.TimeoutSec,
+		Variables:    invite.Variables,
 		Conversation: events.Conversation{
-			ID: conversation.Id,
-			Title: conversation.Title,
+			ID:        conversation.Id,
+			Title:     conversation.Title,
 			//DomainID:  conversation.DomainId,
 			CreatedAt: conversation.CreatedAt,
 			UpdatedAt: conversation.UpdatedAt,
@@ -251,43 +282,83 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *pb.Conversation, inv
 	// if conversation.Title != nil {
 	// 	mes.Title = *conversation.Title
 	// }
-	if memLen := len(conversation.Members); memLen > 0 {
-		mes.Members = make([]*events.Member, 0, memLen)
-		for _, item := range conversation.Members {
-			mes.Members = append(mes.Members, &events.Member{
-				ChannelID: item.ChannelId,
-				UserID:    item.UserId,
-				Username:  item.Username,
-				Type:      item.Type,
-				Internal:  item.Internal,
-				UpdatedAt: item.UpdatedAt,
-				// Firstname: item.Firstname,
-				// Lastname:  item.Lastname,
-			})
+	if size := len(conversation.Members); size != 0 {
+
+		page := make([]events.Member, size)
+		list := make([]*events.Member, size)
+
+		for e, src := range conversation.Members {
+
+			dst := &page[e]
+
+			dst.Type      = src.Type
+			dst.Internal  = src.Internal
+			dst.ChannelID = src.ChannelId
+
+			dst.UserID    = src.UserId
+			dst.Username  = src.Username
+			// dst.Firstname = src.Firstname,
+			// dst.Lastname  = src.Lastname,
+
+			dst.UpdatedAt = src.UpdatedAt
+
+			list[e] = dst
 		}
+
+		mes.Members = list
 	}
-	if len(conversation.Messages) > 0 {
-		mes.Messages = []*events.Message{
-			{
-				ID:        conversation.Messages[0].Id,
-				ChannelID: conversation.Messages[0].ChannelId,
-				Type:      conversation.Messages[0].Type,
-				Text:      conversation.Messages[0].Text,
-				CreatedAt: conversation.Messages[0].CreatedAt,
-				UpdatedAt: conversation.Messages[0].UpdatedAt,
-			},
+
+	if size := len(conversation.Messages); size != 0 {
+
+		size = 1
+
+		page := make([]events.Message, size)
+		list := make([]*events.Message, size)
+
+		for e, src := range conversation.Messages {
+			
+			dst := &page[e]
+
+			dst.ID        = src.Id
+			dst.ChannelID = src.ChannelId
+			dst.CreatedAt = src.CreatedAt
+			dst.UpdatedAt = src.UpdatedAt
+			dst.Type      = src.Type
+			dst.Text      = src.Text
+			
+			if doc := src.File; doc != nil {
+				dst.File = &events.File{
+					ID:     doc.Id,
+					Size:   doc.Size,
+					Type:   doc.Mime,
+					Name:   doc.Name,
+				}
+			}
+
+			list[e] = dst
+			// NOTE: latest ONE !
+			break
 		}
+
+		mes.Messages = list
 	}
-	body, _ := json.Marshal(mes)
-	msg := &broker.Message{
+
+	data, _ := json.Marshal(mes)
+	notify := &broker.Message{
 		Header: map[string]string{
 			"content_type": "text/json",
 		},
-		Body: body,
+		Body: data,
 	}
-	if err := e.broker.Publish(fmt.Sprintf("event.%s.%v.%v", events.UserInvitationEventType, invite.DomainID, invite.UserID), msg); err != nil {
+	
+	err := e.broker.Publish(fmt.Sprintf("event.%s.%d.%d",
+		events.UserInvitationEventType, invite.DomainID, invite.UserID,
+	),  notify)
+		
+	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -312,7 +383,7 @@ func (e *eventRouter) SendDeclineInviteToWebitelUser(domainID *int64, conversati
 	return nil
 }
 
-func (e *eventRouter) SendUpdateChannel(channel *pg.Channel, updated_at int64) error {
+func (e *eventRouter) SendUpdateChannel(channel *store.Channel, updated_at int64) error {
 	body, _ := json.Marshal(events.UpdateChannelEvent{
 		BaseEvent: events.BaseEvent{
 			ConversationID: channel.ConversationID,
@@ -333,7 +404,7 @@ func (e *eventRouter) SendUpdateChannel(channel *pg.Channel, updated_at int64) e
 	return nil
 }
 
-func (e *eventRouter) RouteJoinConversation(channel *pg.Channel, conversationID *string) error {
+func (e *eventRouter) RouteJoinConversation(channel *store.Channel, conversationID *string) error {
 	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil)
 	if err != nil {
 		return err
@@ -391,7 +462,7 @@ func (e *eventRouter) RouteJoinConversation(channel *pg.Channel, conversationID 
 	return nil
 }
 
-func (e *eventRouter) RouteLeaveConversation(channel *pg.Channel, conversationID *string) error {
+func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversationID *string) error {
 	body, _ := json.Marshal(events.LeaveConversationEvent{
 		BaseEvent: events.BaseEvent{
 			ConversationID: *conversationID,
@@ -437,105 +508,278 @@ func (e *eventRouter) RouteLeaveConversation(channel *pg.Channel, conversationID
 	return nil
 }
 
-func (e *eventRouter) RouteMessage(sender *pg.Channel, message *pb.Message) (bool, error) {
+func (e *eventRouter) RouteMessage(sender *store.Channel, message *chat.Message) (bool, error) {
+	
 	members, err := e.repo.GetChannels(context.TODO(), nil, &sender.ConversationID, nil, nil, nil) //&channel.ID)
+	
 	if err != nil {
 		return false, err
 	}
+
 	if len(members) == 0 {
 		// if !channel.Internal {
 		// 	return e.flowClient.SendMessage(channel.ConversationID, reqMessage)
 		// }
 		return false, nil
 	}
-	msg :=events.MessageEvent{
-		BaseEvent: events.BaseEvent{
-			ConversationID: sender.ConversationID,
-			Timestamp:      time.Now().Unix() * 1000,
-		},
-		Message: events.Message{
-			ChannelID: sender.ID,
-			ID:        message.GetId(),
-			Type:      message.GetType(),
-			CreatedAt: time.Now().Unix() * 1000,
-			UpdatedAt: time.Now().Unix() * 1000,
-		},
-	}
 
-	if message.File != nil{
-		msg.File = &events.File{
-			ID:     message.GetFile().Id,
-			Mime :  message.GetFile().Mime,
-			Name :  message.GetFile().Name,
-			Size :  message.GetFile().Size,
-		}
-		msg.Text = message.GetText()
-	}else{
-		msg.Text = message.GetText()
-	}
+	var (
 
-	body, _ := json.Marshal(msg)
+		data []byte
+		flag = false
+	)
 
-	flag := false
 	for _, member := range members {
-		var err error
+
 		switch member.Type {
 		case "webitel":
-			{
-				flag = true
-				err = e.sendEventToWebitelUser(sender, member, events.MessageEventType, body)
+		{
+			// NOTE: Encode update event data once (!)
+			// due to NO target member channel reference is needed ...
+			if len(data) == 0 {
+
+				timestamp := message.UpdatedAt
+				if timestamp == 0 {
+					timestamp = message.CreatedAt
+					if timestamp == 0 {
+						// time.Now().UnixNano()/(int64)(time.Millisecond) // epochtime: milliseconds
+						timestamp = app.DateTimestamp(
+							app.CurrentTime(),
+						)
+					}
+				}
+
+				notify := events.MessageEvent{
+					BaseEvent: events.BaseEvent{
+						ConversationID: sender.ConversationID,
+						Timestamp:      timestamp, // time.Now().Unix() * 1000,
+					},
+					Message: events.Message{
+						ChannelID: sender.ID,
+						ID:        message.GetId(),
+						Type:      message.GetType(),
+						Text:      message.GetText(),
+
+						CreatedAt: message.CreatedAt, // time.Now().Unix() * 1000,
+						UpdatedAt: message.UpdatedAt, // time.Now().Unix() * 1000,
+					},
+				}
+
+				if doc := message.File; doc != nil {
+					notify.File = &events.File{
+						ID:   doc.Id,
+						Size: doc.Size,
+						Type: doc.Mime,
+						Name: doc.Name,
+					}
+				}
+
+				data, _ = json.Marshal(notify)
 			}
+			
+			flag = true
+			err = e.sendEventToWebitelUser(sender, member, events.MessageEventType, data)
+		}
+
 		default: // "telegram", "infobip-whatsapp"
 
 			if sender.ID == member.ID {
 				continue
 			}
+
 			err = e.sendMessageToBotUser(sender, member, message)
 
 		}
 		if err != nil {
-			e.log.Warn().
+			e.log.Warn().Err(err).
 				Str("channel_id", member.ID).
 				Bool("internal", member.Internal).
 				Int64("user_id", member.UserID).
 				Str("conversation_id", member.ConversationID).
 				Str("type", member.Type).
 				Str("connection", member.Connection.String).
-				Msg("failed to send message to channel")
+				Msg("FAILED Sending message TO channel")
 		}
 	}
+
 	return flag, nil
 }
 
 // conversationID unifies [chat@bot] channel identification
 // so, conversationID - unique chat channel sender ID (routine@workflow)
-func (e *eventRouter) RouteMessageFromFlow(conversationID *string, message *pb.Message) error {
+func (e *eventRouter) RouteMessageFromFlow(conversationID *string, message *chat.Message) error {
+	
 	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil)
+	
 	if err != nil {
 		return err
 	}
+
+	var (
+		// encoded message event
+		data []byte
+	)
+
 	for _, item := range otherChannels {
 		var err error
 		switch item.Type {
-		// case "webitel":
-		// 	{
-		// 		e.sendToWebitelUser(channel, item, reqMessage)
-		// 	}
+		case "webitel":
+		{
+			// e.sendEventToWebitelUser(channel, item, reqMessage)
+			// NOTE: Encode update event data once (!)
+			// due to NO target item channel reference is needed ...
+			if len(data) == 0 {
+
+				timestamp := message.UpdatedAt
+				if timestamp == 0 {
+					timestamp = message.CreatedAt
+					if timestamp == 0 {
+						// time.Now().UnixNano()/(int64)(time.Millisecond) // epochtime: milliseconds
+						timestamp = app.DateTimestamp(
+							app.CurrentTime(),
+						)
+					}
+				}
+
+				notify := events.MessageEvent{
+					BaseEvent: events.BaseEvent{
+						ConversationID: *conversationID, // sender.ConversationID,
+						Timestamp:       timestamp, // time.Now().Unix() * 1000,
+					},
+					Message: events.Message{
+						ChannelID: *conversationID, // sender.ID,
+						ID:        message.GetId(),
+						Type:      message.GetType(),
+						Text:      message.GetText(),
+
+						CreatedAt: message.CreatedAt, // time.Now().Unix() * 1000,
+						UpdatedAt: message.UpdatedAt, // time.Now().Unix() * 1000,
+					},
+				}
+
+				if doc := message.File; doc != nil {
+					notify.File = &events.File{
+						ID:   doc.Id,
+						Size: doc.Size,
+						Type: doc.Mime,
+						Name: doc.Name,
+					}
+				}
+
+				data, _ = json.Marshal(notify)
+			}
+
+			err = e.sendEventToWebitelUser(nil, item, events.MessageEventType, data)
+		}
 		default: // "telegram", "infobip-whatsapp"
 
 			err = e.sendMessageToBotUser(nil, item, message)
 
 		}
+
 		if err != nil {
-			e.log.Error().
+			e.log.Error().Err(err).
 				Str("channel_id", item.ID).
 				Bool("internal", item.Internal).
 				Int64("user_id", item.UserID).
 				Str("conversation_id", item.ConversationID).
 				Str("type", item.Type).
 				Str("connection", item.Connection.String).
-				Msg(err.Error())
+				Msg("FAILED Sending message TO channel")
 		}
 	}
+
 	return nil
 }
+
+/*
+func (c *eventRouter) SendMessage(chatRoom *app.Session, notify *chat.Message) (sent int, err error) {
+	// FROM
+	sender := chatRoom.Channel
+	// TO
+	if len(chatRoom.Members) == 0 {
+		return 0, nil // NO ANY recepient(s) !
+	}
+	// basic
+	notice := events.MessageEvent{
+		BaseEvent: events.BaseEvent{
+			ConversationID: sender.Invite,
+			Timestamp:      notify.CreatedAt, // millis
+		},
+		Message: events.Message{
+			ID:        notify.Id,
+			ChannelID: sender.Chat.ID,
+			Type:      notify.Type,
+			Text:      notify.Text,
+			// File:   notify.File,
+			CreatedAt: notify.CreatedAt,
+			UpdatedAt: notify.UpdatedAt,
+		},
+	}
+	// file
+	if doc := notify.File; doc != nil {
+		notice.File = &events.File{
+			ID:   doc.Id,
+			Size: doc.Size,
+			Mime: doc.Mime,
+			Name: doc.Name,
+		}
+	}
+	// content
+	data, _ := json.Marshal(notice)
+
+	// publish
+	var (
+
+		head = map[string]string {
+			"content_type": "text/json",
+		}
+	)
+
+	for _, member := range chatRoom.Members {
+		
+		if member.IsClosed() {
+			continue // omit send TO channel: closed !
+		}
+
+		switch member.Channel {
+		case "websocket": // TO: engine (internal)
+			// s.eventRouter.sendEventToWebitelUser()
+			err = c.broker.Publish(fmt.Sprintf("event.%s.%v.%v",
+				events.MessageEventType, member.DomainID, member.User.ID,
+			), &broker.Message{
+				Header: head,
+				Body:   data,
+			})
+
+		case "chatflow":  // TO: workflow (internal)
+			// s.flowClient.SendMessage(sender, sendMessage)
+
+
+		default:          // TO: webitel.chat.bot (external)
+			// s.eventRouter.sendMessageToBotUser()
+			err = c.sendMessageToGateway(member, notify)
+			// user := member.User
+			// // "user": {
+			// // 	"id": 59,
+			// // 	"channel": "telegram",
+			// // 	"contact": "520924760",
+			// // 	"firstName": "srgdemon"
+			// // },
+			// req := gate.SendMessageRequest{
+			// 	ProfileId:      14, // profileID,
+			// 	ExternalUserId: user.Contact, // client.ExternalID.String,
+			// 	Message:        notify,
+			// }
+		}
+
+		(sent)++ // calc active recepients !
+
+		if err != nil {
+			// FIXME: just log failed attempt ?
+		} 
+	}
+
+	return sent, err
+}
+*/

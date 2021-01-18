@@ -14,13 +14,3 @@ type (
 	UpdateStmt = sq.UpdateBuilder
 	DeleteStmt = sq.DeleteBuilder
 )
-
-type Properties map[string]string
-
-func (e Properties) Value() (interface{}, error) {
-	return NullProperties(e), nil
-}
-
-func (e *Properties) Scan(src interface{}) error {
-	return ScanProperties((*map[string]string)(e))(src)
-}

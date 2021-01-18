@@ -12,10 +12,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/google/uuid"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgconn"
+	"github.com/jmoiron/sqlx"
 
+	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/internal/contact"
 )
 
@@ -385,10 +386,12 @@ func (repo *sqlxRepository) CloseChannel(ctx context.Context, id string) (*Chann
 }*/
 
 func (repo *sqlxRepository) CloseChannels(ctx context.Context, conversationID string) error {
-	_, err := repo.db.ExecContext(ctx, `update chat.channel set closed_at=$1 where conversation_id=$2`, sql.NullTime{
-		Valid: true,
-		Time:  time.Now(),
-	}, conversationID)
+	
+	_, err := repo.db.ExecContext(ctx,
+		"UPDATE chat.channel SET closed_at=$2 WHERE conversation_id=$1",
+		 conversationID, app.CurrentTime().UTC(),
+	)
+	
 	return err
 }
 
@@ -397,12 +400,16 @@ func (repo *sqlxRepository) CheckUserChannel(ctx context.Context, channelID stri
 		// prepare filter(s)
 		Params: map[string]interface{}{
 			"id":      channelID, // MUST
-			"user.id": userID,
+			// "user.id": userID,
 		},
 		Fields: []string{"id","*"}, // NOT applicable
 		Sort:   []string{},
 		Page:   0,
 		Size:   1, // GET(!)
+	}
+
+	if userID != 0 {
+		search.Params["user.id"] = userID
 	}
 
 	// PERFORM SELECT ...
@@ -445,17 +452,66 @@ func (repo *sqlxRepository) CheckUserChannel(ctx context.Context, channelID stri
 	return result, nil
 }*/
 
-func (repo *sqlxRepository) UpdateChannel(ctx context.Context, channelID string) (int64, error) {
+/*func (repo *sqlxRepository) UpdateChannel(ctx context.Context, channelID string) (int64, error) {
+	
 	updatedAt := time.Now()
-	_, err := repo.db.ExecContext(ctx, `update chat.channel set updated_at=$1 where id=$2`, updatedAt, channelID)
-	return updatedAt.Unix() * 1000, err
+	
+	_, err := repo.db.ExecContext(ctx,
+		"UPDATE chat.channel SET updated_at=$2 WHERE id=$1",
+		 channelID, updatedAt.UTC(),
+	)
+
+	if err != nil {
+		return 0, err
+	}
+
+	const precision = time.Millisecond
+
+	return updatedAt.UnixNano()/(int64)(precision), nil
+}*/
+
+func (repo *sqlxRepository) UpdateChannel(ctx context.Context, chatID string, readAt *time.Time) error {
+
+	now := app.CurrentTime() // time.Now()
+	
+	if readAt != nil && !readAt.IsZero() {
+
+		const divergence = time.Millisecond
+
+		lastMs := now.Truncate(divergence)
+		readMs := readAt.Truncate(divergence)
+		
+		if readMs.After(lastMs) {
+			return errors.Errorf(
+				"channel: update until %s date is beyond localtime %s",
+				 readMs.Format(app.TimeStamp), lastMs.Format(app.TimeStamp),
+			)
+		}
+
+	} else {
+
+		readAt = &now // MARK reed ALL messages !
+	}
+	
+	_, err := repo.db.ExecContext(ctx,
+		"UPDATE chat.channel SET updated_at=$2 WHERE id=$1 AND coalesce(updated_at,created_at)<$2",
+		 chatID, readAt.UTC(),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (repo *sqlxRepository) UpdateChannelHost(ctx context.Context, channelID, host string) error {
+	
 	_, err := repo.db.ExecContext(ctx,
-		`UPDATE chat.channel AS c SET host=$2 WHERE c.id=$1`,
+		"UPDATE chat.channel SET host=$2 WHERE id=$1",
 		 channelID, host,
 	)
+	
 	return err
 }
 
@@ -811,11 +867,18 @@ func GetChannels(dcx sqlx.ExtContext, ctx context.Context, req *SearchOptions) (
 // NewChannel creates NEW channel record and attach it to the related conversation
 func NewChannel(dcx sqlx.ExtContext, ctx context.Context, channel *Channel) error {
 
-	at := time.Now().UTC()
 	// Generate NEW unique UUID for this channel
 	channel.ID = uuid.New().String()
-	channel.CreatedAt = at
-	channel.UpdatedAt = at
+	localtime := time.Now() // .UTC()
+
+	if channel.CreatedAt.IsZero() {
+		channel.CreatedAt = localtime
+	}
+	if channel.UpdatedAt.Before(channel.CreatedAt) {
+		channel.UpdatedAt = channel.CreatedAt
+	}
+	channel.ClosedAt.Valid = false
+	
 	// normalizing ...
 	if channel.ServiceHost.String != "" {
 		channel.Connection.String, _ =
@@ -855,10 +918,10 @@ func NewChannel(dcx sqlx.ExtContext, ctx context.Context, channel *Channel) erro
 
 		NullProperties(channel.Properties), // $10
 
-		channel.CreatedAt,
-		channel.UpdatedAt,
+		channel.CreatedAt.UTC(),
+		channel.UpdatedAt.UTC(),
 
-		channel.ClosedAt, // nil,
+		nil, // channel.ClosedAt,
 		channel.FlowBridge,
 	)
 

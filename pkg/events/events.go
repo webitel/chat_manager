@@ -91,18 +91,35 @@ type Member struct {
 }
 
 type Message struct {
+
 	ID        int64  `json:"id"` // Unique Message.ID; TODO: within chat session !
 	ChannelID string `json:"channel_id,omitempty"` // FROM: channel.ID ! sender !
-	Type      string `json:"type"`
-	Text      string `json:"text,omitempty"`
-	File	  *File  `json:"file,omitempty"`
+
 	CreatedAt int64  `json:"created_at,omitempty"`
-	UpdatedAt int64  `json:"updated_at,omitempty"`
+	UpdatedAt int64  `json:"updated_at,omitempty"` // EDITED !
+
+	Type      string `json:"type"`                 // "text" or "file"
+	Text      string `json:"text,omitempty"`
+	File      *File  `json:"file,omitempty"`
+
+	ReplyToMessageID int64 `json:"reply_to_message_id,omitempty"`
+	MessageForwarded // embedded
+}
+
+// MessageForwarded event arguments
+type MessageForwarded struct {
+	//  ForwardFrom *User          `json:"forward_from,omitempty"`
+	//  ForwardFromChat *Chat      `json:"forward_from_chat,omitempty"`
+	 ForwardFromChatID string   `json:"forward_from_chat_id,omitempty"`
+	 ForwardFromMessageID int64 `json:"forward_from_message_id,omitempty"`
+	 ForwardSenderName string   `json:"forward_sender_name,omitempty"`
+	 ForwardDate int64          `json:"forward_date,omitempty"`
 }
 
 type File struct {
-	ID        int64  `json:"id"`
-	Size      int64  `json:"size"`
-	Mime      string `json:"mime"`
-	Name      string `json:"name"`
+
+	ID   int64  `json:"id"`
+	Size int64  `json:"size"`
+	Type string `json:"mime"`
+	Name string `json:"name"`
 }

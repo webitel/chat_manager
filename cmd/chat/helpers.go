@@ -1,12 +1,17 @@
 package main
 
 import (
+	
+
+	// "time"
 	"context"
 	"database/sql"
 	"encoding/json"
 
-	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
+	"github.com/webitel/chat_manager/app"
 	pb "github.com/webitel/chat_manager/api/proto/chat"
+	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
+	
 
 	// "github.com/jmoiron/sqlx"
 )
@@ -124,39 +129,90 @@ func (s *chatService) createClient(ctx context.Context, req *pb.CheckSessionRequ
 }
 
 func transformConversationFromRepoModel(c *pg.Conversation) *pb.Conversation {
+	
+	// const (
+	// 	precision = (int64)(time.Millisecond)
+	// )
+	
 	result := &pb.Conversation{
+
 		Id:        c.ID,
 		Title:     c.Title.String,
 		DomainId:  c.DomainID,
-		CreatedAt: c.CreatedAt.Unix() * 1000,
-		UpdatedAt: c.UpdatedAt.Unix() * 1000,
+
+		CreatedAt: app.DateTimestamp(c.CreatedAt), // .UnixNano()/precision,
+		UpdatedAt: app.DateTimestamp(c.UpdatedAt),
 	}
-	members := make([]*pb.Member, 0, len(c.Members))
-	for _, item := range c.Members {
-		members = append(members, &pb.Member{
-			ChannelId: item.ID,
-			UserId:    item.UserID,
-			Username:  item.Name,
-			Type:      item.Type,
-			Internal:  item.Internal,
-		})
+
+	// if !c.UpdatedAt.IsZero() {
+	// 	result.UpdatedAt = c.UpdatedAt.UnixNano()/precision
+	// }
+
+	if size := len(c.Members); size != 0 {
+
+		page := make([]pb.Member, size)
+		list := make([]*pb.Member, size)
+
+		for e, src := range c.Members {
+
+			dst := &page[e]
+
+			dst.Type      = src.Type
+			dst.Internal  = src.Internal
+			dst.ChannelId = src.ID
+			dst.UserId    = src.UserID
+			dst.Username  = src.Name
+
+			list[e] = dst
+		}
+
+		result.Members = list
 	}
-	result.Members = members
-	messages := make([]*pb.HistoryMessage, 0, len(c.Messages))
-	for _, item := range c.Messages {
-		messages = append(messages, &pb.HistoryMessage{
-			Id:        item.ID,
-			ChannelId: item.ChannelID,
-			//FromUserId:   item.UserID,
-			//FromUserType: item.UserType,
-			Type:      item.Type,
-			Text:      item.Text,
-			CreatedAt: item.CreatedAt.Unix() * 1000,
-			UpdatedAt: item.UpdatedAt.Unix() * 1000,
-		})
+
+	if size := len(c.Messages); size != 0 {
+	
+		page := make([]pb.HistoryMessage, size)
+		list := make([]*pb.HistoryMessage, size)
+		
+		for e, src := range c.Messages {
+			
+			dst := &page[e]
+
+			dst.Id        = src.ID
+			dst.ChannelId = src.ChannelID // .String
+			dst.CreatedAt = app.DateTimestamp(src.CreatedAt)
+			dst.UpdatedAt = app.DateTimestamp(src.UpdatedAt) // Read/Seen Until !
+			// dst.CreatedAt = src.CreatedAt.UnixNano()/precision
+			// dst.UpdatedAt = item.UpdatedAt.Unix() * 1000,
+			// dst.FromUserId:   item.UserID,
+			// dst.FromUserType: item.UserType,
+			dst.Type      = src.Type
+			dst.Text      = src.Text // .String
+			// File ?
+			if doc := src.File; doc != nil {
+				dst.File = &pb.File{
+					Id:   doc.ID,
+					Url:  "",
+					Size: doc.Size,
+					Mime: doc.Type,
+					Name: doc.Name,
+				}
+			}
+			
+			// // Edited ?
+			// if !src.UpdatedAt.IsZero() {
+			// 	dst.UpdatedAt = src.UpdatedAt.UnixNano()/precision
+			// }
+
+			// TODO: ReplyToMessage ?
+			// TODO: ForwardFromMessage ?
+
+			list[e] = dst
+		}
+
+		result.Messages = list
 	}
-	result.Members = members
-	result.Messages = messages
+
 	return result
 }
 
@@ -173,12 +229,12 @@ func transformConversationsFromRepoModel(conversations []*pg.Conversation) []*pb
 func transformMessageFromRepoModel(message *pg.Message) *pb.HistoryMessage {
 	result := &pb.HistoryMessage{
 		Id:        message.ID,
-		ChannelId: message.ChannelID.String,
+		ChannelId: message.ChannelID,//.String,
 		// ConversationId: message.ConversationID,
 		//FromUserId:   message.UserID.Int64,
 		//FromUserType: message.UserType.String,
 		Type:      message.Type,
-		Text:      message.Text.String,
+		Text:      message.Text,//.String,
 		CreatedAt: message.CreatedAt.Unix() * 1000,
 		UpdatedAt: message.UpdatedAt.Unix() * 1000,
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+
 	"time"
 	"context"
 	"strings"
@@ -297,7 +298,8 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 			ChannelId:      c.ChannelID,  // senderChatID
 			ConversationId: c.SessionID,  // targetChatID
 
-			Message:        message,      // Message
+			Message:        message,      // message
+			// EDIT(?) 0 != message.UpdatedAt
 		},
 		// callOptions ...
 		c.sendOptions,

@@ -450,15 +450,15 @@ func (srv *Service) SendMessage(ctx context.Context, req *gate.SendMessageReques
 		return err
 	}
 
-	// sentBinding := req.GetMessage().GetVariables()
-	// if sentBinding != nil {
-	// 	delete(sentBinding, "")
-	// 	if len(sentBinding) != 0 {
-	// 		// populate SENT message external bindings
-	// 		rsp.Bindings = sentBinding
-	// 	}
-	// }
-	// // +OK
+	sentBinding := req.GetMessage().GetVariables()
+	if sentBinding != nil {
+		delete(sentBinding, "")
+		if len(sentBinding) != 0 {
+			// populate SENT message external bindings
+			rsp.Bindings = sentBinding
+		}
+	}
+	// +OK
 	return nil
 	
 	// if closing {

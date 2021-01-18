@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"github.com/webitel/chat_manager/internal/contact"
 
 	"sync"
 	"strconv"
@@ -12,9 +13,10 @@ import (
 	"github.com/rs/zerolog"
 
 	// strategy "github.com/webitel/chat_manager/internal/selector"
-	store "github.com/webitel/chat_manager/internal/repo/sqlx"
+	"github.com/webitel/chat_manager/app"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	flow "github.com/webitel/chat_manager/api/proto/workflow"
+	store "github.com/webitel/chat_manager/internal/repo/sqlx"
 
 	// "github.com/micro/go-micro/v2/client"
 	// "github.com/micro/go-micro/v2/client/selector"
@@ -47,6 +49,8 @@ type Client interface {
 	CloseConversation(conversationID string) error
 	// BreakBridge(sender *store.Channel, cause BreakBridgeCause) error
 	// CloseConversation(sender *store.Channel) error
+
+	SendMessageV1(target *app.Channel, message *chat.Message) error
 }
 
 // Agent "workflow" (internal: chat@bot) channel service provider
@@ -287,6 +291,45 @@ func (c *Agent) SendMessage(sender *store.Channel, message *chat.Message) error 
 		}
 		// preset: resolved !
 		channel.ProfileID = schemaProfileID
+	}
+	// endregion
+
+	// PERFORM !
+	err = channel.Send(message)
+
+	if err != nil {
+		// NOTE: remove to be renewed next time ...
+		_ = c.delChannel(channel.ID)
+		return err
+	}
+
+	return nil
+}
+
+func (c *Agent) SendMessageV1(target *app.Channel, message *chat.Message) error {
+	
+	// channel, err := c.GetChannel(sender.ConversationID)
+	channel, err := c.GetChannel(target.Chat.ID) // NOTE: target.Chat.ID == target.Chat.Invite
+	if err != nil {
+		return err
+	}
+
+	// region: RECOVERY state
+	if channel.DomainID() == 0 {
+		channel.Chat.DomainID = target.DomainID
+	}
+
+	if channel.ProfileID == 0 {
+		// RESTORE: recepient processing ...
+		// NOTE: sender for now is webitel.chat.bot channel only !
+		schemaProfileID, serviceNode, err := contact.ContactObjectNode(target.Contact)
+		// schemaProfileID, err := strconv.ParseInt(sender.Connection.String, 10, 64)
+		if err != nil {
+			return err
+		}
+		// preset: resolved !
+		channel.ProfileID = schemaProfileID
+		channel.Host      = serviceNode
 	}
 	// endregion
 

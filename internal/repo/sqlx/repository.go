@@ -1,6 +1,7 @@
 package sqlxrepo
 
 import (
+	"time"
 	"context"
 
 	"github.com/jmoiron/sqlx"
@@ -15,6 +16,7 @@ type Repository interface {
 	InviteRepository
 	MessageRepository
 	CacheRepository
+	Store // v1
 	GetWebitelUserByID(ctx context.Context, id int64) (*WebitelUser, error)
 	WithTransaction(txFunc func(*sqlx.Tx) error) (err error)
 	CreateConversationTx(ctx context.Context, tx *sqlx.Tx, c *Conversation) error
@@ -85,7 +87,8 @@ type ChannelRepository interface {
 	CreateChannel(ctx context.Context, c *Channel) error
 	GetChannelByID(ctx context.Context, id string) (*Channel, error)
 	CheckUserChannel(ctx context.Context, channelID string, userID int64) (*Channel, error)
-	UpdateChannel(ctx context.Context, channelID string) (int64, error)
+	// UpdateChannel(ctx context.Context, channelID string) (int64, error)
+	UpdateChannel(ctx context.Context, chatID string, readAt *time.Time) error
 	UpdateChannelHost(ctx context.Context, channelID, host string) error
 }
 

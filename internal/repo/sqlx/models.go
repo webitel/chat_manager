@@ -182,7 +182,7 @@ type Conversation struct {
 	UpdatedAt     time.Time      `db:"updated_at" json:"updated_at,omitempty"`
 	DomainID      int64          `db:"domain_id" json:"domain_id"`
 	Members       ConversationMembers
-	Messages      ConversationMessages
+	Messages      []*Message // ConversationMessages
 	MembersBytes  []byte `db:"members" json:"members"`
 	MessagesBytes []byte `db:"messages" json:"messages"`
 }
@@ -239,17 +239,34 @@ type Invite struct {
 	Variables        Properties        `db:"props" json:"props"`
 }
 
+type Document struct {
+	ID   int64  `json:"id"`
+	Size int64  `json:"size,omitempty"`
+	Type string `json:"type,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
 type Message struct {
-	ID        int64          `db:"id" json:"id"`
-	ChannelID sql.NullString `db:"channel_id" json:"channel_id,omitempty"`
+
+	ID                   int64          `db:"id" json:"id"`
+	// ChannelID            sql.NullString `db:"channel_id" json:"channel_id,omitempty"`
+	ChannelID            string         `db:"channel_id" json:"channel_id,omitempty"`
 	//UserID         sql.NullInt64  `db:"user_id" json:"user_id,omitempty"`
 	//UserType       sql.NullString `db:"user_type" json:"user_type,omitempty"`
-	ConversationID string         `db:"conversation_id" json:"conversation_id"`
-	Text           sql.NullString `db:"text" json:"text,omitempty"`
-	CreatedAt      time.Time      `db:"created_at" json:"created_at,omitempty"`
-	UpdatedAt      time.Time      `db:"updated_at" json:"updated_at,omitempty"`
-	Type           string         `db:"type" json:"type"`
-	Variables      types.JSONText `db:"variables" json:"variables"`
+	ConversationID       string         `db:"conversation_id" json:"conversation_id"`
+
+	CreatedAt            time.Time      `db:"created_at" json:"created_at,omitempty"`
+	UpdatedAt            time.Time      `db:"updated_at" json:"updated_at,omitempty"`
+	
+	Type                 string         `db:"type" json:"type"`
+	// Text                 sql.NullString `db:"text" json:"text,omitempty"`
+	Text                 string         `db:"text" json:"text,omitempty"`
+	File                 *Document      `db:"-"    json:"file,omitempty"`
+	ReplyToMessageID     int64          `db:"-"    json:"reply_to_message_id,omitempty"`
+	ForwardFromMessageID int64          `db:"-"    json:"forward_from_message_id,omitempty"`
+	// TODO: Variables map[string]string
+	// Variables            types.JSONText `db:"variables" json:"variables,omitempty"`
+	Variables            Properties     `db:"variables" json:"variables,omitempty"`
 }
 
 type Profile struct {
