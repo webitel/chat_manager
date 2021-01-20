@@ -203,6 +203,21 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 			update = telegram.NewDocumentUpload(chatID, file)
 		}
 	
+	case "menu":
+
+		msgAgreement := telegram.NewMessage(chatID, notify.Message.Text)
+
+		if notify.Message.Type == "buttons" {
+			
+			msgAgreement.ReplyMarkup = newReplyKeyboard(notify.Message.Buttons)
+
+		}else if notify.Message.Type == "inline" {
+
+			msgAgreement.ReplyMarkup = newInlineKeyboard(notify.Message.Buttons)
+		}
+		
+		update = msgAgreement
+
 	case "edit":
 	case "send":
 	
@@ -303,6 +318,66 @@ func getBytes(url string) ([]byte, error) {
 	return data, nil
 }
 
+func newReplyKeyboard(buttons []*chat.Buttons) telegram.ReplyKeyboardMarkup {
+
+	var rows = make([][]telegram.KeyboardButton, 0)
+
+	for _, v := range buttons {
+
+		var row = make([]telegram.KeyboardButton, 0)
+
+		for _, b := range v.Button {
+
+			if b.Type == "contact"{
+
+				row = append(row, telegram.NewKeyboardButtonContact(b.Text))
+
+			}else if b.Type == "location"{
+
+				row = append(row, telegram.NewKeyboardButtonLocation(b.Text))
+
+			}else if b.Type == "reply"{
+
+				row = append(row, telegram.NewKeyboardButton(b.Text))
+
+			}
+		}
+		rows = append(rows, row)
+	}
+	keyboard := telegram.NewReplyKeyboard(rows...)
+	keyboard.OneTimeKeyboard = true
+
+	return keyboard
+}
+
+func newInlineKeyboard(buttons []*chat.Buttons) telegram.InlineKeyboardMarkup {
+
+	var rows = make([][]telegram.InlineKeyboardButton, 0)
+
+	for _, v := range buttons {
+
+		var row = make([]telegram.InlineKeyboardButton, 0)
+
+		for _, b := range v.Button {
+
+			if b.Type == "url" {
+				row = append(row, telegram.NewInlineKeyboardButtonURL(b.Text, b.Url))
+
+			}else if b.Type =="switch" {
+				row = append(row, telegram.NewInlineKeyboardButtonSwitch(b.Text, b.Code))
+
+			}else if b.Type =="postback" && b.Code != "" {
+				row = append(row, telegram.NewInlineKeyboardButtonData(b.Text, b.Code))
+			}
+		}
+		rows = append(rows, row)
+	}
+
+	keyboard := telegram.NewInlineKeyboardMarkup(rows...)
+	
+	return keyboard
+}
+
 // WebHook implementes provider.Receiver interface for Telegram
 func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
@@ -330,6 +405,12 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 	recvMessage := recvUpdate.Message // NEW (!)
 	if recvMessage == nil {
 		recvMessage = recvUpdate.EditedMessage // EDITED (!)
+	}
+
+	if recvUpdate.CallbackQuery != nil {
+		// TODO Button
+		recvMessage = recvUpdate.CallbackQuery.Message
+		recvMessage.Text = recvUpdate.CallbackQuery.Data
 	}
 	
 	if recvMessage == nil {
@@ -526,6 +607,18 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 			Name: doc.Title,
 		}
 		sendMessage.Text = recvMessage.Caption
+	
+	} else if recvMessage.Contact != nil {
+
+		sendUpdate.Message = &chat.Message {
+			Type: "contact",
+			Contact: &chat.Account {
+				Contact: recvMessage.Contact.PhoneNumber,
+				FirstName: recvMessage.Contact.FirstName,
+				LastName: recvMessage.Contact.LastName,
+				Id: int64(recvMessage.Contact.UserID),
+			},
+		}
 
 	} else if recvMessage.Video != nil {
 

@@ -1954,22 +1954,27 @@ func (s *chatService) CreateProfile(
 	ctx context.Context,
 	req *pb.CreateProfileRequest,
 	res *pb.CreateProfileResponse) error {
-	s.log.Trace().
-		Str("name", req.GetItem().GetName()).
-		Str("type", req.GetItem().GetType()).
-		Int64("domain_id", req.GetItem().GetDomainId()).
-		Int64("schema_id", req.GetItem().GetSchemaId()).
-		Str("variables", fmt.Sprintf("%v", req.GetItem().GetVariables())).
-		Msg("create profile")
+
 	user, err := s.authClient.MicroAuthentication(&ctx)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	if user.DomainID != req.GetItem().GetDomainId() {
-		s.log.Error().Msg("invalid domain id")
-		return errors.BadRequest("invalid domain id", "")
-	}
+	s.log.Trace().
+		Str("name", req.GetItem().GetName()).
+		Str("type", req.GetItem().GetType()).
+		Int64("domain_id", user.DomainID). //req.GetItem().GetDomainId()).
+		Int64("schema_id", req.GetItem().GetSchemaId()).
+		Str("variables", fmt.Sprintf("%v", req.GetItem().GetVariables())).
+		Msg("create profile")
+
+	// if user.DomainID != req.GetItem().GetDomainId() {
+	// 	s.log.Error().Msg("invalid domain id")
+	// 	return errors.BadRequest("invalid domain id", "")
+	// }
+
+	req.Item.DomainId = user.DomainID
+
 	result, err := transformProfileToRepoModel(req.GetItem())
 	if err != nil {
 		s.log.Error().Msg(err.Error())
@@ -2503,9 +2508,15 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		//       type is omitted, so we need to look into payload
 		if sendMessage.File != nil {
 			sendMessage.Type = "file"
+		// } else {
+		// 	sendMessage.Type = "text"
+		// }
+		} else if sendMessage.Contact != nil {
+			sendMessage.Type = "contact"
 		} else {
 			sendMessage.Type = "text"
 		}
+
 	}
 	
 	switch sendMessage.Type {
@@ -2526,6 +2537,23 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		// TOBE: saved !
 		saveMessage.Type = "text"
 		saveMessage.Text = text
+
+	case "buttons", "inline":
+
+		saveMessage.Type = "menu"
+
+	case "contact":
+
+		contact := sendMessage.GetContact()
+		
+		saveMessage.Type = "contact"
+		saveMessage.Text = contact.Contact
+
+		err := c.repo.UpdateClientNumber(ctx, sender.User.ID, contact.Contact)
+		if err != nil {
+			c.log.Error().Err(err).Msg("Failed to store Client number")
+			return nil, err
+		}
 
 	case "file":
 
@@ -2810,6 +2838,16 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 						Size: doc.Size,
 						Type: doc.Mime,
 						Name: doc.Name,
+					}
+				}
+				
+				// Contact
+				if contact := notify.Contact; contact != nil {
+					notice.Contact = &events.Contact{
+						ID:        contact.Id,
+						FirstName: contact.FirstName,
+						LastName:  contact.LastName,
+						Phone:     contact.Contact,
 					}
 				}
 				// init once

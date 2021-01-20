@@ -102,6 +102,8 @@ type Message struct {
 	Text      string `json:"text,omitempty"`
 	File      *File  `json:"file,omitempty"`
 
+	Contact	  *Contact `json:"contact,omitempty"`
+
 	ReplyToMessageID int64 `json:"reply_to_message_id,omitempty"`
 	MessageForwarded // embedded
 }
@@ -122,4 +124,11 @@ type File struct {
 	Size int64  `json:"size"`
 	Type string `json:"mime"`
 	Name string `json:"name"`
+}
+
+type Contact struct {
+	ID          int64  `json:"id"`
+	FirstName   string `json:"firstName"`
+	LastName    string `json:"lastName"`
+	Phone       string `json:"phone"`
 }

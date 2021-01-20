@@ -7,6 +7,14 @@ import (
 	"time"
 )
 
+func (repo *sqlxRepository) UpdateClientNumber(ctx context.Context, id int64, number string) error {
+	_, err := repo.db.ExecContext(ctx,
+		`UPDATE chat.client AS c SET number=$2 WHERE c.id=$1`,
+		id, number,
+	)
+	return err
+}
+
 func (repo *sqlxRepository) GetClientByID(ctx context.Context, id int64) (*Client, error) {
 	result := &Client{}
 	err := repo.db.GetContext(ctx, result, "SELECT * FROM chat.client WHERE id=$1", id)
