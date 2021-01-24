@@ -2056,7 +2056,7 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 
 	saveBinding := sendMessage.Variables
 	// NOTE: Hide bindings from recepients, because this implies system request info !
-	sendMessage.Variables = nil
+	// sendMessage.Variables = nil
 
 	if saveBinding != nil {
 		delete(saveBinding, "")
