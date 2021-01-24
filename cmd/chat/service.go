@@ -2166,7 +2166,7 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			)
 		}
 		// CHECK: provided URL is valid ?
-		src, err := url.Parse(doc.Url)
+		src, err := url.ParseRequestURI(doc.Url)
 		
 		if err != nil {
 			return nil, errors.BadRequest(

@@ -148,6 +148,27 @@ func NewCorezoidBot(agent *Gateway) (Provider, error) {
 		}
 	}
 
+	if on, _ := strconv.ParseBool(profile["trace"]); on {
+		var transport http.RoundTripper
+		if client != nil {
+			transport = client.Transport
+		}
+		if transport == nil {
+			transport = http.DefaultTransport
+		}
+		transport = &transportDump{
+			r: transport,
+			WithBody: true,
+		}
+		if client == nil {
+			client = &http.Client{
+				Transport: transport,
+			}
+		} else {
+			client.Transport = transport
+		}
+	}
+
 	// endregion
 
 	return &CorezoidBot{
@@ -291,7 +312,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		text = strings.TrimSpace(text[eol+1:])
 	}
 	// if link != "" { // NOTE: never ! We DO NOT allow empty text message(s) }
-	if _, not := url.Parse(link); not == nil {
+	if _, not := url.ParseRequestURI(link); not == nil {
 		// NOTE: We got valid URL;
 		// This might be a file document source URL !
 		sendMessage.Type = "file"
