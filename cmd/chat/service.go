@@ -2166,20 +2166,34 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			)
 		}
 		// CHECK: provided URL is valid ?
-		src, err := url.ParseRequestURI(doc.Url)
-		
+		href, err := url.ParseRequestURI(doc.Url) // href
+
 		if err != nil {
 			return nil, errors.BadRequest(
 				"chat.send.document.url.invalid",
 				"send: document source URL invalid; %s", err,
 			)
 		}
+
+		ok := href != nil
+
+		ok = ok && href.Host != ""
+		// ok = ok && href.IsAbs()
+		ok = ok && strings.HasPrefix(href.Scheme, "http")
+
+		if !ok {
+			return nil, errors.BadRequest(
+				"chat.send.document.url.invalid",
+				"send: document source URL invalid;",
+			)
+		}
+
 		// reset: normalized !
-		doc.Url = src.String()
+		doc.Url = href.String()
 
 		// CHECK: filename !
 		if doc.Name == "" {
-			doc.Name = path.Base(src.Path)
+			doc.Name = path.Base(href.Path)
 			switch doc.Name {
 			case "", ".", "/": // See: path.Base()
 				return nil, errors.BadRequest(
@@ -2234,7 +2248,7 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			// }
 
 			// // CHECK: download URL is still valid ?
-			// src, err := url.Parse(res.Url)
+			// href, err := url.Parse(res.Url)
 			
 			// if err != nil {
 			// 	return errors.InternalServerError(

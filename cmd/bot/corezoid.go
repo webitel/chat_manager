@@ -312,12 +312,21 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		text = strings.TrimSpace(text[eol+1:])
 	}
 	// if link != "" { // NOTE: never ! We DO NOT allow empty text message(s) }
-	if _, not := url.ParseRequestURI(link); not == nil {
+
+	href, _ := url.ParseRequestURI(link)
+	
+	ok := href != nil
+
+	ok = ok && href.Host != ""
+	// ok = ok && href.IsAbs()
+	ok = ok && strings.HasPrefix(href.Scheme, "http")
+
+	if ok {
 		// NOTE: We got valid URL;
 		// This might be a file document source URL !
 		sendMessage.Type = "file"
 		sendMessage.File = &chat.File{
-			Url: link,
+			Url: href.String(), // link,
 		}
 		// Optional. Caption or description ...
 		sendMessage.Text = text
