@@ -18,6 +18,7 @@ import (
 	// "github.com/golang/protobuf/proto"
 	errs "github.com/micro/go-micro/v2/errors"
 
+	"github.com/webitel/chat_manager/app"
 	// gate "github.com/webitel/chat_manager/api/proto/bot"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 
@@ -178,7 +179,7 @@ func (_ *CorezoidBot) Register(ctx context.Context, uri string) error {
 // WebHook implementes provider.Receiver interface
 func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
-	// region: X-Access-Token validation
+	// region: X-Access-Token: Authorization
 	if c.accessToken != "" {
 		authzToken := notice.Header.Get("X-Access-Token")
 		if authzToken != c.accessToken {
@@ -192,7 +193,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	var (
 
 		update corezoidRequest // command/message
-		localtime = time.Now() // timestamp
+		localtime = app.CurrentTime() // timestamp
 	)
 
 	if err := json.NewDecoder(notice.Body).Decode(&update); err != nil {
@@ -243,7 +244,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	}
 	// endregion
 	
-	// region: channel
+	// region: bind internal channel
 	chatID := update.ChatID
 	channel, err := c.Gateway.GetChannel(
 		notice.Context(), chatID, contact,
@@ -254,7 +255,10 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			Str("error", "lookup: "+ err.Error()).
 			Msg("CHANNEL")
 		
-		http.Error(reply, errors.Wrap(err, "Failed lookup chat channel").Error(), http.StatusInternalServerError)
+		http.Error(reply,
+			errors.Wrap(err, "Failed lookup chat channel").Error(),
+			http.StatusInternalServerError, // HTTP 500 Internal Server Error
+		)
 		return
 	}
 	// RESET: Latest, NEW state !
@@ -272,9 +276,94 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		"test":        strconv.FormatBool(update.Test),
 	}
 
+	text := strings.TrimSpace(update.Text)
+	sendMessage := &chat.Message{
+		Id:    0, // NEW(!)
+		Type: "text",
+		Text:  text,
+	}
+
+	// region: receive file ...
+	// NOTE: Messages with third-party link(s) are NOT delivered ! That's good !
+	link := text
+	if eol := strings.IndexByte(text,'\n'); eol > 7 { // http[s]://
+		link = strings.TrimSpace(text[:eol])
+		text = strings.TrimSpace(text[eol+1:])
+	}
+	// if link != "" { // NOTE: never ! We DO NOT allow empty text message(s) }
+	if _, not := url.Parse(link); not == nil {
+		// NOTE: We got valid URL;
+		// This might be a file document source URL !
+		sendMessage.Type = "file"
+		sendMessage.File = &chat.File{
+			Url: link,
+		}
+		// Optional. Caption or description ...
+		sendMessage.Text = text
+	}
+	// else { // TODO: nothing; We already assign message 'text' by default ! }
+	// endregion
+
 	// REACTION !
 	switch update.Event {
-	case "chat": // incoming chat request (!)
+	case "chat", "startChat": // incoming chat request (!)
+
+		if update.Text == "" {
+			// NOTE: We've got here, when consumer sent us any file document, except photo(s) !
+			const notice = "Unfortunately, the transfer of third-party files" +
+							" is prohibited for security reasons, except images"
+			
+							// FIXME: Ignore such update(s) ?
+			// sendMessage.Type = "file"
+			// sendMessage.File = &chat.File{
+			// 	// TODO: some "Broken File" identification
+			// 	Id:   0,
+			// 	Url:  "",
+			// 	Size: 0,
+			// 	Mime: "",
+			// 	Name: "",
+			// }
+			sendMessage.Type = "text"
+			sendMessage.Text = notice
+			
+			defer func() {
+
+				_ = c.SendNotify(context.Background(),
+					&Update{
+						ID:    0, // NOTICE
+						Chat:  channel, // target
+						User:  contact, // sender
+						Title: username,
+						Event: "text",
+						Message: &chat.Message{
+							
+							Id:   0,
+							Type: "text",
+							Text: notice,
+							File: nil,
+							// Variables: nil,
+							// Buttons: nil,
+							// Contact: nil,
+							CreatedAt: app.DateTimestamp(localtime),
+							// UpdatedAt:        0,
+							
+							// ReplyToMessageId: 0, // !!!
+							// ReplyToVariables: nil,
+							// ForwardFromChatId:    "",
+							// ForwardFromMessageId: 0,
+							// ForwardFromVariables: nil,
+						},
+						// Edited:          0,
+						// EditedMessageID: 0,
+						// JoinMembers:     nil,
+						// KickMembers:     nil,
+					},
+				)
+
+			} ()
+			// TODO: SendNotify("Unfortunately, the transfer of third-party files is prohibited for security reasons, except images")
+		}
+
 	case "closeChat":
 		// TODO: break flow execution !
 		if channel.IsNew() {
@@ -298,34 +387,34 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		return
 
 	case "Предложение", "Жалоба":
-	
+
+		// 1. "Дать ответ для отправки в telegram"
+		// 2. "Отправить письмо на email ${box@domain.mx}"
+		// 3. "Позвонить по тел. XXXXXXXXXXXX" // starts with country code !
 		props["replyTo"] = update.ReplyWith
 
 	default:
 		// UNKNOWN !
 		c.Gateway.Log.Warn().
-			Str("error", update.Event +": incoming chat.action not implemented").
+			Str("error", update.Event +": reaction not implemented").
 			Msg("IGNORE")
 
 		return // HTTP/1.1 200 OK // to avoid redeliver !
 	}
+
+	sendMessage.Variables = props
 	
 	recvUpdate := Update {
 	
-		ID:     0, // NEW
-		Title:  username,
+		ID:      0, // NEW
+		Title:   username,
 		// ChatID: update.ChatID,
-		Chat:   channel, // SENDER (!)
+		Chat:    channel, // SENDER (!)
 		// Contact: update.Channel,
-		User:   contact,
+		User:    contact,
 		
-		Event:   "text",
-		Message: &chat.Message{
-			Id:    0, // NEW
-			Type:  "text",
-			Text: update.Text,
-			Variables: props,
-		},
+		Event:   sendMessage.Type, // "text" or "file" !
+		Message: sendMessage,
 		// not applicable yet !
 		Edited:           0,
 		EditedMessageID:  0,
@@ -344,7 +433,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	}
 
 	reply.WriteHeader(http.StatusOK)
-	return // HTTP/1.1 200 OK
+	// return // HTTP/1.1 200 OK
 }
 
 // SendNotify implements provider.Sender interface
@@ -352,7 +441,7 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 
 	var (
 
-		localtime = time.Now()
+		localtime = app.CurrentTime()
 		recepient = notify.Chat // recepient
 
 		update = notify.Message
@@ -406,6 +495,7 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 	default:
 	
 		if recepient.Properties != nil {
+			// FIXME: inform recepient that error occures ?
 			return errs.InternalServerError(
 				"chat.gateway.corezoid.channel.recover.error",
 				"corezoid: channel %T recover %T state invalid",
@@ -426,16 +516,31 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 	}
 
 	// region: event specific reaction !
-	switch notify.Event {
-	case "text", "": // default
+	switch update.Type { // notify.Event {
+	case "","text","file": // default
 		// reaction:
 		switch chat.corezoidRequest.Event {
 		case "chat": // chatting
+
 			// replyAction = startChat|closeChat|answerToChat
 			reply.Type = "answerToChat"
-			reply.Text = update.GetText() // reply: message text
 			reply.From = title // TODO: resolve sender name
-		
+
+			// region: format reply text ...
+			// File ?
+			if file := update.File; file != nil {
+				reply.Text = file.Url // FIXME: URL is blank ?
+			}
+			// Text ?
+			if text := update.Text; text != "" {
+				if reply.Text != "" { // Has URL ?
+					reply.Text += "\n" + text // description or caption !
+				} else {
+					reply.Text = text // message text !
+				}
+			}
+			// endregion
+
 		// case "closeChat": // Requested ?
 		// 	reply.Type = "closeChat"
 		// 	reply.Text = update.GetText() // reply: message text
@@ -452,6 +557,7 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 				chat.corezoidRequest.Event + 
 				": reaction to chat event=text not implemented",
 			).Msg("IGNORE")
+
 			return nil
 		}
 	
@@ -461,8 +567,8 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 	// case "read":
 	// case "seen":
 
-	// case "join":
-	// case "kick":
+	// case "joined":
+	// case "kicked":
 
 	// case "typing":
 	// case "upload":
