@@ -523,7 +523,8 @@ func (c *Channel) Close() error {
 		switch re.Id {
 		case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
 			// NOTE: got Not Found ! make idempotent !
-			return nil // no matter !
+			err = nil // break
+			// return nil // no matter !
 
 		default:
 

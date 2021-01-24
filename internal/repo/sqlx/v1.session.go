@@ -151,81 +151,121 @@ const psqlSessionQ =
 WHERE c.chat = $1 AND m.session = c.session
 `
 
-const psqlChatSessionQ =
-`WITH channel as (
+// Select CHAT session with all it's member channels
+// on behalf of given single, unique member channel ID
+//
+// $1 - chatID; Unique CHAT member channel ID
+var psqlChatSessionQ = CompactSQL(
+`WITH session AS (
+    select id from (
+
+		select $1::text where exists
+		(
+			select from chat.conversation where id = $1
+		)
+
+        union all
+        (
+            select conversation_id from chat.channel where id = $1
+
+            union -- all
+
+            select conversation_id from chat.invite where id = $1
+        )
+
+	) chat(id)
+	limit 1
+)
+, channel as (
+    -- @chatflow
     select
+
        chat.domain_id      as dc,
        channel.id          as room_id,
        channel.id          as chat_id,
 --        true                as internal,
        'chatflow'          as chat_channel,
---        service.node_id     as chat_contact,
-       chat.connection||coalesce('@'||service.node_id,'') as chat_contact, -- $profile_id[@workflow-$node_id]
---        'bot:'||bot.name    as chat_contact,
-       false as flow_bridge, -- chat.flow_bridge,
+       chat.connection||coalesce('@'||service.node_id,'') as chat_contact,
+       (false)             as flow_bridge, -- chat.flow_bridge,
        bot.schema_id       as user_id,
        'bot'               as user_channel,
        bot.schema_id::text as user_contact,
        bot.name            as user_name,
-       coalesce(contact.name, nullif(account.name, ''), account.username, chat.name) as chat_title,
---        service.node_id||'-'||chat.connection as app,
---        service.node_id     as host,
-       null as props, -- chat.props,
+       -- coalesce(contact.name, nullif(account.name, ''), account.username, chat.name) as chat_title,
+       null                as props,
 
        chat.created_at + interval '1 millisecond' as created_at,
        null as joined_at,
        channel.updated_at,
        coalesce(chat.closed_at, channel.closed_at) as closed_at
 
-    from chat.channel as chat
-    join chat.profile as bot on chat.connection = bot.id::text
-    join chat.conversation as channel on channel.id = chat.conversation_id
+    from chat.conversation as channel
+    join chat.channel as chat on chat.conversation_id = channel.id and chat.connection similar to '\d+'
+                                     -- MUST chat@gateway as originator, created earlier this chat.conversation
+                                     and chat.created_at <= channel.created_at + '3 millisecond'
+    join chat.profile as bot on (chat.connection::int8) = bot.id
     left join chat.conversation_node as service on channel.id = service.conversation_id
-    left join chat.client as contact on (chat.internal, chat.user_id) = (false, contact.id) -- external
-    left join directory.wbt_user as account on (chat.internal, chat.user_id) = (true, account.id) -- internal
+--     -- to be able to resolve CHAT title !
+--     left join chat.client as contact on not chat.internal and chat.user_id = contact.id -- external
+--     left join directory.wbt_user as account on chat.internal and chat.user_id = account.id -- internal
+
+    where channel.id = (select id from session)
 
     union all
-
+    -- @channel
     select
 
         channel.domain_id                                         as dc,
         channel.conversation_id                                   as room_id,
         channel.id                                                as chat_id,
-
 --         coalesce((account.dc = channel.domain_id), false)         as internal,
         coalesce(nullif(channel.type, 'webitel'), 'websocket')    as chat_channel,
---         coalesce(nullif(channel.type, 'webitel'), 'user')||':'||
---         coalesce(contact.external_id, account.username)           as chat_contact,
---         coalesce('webitel.chat.bot-'||channel.host, 'engine')     as chat_contact,
-        coalesce(channel.connection||coalesce('@'||channel.host,''), 'engine') as chat_contact, -- $profile_id[@webitel.chat.bot-$node_id]
+        coalesce(channel.connection||coalesce('@'||channel.host,''), 'engine') as chat_contact,
         channel.flow_bridge,
-        channel.user_id                                           as user_id,
+        channel.user_id,
         coalesce(nullif(channel.type, 'webitel'), 'user')         as user_channel,
         coalesce(contact.external_id, account.username)           as user_contact,
         coalesce(contact.name, account.name, account.username)    as user_name,
-        -- chat.name                                              as title,
-        channel.name                                              as chat_title,
---         coalesce('gateway-' || channel.connection || '-' || channel.host,
---                 websocket.app||'@'||websocket.socket)             as app,
-        -- coalesce('webitel.chat.bot-'||channel.host, 'engine')     as host,
+        -- channel.name                                              as chat_title,
         channel.props,
 
         channel.created_at,
         channel.joined_at,
         channel.updated_at,
         channel.closed_at
-        -- coalesce(channel.closed_at, session.closed_at) as closed_at
 
     from chat.channel
-    left join chat.client as contact on (channel.internal, channel.user_id) = (false, contact.id) -- external
-    left join directory.wbt_user as account on (channel.internal, channel.user_id) = (true, account.id) -- internal
---     left join lateral (
---         select *
---         from directory.wbt_user_socket as session
---         where session.user_id = channel.user_id
---         order by updated_at desc
---         limit 1
---     ) as websocket on true
+    left join chat.client as contact on not (channel.internal) and channel.user_id = contact.id -- external
+    left join directory.wbt_user as account on channel.internal and channel.user_id = account.id -- internal
+
+    where channel.conversation_id = (select id from session)
+
+    union all
+    -- invite(s) as live, pending channels too !..
+    select
+
+        invite.domain_id                         as dc,
+        invite.conversation_id                   as room_id,
+        invite.id                                as chat_id,
+--         (true)                                   as internal,
+        'websocket'                              as chat_channel,
+        'engine'                                 as chat_contact,
+        (invite.inviter_channel_id isnull)       as flow_bridge,
+        invite.user_id                           as user_id,
+        'user'                                   as user_channel,
+        account.username                         as user_contact,
+        coalesce(account.name, account.username) as user_name,
+        -- invite.title                             as chat_title,
+        invite.props,
+
+        invite.created_at,
+        null as joined_at,
+        invite.created_at as updated_at,
+        null as closed_at
+
+    from chat.invite
+    left join directory.wbt_user as account on invite.user_id = account.id -- internal
+    where invite.conversation_id = (select id from session) and invite.closed_at isnull
 )
 select
     -- chat.*
@@ -251,112 +291,13 @@ select
     chat.closed_at
 
 from channel as chat
-join channel as room on chat.room_id = room.chat_id
--- join directory.wbt_domain as srv on a.dc = srv.dc
-where chat.room_id = (select room_id from channel where chat_id = $1)
-  and room.closed_at isnull -- chat.closed_at isnull
-order by chat.room_id, chat.created_at asc`
+-- left join chat.profile as gate on chat.user_channel = 'bot' and chat.user_id = contact.id -- external
+-- left join chat.client as contact on chat.user_channel and chat.user_id = contact.id -- external
+-- left join directory.wbt_user as account on chat.user_channel = 'user' and chat.user_id = account.id -- internal
+-- -- join channel as room on chat.room_id = room.chat_id
+-- -- -- join directory.wbt_domain as srv on a.dc = srv.dc
+-- -- where chat.room_id = (select room_id from channel where chat_id = $1)
+--   -- and room.closed_at isnull -- chat.closed_at isnull
 
-// WITH channel as (
-//     select
-//        chat.domain_id      as dc,
-//        channel.id          as room_id,
-//        channel.id          as chat_id,
-// --        true                as internal,
-//        'chatflow'          as chat_channel,
-//        service.node_id     as chat_contact,
-// --        'bot:'||bot.name    as chat_contact,
-//        false as flow_bridge, -- chat.flow_bridge,
-//        bot.schema_id       as user_id,
-//        'bot'               as user_channel,
-//        bot.schema_id::text as user_contact,
-//        bot.name            as user_name,
-//        coalesce(contact.name, nullif(account.name, ''), account.username, chat.name) as chat_title,
-// --        service.node_id||'-'||chat.connection as app,
-// --        service.node_id     as host,
-//        null as props, -- chat.props,
-
-//        chat.created_at + interval '1 millisecond' as created_at,
-//        null as joined_at,
-//        channel.updated_at,
-//        coalesce(chat.closed_at, channel.closed_at) as closed_at
-
-//     from chat.channel as chat
-//     join chat.profile as bot on chat.connection = bot.id::text
-//     join chat.conversation as channel on channel.id = chat.conversation_id
-//     left join chat.conversation_node as service on channel.id = service.conversation_id
-//     left join chat.client as contact on (chat.internal, chat.user_id) = (false, contact.id) -- external
-//     left join directory.wbt_user as account on (chat.internal, chat.user_id) = (true, account.id) -- internal
-
-//     union all
-
-//     select
-
-//         channel.domain_id                                         as dc,
-//         channel.conversation_id                                   as room_id,
-//         channel.id                                                as chat_id,
-
-// --         coalesce((account.dc = channel.domain_id), false)         as internal,
-//         coalesce(nullif(channel.type, 'webitel'), 'websocket')    as chat_channel,
-// --         coalesce(nullif(channel.type, 'webitel'), 'user')||':'||
-// --         coalesce(contact.external_id, account.username)           as chat_contact,
-//         coalesce('webitel.chat.bot-'||channel.host, 'engine')     as chat_contact,
-//         channel.flow_bridge,
-//         channel.user_id                                           as user_id,
-//         coalesce(nullif(channel.type, 'webitel'), 'user')         as user_channel,
-//         coalesce(contact.external_id, account.username)           as user_contact,
-//         coalesce(contact.name, account.name, account.username)    as user_name,
-//         -- chat.name                                              as title,
-//         channel.name                                              as chat_title,
-// --         coalesce('gateway-' || channel.connection || '-' || channel.host,
-// --                 websocket.app||'@'||websocket.socket)             as app,
-//         -- coalesce('webitel.chat.bot-'||channel.host, 'engine')     as host,
-//         channel.props,
-
-//         channel.created_at,
-//         channel.joined_at,
-//         channel.updated_at,
-//         channel.closed_at
-//         -- coalesce(channel.closed_at, session.closed_at) as closed_at
-
-//     from chat.channel
-//     left join chat.client as contact on (channel.internal, channel.user_id) = (false, contact.id) -- external
-//     left join directory.wbt_user as account on (channel.internal, channel.user_id) = (true, account.id) -- internal
-// --     left join lateral (
-// --         select *
-// --         from directory.wbt_user_socket as session
-// --         where session.user_id = channel.user_id
-// --         order by updated_at desc
-// --         limit 1
-// --     ) as websocket on true
-// )
-// select
-//     -- chat.*
-//     chat.dc,
-//     -- srv.name as domain,
-//     chat.room_id,
-//     chat.chat_id,
-//     -- chr((64 + row_number() over members)::int) as leg,
-//     chat.chat_channel,
-//     chat.chat_contact,
-//     chat.flow_bridge,
-//     chat.user_id,
-//     chat.user_channel,
-//     chat.user_contact,
-//     chat.user_name, -- TO: this channel end-user
-//     -- chat.chat_title,
-//     (case when chat.user_name = room.chat_title then room.user_name else room.chat_title end) as chat_title, -- FROM: chatroom title
-//     chat.props,
-
-//     chat.created_at,
-//     chat.joined_at,
-//     chat.updated_at,
-//     chat.closed_at
-
-// from channel as chat
-// join channel as room on chat.room_id = room.chat_id
-// -- join directory.wbt_domain as srv on a.dc = srv.dc
-// where room.closed_at isnull -- chat.closed_at isnull
-//   and chat.room_id = (select room_id from channel where chat_id = :cid)
-// order by chat.room_id, chat.created_at asc
-// ;
+-- order by chat.room_id, chat.created_at asc
+order by chat.created_at asc`)

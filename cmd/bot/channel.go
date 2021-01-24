@@ -264,7 +264,7 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 	// // // NOTE: sending the last conversation message
 	messageText := message.GetText()
 	// close := messageText == commandClose
-	close := messageText == commandCloseRecvDisposiotion
+	close := messageText == commandCloseRecvDisposiotion && message.Type == "text"
 	// // if close {
 	// // 	// received: /stop command from external
 	// // 	// DO: .CloseConversation(!)

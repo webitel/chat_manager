@@ -22,16 +22,26 @@ import (
 	// strategy "github.com/webitel/chat_manager/internal/selector"
 )
 
-func (c *eventRouter) sendEventToWebitelUser(from *store.Channel, to *store.Channel, event string, body []byte) error {
-	msg := &broker.Message{
-		Header: map[string]string{
-			"content_type": "text/json",
+func (c *eventRouter) sendEventToWebitelUser(from *store.Channel, to *store.Channel, event string, data []byte) error {
+
+	err := c.broker.Publish(
+		// routing key
+		fmt.Sprintf("event.%s.%d.%d",
+			event, to.DomainID, to.UserID,
+		),
+		// delivery
+		&broker.Message{
+			Header: map[string]string{
+				"content_type": "text/json",
+			},
+			Body: data,
 		},
-		Body: body,
-	}
-	if err := c.broker.Publish(fmt.Sprintf("event.%s.%v.%v", event, to.DomainID, to.UserID), msg); err != nil {
+	)
+	
+	if err != nil {
 		return err
 	}
+
 	return nil
 }
 

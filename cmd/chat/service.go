@@ -1,14 +1,16 @@
 package main
 
 import (
+	
 
 	"fmt"
 	"time"
 	"path"
-	"net/url"
 	"strconv"
 	"strings"
 	"context"
+	"net/url"
+	"net/http"
 	"database/sql"
 	"encoding/json"
 
@@ -89,17 +91,37 @@ func (s *chatService) UpdateChannel(
 	req *pb.UpdateChannelRequest,
 	res *pb.UpdateChannelResponse,
 ) error {
-	
-	chatID := req.GetChannelId()
-	channel, err := s.repo.CheckUserChannel(ctx, chatID, req.GetAuthUserId())
+
+	var (
+
+		channelChatID = req.GetChannelId()
+		channelFromID = req.GetAuthUserId()
+
+		messageAt = req.GetReadUntil() // Implies last seen message.created_at date
+		localtime = app.CurrentTime()
+		readUntil = localtime // default: ALL
+	)
+
+	s.log.Trace().
+
+		Str("channel_id",     channelChatID).
+		Int64("auth_user_id", channelFromID).
+		Int64("read_until",   messageAt).
+
+		Msg("UPDATE Channel")
+
+	// PERFORM find sender channel
+	channel, err := s.repo.CheckUserChannel(
+		ctx, channelChatID, channelFromID,
+	)
 	
 	if err != nil {
 
 		s.log.Error().
 		
 			Err(err).
-			Str("chat-id", chatID).
-			Int64("contact-id", req.GetAuthUserId()).
+			Str("chat-id", channelChatID).
+			Int64("contact-id", channelFromID).
 
 			Msg("FAILED Lookup Channel")
 
@@ -110,24 +132,17 @@ func (s *chatService) UpdateChannel(
 
 		s.log.Warn().
 
-			Str("chat-id", chatID).
-			Int64("contact-id", req.GetAuthUserId()).
+			Str("chat-id", channelChatID).
+			Int64("contact-id", channelFromID).
 
 			Msg("Channel NOT Found")
 
 		return errors.BadRequest(
 			"chat.channel.not_found",
 			"chat: channel ID=%s not found",
-			 chatID,
+			 channelChatID,
 		)
 	}
-
-	var (
-
-		messageAt = req.GetReadUntil() // Implies last seen message.created_at date
-		localtime = app.CurrentTime()
-		readUntil = localtime // default: ALL
-	)
 
 	if messageAt != 0 {
 		// FIXME: const -or- app.TimePrecision ?
@@ -158,7 +173,7 @@ func (s *chatService) UpdateChannel(
 	}
 
 	// updatedAt, err := s.repo.UpdateChannel(ctx, req.GetChannelId())
-	err = s.repo.UpdateChannel(ctx, chatID, &readUntil)
+	err = s.repo.UpdateChannel(ctx, channelChatID, &readUntil)
 	if err != nil {
 		return err
 	}
@@ -203,6 +218,18 @@ func (s *chatService) SendMessage(
 		targetChatID = req.GetConversationId()
 	)
 
+	s.log.Debug().
+
+		Str("channel_id",      senderChatID).
+		Str("conversation_id", targetChatID).
+		Int64("auth_user_id",  senderFromID).
+
+		Str("type",  sendMessage.GetType()).
+		Str("text",  sendMessage.GetText()).
+		Bool("file", sendMessage.GetFile() != nil).
+
+		Msg("SEND Message")
+
 	if senderChatID == "" {
 		senderChatID = targetChatID
 		if senderChatID == "" {
@@ -212,139 +239,7 @@ func (s *chatService) SendMessage(
 			)
 		}
 	}
-	/*
-	// region: message PRE- validation
-	if req.Edit && sendMessage.ForwardFromMessageId != 0 {
-		return errors.BadRequest(
-			"chat.send.message.ambiguous",
-			"send: ambiguous message request; edit or forward ?",
-		)
-	}
 
-	messageType := sendMessage.Type
-	messageType = strings.TrimSpace(messageType)
-	messageType = strings.ToLower(messageType)
-	// reset: normalized !
-	sendMessage.Type = messageType
-	
-	switch sendMessage.Type {
-	// default(!)
-	case "text":
-		// sendMessage.Type = "text" // default(!)
-		text := sendMessage.GetText()
-		text = strings.TrimSpace(text)
-		if text == "" {
-			return errors.BadRequest(
-				"chat.send.message.text.required",
-				"send: message text is missing",
-			)
-		}
-		// reset: normalized !
-		sendMessage.Text = text
-
-		// recvMessage0.Type = "text" // asserted(!)
-		// recvMessage0.Text = sql.NullString {
-		// 	String: text, Valid: true,
-		// }
-
-	case "file":
-		// CHECK: document provided ?
-		doc := sendMessage.GetFile()
-		if doc == nil {
-			return errors.BadRequest(
-				"chat.send.document.file.required",
-				"send: document file source required",
-			)
-		}
-		// CHECK: document URL provided ?
-		if doc.Url == "" {
-			return errors.BadRequest(
-				"chat.send.document.url.required",
-				"send: document source URL required",
-			)
-		}
-		// CHECK: provided URL is valid ?
-		src, err := url.Parse(doc.Url)
-		
-		if err != nil {
-			return errors.BadRequest(
-				"chat.send.document.url.invalid",
-				"send: document source URL invalid; %s", err,
-			)
-		}
-		// reset: normalized !
-		doc.Url = src.String()
-
-		// CHECK: filename !
-		if doc.Name == "" {
-			doc.Name = path.Base(src.Path)
-			switch doc.Name {
-			case "", ".", "/": // See: path.Base()
-				return errors.BadRequest(
-					"chat.send.document.name.missing",
-					"send: document filename is missing or invalid",
-				)
-			}
-		}
-
-		// .Caption
-		caption := sendMessage.GetText()
-		caption = strings.TrimSpace(caption)
-		// reset: normalized !
-		sendMessage.Text = caption
-
-	// case "edit":
-
-	// 	if sendMessage0.Id == 0 {
-	// 		return errors.BadRequest(
-	// 			"chat.edit.message.id.required",
-	// 			"edit: message ID required",
-	// 		)
-	// 	}
-
-	// 	// // TODO: locate message by unique .id, .author, .type
-	// 	// //       and optional .variables AS extra AND filter(s)
-	// 	// edit := "text" // text|file
-	// 	// editMessage, err := &recvMessage0, error(nil)
-
-	case "read":
-
-		// timestamp := (int64)(time.Second)
-		// precision := (int64)(time.Millisecond)
-		// readMessageDate := sendMessage.UpdatedAt
-		
-		// if readMessageDate != 0 {
-		// 	recvMessage0.UpdatedAt = time.Unix(
-		// 		(readMessageDate/(timestamp/precision)),
-		// 		(readMessageDate%(timestamp/precision))*(precision),
-		// 	)
-		// } else {
-		// 	recvMessage0.UpdatedAt =
-		// 		localtime.UTC().Truncate(
-		// 			time.Duration(precision),
-		// 		)
-		// }
-		
-		// // TODO: update channel
-		// //          set updated_at = localtime
-		// //        where id = sender.id
-
-	// sendStatus
-	case "upload": // uploading file document; service message: DO NOT store !
-		// FIXME: do not store; just broadcast to sender's chat members
-	case "typing": // typing message text; service message: DO NOT store !
-		// FIXME: do not store; just broadcast to sender's chat members
-	// case "closed":
-	default:
-		
-		return errors.BadRequest(
-			"chat.send.message.type.invalid",
-			"send: message type %s is invalid",
-			 messageType,
-		)
-	}
-	// endregion
-	*/
 	// region: lookup target chat session by unique sender chat channel id
 	chat, err := s.repo.GetSession(ctx, senderChatID)
 
@@ -381,364 +276,6 @@ func (s *chatService) SendMessage(
 	}
 
 	sender := chat.Channel
-	
-	// recvMessage0.ChannelID = sql.NullString{
-	// 	String: sender0.ID, Valid: true,
-	// }
-	// recvMessage0.ConversationID = sender0.Invite
-	// endregion
-	/*
-	var (
-		// store message model
-		saveMessage *pg.Message
-		// EDIT message request ?
-		edit = sendMessage.UpdatedAt != 0
-	)
-
-	if edit {
-
-		searchProps := sendMessage.Variables
-		// lookup for original message to edit
-		saveMessage, err = s.repo.GetMessage(
-			ctx, sendMessage.Id, senderChatID, targetChatID, searchProps,
-		)
-
-		if err != nil {
-			return errors.BadRequest(
-				"chat.message.lookup.error",
-				"edit: message ID=%d lookup: %s",
-				 sendMessage.Id, err,
-			)
-		}
-		// NOTE: chat.gateway service may lookup messages by it's original (external) messageID
-		if saveMessage == nil || (sendMessage.Id != 0 && saveMessage.ID != sendMessage.Id) {
-			return errors.BadRequest(
-				"chat.edit.message.not_found",
-				"edit: message ID=%d from chat ID=%s not found",
-				 sendMessage.Id, senderChatID,
-			)
-		}
-
-		if !strings.EqualFold(senderChatID, saveMessage.ChannelID) { //.String) {
-			return errors.Forbidden(
-				"chat.edit.message.forbidden",
-				"edit: message ID=%d author mismatch",
-				 sendMessage.Id,
-			)
-		}
-		// Populate message EDITED marker !
-		saveMessage.UpdatedAt = localtime.UTC().Truncate(time.Duration(precision))
-
-	} else {
-		// Allocate NEW message to be saved !
-		saveMessage = &pg.Message{
-
-			CreatedAt: localtime.UTC().Truncate(time.Duration(precision)),
-			// UpdatedAt: time.Time{}.IsZero(!)
-			
-			// [FROM]: ChatID
-			ChannelID: sender.Chat.ID,
-			// ChannelID: sql.NullString {
-			// 	String: senderChat.ID, Valid: true,
-			// },
-			// [TO]: ChatID
-			ConversationID: sender.Chat.Invite,
-		}
-	}
-
-	var (
-
-		forwardFromMessageID = sendMessage.ForwardFromMessageId
-		forwardFromVariables = sendMessage.ForwardFromVariables
-
-		replyToMessageID = sendMessage.ReplyToMessageId
-		replyToVariables = sendMessage.ReplyToVariables
-	)
-
-	if forwardFromVariables != nil {
-		delete(forwardFromVariables, "")
-		if len(forwardFromVariables) == 0 {
-			forwardFromVariables = nil
-		}
-	}
-
-	if replyToVariables != nil {
-		delete(replyToVariables, "")
-		if len(replyToVariables) == 0 {
-			replyToVariables = nil
-		}
-	}
-
-	if forwardFromMessageID != 0 || len(forwardFromVariables) != 0 {
-		// FIXME: Can we edit forwarded message ?
-		if edit {
-			return errors.BadRequest(
-				"chat.edit.message.forwarded",
-				"edit: forwarded message not allowed",
-			)
-		}
-
-		forwardFromChatID := sendMessage.ForwardFromChatId
-		if forwardFromChatID == "" {
-			forwardFromChatID = targetChatID
-		}
-
-		forwardFromMessage, err := s.repo.GetMessage(ctx,
-			forwardFromMessageID, "", forwardFromChatID, forwardFromVariables,
-		)
-
-		if err != nil {
-			return errors.BadRequest(
-				"chat.message.lookup.error",
-				"forward: message ID=%d lookup: %s",
-				 forwardFromMessageID, err,
-			)
-		}
-
-		if forwardFromMessage == nil || (forwardFromMessageID != 0 && forwardFromMessage.ID != forwardFromMessageID) {
-			return errors.BadRequest(
-				"chat.forward.message.not_found",
-				"forward: message ID=%d not found",
-				 forwardFromMessageID,
-			)
-		}
-		// Mark as Forwarded !
-		saveMessage.ForwardFromMessageID = forwardFromMessage.ID
-		// FIXME: copy message source ?
-	} else if replyToMessageID != 0 || len(replyToVariables) != 0 {
-		// Omit recheck for edit with the same value !
-		if saveMessage.ReplyToMessageID == 0 || replyToMessageID != saveMessage.ReplyToMessageID {
-			// TODO: find message by internal id or external sent-bindings
-			replyToMessage, err := s.repo.GetMessage(ctx,
-				replyToMessageID, "", targetChatID, replyToVariables,
-			)
-
-			if err != nil {
-				return errors.BadRequest(
-					"chat.message.lookup.error",
-					"replyTo: message ID=%d lookup: %s",
-					 replyToMessageID, err,
-				)
-			}
-
-			if replyToMessage == nil || (replyToMessageID != 0 && replyToMessage.ID != replyToMessageID) {
-				return errors.BadRequest(
-					"chat.replyTo.message.not_found",
-					"replyTo: message ID=%d not found",
-					 replyToMessageID,
-				)
-			}
-
-			// Mark as reply !
-			saveMessage.ReplyToMessageID = replyToMessage.ID
-		}
-	}
-
-	sendBinding := sendMessage.Variables
-	if sendBinding != nil {
-		delete(sendBinding, "")
-		if len(sendBinding) != 0 {
-			// data, err := json.Marshal(sendBinding)
-			// if err != nil {
-			// 	// Failed to store message variables !
-			// 	return errors.BadRequest(
-			// 		"chat.message.variables.error",
-			// 		"send: failed to store message variables; %s",
-			// 		 err,
-			// 	)
-			// }
-			// // populate to be saved !
-			// saveMessage.Variables = data
-			saveMessage.Variables = sendBinding
-		}
-	}
-
-	// region: perform operation !
-	serviceMessage := false
-	switch sendMessage.Type {
-	// TODO: "file" upload to local storage
-	case "text":
-
-		text := sendMessage.Text
-		saveMessage.Type = "text"
-
-		saveMessage.Text = text
-		// saveMessage.Text.String = text
-		// saveMessage.Text.Valid = text != ""
-
-		serviceMessage = false
-
-	case "file":
-		// Get undelaying file document info ?
-		doc := sendMessage.GetFile()
-		// CHECK: uploaded ?
-		if doc.Id == 0 {
-			// Uploading !..
-			// TODO: background, async ..
-			res, err := s.storageClient.UploadFileUrl(
-				context.TODO(),
-				&pbstorage.UploadFileUrlRequest{
-					DomainId: sender.DomainID,
-					Uuid:     sender.Chat.Invite, // sender.ConversationID, // FIXME: is this required ?
-					Name:     doc.Name,
-					Mime:     doc.Mime,
-					Url:      doc.Url,
-				},
-			)
-
-			if err != nil {
-				s.log.Error().Err(err).Msg("Failed to UploadFileUrl")
-				return err
-			}
-			
-			doc.Id   = res.Id
-			doc.Url  = res.Url
-			// doc.Name // normalized previously !
-			doc.Mime = res.Mime
-			doc.Size = res.Size
-
-			// CHECK: finally(!) response document data
-			if doc.Id == 0 {
-				return errors.InternalServerError(
-					"chat.send.document.file.missing",
-					"send: uploaded document ID is missing",
-				)
-			}
-		}
-
-		// CHECK: uploaded file URL returned ?
-		if doc.Url == "" {
-			return errors.InternalServerError(
-				"chat.send.document.url.missing",
-				"send: uploaded document URL is missing",
-			)
-		}
-
-		// CHECK: download URL is still valid ?
-		src, err := url.Parse(doc.Url)
-		
-		if err != nil {
-			return errors.InternalServerError(
-				"chat.send.document.url.invalid",
-				"send: uploaded document URL invalid; %s",
-				 err,
-			)
-		}
-		// normalize !
-		doc.Url = src.String()
-
-		// Fill .Document
-		saveMessage.Type = "file"
-		saveMessage.File = &pg.Document{
-			ID:   doc.Id,
-			Size: doc.Size,
-			Name: doc.Name,
-			Type: doc.Mime,
-		}
-		// Fill .Caption
-		caption := sendMessage.GetText()
-		saveMessage.Text = caption
-		// saveMessage.Text.String = caption
-		// saveMessage.Text.Valid = caption != ""
-
-		serviceMessage = false
-
-	case "read":
-
-		const timestamp = (int64)(time.Second) // seconds: 1e9
-
-		readMessageDate := sendMessage.UpdatedAt
-		if readMessageDate != 0 {
-			saveMessage.UpdatedAt = time.Unix(
-				(readMessageDate/(timestamp/precision)),
-				(readMessageDate%(timestamp/precision))*(precision),
-			)
-		} else {
-			saveMessage.UpdatedAt =	localtime.UTC().Truncate(time.Duration(precision))
-		}
-
-		// TODO: DO NOT save to persistent DB; this is the service message !
-		serviceMessage = true
-		// TODO: update chat.channel set updated_at = ${saveMessage.UpdatedAt} where id = ${senderChat.ID}
-
-	// case "edit":
-	// 	// TODO: "edit" lookup message to be edited
-	// 	editMessage, err := s.repo.GetMessage(
-	// 		// context, messageID, senderID,
-	// 		ctx, sendMessage0.Id, senderChatID, req.GetConversationId(),
-	// 		// // type, [ AND variables=match, ... ]
-	// 		// edit, sendMessage.Variables,
-	// 	)
-
-	// 	if err != nil {
-	// 		return errors.BadRequest(
-	// 			"chat.edit.message.lookup",
-	// 			"edit: message ID=%d lookup",
-
-	// 		)
-	// 	}
-
-	// 	if editMessage == nil || editMessage.ID != sendMessage0.Id {
-	// 		return errors.BadRequest(
-	// 			"chat.edit.message.not_found",
-	// 			"edit: message ID=%d not found",
-	// 			 sendMessage0.Id,
-	// 		)
-	// 	}
-
-	// 	if editMessage.ChannelID.String != senderChatID {
-	// 		return errors.Forbidden(
-	// 			"chat.edit.message.forbidden",
-	// 			"edit: message ID=%d author mismatch",
-	// 			 sendMessage0.Id,
-	// 		)
-	// 	}
-
-	// 	switch editMessage.Type {
-	// 	case messageText:
-	// 		if sendMessage0.File != nil {
-	// 			return errors.BadRequest(
-	// 				"chat.edit.message.declined",
-	// 				"edit: message ID=%d %s expected but file provided",
-	// 				 editMessage.ID, editMessage.Type,
-	// 			)
-	// 		}
-	// 	case messageFile:
-	// 		if sendMessage0.File == nil {
-	// 			return errors.BadRequest(
-	// 				"chat.edit.message.declined",
-	// 				"edit: message ID=%d %s expected, but not provided",
-	// 				 editMessage.ID, editMessage.Type,
-	// 			)
-	// 		}
-	// 	default:
-	// 		return errors.BadRequest(
-	// 			"chat.edit.message.declined",
-	// 			"edit: message ID=%d %s expected; %s provided",
-	// 			 editMessage.ID, editMessage.Type, edit,
-	// 		)
-	// 	}
-
-	// 	editMessage.UpdatedAt = localtime
-	// 	// TODO: check provided NEW content is valid !
-	// 	recvMessage = *(editMessage) // fetched|updated
-	}
-	// endregion
-
-	if !serviceMessage {
-		// NOTE: Need to be saved to persistent storage ! Is "text" -or- "file"
-		if err = s.repo.SaveMessage(ctx, saveMessage); err != nil {
-			s.log.Error().Err(err).Msg("Failed to store message")
-			return err
-		}
-		// populate NEW message ID
-		sendMessage.Id = saveMessage.ID
-	}
-	// populate timing ...
-	sendMessage.CreatedAt = saveMessage.CreatedAt.UnixNano()/(precision)
-	if !saveMessage.UpdatedAt.IsZero() {
-		sendMessage.UpdatedAt = saveMessage.UpdatedAt.UnixNano()/(precision)
-	}*/
 
 	// Validate and normalize message to send
 	// Mostly also stores non-service-level message to persistent DB
@@ -749,336 +286,20 @@ func (s *chatService) SendMessage(
 		return err
 	}
 
-	s.log.Debug().
-		Str("channel_id", senderChatID).
-		Str("conversation_id", targetChatID).
-		// Bool("from_flow", req.GetFromFlow()).
-		Int64("auth_user_id", senderFromID).
-		Str("type", sendMessage.Type).
-		Str("text", sendMessage.Text).
-		Bool("file", sendMessage.GetFile() != nil).
-		Msg("SEND Message")
+	// // show chat room state
+	// data, _ := json.MarshalIndent(chat, "", "  ")
+	// s.log.Debug().Msg(string(data))
 
-	/*/ TESTS: fetch chat session by unique member channel identifier
-	senderChatID := req.GetChannelId()
-	if senderChatID == "" {
-		senderChatID = req.GetConversationId()
-		if senderChatID == "" {
-			return errors.BadRequest(
-				"chat.send.channel.from.required",
-				"send: message sender ID required",
-			)
-		}
-	}
-	// find: chat room on behalf of message sender unique channel identifier
-	chat, err := s.repo.GetSession(ctx, senderChatID)
+	// PERFORM message publish|broadcast
+	_, err = s.sendMessage(ctx, chat, sendMessage)
 	
 	if err != nil {
-		s.log.Error().Err(err).Msg("SESSION Fetch")
-	} else if chat == nil || chat.IsClosed() { // NOT Found !
-		s.log.Warn().Str("error", "chat: channel not found or been closed").Msg("SESSION Fetch")
-	} else {*/
-		// // show chat room state
-		// data, _ := json.MarshalIndent(chat, "", "  ")
-		// s.log.Debug().Msg(string(data))
-		// perform message publish|broadcast
-		_, err = s.sendMessage(ctx, chat, sendMessage)
-		
-		if err != nil {
-			s.log.Error().Err(err).Msg("Failed to broadcast /send message")
-			return err
-		}
-
-		// TODO: grab external sentBinding variables and update saved message
-
-		return nil
-
-		/*/ ----- PERFORM ---------------------------------
-		// // 1. Save historical .Message delivery
-		// err = s.repo.SaveMessage(ctx, &recvMessage0) // s.repo.CreateMessage(ctx, &recvMessage0)
-		// if err != nil {
-		// 	s.log.Error().Err(err).Msg("Failed to save message to history")
-		// 	return err
-		// }
-		// 2. Broadcast given .Message to all related external chat members
-		//    on behalf of internal, workflow service, channel request
-		sendNotify := app.Message{
-			ID:   saveMessage.ID,
-			From: senderChat.User,
-			Chat: senderChat.Chat,
-
-			Date: saveMessage.CreatedAt.UnixNano()/(precision),
-			Type: saveMessage.Type,
-			
-			MessageForwarded: app.MessageForwarded{
-				// ForwardFrom: &app.User{
-				// 	ID:        0,
-				// 	Channel:   "",
-				// 	Contact:   "",
-				// 	FirstName: "",
-				// 	LastName:  "",
-				// 	UserName:  "",
-				// 	Language:  "",
-				// },
-				// ForwardFromChat: &app.Chat{
-				// 	ID:        "",
-				// 	Title:     "",
-				// 	Channel:   "",
-				// 	Contact:   "",
-				// 	Username:  "",
-				// 	FirstName: "",
-				// 	LastName:  "",
-				// 	Invite:    "",
-				// },
-				ForwardFromMessageID: saveMessage.ForwardFromMessageID,
-				// ForwardSenderName:    "",
-				// ForwardDate:          0,
-			},
-			// ReplyToMessage: &app.Message{},
-			// EditDate:       0,
-			Text: saveMessage.Text.String,
-			// Document: recvMessage.File,
-			// NewChatMembers:  nil,
-			// LeftChatMembers: nil,
-		}
-
-		if updatedAt := saveMessage.UpdatedAt; !updatedAt.IsZero() {
-			sendNotify.EditDate = updatedAt.UnixNano()/(precision)
-		}
-
-		if doc := sendMessage.GetFile(); doc != nil {
-			sendNotify.File = &app.Document{
-				ID:   doc.GetId(),
-				Size: doc.GetSize(),
-				Type: doc.GetMime(),
-				Name: doc.GetName(),
-			}
-		}
-
-		if saveMessage.ReplyToMessageID != 0 {
-			sendNotify.ReplyToMessage = &app.Message{
-				ID: saveMessage.ReplyToMessageID,
-			}
-		}
-
-		sent, err := publishMessage(service.Options().Broker, chat, &sendNotify)
-
-		if err != nil {
-			s.log.Error().Err(err).Msg("Failed to broadcast /send message")
-			return err
-		}
-
-		// sent := 0
-		// // sender := chat.Channel
-		// for _, member := range chat.Members {
-		// 	if member.IsClosed() {
-		// 		continue // NOTE: channel is closed; skip message delivery
-		// 	}
-		// 	switch member.Channel {
-		// 	// [TO]: INTERNAL (!)
-		// 	case "websocket": // [TO] service::engine    (user.is_bot==false)
-		// 	case "chatflow":  // [TO] service::workflow  (user.is_bot==true)
-		// 	// [TO]: EXTERNAL (!)
-		// 	default:          // [TO] service::webitel.chat.bot
-		// 		// external: e.g.: telegram, facebook, viber etc
-		// 	}
-
-		// 	if err == nil {
-		// 		(sent)++
-		// 	}
-		// }
-
-		if sent == 0 {
-			// TODO: there is only sender still active in this chat room; room: need to be closed !
-		}
-		// return nil
-	// }
-	// ENDTESTS
-
-
-
-	// FROM: INTERNAL (?)
-	servName := s.authClient.GetServiceName(&ctx)
-	if servName == "workflow" {
-		// conversationID := req.GetConversationId()
-		// message := &pg.Message{
-		// 	ConversationID: conversationID,
-		// 	// ChannelID: conversationID, // NOTE: bot@schema is the sender !
-		// }
-
-		// if req.Message.File != nil {
-
-		// 	message.Type = "file"
-		// 	message.Text = sql.NullString{
-		// 		req.GetMessage().GetFile().Url,
-		// 		true,
-		// 	}
-
-		// 	body, err := json.Marshal(req.Message.GetFile())
-		// 	if err != nil {
-		// 		s.log.Error().Msg(err.Error())
-		// 	}
-
-		// 	err = message.Variables.Scan(body)
-		// 	if err!=nil{
-		// 		s.log.Error().Msg(err.Error())
-		// 	}
-
-		// } else {
-
-		// 	message.Type = "text"
-		// 	message.Text = sql.NullString{
-		// 		req.GetMessage().GetText(),
-		// 		true,
-		// 	}
-		// }
-
-		// // s.repo.CreateMessage(ctx, message)
-		// // s.eventRouter.RouteMessageFromFlow(&conversationID, req.GetMessage())
-
-		// ----- PERFORM ---------------------------------
-		// // 1. Save historical .Message delivery
-		// err := s.repo.SaveMessage(ctx, message) // s.repo.CreateMessage(ctx, message)
-		// if err != nil {
-		// 	s.log.Error().Err(err).Msg("Failed to save message to history")
-		// 	return err
-		// }
-		// 2. Broadcast given .Message to all related external chat members
-		//    on behalf of internal, workflow service, channel request
-		// err = s.eventRouter.RouteMessageFromFlow(&conversationID, req.GetMessage())
-		err = s.eventRouter.RouteMessageFromFlow(&targetChatID, sendMessage)
-		if err != nil {
-			s.log.Error().Err(err).Msg("Failed to broadcast /send message")
-			return err
-		}
-
-		return nil
-
-		// resErrorsChan := make(chan error, 2)
-		// go func() {
-		// 	if err := s.repo.CreateMessage(ctx, message); err != nil {
-		// 		resErrorsChan <- err
-		// 	} else {
-		// 		resErrorsChan <- nil
-		// 	}
-		// }()
-		// go func() {
-		// 	if err := s.eventRouter.RouteMessageFromFlow(&conversationID, req.GetMessage()); err != nil {
-		// 		if err := s.flowClient.CloseConversation(conversationID); err != nil {
-		// 			s.log.Error().Msg(err.Error())
-		// 		}
-		// 		resErrorsChan <- err
-		// 	} else {
-		// 		resErrorsChan <- nil
-		// 	}
-		// }()
-		// for i := 0; i < 2; i++ {
-		// 	if err := <-resErrorsChan; err != nil {
-		// 		s.log.Error().Msg(err.Error())
-		// 		return err
-		// 	}
-		// }
-		// return nil
-	}
-
-	// FROM: EXTERNAL (!)
-	sender, err := s.repo.CheckUserChannel(ctx, req.GetChannelId(), req.GetAuthUserId())
-	if err != nil {
-		s.log.Error().Msg(err.Error())
+		s.log.Error().Err(err).
+			Msg("FAILED Sending Message")
 		return err
 	}
-	if sender == nil {
-		s.log.Warn().Msg("channel not found")
-		return errors.BadRequest("channel not found", "")
-	}
-	// // original message to be re- send
-	// recvMessage := req.Message
-	// // historical saved store.Message
-	// sendMessage := pg.Message{
-	// 	ChannelID: sql.NullString{
-	// 		sender.ID,
-	// 		true,
-	// 	},
-	// 	ConversationID: sender.ConversationID,
-	// }
 
-	// if recvMessage.File != nil {
-	// 	if !sender.Internal {
-	// 		fileMessaged := &pbstorage.UploadFileUrlRequest{
-	// 			DomainId: sender.DomainID,
-	// 			Name:     req.Message.GetFile().Name,
-	// 			Url:      req.Message.GetFile().Url,
-	// 			Uuid:     sender.ConversationID,
-	// 			Mime:     req.Message.GetFile().Mime,
-	// 		}
-	
-	// 		res, err := s.storageClient.UploadFileUrl(context.Background(), fileMessaged)
-	// 		if err != nil {
-	// 			s.log.Error().Err(err).Msg("Failed sand message to UploadFileUrl")
-	// 			return err
-	// 		}
-			
-	// 		recvMessage.File.Url = res.Url
-	// 		recvMessage.File.Id = res.Id
-	// 		recvMessage.File.Mime = res.Mime
-	// 		recvMessage.File.Size = res.Size
-	// 	}
-
-	// 	// shallowcopy
-	// 	saveFile := *(recvMessage.File)
-	// 	saveFile.Url = "" // sanitize .url path
-
-	// 	body, err := json.Marshal(saveFile)
-	// 	if err != nil {
-	// 		s.log.Error().Msg(err.Error())
-	// 	}
-
-	// 	sendMessage.Type = "file"
-	// 	err = sendMessage.Variables.Scan(body)
-	// 	if err!=nil{
-	// 		s.log.Error().Msg(err.Error())
-	// 	}
-	// } else {
-	// 	sendMessage.Type = "text"
-	// 	sendMessage.Text = sql.NullString{
-	// 		req.GetMessage().GetText(),
-	// 		true,
-	// 	}
-	// }
-
-	// if recvMessage.Variables != nil {
-	// 	sendMessage.Variables.Scan(recvMessage.Variables)
-	// }
-	// // TODO: s.repo.SaveMessage(ctx, &recvMessage) if recvMessage.UpdatedAt.IsZero() {INSERT(SEND)} else {UPDATE(EDIT)}
-	// if err := s.repo.CreateMessage(ctx, &sendMessage); err != nil {
-	// 	s.log.Error().Err(err).Msg("Failed to store .SendMessage() history")
-	// 	return err
-	// }
-	// recvMessage.Id = sendMessage.ID
-	// // populate normalized value(s)
-	// // recvMessage = &pb.Message{
-	// // 	Id:   sendMessage.ID,
-	// // 	Type: sendMessage.Type,
-	// // 	Value: &pb.Message_Text{
-	// // 		Text: sendMessage.Text.String,
-	// // 	},
-	// // }
-	// Broadcast text message to every other channel in the room, from channel as a sender !
-	any, err := s.eventRouter.RouteMessage(sender, sendMessage) // recvMessage)
-	if err != nil {
-		s.log.Warn().Msg(err.Error())
-		return err
-	}
-	// Otherwise, if NO-ONE in the room - route message to the chat-flow !
-	if !sender.Internal && !any {
-		// err = s.flowClient.SendMessage(channel.ConversationID, reqMessage)
-		err = s.flowClient.SendMessage(sender, sendMessage) // recvMessage)
-		if err != nil {
-			return err
-		}
-	}
-	
-	return nil*/
+	return nil
 }
 
 // StartConversation starts NEW chat@bot(workflow/schema) session
@@ -1304,7 +525,7 @@ func (s *chatService) StartConversation(
 	return nil
 }
 
-func (s *chatService) CloseConversation(
+/*func (s *chatService) CloseConversation(
 	ctx context.Context,
 	req *pb.CloseConversationRequest,
 	res *pb.CloseConversationResponse,
@@ -1387,6 +608,113 @@ func (s *chatService) CloseConversation(
 	// 3. Mark .conversation and all its related .channel members as "closed" !
 	// NOTE: - delete: chat.confirmation; - delete: chat.flow.node
 	err = s.closeConversation(ctx, &conversationID)
+	if err != nil {
+		s.log.Error().Err(err).Msg("Failed to close chat channels")
+		return err
+	}
+
+	// +OK
+	return nil
+}*/
+
+func (s *chatService) CloseConversation(
+	ctx context.Context,
+	req *pb.CloseConversationRequest,
+	res *pb.CloseConversationResponse,
+) error {
+	
+	s.log.Trace().
+		Str("conversation_id", req.GetConversationId()).
+		Str("cause", req.GetCause()).
+		Str("closer_channel_id", req.GetCloserChannelId()).
+		Msg("CLOSE Conversation")
+
+	var (
+
+		// localtime = app.CurrentTime()
+
+		senderFromID = req.GetAuthUserId()
+		senderChatID = req.GetCloserChannelId()
+		
+		targetChatID = req.GetConversationId()
+	)
+
+	if senderChatID == "" {
+		senderChatID = targetChatID
+		if senderChatID == "" {
+			return errors.BadRequest(
+				"chat.close.channel.from.required",
+				"close: disposition channel ID required",
+			)
+		}
+	}
+
+	// region: lookup target chat session by unique sender chat channel id
+	chat, err := s.repo.GetSession(ctx, senderChatID)
+
+	if err != nil {
+		// lookup operation error
+		return err
+	}
+
+	if chat == nil || chat.ID != senderChatID {
+		// sender channel ID not found
+		return errors.BadRequest(
+			"chat.close.channel.from.not_found",
+			"close: channel ID=%s not found or been closed",
+			 senderChatID,
+		)
+	}
+
+	if senderFromID != 0 && chat.User.ID != senderFromID {
+		// mismatch sender contact ID
+		return errors.BadRequest(
+			"chat.close.channel.user.invalid",
+			"close: channel ID=%s FROM user ID=%d is invalid",
+			 senderChatID, senderFromID,
+		)
+	}
+
+	if chat.IsClosed() {
+		// // sender channel is already closed !
+		// return errors.BadRequest(
+		// 	"chat.close.channel.from.closed",
+		// 	"close: FROM channel ID=%s is already closed",
+		// 	 senderChatID,
+		// )
+
+		// Make idempotent !
+		return nil
+	}
+
+	if targetChatID == "" {
+		targetChatID = chat.Invite
+
+	} else if !strings.EqualFold(chat.Invite, targetChatID) {
+		// invalid target CHAT conversation ID
+		return errors.BadRequest(
+			"chat.close.conversation.invalid",
+			"close: conversation ID=%s FROM channel ID=%s is invalid",
+			 targetChatID, senderChatID,
+		)
+	}
+
+	// sender := chat.Channel
+	// endregion
+
+	text := req.GetCause()
+
+	_, err = s.sendChatClosed(ctx, chat, text)
+
+	if err != nil {
+		s.log.Error().Err(err).
+			Msg("FAILED Notify Chat Members")
+		// return err
+	}
+
+	// Mark ALL chat members as CLOSED !
+	// NOTE: - delete: chat.confirmation; - delete: chat.flow.node
+	err = s.closeConversation(ctx, &targetChatID)
 	if err != nil {
 		s.log.Error().Err(err).Msg("Failed to close chat channels")
 		return err
@@ -1499,28 +827,73 @@ func (s *chatService) JoinConversation(
 	req *pb.JoinConversationRequest,
 	res *pb.JoinConversationResponse,
 ) error {
+
+	from := req.GetAuthUserId() // FROM
+	token := req.GetInviteId()  // AUTH
+
+	if from == 0 {
+		return errors.BadRequest(
+			"chat.join.user.required",
+			"join: user authentication required",
+		)
+	}
+	
+	if token == "" {
+		return errors.BadRequest(
+			"chat.join.invite.required",
+			"join: invite token required but missing",
+		)
+	}
+	
 	s.log.Trace().
-		Str("invite_id", req.GetInviteId()).
-		Msg("join conversation")
-	invite, err := s.repo.GetInviteByID(ctx, req.GetInviteId())
+		Int64("user_id", from).
+		Str("invite_id", token).
+		Msg("JOIN Conversation")
+	
+	invite, err := s.repo.GetInviteByID(ctx, token)
+	
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		s.log.Error().Err(err).
+			Str("invite_id", token).
+			Msg("FAILED Lookup INVITE token")
 		return err
 	}
-	if invite == nil || invite.UserID != req.GetAuthUserId() {
-		s.log.Warn().Msg("invitation not found")
-		return errors.BadRequest("invitation not found", "")
+
+	found := invite != nil
+	found = found && invite.ID == token // req.InviteId
+	found = found && invite.UserID == from // req.AuthUserId
+	found = found && invite.ClosedAt.Time.IsZero() // NOT Closed !
+
+	if !found {
+		// s.log.Warn().Msg("invitation not found")
+		return errors.NotFound(
+			"chat.invite.not_found",
+			"join: invite token %s is invalid or already used",
+			 token,
+		)
 	}
-	user, err := s.repo.GetWebitelUserByID(ctx, invite.UserID)
+
+	user, err := s.repo.GetWebitelUserByID(ctx, from)
+
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		s.log.Error().Err(err).
+			Int64("user_id", invite.UserID).
+			Int64("domain_id", invite.DomainID).
+			Msg("FAILED Lookup Chat User")
 		return err
 	}
+
 	if user == nil || user.DomainID != invite.DomainID {
-		s.log.Warn().Msg("user not found")
-		return errors.BadRequest("user not found", "")
+		// s.log.Warn().Msg("user not found")
+		return errors.NotFound(
+			"chat.user.not_found",
+			"join: user ID=%d not found",
+			 from,
+		)
 	}
+
 	channel := &pg.Channel{
+		ID:             invite.ID, // FROM: INVITE token !
 		Type:           "webitel",
 		Internal:       true,
 		ConversationID: invite.ConversationID,
@@ -1528,19 +901,21 @@ func (s *chatService) JoinConversation(
 		DomainID:       invite.DomainID,
 		Name:           user.Name,
 		JoinedAt:       sql.NullTime{
-			Time:       time.Now().UTC(),
+			Time:       app.CurrentTime().UTC(),
 			Valid:      true,
 		},
 		Properties:     invite.Variables,
 	}
+
 	if !invite.InviterChannelID.Valid {
 		channel.FlowBridge = true
 	}
+
 	if err := s.repo.WithTransaction(func(tx *sqlx.Tx) error {
 		if err := s.repo.CreateChannelTx(ctx, tx, channel); err != nil {
 			return err
 		}
-		if err := s.repo.CloseInviteTx(ctx, tx, req.GetInviteId()); err != nil {
+		if _, err := s.repo.CloseInviteTx(ctx, tx, req.GetInviteId()); err != nil {
 			return err
 		}
 		res.ChannelId = channel.ID
@@ -1549,10 +924,22 @@ func (s *chatService) JoinConversation(
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	if err := s.eventRouter.RouteJoinConversation(channel, &invite.ConversationID); err != nil {
-		s.log.Warn().Msg(err.Error())
-		return err
+
+	// NOTIFY Related Chat Members !
+	err = s.eventRouter.RouteJoinConversation(
+		channel, &invite.ConversationID,
+	)
+
+	if err != nil {
+		s.log.Error().Err(err).
+			Str("event", "joined").
+			Str("invite_id", invite.ID). // TODO: same as NEW channel.ID
+			Str("conversation_id", invite.ConversationID).
+			Int64("user_id", invite.UserID).
+			Msg("FAILED Notify Chat Members")
+		// return err // NON Fatal !
 	}
+
 	return nil
 }
 
@@ -1570,7 +957,7 @@ func (s *chatService) LeaveConversation(
 		Int64("auth_user_id", userID).
 		Str("channel_id", channelID).
 		Str("conversation_id", conversationID).
-		Msg("leave conversation")
+		Msg("LEAVE Conversation")
 	
 	sender, err := s.repo.CheckUserChannel(ctx, channelID, userID)
 	if err != nil {
@@ -1645,13 +1032,15 @@ func (s *chatService) InviteToConversation(
 		Int64("timeout_sec", req.GetTimeoutSec()).
 		Int64("auth_user_id", req.GetAuthUserId()).
 		// Bool("from_flow", req.GetFromFlow()).
-		Msg("invite to conversation")
+		Msg("INVITE TO Conversation")
+	
 	servName := s.authClient.GetServiceName(&ctx)
 	if servName != "workflow" &&
 		(req.GetInviterChannelId() == "" || req.GetAuthUserId() == 0) {
 		s.log.Error().Msg("failed auth")
 		return errors.BadRequest("failed auth", "")
 	}
+
 	domainID := req.GetDomainId()
 	invite := &pg.Invite{
 		UserID:         req.GetUser().GetUserId(),
@@ -1676,24 +1065,67 @@ func (s *chatService) InviteToConversation(
 			return errors.BadRequest("channel not found", "")
 		}
 		invite.InviterChannelID = sql.NullString{
-			req.GetInviterChannelId(),
-			true,
+			String: req.GetInviterChannelId(), Valid: true,
 		}
 	}
 	if err := s.repo.CreateInvite(ctx, invite); err != nil {
-		s.log.Error().Msg(err.Error())
+		s.log.Error().Err(err).Msg("FAILED Create INVITE Token")
 		return err
 	}
 	conversation, err := s.repo.GetConversations(ctx, req.GetConversationId(), 0, 0, nil, nil, 0, false, 0, 0)
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		s.log.Error().Err(err).
+			Str("id", req.ConversationId).
+			Msg("FAILED Lookup Conversation")
 		return err
 	}
 	if conversation == nil {
-		s.log.Error().Msg("conversation not found")
-		return errors.BadRequest("conversation not found", "")
+		// s.log.Error().Msg("conversation not found")
+		return errors.NotFound(
+			"chat.conversation.not_found",
+			"chat: conversation ID=%s not found",
+			 req.ConversationId,
+		)
 	}
-	resErrorsChan := make(chan error, 2)
+
+	await := make(chan error, 2)
+	for _, async := range []func() {
+		func() {
+			// 1. NOTIFY: Invited User session(s) !
+			await <- s.eventRouter.SendInviteToWebitelUser(
+				transformConversationFromRepoModel(conversation[0]), invite,
+			)
+		},
+		func() {
+			// 2. NOTIFY: All related Chat members !
+			await <- s.eventRouter.RouteInvite(
+				&invite.ConversationID, &invite.UserID,
+			)
+		},
+	} {
+		go async()
+	}
+
+	for i := 0; i < 2; i++ {
+		err = <-await
+		if err != nil {
+			s.log.Error().Err(err).Msg("FAILED Notify Chat Members")
+			return err
+		}
+	}
+	close(await)
+
+
+	// // 1. NOTIFY: Invited User session(s) !
+	// err = s.eventRouter.SendInviteToWebitelUser(
+	// 	transformConversationFromRepoModel(conversation[0]), invite,
+	// )
+	// // 2. NOTIFY: All related Chat members !
+	// err = s.eventRouter.RouteInvite(
+	// 	&invite.ConversationID, &invite.UserID,
+	// )
+	
+	/*resErrorsChan := make(chan error, 2)
 	go func() {
 		if err := s.eventRouter.SendInviteToWebitelUser(transformConversationFromRepoModel(conversation[0]), invite); err != nil {
 			resErrorsChan <- err
@@ -1713,11 +1145,11 @@ func (s *chatService) InviteToConversation(
 			s.log.Error().Msg(err.Error())
 			return err
 		}
-	}
-	if req.GetTimeoutSec() != 0 {
+	}*/
+	if ttl := req.GetTimeoutSec(); ttl > 0 {
 		go func() {
-			time.Sleep(time.Second * time.Duration(req.GetTimeoutSec()))
-			if val, err := s.repo.GetInviteByID(context.Background(), invite.ID); err != nil {
+			time.Sleep(time.Duration(ttl) * time.Second) // seconds
+			/*if val, err := s.repo.GetInviteByID(context.Background(), invite.ID); err != nil {
 				s.log.Error().Msg(err.Error())
 			} else if val != nil {
 				s.log.Trace().
@@ -1736,6 +1168,49 @@ func (s *chatService) InviteToConversation(
 				if err := s.repo.CloseInvite(context.Background(), val.ID); err != nil {
 					s.log.Error().Msg(err.Error())
 				}
+			}*/
+			closed, err := s.repo.CloseInvite(context.Background(), invite.ID)
+
+			if err != nil {
+				s.log.Error().Err(err).
+					Str("invite_id", invite.ID).
+					Int64("user_id", invite.UserID).
+					Str("conversation_id", invite.ConversationID).
+					Msg("FAILED Closing INVITE")
+				return
+			}
+			
+			if !closed {
+				// NOTE: invalid invite_id, already closed or joined !
+				return
+			}
+			// NOTE: closed !
+			s.log.Warn().
+
+				Str("invite_id", invite.ID).
+				Int64("user_id", invite.UserID).
+				Str("conversation_id", invite.ConversationID).
+
+				Msg("INVITE Timeout")
+			
+			if req.InviterChannelId == "" { // FROM: workflow !
+				
+				err = s.flowClient.BreakBridge(
+					req.ConversationId, flow.TimeoutCause,
+				)
+				
+				if err != nil {
+					s.log.Error().Msg(err.Error())
+				}
+			}
+			// NOTIFY: timed out !
+			err = s.eventRouter.SendDeclineInviteToWebitelUser(
+				&domainID, &invite.ConversationID, &invite.UserID, &invite.ID,
+			)
+
+			if err != nil {
+				s.log.Error().Err(err).
+					Msg("FAILED Notify User INVITE Timeout")
 			}
 
 		}()
@@ -1749,22 +1224,135 @@ func (s *chatService) DeclineInvitation(
 	req *pb.DeclineInvitationRequest,
 	res *pb.DeclineInvitationResponse,
 ) error {
+	
 	userID := req.GetAuthUserId()
 	conversationID := req.GetConversationId()
+	
 	s.log.Trace().
 		Str("invite_id", req.GetInviteId()).
 		Str("conversation_id", conversationID).
 		Int64("auth_user_id", userID).
-		Msg("decline invitation")
+		Msg("DECLINE Invitation")
+	
 	invite, err := s.repo.GetInviteByID(ctx, req.GetInviteId())
+
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	if invite == nil || invite.UserID != req.GetAuthUserId() {
-		return errors.BadRequest("invite not found", "")
+
+	found := invite != nil
+
+	found = found && invite.ID == req.InviteId
+	found = found && invite.UserID == req.AuthUserId
+	found = found && invite.ClosedAt.Time.IsZero() // NOT Closed yet !
+
+	if !found {
+		// return errors.BadRequest(
+		// 	"chat.decline.token.invalid",
+		// 	"decline: invite %s token invalid or been closed",
+		// 	 req.InviteId,
+		// )
+		// Be loyal and idempotent !
+		return nil
 	}
-	resErrorsChan := make(chan error, 3)
+
+	// PERFORM: Mark invite token as 'closed' !
+	closed, err := s.repo.CloseInvite(ctx, invite.ID)
+
+	if err != nil {
+		re := errors.FromError(err)
+		if re.Id == "" {
+			code := http.StatusInternalServerError
+			re.Id = "chat.invite.decline.error"
+			re.Code = (int32)(code)
+			re.Status = http.StatusText(code)
+			// re.Detail = err.Error() // Something went wrong !
+		}
+		return re
+	}
+
+	if !closed {
+		// NOTE: Not found or already closed !
+		// Be loyal and idempotent !
+		return nil // OK !
+	}
+	// INVITED FROM: workflow ?
+	if !invite.InviterChannelID.Valid {
+		_ = s.flowClient.BreakBridge(
+			invite.ConversationID, flow.DeclineInvitationCause,
+		)
+		// if err != nil {
+		// 	// LOG: itself !
+		// }
+	}
+	// parallel
+	await := make(chan error, 2)
+	for _, async := range []func() {
+		func() {
+			// NOTIFY: All related Chat members !
+			await <- s.eventRouter.RouteDeclineInvite(
+				&invite.UserID, &invite.ConversationID,
+			)
+		},
+		func() {
+			// NOTIFY: Invited User session(s) !
+			await <- s.eventRouter.SendDeclineInviteToWebitelUser(
+				&invite.DomainID, &invite.ConversationID, &invite.UserID, &invite.ID,
+			)
+		},
+	} {
+		go async()
+	}
+
+	for i := 0; i < 2; i++ {
+		if err = <-await; err != nil {
+			s.log.Error().Err(err).
+				Str("event", "declined").
+				Str("invite_id", invite.ID).
+				Str("conversation_id", invite.ConversationID).
+				Int64("user_id", invite.UserID).
+				Msg("FAILED Notify Chat Members")
+			// return err // NON Fatal !
+		}
+	}
+	close(await)
+
+
+
+	// // NOTE: guess, this method publishes {decline_invite} for all chat related members
+	// //       but events are not appointed to specific channel(s), they all are the same !..
+	
+	// // NOTIFY: Related Chat Members !
+	// err = s.eventRouter.RouteDeclineInvite(
+	// 	&invite.UserID, &invite.ConversationID,
+	// )
+
+	// // if err != nil {
+	// // 	// LOG: itself !
+	// // }
+
+	// // NOTIFY: Invited User Session(s) !
+	// err = s.eventRouter.SendDeclineInviteToWebitelUser(
+	// 	&invite.DomainID, &invite.ConversationID, &invite.UserID, &invite.ID,
+	// )
+
+	// if err != nil {
+
+	// 	s.log.Error().Err(err).
+	// 		Str("event", "decline").
+	// 		Str("invite_id", invite.ID).
+	// 		Str("conversation_id", invite.ConversationID).
+	// 		Int64("user_id", invite.UserID).
+	// 		Msg("FAILED Notify User")
+	// }
+
+	// Be loyal and idempotent !
+	return nil // OK !
+
+
+
+	/*resErrorsChan := make(chan error, 3)
 	go func() {
 		if !invite.InviterChannelID.Valid {
 			if err := s.flowClient.BreakBridge(invite.ConversationID, flow.DeclineInvitationCause); err != nil {
@@ -1775,7 +1363,7 @@ func (s *chatService) DeclineInvitation(
 		resErrorsChan <- nil
 	}()
 	go func() {
-		if err := s.repo.CloseInvite(ctx, req.GetInviteId()); err != nil {
+		if _, err := s.repo.CloseInvite(ctx, req.GetInviteId()); err != nil {
 			resErrorsChan <- err
 		} else {
 			resErrorsChan <- nil
@@ -1801,7 +1389,7 @@ func (s *chatService) DeclineInvitation(
 			return err
 		}
 	}
-	return nil
+	return nil*/
 }
 
 func (s *chatService) WaitMessage(ctx context.Context, req *pb.WaitMessageRequest, res *pb.WaitMessageResponse) error {
@@ -2943,6 +2531,154 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 
 		_ = c.repo.BindMessage(ctx, notify.Id, binding)
 	}
+
+	return sent, nil // err
+}
+
+// sendClosed publishes final message to all related members
+// Override: event_router.RouteCloseConversation[FromFlow]()
+func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session, text string) (sent int, err error) {
+
+	localtime := app.CurrentTime()
+	// FROM
+	sender := chatRoom.Channel
+	// // TO
+	// if len(chatRoom.Members) == 0 {
+	// 	return 0, nil // NO ANY recepient(s) !
+	// }
+
+	if text == "" {
+		text = "Conversation closed"
+	}
+
+	// publish
+	var (
+
+		data []byte
+		header map[string]string
+
+		notice *pb.Message
+	)
+	// Broadcast message to every member in the room,
+	// in front of chaRoom.Channel as a sender !
+	members := make([]*app.Channel, 1+len(chatRoom.Members))
+	
+	members[0] = sender
+	copy(members[1:], chatRoom.Members)
+	
+	for _, member := range members { // chatRoom.Members {
+		
+		if member.IsClosed() {
+			continue // omit send TO channel: closed !
+		}
+
+		switch member.Channel {
+
+		case "websocket": // TO: engine (internal)
+			// s.eventRouter.sendEventToWebitelUser()
+			// NOTE: if sender is an internal chat@channel user (operator)
+			//       we publish message for him (author) as a member too
+			//       to be able to detect chat updates on other browser tabs ...
+			if data == nil {
+				// basic
+				// timestamp := notify.UpdatedAt
+				// if timestamp == 0 {
+				// 	timestamp = notify.CreatedAt
+				// }
+				notice := events.CloseConversationEvent{
+					BaseEvent: events.BaseEvent{
+						ConversationID: sender.Chat.Invite, // hidden channel.conversation_id
+						// Timestamp:      timestamp, // millis
+						Timestamp: app.DateTimestamp(localtime),
+					},
+					FromChannelID: sender.Chat.ID,
+					Cause:         text,
+				}
+				// init once
+				data, _ = json.Marshal(notice)
+				header = map[string]string {
+					"content_type": "text/json",
+				}
+			}
+
+			agent := service.Options().Broker
+			err = agent.Publish(fmt.Sprintf("event.%s.%d.%d",
+				events.CloseConversationEventType, member.DomainID, member.User.ID,
+			), &broker.Message{
+				Header: header,
+				Body:   data,
+			})
+
+		case "chatflow":  // TO: workflow (internal)
+			// NOTE: we do not send messages to chat@bot channel
+			// until there is not a private (one-to-one) chat room
+			if member == sender { // e == 0
+				continue
+			}
+			// Send workflow channel .Break() message to stop chat.flow routine ...
+			// FIXME: - delete: chat.confirmation; - delete: chat.flow.node
+			err = c.flowClient.CloseConversation(member.Chat.ID) // .ConversationID
+			
+			// if err != nil {
+			// 	c.log.Error().Err(err).
+			// 		Msg("FAILED Break chat@flow routine")
+			// 	// return err
+			// }
+
+		default:          // TO: webitel.chat.bot (external)
+			// s.eventRouter.sendMessageToBotUser()
+			
+			// if member == sender { // e == 0
+			// 	continue
+			// }
+
+			if notice == nil {
+				notice = &pb.Message{
+
+					Id:    0,
+
+					Type: "closed", // "text",
+					Text:  text,
+					
+					CreatedAt: app.DateTimestamp(localtime),
+				}
+			}
+			
+			err = c.eventRouter.SendMessageToGateway(member, notice)
+		}
+
+		(sent)++ // calc active recepients !
+
+		var trace *zerolog.Event
+		
+		if err != nil {
+			// FIXME: just log failed attempt ?
+			trace = c.log.Error().Err(err)
+		} else {
+			trace = c.log.Trace()
+		}
+
+		trace.
+
+			Str("chat-id", member.Chat.ID).
+			Str("channel", member.Chat.Channel).
+			Str("TO",      member.User.FirstName).
+
+			Msg("CLOSED")
+	}
+	// // Otherwise, if NO-ONE in the room - route message to the chat-flow !
+	// if sent == 0 && chatflow != nil {
+	// 	// MUST: (chatflow != nil)
+	// 	err = c.flowClient.SendMessageV1(chatflow, notify)
+
+	// 	if err != nil {
+	// 		c.log.Error().Err(err).Str("chat-id", chatflow.Chat.ID).Msg("SEND TO chat@flow")
+	// 	}
+	
+	// } else if rebind {
+
+	// 	_ = c.repo.BindMessage(ctx, notify.Id, binding)
+	// }
 
 	return sent, nil // err
 }

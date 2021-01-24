@@ -363,44 +363,68 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 }
 
 func (e *eventRouter) SendDeclineInviteToWebitelUser(domainID *int64, conversationID *string, userID *int64, inviteID *string) error {
-	body, _ := json.Marshal(events.DeclineInvitationEvent{
-		BaseEvent: events.BaseEvent{
-			ConversationID: *conversationID,
-			Timestamp:      time.Now().Unix() * 1000,
+	
+	data, err := json.Marshal(
+		events.DeclineInvitationEvent{
+			BaseEvent: events.BaseEvent{
+				ConversationID: *conversationID,
+				Timestamp:      time.Now().Unix() * 1000,
+			},
+			InviteID: *inviteID,
+			UserID:   *userID,
 		},
-		InviteID: *inviteID,
-		UserID:   *userID,
-	})
-	msg := &broker.Message{
+	)
+
+	if err != nil {
+		// Encode error !
+		return err
+	}
+
+	err = e.broker.Publish(fmt.Sprintf("event.%s.%d.%d",
+		events.DeclineInvitationEventType, *domainID, *userID,
+	), &broker.Message{
 		Header: map[string]string{
 			"content_type": "text/json",
 		},
-		Body: body,
-	}
-	if err := e.broker.Publish(fmt.Sprintf("event.%s.%v.%v", events.DeclineInvitationEventType, *domainID, *userID), msg); err != nil {
+		Body: data,
+	})
+
+	if err != nil {
+		// Publish error !
 		return err
 	}
+
 	return nil
 }
 
 func (e *eventRouter) SendUpdateChannel(channel *store.Channel, updated_at int64) error {
-	body, _ := json.Marshal(events.UpdateChannelEvent{
-		BaseEvent: events.BaseEvent{
-			ConversationID: channel.ConversationID,
-			Timestamp:      time.Now().Unix() * 1000,
+
+	data, _ := json.Marshal(
+		events.UpdateChannelEvent{
+			BaseEvent: events.BaseEvent{
+				ConversationID: channel.ConversationID,
+				Timestamp:      time.Now().Unix() * 1000,
+			},
+			UpdatedAt: updated_at,
+			ChannelID: channel.ID,
 		},
-		UpdatedAt: updated_at,
-		ChannelID: channel.ID,
-	})
-	msg := &broker.Message{
+	)
+
+	send := &broker.Message{
 		Header: map[string]string{
 			"content_type": "text/json",
 		},
-		Body: body,
+		Body: data,
 	}
-	if err := e.broker.Publish(fmt.Sprintf("event.%s.%v.%v", events.UpdateChannelEventType, channel.DomainID, channel.UserID), msg); err != nil {
+
+	err := e.broker.Publish(fmt.Sprintf("event.%s.%d.%d",
+		events.UpdateChannelEventType, channel.DomainID, channel.UserID,
+	),  send)
+
+	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -456,7 +480,8 @@ func (e *eventRouter) RouteJoinConversation(channel *store.Channel, conversation
 					Str("connection", item.Connection.String).
 					Msgf("failed to send join conversation event to channel: %s", err.Error())
 			}
-		default:
+		default: // TO: webitel.chat.bot (gateway)
+			// TODO: notify message.new_chat_members
 		}
 	}
 	return nil

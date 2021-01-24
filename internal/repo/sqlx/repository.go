@@ -33,7 +33,7 @@ type Repository interface {
 	) ([]*Channel, error)
 	CreateChannelTx(ctx context.Context, tx *sqlx.Tx, c *Channel) error
 	CloseChannelsTx(ctx context.Context, tx *sqlx.Tx, conversationID string) error
-	CloseInviteTx(ctx context.Context, tx *sqlx.Tx, inviteID string) error
+	CloseInviteTx(ctx context.Context, tx *sqlx.Tx, inviteID string) (bool, error)
 	CloseConversationTx(ctx context.Context, tx *sqlx.Tx, conversationID string) error
 }
 
@@ -102,8 +102,8 @@ type ClientRepository interface {
 
 type InviteRepository interface {
 	CreateInvite(ctx context.Context, m *Invite) error
-	CloseInvite(ctx context.Context, inviteID string) error
 	GetInviteByID(ctx context.Context, id string) (*Invite, error)
+	CloseInvite(ctx context.Context, inviteID string) (bool, error)
 }
 
 type MessageRepository interface {

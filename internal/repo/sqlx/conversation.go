@@ -744,12 +744,17 @@ func schemaConversationError(err error) error {
 // $2 - local timestamp
 const psqlSessionCloseQ =
 `WITH c0 AS (
+  UPDATE chat.invite
+     SET closed_at=$2
+   WHERE conversation_id=$1
+     AND closed_at ISNULL
+), c1 AS (
   DELETE FROM chat.conversation_confirmation
    WHERE conversation_id=$1
-), c1 AS (
+), c2 AS (
   DELETE FROM chat.conversation_node
    WHERE conversation_id=$1
-), c2 AS (
+), c3 AS (
   UPDATE chat.conversation
      SET closed_at=$2
    WHERE id=$1

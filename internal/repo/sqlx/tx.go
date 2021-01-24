@@ -188,10 +188,11 @@ func (repo *sqlxRepository) CloseConversationTx(ctx context.Context, tx *sqlx.Tx
 	return err
 }
 
-func (repo *sqlxRepository) CloseInviteTx(ctx context.Context, tx *sqlx.Tx, inviteID string) error {
-	_, err := tx.ExecContext(ctx, `update chat.invite set closed_at=$1 where id=$2`, sql.NullTime{
-		Valid: true,
-		Time:  time.Now(),
-	}, inviteID)
-	return err
+func (repo *sqlxRepository) CloseInviteTx(ctx context.Context, tx *sqlx.Tx, inviteID string) (bool, error) {
+	return CloseInvite(ctx, tx, inviteID)
+	// _, err := tx.ExecContext(ctx, `update chat.invite set closed_at=$1 where id=$2`, sql.NullTime{
+	// 	Valid: true,
+	// 	Time:  time.Now(),
+	// }, inviteID)
+	// return err
 }
