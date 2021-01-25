@@ -1,11 +1,11 @@
 package main
 
 import (
-	
 
 	"fmt"
-	"time"
+	"mime"
 	"path"
+	"time"
 	"strconv"
 	"strings"
 	"context"
@@ -2177,9 +2177,8 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 
 		ok := href != nil
 
+		ok = ok && href.IsAbs() // ok = ok && strings.HasPrefix(href.Scheme, "http")
 		ok = ok && href.Host != ""
-		// ok = ok && href.IsAbs()
-		ok = ok && strings.HasPrefix(href.Scheme, "http")
 
 		if !ok {
 			return nil, errors.BadRequest(
@@ -2197,10 +2196,17 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			switch doc.Name {
 			case "", ".", "/": // See: path.Base()
 				return nil, errors.BadRequest(
-					"chat.send.document.name.missing",
+					"chat.send.document.name.invalid",
 					"send: document filename is missing or invalid",
 				)
 			}
+		}
+
+		// DETECT: MIME Content-Type by URL filename extension
+		if doc.Mime == "" {
+			doc.Mime = mime.TypeByExtension(
+				path.Ext(doc.Name),
+			)
 		}
 
 		// .Caption
