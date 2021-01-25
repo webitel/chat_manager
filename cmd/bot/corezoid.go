@@ -329,9 +329,10 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			Url: href.String(), // link,
 		}
 		// Optional. Caption or description ...
-		if !strings.HasPrefix(text, link) {
-			sendMessage.Text = text
+		if strings.HasPrefix(text, link) {
+			text = "" // hide file's hyperlink text
 		}
+		sendMessage.Text = text
 	}
 	// else { // TODO: nothing; We already assign message 'text' by default ! }
 	// endregion
