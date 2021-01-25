@@ -329,7 +329,9 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			Url: href.String(), // link,
 		}
 		// Optional. Caption or description ...
-		sendMessage.Text = text
+		if text != link {
+			sendMessage.Text = text
+		}
 	}
 	// else { // TODO: nothing; We already assign message 'text' by default ! }
 	// endregion
