@@ -41,7 +41,10 @@ func (_ *TelegramBotV1) String() string {
 // NewTelegramBotV1 initialize new agent.profile service provider
 func NewTelegramBotV1(agent *Gateway) (Provider, error) {
 
-	token, ok := agent.Profile.Variables["token"]
+	config := agent.Profile
+	profile := config.GetVariables()
+
+	token, ok := profile["token"]
 	
 	if !ok {
 		
@@ -57,6 +60,28 @@ func NewTelegramBotV1(agent *Gateway) (Provider, error) {
 		botAPI *telegram.BotAPI
 		httpClient *http.Client
 	)
+
+	trace := profile["trace"]
+	if on, _ := strconv.ParseBool(trace); on {
+		var transport http.RoundTripper
+		if httpClient != nil {
+			transport = httpClient.Transport
+		}
+		if transport == nil {
+			transport = http.DefaultTransport
+		}
+		transport = &transportDump{
+			r: transport,
+			WithBody: true,
+		}
+		if httpClient == nil {
+			httpClient = &http.Client{
+				Transport: transport,
+			}
+		} else {
+			httpClient.Transport = transport
+		}
+	}
 
 	// httpClient = &http.Client{
 	// 	Transport: &transportDump{

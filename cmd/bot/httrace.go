@@ -72,7 +72,7 @@ func dumpMiddleware(next http.Handler) http.Handler {
 		
 		reqId, _ := uuid.NewRandom() // fmt.Sprintf("%p", h.Context())
 		
-		if dump, err := httputil.DumpRequest(r, true); err != nil {
+		if dump, err := httputil.DumpRequest(r, r.ContentLength > 0); err != nil {
 			stdlog.Tracef("httputil.DumpRequest(error): %v", err)
 		} else {
 			for dump[len(dump)-1] == '\n' {
@@ -86,7 +86,7 @@ func dumpMiddleware(next http.Handler) http.Handler {
 		defer func() {
 
 			rw := recorder.Result()
-			if dump, err := httputil.DumpResponse(rw, true); err != nil {
+			if dump, err := httputil.DumpResponse(rw, rw.ContentLength > 0); err != nil {
 				stdlog.Tracef("httputil.DumpResponse(error): %v", err)
 			} else {
 				for dump[len(dump)-1] == '\n' {

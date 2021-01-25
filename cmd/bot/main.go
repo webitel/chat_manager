@@ -108,7 +108,7 @@ func main() {
 				return err
 			}
 			logger = *(stdlog)
-			
+
 			sender := service.Client() // Micro-From-Service: webitel.chat.bot
 			sender = wrapper.FromServiceId(service.Server().Options().Id, sender) // Micro-From-Id: server.DefaultId
 			agent = pbchat.NewChatService("webitel.chat.server", sender)
@@ -137,7 +137,10 @@ func main() {
 func configure() error {
 	
 	r := mux.NewRouter()
-	r.Use(dumpMiddleware)
+	
+	if cfg.LogLevel == "trace" {
+		r.Use(dumpMiddleware)
+	}
 
 	srv = NewService(&logger, agent)
 	
