@@ -308,8 +308,8 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// NOTE: Messages with third-party link(s) are NOT delivered ! That's good !
 	link := text
 	if eol := strings.IndexByte(text,'\n'); eol > 7 { // http[s]://
-		link = strings.TrimSpace(text[:eol])
-		text = strings.TrimSpace(text[eol+1:])
+		link = strings.TrimSpace(text[:eol]) // optional: trim right witespace(s)
+		text = strings.TrimSpace(text[eol+1:]) // optional: trim left witespace(s)
 	}
 	// if link != "" { // NOTE: never ! We DO NOT allow empty text message(s) }
 
@@ -329,7 +329,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			Url: href.String(), // link,
 		}
 		// Optional. Caption or description ...
-		if text != link {
+		if !strings.HasPrefix(text, link) {
 			sendMessage.Text = text
 		}
 	}
