@@ -261,7 +261,7 @@ func (s *chatService) SendMessage(
 		// mismatch sender contact ID
 		return errors.BadRequest(
 			"chat.send.channel.user.mismatch",
-			"send: FROM channel_id=%s user_id=%d mismatch",
+			"send: FROM channel ID=%s user ID=%d mismatch",
 			 senderChatID, senderFromID,
 		)
 	}
@@ -932,7 +932,7 @@ func (s *chatService) JoinConversation(
 
 	if err != nil {
 		s.log.Error().Err(err).
-			Str("event", "joined").
+			Str("event", "new_chat_member").
 			Str("invite_id", invite.ID). // TODO: same as NEW channel.ID
 			Str("conversation_id", invite.ConversationID).
 			Int64("user_id", invite.UserID).
@@ -948,46 +948,104 @@ func (s *chatService) LeaveConversation(
 	req *pb.LeaveConversationRequest,
 	res *pb.LeaveConversationResponse,
 ) error {
-	
-	userID := req.GetAuthUserId()
-	channelID := req.GetChannelId()
-	conversationID := req.GetConversationId()
+
+	var (
+
+		channelChatID  = req.GetChannelId()
+		channelFromID  = req.GetAuthUserId()
+		conversationID = req.GetConversationId()
+	)
 	
 	s.log.Trace().
-		Int64("auth_user_id", userID).
-		Str("channel_id", channelID).
+		Str("channel_id",      channelChatID).
+		Int64("auth_user_id",  channelFromID).
 		Str("conversation_id", conversationID).
 		Msg("LEAVE Conversation")
 	
-	sender, err := s.repo.CheckUserChannel(ctx, channelID, userID)
+	sender, err := s.repo.CheckUserChannel(
+		ctx, channelChatID, channelFromID,
+	)
+
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		s.log.Error().Err(err).
+			Str("channel_id", channelChatID).
+			Int64("auth_user_id", channelFromID).
+			Msg("FAILED Lookup CHAT Channel")
 		return err
 	}
+
+	found := sender != nil
+
+	found = found && strings.EqualFold(sender.ID, channelChatID)
+	found = found && sender.UserID == channelFromID
+	// found = found && sender.ClosedAt.Time.IsZero() // NOT Closed yet !
+	found = found && (conversationID == "" || strings.EqualFold(sender.ConversationID, conversationID))
 	
-	if sender == nil {
-		s.log.Warn().Msg("channel not found")
-		return errors.BadRequest("channel not found", "")
+	if !found {
+		return errors.NotFound(
+			"chat.leave.channel.from.not_found",
+			"chat: leave FROM channel ID=%s user ID=%d not found or been closed",
+			 channelChatID, channelFromID,
+		)
 	}
 
-	if conversationID != "" {
-		if conversationID != sender.ConversationID {
-			s.log.Warn().Msg("channel.conversation_id mismatch")
-			return errors.BadRequest("channel.conversation_id mismatch", "")
-		}
-	}
+	// if conversationID != "" {
+	// 	if conversationID != sender.ConversationID {
+	// 		s.log.Warn().Msg("channel.conversation_id mismatch")
+	// 		return errors.BadRequest("channel.conversation_id mismatch", "")
+	// 	}
+	// }
 	
 	// ----- PERFORM ---------------------------------
 	// 1. Mark given .channel.id as "closed" !
-	ch, err := s.repo.CloseChannel(ctx, channelID)
+	closed, err := s.repo.CloseChannel(ctx, sender.ID) // channelChatID)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	// parallel
+
+	if closed == nil {
+		// NOTE: NOT FOUND -or- already been CLOSED
+		// Loyal and idempotent !
+		return nil // OK
+	}
+
+	// PARALLEL
+	await := make(chan error, 2)
+	for _, async := range []func() {
+		func() {
+			// FIXME: why ?
+			await <- s.flowClient.BreakBridge(
+				sender.ConversationID, flow.LeaveConversationCause,
+			)
+		},
+		func() {
+			// NOTIFY: All related CHAT member(s) !
+			await <- s.eventRouter.RouteLeaveConversation(
+				closed, &sender.ConversationID,
+			)
+		},
+	} {
+		go async()
+	}
+
+	for i := 0; i < 2; i++ {
+		if err = <-await; err != nil {
+			s.log.Error().Err(err).
+				Str("event", "left_chat_member").
+				Str("channel_id", sender.ID).
+				Int64("user_id", sender.UserID).
+				Str("conversation_id", sender.ConversationID).
+				Msg("FAILED Notify Chat Members")
+			// return err // NON Fatal !
+		}
+	}
+	close(await)
+
+	/*/ parallel
 	resErrorsChan := make(chan error, 2)
 	go func() {
-		if ch.FlowBridge {
+		if closed.FlowBridge {
 			if err := s.flowClient.BreakBridge(conversationID, flow.LeaveConversationCause); err != nil {
 				resErrorsChan <- err
 				return
@@ -996,7 +1054,7 @@ func (s *chatService) LeaveConversation(
 		resErrorsChan <- nil
 	}()
 	go func() {
-		if err := s.eventRouter.RouteLeaveConversation(ch, &conversationID); err != nil {
+		if err := s.eventRouter.RouteLeaveConversation(closed, &conversationID); err != nil {
 			resErrorsChan <- err
 		} else {
 			resErrorsChan <- nil
@@ -1005,9 +1063,9 @@ func (s *chatService) LeaveConversation(
 	for i := 0; i < 2; i++ {
 		if err := <-resErrorsChan; err != nil {
 			s.log.Error().Msg(err.Error())
-			return err
+			// return err
 		}
-	}
+	}*/
 	return nil
 }
 
@@ -2489,7 +2547,13 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 				continue
 			}
 			err = c.eventRouter.SendMessageToGateway(member, notify)
-			// Merge SENT message external binding variables
+			// Merge SENT message external binding (variables)
+			if notify.Id == 0 {
+				// NOTE: there was a service-level message notification
+				//       so we omit message binding
+				continue
+			}
+
 			for key, newValue := range notify.GetVariables() {
 				if key == "" { continue }
 				oldValue, exists := binding[key]
@@ -2548,7 +2612,7 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 		}
 	
 	} else if rebind {
-
+		
 		_ = c.repo.BindMessage(ctx, notify.Id, binding)
 	}
 
@@ -2655,7 +2719,7 @@ func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session,
 			if notice == nil {
 				notice = &pb.Message{
 
-					Id:    0,
+					Id:    0, // SERVICE MESSAGE !
 
 					Type: "closed", // "text",
 					Text:  text,

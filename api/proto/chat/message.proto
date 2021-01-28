@@ -57,6 +57,11 @@ message Message {
     int64 forward_from_message_id = 13;
     // External message sent-binding to be able to identify corresponding internal message
     map<string,string> forward_from_variables = 14;
+
+    // NewChatMembers description for {"type":"joined"} notification
+    repeated Account new_chat_members = 20;
+    // LeftChatMember description for {"type":"left"} notification
+    Account left_chat_member = 21;
 }
 
 message File {

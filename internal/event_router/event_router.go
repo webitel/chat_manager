@@ -429,6 +429,7 @@ func (e *eventRouter) SendUpdateChannel(channel *store.Channel, updated_at int64
 }
 
 func (e *eventRouter) RouteJoinConversation(channel *store.Channel, conversationID *string) error {
+
 	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil)
 	if err != nil {
 		return err
@@ -436,98 +437,174 @@ func (e *eventRouter) RouteJoinConversation(channel *store.Channel, conversation
 	if otherChannels == nil {
 		return nil
 	}
-	member := events.Member{
-		ChannelID: channel.ID,
-		UserID:    channel.UserID,
-		Username:  channel.Name,
-		Type:      channel.Type,
-		Internal:  channel.Internal,
-		UpdatedAt: channel.UpdatedAt.Unix() * 1000,
-	}
-	req := events.JoinConversationEvent{
-		BaseEvent: events.BaseEvent{
-			ConversationID: *conversationID,
-			Timestamp:      time.Now().Unix() * 1000,
-		},
-		//JoinedUserID:  channel.UserID,
-		Member: member,
-		//SelfChannelID: channel.ID,
-	}
-	//selfBody, _ := json.Marshal(selfEvent)
-	//if err := e.sendEventToWebitelUser(nil, channel, events.JoinConversationEventType, selfBody); err != nil {
-	//	e.log.Error().
-	//		Str("channel_id", channel.ID).
-	//		Bool("internal", channel.Internal).
-	//		Int64("user_id", channel.UserID).
-	//		Str("conversation_id", channel.ConversationID).
-	//		Str("type", channel.Type).
-	//		Str("connection", channel.Connection.String).
-	//		Msgf("failed to send join conversation event to channel: %s", err.Error())
-	//	return err
-	//}
-	// selfEvent.SelfChannelID = ""
-	body, _ := json.Marshal(req)
+
+	var (
+		// encoded JSON message for internal chat@channel notification !
+		data []byte
+		// prepared *Message for external chat@gateway notification !
+		notice *chat.Message
+	)
+
 	for _, item := range otherChannels {
 		switch item.Type {
 		case "webitel":
-			if err := e.sendEventToWebitelUser(nil, item, events.JoinConversationEventType, body); err != nil {
-				e.log.Warn().
+			// encode message event once !
+			if len(data) == 0 {
+				event := events.JoinConversationEvent{
+					BaseEvent: events.BaseEvent{
+						ConversationID: *conversationID,
+						Timestamp:       time.Now().Unix() * 1000,
+					},
+					Member: events.Member{
+						ChannelID: channel.ID,
+						UserID:    channel.UserID,
+						Username:  channel.Name,
+						Type:      channel.Type,
+						Internal:  channel.Internal,
+						UpdatedAt: channel.UpdatedAt.Unix() * 1000,
+					},
+				}
+				data, _ = json.Marshal(event)
+			}
+			
+			if err := e.sendEventToWebitelUser(nil, item, events.JoinConversationEventType, data); err != nil {
+				e.log.Warn().Err(err).
+					Str("notify", "new_chat_member").
 					Str("channel_id", item.ID).
-					Bool("internal", item.Internal).
 					Int64("user_id", item.UserID).
 					Str("conversation_id", item.ConversationID).
-					Str("type", item.Type).
-					Str("connection", item.Connection.String).
-					Msgf("failed to send join conversation event to channel: %s", err.Error())
+					Str("channel_type", item.Type).
+					Msg("FAILED To NOTIFY Channel")
 			}
 		default: // TO: webitel.chat.bot (gateway)
 			// TODO: notify message.new_chat_members
+			// prepare message event once !
+			if notice == nil {
+				notice = &chat.Message{
+					Id:    0, // SERVICE MESSAGE !
+					Type: "joined", // "event/joined",
+					NewChatMembers: []*chat.Account{
+						&chat.Account{
+							Id:        channel.UserID,
+							Channel:   "user",
+							Contact:   "",
+							FirstName: channel.Name,
+							LastName:  "",
+							Username:  "",
+						},
+					},
+				}
+			}
+
+			err = e.sendMessageToBotUser(channel, item, notice)
+
+			if err != nil {
+				e.log.Warn().Err(err).
+					Str("notify", "new_chat_member").
+					Str("channel_id", item.ID).
+					Int64("user_id", item.UserID).
+					Str("conversation_id", item.ConversationID).
+					Str("channel_type", item.Type).
+					Str("gateway_id", item.Connection.String).
+					Msg("FAILED To NOTIFY Gateway")
+			}
 		}
 	}
 	return nil
 }
 
 func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversationID *string) error {
-	body, _ := json.Marshal(events.LeaveConversationEvent{
-		BaseEvent: events.BaseEvent{
-			ConversationID: *conversationID,
-			Timestamp:      time.Now().Unix() * 1000,
+	// TO: @broker  (engine, callcenter, etc.)
+	internalM, _ := json.Marshal(
+		events.LeaveConversationEvent{
+			BaseEvent: events.BaseEvent{
+				ConversationID: *conversationID,
+				Timestamp:      time.Now().Unix() * 1000,
+			},
+			LeavedChannelID: channel.ID,
 		},
-		LeavedChannelID: channel.ID,
-	})
-	if err := e.sendEventToWebitelUser(nil, channel, events.LeaveConversationEventType, body); err != nil {
-		e.log.Warn().
+	)
+
+	err := e.sendEventToWebitelUser(
+		nil, channel, events.LeaveConversationEventType, internalM,
+	)
+	
+	if err != nil {
+		e.log.Warn().Err(err).
+			Str("notify", "new_chat_member").
 			Str("channel_id", channel.ID).
-			Bool("internal", channel.Internal).
 			Int64("user_id", channel.UserID).
 			Str("conversation_id", channel.ConversationID).
-			Str("type", channel.Type).
-			Str("connection", channel.Connection.String).
-			Msg("failed to send leave conversation event to channel")
+			Str("channel_type", channel.Type).
+			Msg("FAILED To NOTIFY Channel")
 	}
-	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil) //channelID)
+	// Get CHAT related member(s) TO notify ...
+	members, err := e.repo.GetChannels(
+		context.Background(), nil, conversationID, nil, nil, nil,
+	)
+
 	if err != nil {
 		return err
 	}
-	if len(otherChannels) == 0 {
+	
+	if len(members) == 0 {
 		return nil
 	}
-	for _, item := range otherChannels {
-		switch item.Type {
+
+	var (
+
+		externalM *chat.Message // TO: @gateway (webitel.chat.bot)
+	)
+
+	for _, member := range members {
+		switch member.Type {
 		case "webitel":
 
-			if err := e.sendEventToWebitelUser(nil, item, events.LeaveConversationEventType, body); err != nil {
-				e.log.Warn().
-					Str("channel_id", item.ID).
-					Bool("internal", item.Internal).
-					Int64("user_id", item.UserID).
-					Str("conversation_id", item.ConversationID).
-					Str("type", item.Type).
-					Str("connection", item.Connection.String).
-					Msg("failed to send leave conversation event to channel")
+			err = e.sendEventToWebitelUser(nil, member,
+				events.LeaveConversationEventType, internalM,
+			)
+			
+			if err != nil {
+				e.log.Warn().Err(err).
+					Str("notify", "left_chat_member").
+					Str("channel_id", member.ID).
+					Int64("user_id", member.UserID).
+					Str("conversation_id", member.ConversationID).
+					Str("channel_type", member.Type).
+					Msg("FAILED To NOTIFY Channel")
 			}
 
-		default:
+		default:// TO: webitel.chat.bot (gateway)
+			// TODO: notify message.left_chat_member
+			// prepare message event once !
+			if externalM == nil {
+				externalM = &chat.Message{
+					Id:    0, // SERVICE MESSAGE !
+					Type: "left", // "event/left_chat_member",
+					LeftChatMember: &chat.Account{
+						Id:        channel.UserID,
+						Channel:   "user",
+						Contact:   "",
+						FirstName: channel.Name,
+						LastName:  "",
+						Username:  "",
+					},
+				}
+			}
+
+			err = e.sendMessageToBotUser(channel, member, externalM)
+
+			if err != nil {
+				e.log.Warn().Err(err).
+					Str("notify", "left_chat_member").
+					Str("channel_id", member.ID).
+					Bool("internal", member.Internal).
+					Int64("user_id", member.UserID).
+					Str("conversation_id", member.ConversationID).
+					Str("channel_type", member.Type).
+					Str("gateway_id", member.Connection.String).
+					Msg("FAILED To NOTIFY Gateway")
+			}
 		}
 	}
 	return nil

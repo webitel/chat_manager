@@ -145,11 +145,11 @@ func channelFetch(rows *sql.Rows) ([]*app.Channel, error) {
 
 
 
-const psqlSessionQ =
-`SELECT m.*
-  FROM chat.channels AS c, chat.channels AS m
-WHERE c.chat = $1 AND m.session = c.session
-`
+// const psqlSessionQ =
+// `SELECT m.*
+//   FROM chat.channels AS c, chat.channels AS m
+// WHERE c.chat = $1 AND m.session = c.session
+// `
 
 // Select CHAT session with all it's member channels
 // on behalf of given single, unique member channel ID

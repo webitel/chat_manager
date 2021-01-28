@@ -8,6 +8,7 @@ import (
 	"strings"
 	"strconv"
 	"database/sql"
+	"encoding/json"
 
 	"github.com/pkg/errors"
 	"github.com/google/uuid"
@@ -515,6 +516,77 @@ func (repo *sqlxRepository) UpdateChannelHost(ctx context.Context, channelID, ho
 	return err
 }
 
+func (repo *sqlxRepository) BindChannel(ctx context.Context, channelID string, propts map[string]string) error {
+
+	if propts != nil {
+		// remove empty key(s)
+		delete(propts, "")
+	}
+	
+	if len(propts) == 0 {
+		// FIXME: remove all binding keys ?
+		return nil
+	}
+
+	var (
+	
+		setup = "props"
+		params = make([]interface{}, 0, 3)
+	)
+
+	param := func(v interface{}) (sql string) {
+		params = append(params, v)
+		return "$" + strconv.Itoa(len(params))
+	}
+	// $1 - chat.channel.id
+	_ = param(channelID)
+
+	var (
+
+		del []string          // key(s) to be removed
+		set map[string]string // key(s) to be reseted
+	)
+
+	for key, value := range propts {
+		// CASE: blank "" -or- null
+		if value == "" {
+			// TODO: "props - '$key'"
+			if del == nil {
+				del = make([]string, 0, len(propts))
+			}
+			del = append(del, key)
+			continue
+		}
+		// TODO: "props || '{$key: $value}'::jsonb"
+		if set == nil {
+			set = make(map[string]string, len(propts))
+		}
+		set[key] = value
+	}
+	// 1. Remove empty value[d] keys
+	if len(del) != 0 {
+		
+		var keys pgtype.TextArray
+		_ = keys.Set(del)
+
+		setup += " - "+ param(&keys) +"::text[]"
+	}
+	// 2. Reset attributes
+	if len(set) != 0 {
+		
+		jsonb, _ := json.Marshal(set)
+
+		setup += " || "+ param(string(jsonb)) +"::jsonb"
+	}
+
+	_, err := repo.db.ExecContext(ctx, 
+		"UPDATE chat.channel SET props="+ setup +" WHERE id=$1",
+		 params...,
+	)
+	
+	return err
+}
+
 
 // ChannelsRequest prepares SELECT chat.channel command statement
 func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, err error) {
@@ -940,7 +1012,7 @@ func NewChannel(dcx sqlx.ExtContext, ctx context.Context, channel *Channel) erro
 // $1 - channel_id
 // $2 - local timestamp
 const psqlChannelCloseQ =
-`WITH closed AS (UPDATE chat.channel c SET closed_at=$2 WHERE c.id=$1 RETURNING c.*)
+`WITH closed AS (UPDATE chat.channel c SET closed_at=$2 WHERE c.id=$1 AND c.closed_at ISNULL RETURNING c.*)
 UPDATE chat.conversation s SET updated_at=$2 FROM closed c WHERE s.id=c.conversation_id
 RETURNING c.*
 `

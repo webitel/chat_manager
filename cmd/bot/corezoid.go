@@ -51,6 +51,7 @@ type corezoidReply struct {
 	 Date      time.Time `json:"-"`                         // [internal] sent local timestamp
 	 // {action:"chat"} => oneof {replyAction:(startChat|closeChat|answerToChat)} else ignore
 	 Type      string    `json:"replyAction,omitempty"`     // [optional] update event type; oneof (startChat|closeChat|answerToChat)
+	 FromID    int64     `json:"-"`                         // [optional] other side end-user's unique identifier
 	 From      string    `json:"operator,omitempty"`        // [required] chat.username; local::display
 	 Text      string    `json:"answer,omitempty"`          // [required] message text payload
 }
@@ -282,6 +283,24 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		)
 		return
 	}
+	// RECOVER Latest interlocutor info, operator's name ...
+	if hint := channel.Properties; hint != nil {
+		// var latest *corezoidChatV1
+		switch hint := hint.(type) {
+		case *corezoidChatV1:
+			// latest = hint
+			if hint != nil {
+				state.corezoidReply.FromID, state.corezoidReply.From =
+					hint.corezoidReply.FromID, hint.corezoidReply.From
+			}
+		case map[string]string:
+			if hint != nil {
+				state.corezoidReply.From = hint["operator"]
+				state.corezoidReply.FromID, state.corezoidReply.From =
+					decodeInterlocutorInfo(state.corezoidReply.From)
+			}
+		}
+	}
 	// RESET: Latest, NEW state !
 	channel.Properties = state
 	// endregion
@@ -344,7 +363,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		if update.Text == "" {
 			// NOTE: We've got here, when consumer sent us any file document, except photo(s) !
 			const notice = "Unfortunately, the transfer of third-party files" +
-							" is prohibited for security reasons, except images"
+							" is prohibited for security reasons, except images and video"
 			
 							// FIXME: Ignore such update(s) ?
 			// sendMessage.Type = "file"
@@ -434,9 +453,10 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 		return // HTTP/1.1 200 OK // to avoid redeliver !
 	}
+	if channel.IsNew() { // BIND channel START properties !
+		sendMessage.Variables = props
+	} // else { // BIND message properties ! }
 
-	sendMessage.Variables = props
-	
 	recvUpdate := Update {
 	
 		ID:      0, // NEW
@@ -498,7 +518,14 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 				Text:      props["text"], // /start
 				ReplyWith: props["replyTo"], // optional: action related attribute
 			},
+			corezoidReply: corezoidReply{
+				From:      props["operator"],
+			},
 		}
+		// RECOVER last interlocutor info !
+		chat.corezoidReply.FromID, chat.corezoidReply.From =
+			decodeInterlocutorInfo(chat.corezoidReply.From)
+		// RECOVER normalized contact end-user info !
 		if recepient.Title == "" {
 			// region: extract end-user contact info
 			username := chat.corezoidRequest.From
@@ -538,15 +565,18 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 	}
 	// prepare reply message envelope !
 	reply := &chat.corezoidReply
+
 	reply.Date = localtime
-	// represents operator's name for member side
-	// TODO: How to get chat identity for some member side ?
-	vars := update.GetVariables()
-	// From: chat title in front of member
-	title, _ := vars["operator"]
-	if title == "" {
-		title = "webitel:bot" // default
-	}
+	reply.Text = "" // cleanup latest reply text !
+
+	// // represents operator's name for member side
+	// // TODO: How to get chat identity for some member side ?
+	// vars := update.GetVariables()
+	// // From: chat title in front of member
+	// title, _ := vars["operator"]
+	// if title == "" {
+	// 	title = "webitel:bot" // default
+	// }
 
 	// region: event specific reaction !
 	switch update.Type { // notify.Event {
@@ -557,7 +587,10 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 
 			// replyAction = startChat|closeChat|answerToChat
 			reply.Type = "answerToChat"
-			reply.From = title // TODO: resolve sender name
+			// reply.From = title // TODO: resolve sender name
+			if reply.From == "" {
+				reply.From = "bot" // FIXME: default to ?
+			}
 
 			// region: format reply text ...
 			// File ?
@@ -581,7 +614,7 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 			
 		case "Предложение", "Жалоба":
 			
-			reply.From = title // TODO: resolve sender name
+			// reply.From = title // TODO: resolve sender name
 			reply.Text = update.GetText() // reply: message text
 
 		default:
@@ -600,8 +633,38 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 	// case "read":
 	// case "seen":
 
-	// case "joined":
-	// case "kicked":
+	case "joined": // ACK: ChatService.JoinConversation()
+
+		newChatMember := update.NewChatMembers[0]
+		
+		if reply.FromID == 0 {
+			// CACHE Update CHAT title for recepient !
+			reply.FromID = newChatMember.GetId()
+			reply.From   = newChatMember.GetFirstName()
+			// STORE result binding changed !
+			update.Variables = map[string]string{
+				"operator": encodeInterlocutorInfo(
+					reply.FromID, reply.From,
+				),
+			}
+		}
+
+		return nil // +OK
+
+	case "left":   // ACK: ChatService.LeaveConversation()
+
+		leftChatMember := update.LeftChatMember
+		if reply.FromID == leftChatMember.GetId() {
+			// CACHE Cleanup interlocuter info !
+			reply.FromID = 0
+			reply.From   = "" // TODO: set default ! FIXME: "bot" ?
+			// STORE Unbind channel properties !
+			update.Variables = map[string]string{
+				"operator": "",
+			}
+		}
+
+		return nil // +OK
 
 	// case "typing":
 	// case "upload":
@@ -614,7 +677,9 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 			// replyAction = startChat|closeChat|answerToChat
 			reply.Type = "closeChat"
 			reply.Text = update.GetText() // reply: message text
-			reply.From = title // TODO: resolve sender name
+			
+			reply.FromID = 0
+			reply.From   = "" // title // TODO: resolve sender name
 		
 		default:
 			
@@ -673,4 +738,26 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 	}
 	
 	return nil
+}
+
+func encodeInterlocutorInfo(oid int64, name string) (contact string) {
+	contact = strings.TrimSpace(name)
+	if oid != 0 {
+		if len(contact) != 0 {
+			contact += " "
+		}
+		contact += "<"+ strconv.FormatInt(oid, 10) +">"
+	}
+	return // contact
+}
+
+func decodeInterlocutorInfo(contact string) (oid int64, name string) {
+
+	name = contact
+	i := strings.LastIndexByte(name, '<')
+	if i != -1 && name[len(name)-1] == '>' {
+		oid, _ = strconv.ParseInt(name[i+1:len(name)-1], 10, 64)
+		name = strings.TrimSpace(name[:i])
+	}
+	return // oid, name
 }

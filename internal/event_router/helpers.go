@@ -78,7 +78,7 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 		return fmt.Errorf("client not found. id: %v", to.UserID)
 	}
 
-	sendBindings := message.GetVariables()
+	sendBinding := message.GetVariables()
 
 	sendMessage := gate.SendMessageRequest{
 		ProfileId:      profileID,
@@ -106,23 +106,41 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 		return err
 	}
 
-	sentBindings := sentMessage.GetBindings()
-	if sentBindings != nil {
-		delete(sentBindings, "")
-		if len(sentBindings) != 0 {
+	sentBinding := sentMessage.GetBindings()
+	if sentBinding != nil {
+		delete(sentBinding, "")
+		if len(sentBinding) != 0 {
 			// TODO: merge (!)
-			if sendBindings == nil {
-				sendBindings = sentBindings
-			} else {
-				for key, value := range sentBindings {
-					if _, ok := sendBindings[key]; ok {
-						// FIXME: key(s) must be unique within recepients ? What if not ?
-					}
-					// reset|override (!)
-					sendBindings[key] = value 
+			if message.Id == 0 {
+				// NOTE: there was a service-level message notification
+				//       result bindings applies to target channel, not message !
+				if err := c.repo.BindChannel(
+					context.TODO(), to.ID, sentBinding,
+				); err != nil {
+
+					c.log.Error().Err(err).
+
+						// Str("chat-id", target.User.Contact). // client.ExternalID.String).
+						Str("channel-id", to.ID). // client.ExternalID.String).
+
+						Msg("FAILED To bind channel properties")
 				}
+			
+			} else {
+
+				if sendBinding == nil {
+					sendBinding = sentBinding
+				} else {
+					for key, value := range sentBinding {
+						if _, ok := sendBinding[key]; ok {
+							// FIXME: key(s) must be unique within recepients ? What if not ?
+						}
+						// reset|override (!)
+						sendBinding[key] = value
+					}
+				}
+				// TODO: update chat.message set valiables = :sendBindings where id = :message.Id;
 			}
-			// TODO: update chat.message set valiables = :sendBindings where id = :message.Id;
 		}
 	}
 
@@ -236,7 +254,7 @@ func (c *eventRouter) SendMessageToGateway(target *app.Channel, message *chat.Me
 	}
 
 	requestNode := recepient.Hostname()
-	sendBinding := message.GetVariables()
+	sendBinding := message.GetVariables() // latest binding(s)
 
 	sentMessage, err := c.botClient.SendMessage(
 
@@ -250,25 +268,44 @@ func (c *eventRouter) SendMessageToGateway(target *app.Channel, message *chat.Me
 		return err
 	}
 
+	// renewed binding(s) processed this message
 	sentBinding := sentMessage.GetBindings()
 	if sentBinding != nil {
 		delete(sentBinding, "")
 		if len(sentBinding) != 0 {
 			// TODO: merge (!)
-			if sendBinding == nil {
-				sendBinding = sentBinding
-			} else {
-				for key, newValue := range sentBinding {
-					if oldValue, ok := sendBinding[key];
-						ok && newValue != oldValue {
-						// FIXME: key(s) must be unique within recepients ? What if not ?
-					}
-					// reset|override (!)
-					sendBinding[key] = newValue 
+			if message.Id == 0 {
+				// NOTE: there was a service-level message notification
+				//       result bindings applies to target channel, not message !
+				if err := c.repo.BindChannel(
+					context.TODO(), target.ID, sentBinding,
+				); err != nil {
+
+					c.log.Error().Err(err).
+
+						Str("chat-id", target.User.Contact). // client.ExternalID.String).
+						Str("channel-id", target.Chat.ID). // client.ExternalID.String).
+
+						Msg("FAILED To bind channel properties")
 				}
+			
+			} else {
+
+				if sendBinding == nil {
+					sendBinding = sentBinding
+				} else {
+					for key, newValue := range sentBinding {
+						if oldValue, ok := sendBinding[key];
+							ok && newValue != oldValue {
+							// FIXME: key(s) must be unique within recepients ? What if not ?
+						}
+						// reset|override (!)
+						sendBinding[key] = newValue 
+					}
+				}
+				// TODO: update chat.message set valiables = :sendBindings where id = :message.Id;
+				message.Variables = sendBinding
 			}
-			// TODO: update chat.message set valiables = :sendBindings where id = :message.Id;
-			message.Variables = sendBinding
 		}
 	}
 

@@ -158,6 +158,9 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 
 		channel = notify.Chat // recepient
 		// localtime = time.Now()
+		message = notify.Message
+
+		binding map[string]string
 	)
 
 	// region: recover latest chat channel state
@@ -172,19 +175,36 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 		// FIXME: .GetChannel() does not provide full contact info on recover,
 		//                      just it's unique identifier ...  =(
 	}
+
+	// // TESTS
+	// props, _ := channel.Properties.(map[string]string)
 	// endregion
+
+	bind := func(key, value string) {
+		if binding == nil {
+			binding = make(map[string]string)
+		}
+		binding[key] = value
+	}
 
 	var update telegram.Chattable
 	// TODO: resolution for various notify content !
-	switch notify.Event {
+	switch message.Type { // notify.Event {
 	case "text": // default
 	
-		messageText := notify.Message.GetText()
-		update = telegram.NewMessage(chatID, messageText)
+		text := message.GetText()
+		// if props != nil {
+		// 	title := props["interlocutor"]
+		// 	_, title = decodeInterlocutorInfo(title)
+		// 	if title != "" {
+		// 		text = "["+ title +"] "+ text
+		// 	}
+		// }
+		update = telegram.NewMessage(chatID, text)
 	
 	case "file":
 
-		doc := notify.Message.GetFile()
+		doc := message.GetFile()
 
 		switch mimeType := doc.Mime; {
 		case strings.HasPrefix(mimeType, "image"):
@@ -230,44 +250,110 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 	
 	case "menu":
 
-		msgAgreement := telegram.NewMessage(chatID, notify.Message.Text)
+		msgAgreement := telegram.NewMessage(chatID, message.Text)
 
-		if notify.Message.Type == "buttons" {
+		if message.Type == "buttons" {
 			
-			msgAgreement.ReplyMarkup = newReplyKeyboard(notify.Message.Buttons)
+			msgAgreement.ReplyMarkup = newReplyKeyboard(message.Buttons)
 
-		}else if notify.Message.Type == "inline" {
+		} else if message.Type == "inline" {
 
-			msgAgreement.ReplyMarkup = newInlineKeyboard(notify.Message.Buttons)
+			msgAgreement.ReplyMarkup = newInlineKeyboard(message.Buttons)
 		}
 		
 		update = msgAgreement
 
-	case "edit":
-	case "send":
+	// case "edit":
+	// case "send":
 	
-	case "read":
-	case "seen":
+	// case "read":
+	// case "seen":
 
-	case "join":
-	case "kick":
+	// case "kicked":
+	case "joined": // ACK: ChatService.JoinConversation()
 
-	case "typing":
-	case "upload":
+		// newChatMember := message.NewChatMembers[0]
+		// // reply.From = newChatMember.GetFirstName()
+		// if props == nil {
+		// 	props = make(map[string]string)
+		// 	channel.Properties = props // autobind
+		// }
+		// interlocutor := props["interlocutor"]
+		// oid, name := decodeInterlocutorInfo(interlocutor)
+		// if oid == 0 && name == "" {
+		// 	interlocutor = encodeInterlocutorInfo(
+		// 		newChatMember.GetId(), newChatMember.GetFirstName(),
+		// 	)
+		// 	props["interlocutor"] = interlocutor // CACHE
+		// 	bind("interlocutor", interlocutor)   // STORE
+			
+		// }
+		// // if props["joined"] == "" {
+		// // 	// STORE changes
+		// // 	bind("joined", strconv.FormatInt(newChatMember.Id, 10))
+		// // 	bind("titled", newChatMember.GetFirstName())
+		// // 	// CACHE changes
+		// // 	props["joined"] = binding["joined"]
+		// // 	props["titled"] = binding["titled"]
+		// // }
+		// // setup result binding changed !
+		// message.Variables = binding
 
-	case "invite":
+		return nil // +OK; IGNORE!
+
+	case "left":   // ACK: ChatService.LeaveConversation()
+
+		// leftChatMember := message.LeftChatMember
+		// // if reply.From == leftChatMember.GetFirstName() {
+		// // 	reply.From = "" // TODO: set default ! FIXME: "bot" ?
+		// // }
+
+		// if props != nil {
+
+		// 	interlocutor := props["interlocutor"]
+		// 	oid, _ := decodeInterlocutorInfo(interlocutor)
+
+		// 	if oid == leftChatMember.Id {
+		// 		delete(props, "interlocutor") // CAHCE
+		// 		bind("interlocutor", "")      // STORE
+		// 		// setup result binding changed !
+		// 		message.Variables = binding
+		// 	}
+		// }
+
+		// // if props != nil && props["joined"] == strconv.FormatInt(leftChatMember.Id, 10) {
+		// // 	// UNBIND !
+		// // 	bind("joined", "")
+		// // 	bind("titled", "")
+
+		// // 	delete(props, "joined")
+		// // 	delete(props, "titled")
+
+		// // 	// setup result binding changed !
+		// // 	message.Variables = binding
+		// // }
+
+		return nil // +OK; IGNORE!
+
+	// case "typing":
+	// case "upload":
+
+	// case "invite":
 	case "closed":
 		// SEND: notify message text
-		sendMessage := notify.Message
+		text := message.GetText()
 		// NOTE: sendMessage.Type = 'close'
-		update = telegram.NewMessage(chatID, sendMessage.GetText())
+		update = telegram.NewMessage(chatID, text)
 	
 	default:
 
 	}
 
 	if update == nil {
-		channel.Log.Warn().Str("notify", notify.Event).Str("error", "notify: sent message type not supported").Msg("IGNORE")
+		channel.Log.Warn().
+			Str("type", message.Type).
+			Str("notice", "reaction not implemented").
+			Msg("IGNORE")
 		return nil
 	}
 	
@@ -318,13 +404,18 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 		return err
 	}
 
-	sentBindings := map[string]string {
-		"chat_id":    channel.ChatID,
-		"message_id": strconv.Itoa(sentMessage.MessageID),
-	}
+	// TARGET[chat_id]: MESSAGE[message_id]
+	bind(channel.ChatID, strconv.Itoa(sentMessage.MessageID))
+	// sentBindings := map[string]string {
+	// 	"chat_id":    channel.ChatID,
+	// 	"message_id": strconv.Itoa(sentMessage.MessageID),
+	// }
 	// attach sent message external bindings
-	notify.Message.Variables = sentBindings
-
+	if message.Id != 0 { // NOT {"type": "closed"}
+		// [optional] STORE external SENT message binding
+		message.Variables = binding
+	}
+	// +OK
 	return nil
 }
 
@@ -700,8 +791,10 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 		sendMessage.ForwardFromVariables = map[string]string{
 			// FIXME: guess, this can by any telegram-user-related chat,
 			//        so we may fail to find corresponding internal message for given binding map
-			"chat_id":    strconv.FormatInt(recvMessage.ForwardFromChat.ID, 10),
-			"message_id": strconv.Itoa(recvMessage.ForwardFromMessageID),
+			strconv.FormatInt(recvMessage.ForwardFromChat.ID, 10):
+				strconv.Itoa(recvMessage.ForwardFromMessageID),
+			// "chat_id":    strconv.FormatInt(recvMessage.ForwardFromChat.ID, 10),
+			// "message_id": strconv.Itoa(recvMessage.ForwardFromMessageID),
 		}
 
 	} else if recvMessage.ReplyToMessage != nil {
@@ -709,14 +802,16 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 		// sendMessage.ReplyToMessageId = recvMessage.ReplyToMessage.MessageID
 		sendMessage.ReplyToVariables = map[string]string{
 			// FIXME: the same chatID ? Is it correct ?
-			"chat_id":    chatID,
-			"message_id": strconv.Itoa(recvMessage.ReplyToMessage.MessageID),
+			chatID: strconv.Itoa(recvMessage.ReplyToMessage.MessageID),
+			// "chat_id":    chatID,
+			// "message_id": strconv.Itoa(recvMessage.ReplyToMessage.MessageID),
 		}
 
 	}
 	sendMessage.Variables = map[string]string{
-		"chat_id":    chatID,
-		"message_id": strconv.Itoa(recvMessage.MessageID),
+		chatID: strconv.Itoa(recvMessage.MessageID),
+		// "chat_id":    chatID,
+		// "message_id": strconv.Itoa(recvMessage.MessageID),
 	}
 
 	err = c.Gateway.Read(notice.Context(), &sendUpdate)
