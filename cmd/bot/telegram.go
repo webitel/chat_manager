@@ -676,11 +676,25 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 		sendMessage.Text = recvMessage.Caption
 
 	} else if recvMessage.Photo != nil {
+
+		const (
+			// 20 Mb = 1024 Kb * 1024 b
+			fileSizeMax = 20 * 1024 * 1024
+		)
 		// Message is a photo, available sizes of the photo
 		photos := *recvMessage.Photo
+		// Lookup for suitable file size for bot to download ...
+		e := len(photos)-1 // From biggest to smallest ...
+		for ; e >= 0 && photos[e].FileSize > fileSizeMax; e-- {
+			// omit files that are too large,
+			// which will result in a download error
+		}
+		if e < 0 {
+			e = 0 // restoring the previous logic
+		}
 		// Peek the biggest, last one ...
 		photo := telegram.FileConfig{
-			FileID: photos[len(photos)-1].FileID,
+			FileID: photos[e].FileID,
 		}
 		
 		doc, err := c.BotAPI.GetFile(photo)
