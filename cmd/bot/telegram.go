@@ -193,6 +193,27 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 	case "text": // default
 	
 		text := message.GetText()
+
+		msg := telegram.NewMessage(chatID, text)
+
+		if message.Buttons != nil {
+			
+			if len(message.Buttons) == 0 { // CLEAR Buttons
+
+				msg.ReplyMarkup = telegram.NewRemoveKeyboard(false)
+
+			}else {
+
+				msg.ReplyMarkup = newReplyKeyboard(message.Buttons)
+
+			}
+
+		} else if message.Inline != nil {
+
+			msg.ReplyMarkup = newInlineKeyboard(message.Inline)
+		}
+		
+		update = msg
 		// if props != nil {
 		// 	title := props["interlocutor"]
 		// 	_, title = decodeInterlocutorInfo(title)
@@ -200,7 +221,7 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 		// 		text = "["+ title +"] "+ text
 		// 	}
 		// }
-		update = telegram.NewMessage(chatID, text)
+	//	update = telegram.NewMessage(chatID, text)
 	
 	case "file":
 
@@ -248,20 +269,20 @@ func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
 			update = telegram.NewDocumentUpload(chatID, file)
 		}
 	
-	case "menu":
+	// case "menu":
 
-		msgAgreement := telegram.NewMessage(chatID, message.Text)
+	// 	msgAgreement := telegram.NewMessage(chatID, message.Text)
 
-		if message.Type == "buttons" {
+	// 	if message.Type == "buttons" {
 			
-			msgAgreement.ReplyMarkup = newReplyKeyboard(message.Buttons)
+	// 		msgAgreement.ReplyMarkup = newReplyKeyboard(message.Buttons)
 
-		} else if message.Type == "inline" {
+	// 	} else if message.Type == "inline" {
 
-			msgAgreement.ReplyMarkup = newInlineKeyboard(message.Buttons)
-		}
+	// 		msgAgreement.ReplyMarkup = newInlineKeyboard(message.Buttons)
+	// 	}
 		
-		update = msgAgreement
+	// 	update = msgAgreement
 
 	// case "edit":
 	// case "send":
@@ -527,6 +548,19 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 		// TODO Button
 		recvMessage = recvUpdate.CallbackQuery.Message
 		recvMessage.Text = recvUpdate.CallbackQuery.Data
+
+		removeInline := telegram.NewEditMessageReplyMarkup(recvMessage.Chat.ID, recvMessage.MessageID, telegram.InlineKeyboardMarkup {
+			InlineKeyboard: [][]telegram.InlineKeyboardButton{},
+		})
+		
+		_, err := c.BotAPI.Send(removeInline)
+
+		if err != nil {
+			c.Gateway.Log.Warn().
+
+				Str("Error ", err.Error()).
+				Msg("Failed to remove Inline Keyboard .Telegram")
+		}
 	}
 	
 	if recvMessage == nil {

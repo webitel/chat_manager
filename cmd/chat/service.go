@@ -2184,9 +2184,9 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		saveMessage.Type = "text"
 		saveMessage.Text = text
 
-	case "buttons", "inline":
+	// case "buttons", "inline":
 
-		saveMessage.Type = "menu"
+	// 	saveMessage.Type = "menu"
 
 	case "contact":
 

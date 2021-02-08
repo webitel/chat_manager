@@ -36,8 +36,6 @@ message Message {
     File file = 4;
     // Optional. This Message extra properties
     map<string, string> variables = 5;
-    // Reply Markup Buttons SET
-    repeated Buttons buttons = 6;
     // End-User extra contact info
     Account contact = 7;
 
@@ -57,6 +55,10 @@ message Message {
     int64 forward_from_message_id = 13;
     // External message sent-binding to be able to identify corresponding internal message
     map<string,string> forward_from_variables = 14;
+    // Reply Markup Buttons SET
+    repeated Buttons buttons = 6;
+    // Inline Keyboard Buttons SET
+    repeated Buttons inline = 15;
 
     // NewChatMembers description for {"type":"joined"} notification
     repeated Account new_chat_members = 20;

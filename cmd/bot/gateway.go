@@ -322,9 +322,9 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 		
 		sendUpdate.Event = "file"
 
-	} else if sendMessage.Buttons != nil{
+	// } else if sendMessage.Buttons != nil{
 
-		sendUpdate.Event = "menu"
+	// 	sendUpdate.Event = "menu"
 
 
 	} else if sendMessage.Text != "" {
