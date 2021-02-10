@@ -7,6 +7,7 @@ import (
 	"context"
 	"strings"
 	"strconv"
+	"unicode"
 
 	"net"
 	"net/url"
@@ -508,7 +509,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// region: receive file ...
 	// NOTE: Messages with third-party link(s) are NOT delivered ! That's good !
 	link := text
-	if eol := strings.IndexByte(text,'\n'); eol > 7 { // http[s]://
+	if eol := strings.IndexFunc(text,unicode.IsSpace); eol > 6 { // http[s]://
 		link = strings.TrimSpace(text[:eol]) // optional: trim right witespace(s)
 		text = strings.TrimSpace(text[eol+1:]) // optional: trim left witespace(s)
 	}
