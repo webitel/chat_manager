@@ -4,7 +4,7 @@ import (
 	
 	"path/filepath"
 	"encoding/json"
-	"io/ioutil"
+	//"io/ioutil"
 	"net/http"
 	"context"
 	"strconv"
@@ -104,15 +104,19 @@ type messaging struct {
 	Postback  *FacebookPostback `json:"postback"`
 }
 
-// received error response from Facebook
-type errorResponse struct {
-	Error struct {
-		Message      string `json:"message"`
-		Type         string `json:"type"`
-		Code         int64  `json:"code"`
-		ErrorSubcode int64  `json:"error_subcode"`
-		FbtraceID    string `json:"fbtrace_id"`
-	} `json:"error"`
+// received response from Facebook
+type ResponseFb struct {
+	RecipientId  string   `json:"recipient_id"`
+	MessageId    string   `json:"message_id"`
+	Error  		 *ErrorFb `json:"error"`
+}
+
+type ErrorFb struct {
+	Message      string `json:"message"`
+	Type         string `json:"type"`
+	Code         int64  `json:"code"`
+	ErrorSubcode int64  `json:"error_subcode"`
+	FbtraceID    string `json:"fbtrace_id"`
 }
 
 // FacebookMessage struct for text messaged received from facebook server as part of FacebookRequest struct
@@ -197,8 +201,15 @@ func (b *facebookBot) SendNotify(ctx context.Context, notify *Update) error {
 
 		message = notify.Message
 
-		//binding map[string]string  //TODO
+		binding map[string]string  //TODO
 	)
+
+	bind := func(key, value string) {
+		if binding == nil {
+			binding = make(map[string]string)
+		}
+		binding[key] = value
+	}
 
 	chatID, err := strconv.ParseInt(channel.ChatID, 10, 64)
 	if err != nil {
@@ -241,8 +252,10 @@ func (b *facebookBot) SendNotify(ctx context.Context, notify *Update) error {
 
 	}
 
+	// encode result body
 	body, err := json.Marshal(reqBody)
 	if err != nil {
+		// 500 Failed to encode update request
 		return err
 	}
 
@@ -252,33 +265,44 @@ func (b *facebookBot) SendNotify(ctx context.Context, notify *Update) error {
 	}
 
 	facebookReq.Header.Set("Content-Type", "application/json")
-
+	
+	// DO: SEND !
 	facebookRes, err := http.DefaultClient.Do(facebookReq)
 	if err != nil {
 		return err
 	}
 
-	bodyBytes, err := ioutil.ReadAll(facebookRes.Body)
+	response := new(ResponseFb)
 
-	bodyString := string(bodyBytes)
-	log.Debug().
-		Int("StatusCode", facebookRes.StatusCode).
-		Str("bodyString", bodyString).
+	if err = json.NewDecoder(facebookRes.Body).Decode(response); err != nil{
+		log.Error().Err(err).Msg("Failed to decode response")
+		return err
+	}
+	
+	if facebookRes.StatusCode == 200 {
+
+		bind(channel.ChatID, response.MessageId)
+		// attach sent message external bindings
+		if message.Id != 0 { // NOT {"type": "closed"}
+			// [optional] STORE external SENT message binding
+			message.Variables = binding
+		}
+
+	}else {
+
+		log.Error().
+			Int("StatusCode", facebookRes.StatusCode).
+			Str("Error.Message", response.Error.Message).
 		Msg("SendMessage facebook Response")
 
-	if facebookRes.StatusCode == 400 {
+		if facebookRes.StatusCode == 400 {
 
-		var fbErr errorResponse
-
-		if err := json.Unmarshal(bodyBytes, &fbErr); err != nil {
-			log.Error().Err(err).Msg("Failed to decode response")
-			return err
-		}
-
-		if fbErr.Error.Code == 551 && fbErr.Error.ErrorSubcode == 1545041 { // client turned off messages
-			b.userUnsubscribed(notify.Chat.ChatID)
-		}
+			if response.Error.Code == 551 && response.Error.ErrorSubcode == 1545041 { // client turned off messages
+				b.userUnsubscribed(notify.Chat.ChatID)
+			}
+		} 
 	}
+
 	return nil
 }
 
@@ -332,12 +356,14 @@ func (b *facebookBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			switch {
 				case msg.Message != nil:
 
+					chatID := fmt.Sprint(msg.Sender.ID)
+
 					b.RLock()   // +R
 					client, ok := b.clients[msg.Sender.ID]
 					b.RUnlock() // -R
 					
 					if !ok {
-						client, _ = b.getProfileInfo(fmt.Sprint(msg.Sender.ID))
+						client, _ = b.getProfileInfo(chatID)
 						
 						b.Lock()   // +RW
 						b.clients[msg.Sender.ID] = client
@@ -349,13 +375,13 @@ func (b *facebookBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 						LastName:   client.LastName,
 						ID:         0, // LOOKUP
 						Channel:    "facebook",
-						Contact:    fmt.Sprint(msg.Sender.ID),
+						Contact:    fmt.Sprint(chatID),
 					}
 					// endregion
 					
 					// region: channel
 					channel, err := b.Gateway.GetChannel(
-						notice.Context(), fmt.Sprint(msg.Sender.ID), contact,
+						notice.Context(), chatID, contact,
 					)
 					if err != nil {
 						// Failed locate chat channel !
@@ -370,22 +396,46 @@ func (b *facebookBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 						Title:   channel.Title,
 						Chat:    channel,
 						User:    contact,
-						Message: &chat.Message{},
+						Message: new(chat.Message),
 					}
 
-					if msg.Message.Text != "" {
-						sendUpdate.Message.Type = "text"
-						sendUpdate.Message.Text = msg.Message.Text
-						
-						err = b.Gateway.Read(notice.Context(), &sendUpdate)
-						if err != nil {
-							http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
-							return // 502 Bad Gateway
-						}
-					}
+					sendMessage := sendUpdate.Message
+
 					if msg.Message.Attachments != nil {
+						
+						var (
+							text string
+						)
+
+						switch len(msg.Message.Attachments){
+							case 1:
+
+								text = msg.Message.Text
+
+							default:
+
+								text = ""
+
+								if msg.Message.Text != "" {
+
+									sendMessage.Type = "text"
+									sendMessage.Text = msg.Message.Text
+
+									sendMessage.Variables = map[string]string{
+										chatID: msg.Message.Mid,
+									}
+									
+									err = b.Gateway.Read(notice.Context(), &sendUpdate)
+									if err != nil {
+										log.Error().Msg(err.Error())
+										//http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
+										//return // 502 Bad Gateway
+									}
+								}
+						}
+
 						for _, item := range msg.Message.Attachments {
-			
+	
 							url, err := url.Parse(item.Payload.URL)
 							if err != nil {
 								log.Error().Msg(err.Error())
@@ -394,20 +444,43 @@ func (b *facebookBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 							path := filepath.Base(url.Path)
 
-							sendUpdate.Message.Text = ""
-							sendUpdate.Message.Type = "file"
-							sendUpdate.Message.File = &chat.File {
+							sendMessage.Text = text
+							sendMessage.Type = "file"
+							sendMessage.File = &chat.File {
 								Name:     path,
 								Url:      item.Payload.URL,
 							}
 
+							sendMessage.Variables = map[string]string{
+								chatID: msg.Message.Mid,
+							}
+
 							err = b.Gateway.Read(notice.Context(), &sendUpdate)
 							if err != nil {
-								http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
-								return // 502 Bad Gateway
+								log.Error().Msg(err.Error())
+								//http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
+								//return // 502 Bad Gateway
 							}
 						}
+					
+					}else if msg.Message.Text != "" {
+						
+						sendMessage.Type = "text"
+						sendMessage.Text = msg.Message.Text
+
+						sendMessage.Variables = map[string]string{
+							chatID: msg.Message.Mid,
+						}
+						
+						err = b.Gateway.Read(notice.Context(), &sendUpdate)
+						if err != nil {
+							log.Error().Msg(err.Error())
+							//http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
+							//return // 502 Bad Gateway
+						}
+
 					}
+
 				 case msg.Delivery != nil:
 
 				 case msg.Postback != nil:

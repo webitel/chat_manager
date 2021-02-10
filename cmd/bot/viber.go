@@ -12,7 +12,7 @@ import (
 	"github.com/micro/go-micro/v2/errors"
 
 	chat "github.com/webitel/chat_manager/api/proto/chat"
-	
+
 )
 
 type viberBot struct {
@@ -151,41 +151,6 @@ func (v *viberBot) Register(ctx context.Context, linkURL string) error {
 	return nil
 }
 
-func (v *viberBot) PostData(url string, i interface{}) (*viberResponse, error) {
-	
-	body, err := json.Marshal(i)
-	
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
-	req.Header.Add("X-Viber-Auth-Token", v.Token)
-	req.Close = true
-
-	viberRes, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	defer viberRes.Body.Close()
-	
-	var res viberResponse
-	 
-	if err := json.NewDecoder(viberRes.Body).Decode(&res); err != nil {
-		v.Gateway.Log.Error().Err(err).Msg("Failed to decode viber response")
-		return nil, err
-	}
-	// body, err := ioutil.ReadAll(viberRes.Body)
-
-	// bodyString := string(body)
-	// v.Gateway.Log.Debug().
-	// 	Int("StatusCode", viberRes.StatusCode).
-	// 	Str("bodyString", bodyString).
-	// 	Msg("SendMessage viber Response")
-
-	return &res, nil
-}
 
 // Deregister viber Bot Webhook endpoint URI
 func (v *viberBot) Deregister(ctx context.Context) error {
@@ -204,8 +169,9 @@ func (v *viberBot) Deregister(ctx context.Context) error {
 func (v *viberBot) SendNotify(ctx context.Context, notify *Update) error {
 	
 	var (
+		// notify.Chat
 		channel = notify.Chat
-
+		//notify.Message
 		message = notify.Message
 	)
 
@@ -219,7 +185,7 @@ func (v *viberBot) SendNotify(ctx context.Context, notify *Update) error {
 
 	switch message.Type {
 		
-		case "text", "closed":
+		case "text":
 
 			msg.Type = "text"
 
@@ -227,9 +193,8 @@ func (v *viberBot) SendNotify(ctx context.Context, notify *Update) error {
 
 			if message.Buttons != nil {
 			
-				if len(message.Buttons) == 0 { // CLEAR Buttons
-	
-				}else {
+				if len(message.Buttons) > 0 {
+
 					msg.MinApiVersion = 6
 					v.viberMessageMenu(message.GetButtons(), &msg)
 				}
@@ -237,6 +202,10 @@ func (v *viberBot) SendNotify(ctx context.Context, notify *Update) error {
 
 		case "file":
 			viberMessageFile(message.GetFile(), &msg)
+
+		case "closed":
+			msg.Type = "text"
+			msg.Text = message.GetText()
 
 		default:
 			return nil // UNKNOWN Event
@@ -246,24 +215,6 @@ func (v *viberBot) SendNotify(ctx context.Context, notify *Update) error {
 	if err != nil {
 		return err
 	}
-
-	// bind := func(key, value string) {
-	// 	if binding == nil {
-	// 		binding = make(map[string]string)
-	// 	}
-	// 	binding[key] = value
-	// }
-
-	// bind(channel.ChatID, strconv.Itoa(res.MessageToken))
-	// // sentBindings := map[string]string {
-	// // 	"chat_id":    channel.ChatID,
-	// // 	"message_id": strconv.Itoa(sentMessage.MessageID),
-	// // }
-	// // attach sent message external bindings
-	// if message.Id != 0 { // NOT {"type": "closed"}
-	// 	// [optional] STORE external SENT message binding
-	// 	message.Variables = binding
-	// }
 
 	return nil
 }
@@ -335,6 +286,37 @@ func (v *viberBot) viberMessageMenu(buttons []*chat.Buttons, m *viberReqBody) {
 		Type: 		 	"keyboard",
 		Buttons:		 rows,
 	}
+}
+
+func (v *viberBot) PostData(url string, i interface{}) (*viberResponse, error) {
+	
+	body, err := json.Marshal(i)
+	
+	if err != nil {
+		return nil, err
+	}
+
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	req.Header.Add("X-Viber-Auth-Token", v.Token)
+	req.Close = true
+
+	viberRes, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	defer viberRes.Body.Close()
+	
+	var res viberResponse
+	 
+	if err := json.NewDecoder(viberRes.Body).Decode(&res); err != nil {
+
+		v.Gateway.Log.Error().Err(err).Msg("Failed to decode viber response")
+
+		return nil, err
+	}
+
+	return &res, nil
 }
 
 func newLayout()map[int][]int {
@@ -447,13 +429,13 @@ func (v *viberBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			
 				case "url":
 					sendUpdate.Message = &chat.Message {
-						Type: "url",
+						Type: "text",
 						Text: req.Message.Media,
 					}
 			
 				case "picture":
 					sendUpdate.Message = &chat.Message {
-						Type: "image",
+						Type: "file",
 						File: &chat.File {
 							Url:    req.Message.Media,
 							Name:   req.Message.FileName,
@@ -462,7 +444,7 @@ func (v *viberBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 					
 				case "video", "sticker", "file":
 					sendUpdate.Message = &chat.Message {
-						Type: req.Message.Type,
+						Type: "file",
 						File: &chat.File {
 							Url:    req.Message.Media,
 							Name:   req.Message.FileName,
@@ -471,7 +453,7 @@ func (v *viberBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 				case "contact":
 					sendUpdate.Message = &chat.Message {
-						Type: req.Message.Type,
+						Type: "contact",
 						Contact: &chat.Account {
 							Contact: req.Message.Contact.PhoneNumber,
 						},
