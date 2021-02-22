@@ -310,13 +310,15 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 
 	if size := len(conversation.Messages); size != 0 {
 
-		size = 1
+		// size = 1
 
 		page := make([]events.Message, size)
-		list := make([]*events.Message, size)
+		list := make([]*events.Message, 0, size)
 
-		for e, src := range conversation.Messages {
+		// for e, src := range conversation.Messages {
+		for e := size-1; e >= 0; e-- {
 			
+			src := conversation.Messages[e]
 			dst := &page[e]
 
 			dst.ID        = src.Id
@@ -335,9 +337,10 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 				}
 			}
 
-			list[e] = dst
-			// NOTE: latest ONE !
-			break
+			// list[e] = dst
+			list = append(list, dst)
+			// // NOTE: latest ONE !
+			// break
 		}
 
 		mes.Messages = list

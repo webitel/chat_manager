@@ -136,7 +136,7 @@ func (repo *sqlxRepository) GetConversations(
 	if messageSize == 0 {
 		messageSize = 10
 	}
-	messageLimitStr := fmt.Sprintf("limit %d", messageSize)
+	// messageLimitStr := fmt.Sprintf("limit %d", messageSize)
 	queryStrings := make([]string, 0, 4)
 	queryArgs := make([]interface{}, 0, 4)
 	argCounter := 1
@@ -166,7 +166,7 @@ func (repo *sqlxRepository) GetConversations(
 		}
 	}
 	whereStr = strings.TrimRight(whereStr, " and")
-	query := fmt.Sprintf(`
+	query := CompactSQL(fmt.Sprintf(`
 		select %s
 			from chat.conversation c
 				left join LATERAL (
@@ -207,8 +207,9 @@ func (repo *sqlxRepository) GetConversations(
 				) ch on true
 			%s
 			%s
-		%s;
-		`, fieldsStr, messageLimitStr, whereStr, sortStr, limitStr)
+		%s;`,
+		fieldsStr, ""/*messageLimitStr*/, whereStr, sortStr, limitStr,
+	))
 	// rows, err := repo.db.QueryxContext(ctx, query, queryArgs...)
 	rows, err := repo.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
