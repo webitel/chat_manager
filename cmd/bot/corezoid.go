@@ -718,6 +718,11 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 			// CACHE Update CHAT title for recepient !
 			reply.FromID = newChatMember.GetId()
 			reply.From   = newChatMember.GetFirstName()
+			reply.From   = strings.TrimSpace(reply.From)
+			// Extract the first word from user's display name; must be the given name
+			if gn := strings.IndexFunc(reply.From, unicode.IsSpace); gn > 0 {
+				reply.From = reply.From[0:gn]
+			}
 			// STORE result binding changed !
 			update.Variables = map[string]string{
 				"operator": encodeInterlocutorInfo(
