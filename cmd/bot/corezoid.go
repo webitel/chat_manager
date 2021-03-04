@@ -94,6 +94,7 @@ type corezoidChatV1 struct {
 type CorezoidBot struct {
 	// URL to communicate with a back-channel service provider (proxy)
 	URL string
+	botName string // default: chat@bot operator's display name, if agent not connected yet
 	accessToken string // validate all incoming requests for precense X-Access-Token
 	// Client HTTP to communicate with member, remote
 	Client *http.Client
@@ -199,6 +200,7 @@ func NewCorezoidBot(agent *Gateway) (Provider, error) {
 	return &CorezoidBot{
 
 		URL:         host,
+		botName:     "АТБ", // "bot", // default: (!)
 		accessToken: authZ,
 		// NOTE: net/http.DefaultClient used if <nil> pointer
 		Client:      client,
@@ -679,11 +681,32 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 		switch chat.corezoidRequest.Event {
 		case "chat","startChat": // chatting
 
-			// replyAction = startChat|closeChat|answerToChat
+			// replyAction = startChat|closeChat|answerToChat|operatorNotFound
 			reply.Type = "answerToChat"
 			// operator = FIXME: default to ?
 			if reply.From == "" {
-				reply.From = "bot"
+				reply.From = c.botName // default: (!)
+			}
+			// CHECK: Is it event notification (command) ?
+			if update.Type == "text" {
+				if s := update.GetText(); s[0] == '/' {
+					// Action notification !
+					switch s[1:] {
+					case "operatorNotFound":
+						
+						reply.Type = "operatorNotFound" // {"replyAction": "operatorNotFound"}
+						reply.From = "" // cleanup operator's name to display
+						// update.Text = "" // cleanup text to be send !
+						// if (reply.Date.Sub(chat.corezoidRequest.Date)/time.Second) < 5 {}
+						// FIXME: Send notification text template ...
+						update.Text = "Sorry, but we could not find any available agent for you.\nPlease try again in a few minutes"
+						// FIXME: Does we need to send {"replyAction": "closeChat"} after that ?
+						
+					// default:
+						// // Command is unknown ! Send as a regular text !
+						// reply.Text = txt
+					}
+				}
 			}
 			// reply.Text = defined below !
 
@@ -713,25 +736,38 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 
 	case "joined": // ACK: ChatService.JoinConversation()
 
+		if reply.FromID != 0 {
+			// Ignore agent(s) sequential connection !
+			// Might be supervisor's help or something like that ...
+			return nil // +OK
+		
+		} // else ( reply.FromID == 0 )
+
+		// NOTIFY: That NEW agent connected !
+		reply.Type = "startChat" // {"replyAction": "startChat", "operator": "???"}
+
 		newChatMember := update.NewChatMembers[0]
-		if reply.FromID == 0 {
-			// CACHE Update CHAT title for recepient !
-			reply.FromID = newChatMember.GetId()
-			reply.From   = newChatMember.GetFirstName()
-			reply.From   = strings.TrimSpace(reply.From)
-			// Extract the first word from user's display name; must be the given name
-			if gn := strings.IndexFunc(reply.From, unicode.IsSpace); gn > 0 {
-				reply.From = reply.From[0:gn]
-			}
-			// STORE result binding changed !
-			update.Variables = map[string]string{
-				"operator": encodeInterlocutorInfo(
-					reply.FromID, reply.From,
-				),
-			}
+		// CACHE Update CHAT title for recepient !
+		reply.FromID = newChatMember.GetId()
+		// {"operator": "$givenName"}
+		reply.From   = newChatMember.GetFirstName()
+		reply.From   = strings.TrimSpace(reply.From)
+		// Extract the first word from user's display name; must be the given name
+		if gn := strings.IndexFunc(reply.From, unicode.IsSpace); gn > 0 {
+			reply.From = reply.From[0:gn]
 		}
-		// Ignore send, just update changes !
-		return nil // +OK
+		if reply.From == "" {
+			reply.From = c.botName // default: (!)
+		}
+		// STORE result binding changed !
+		update.Variables = map[string]string{
+			"operator": encodeInterlocutorInfo(
+				reply.FromID, reply.From,
+			),
+		}
+
+		// FIXME: Send notification text template ...
+		update.Text = reply.From +" joined the conversation"
 
 	case "left":   // ACK: ChatService.LeaveConversation()
 
@@ -745,7 +781,7 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 				"operator": "",
 			}
 		}
-		// Ignore send, just update changes !
+		// FIXME: Ignore send ? just update changes ?
 		return nil // +OK
 
 	// case "typing":
@@ -756,7 +792,7 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
 		// SEND: typical text notification !
 		switch chat.corezoidRequest.Event {
 		// FIXME: Should we send "closeChat" [ACK]nowledge ?
-		case "chat","closeChat":
+		case "startChat","chat","closeChat":
 			// replyAction = startChat|closeChat|answerToChat
 			reply.Type = "closeChat"
 			// reply.Text = defined below !
