@@ -1,15 +1,14 @@
 package main
 
 import (
-
 	"net"
 	"net/url"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 
-	"github.com/webitel/chat_manager/log"
 	"github.com/webitel/chat_manager/internal/wrapper"
+	"github.com/webitel/chat_manager/log"
 
 	"github.com/gorilla/mux"
 	"github.com/micro/cli/v2"

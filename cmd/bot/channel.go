@@ -1,11 +1,10 @@
 package main
 
 import (
-
-	"time"
 	"context"
-	"strings"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/micro/go-micro/v2/registry"
 
 	chat "github.com/webitel/chat_manager/api/proto/chat"
-
 	// strategy "github.com/webitel/chat_manager/internal/selector"
 )
 
@@ -87,7 +85,8 @@ func (c *Channel) Close() (err error) {
 	c.Gateway.Unlock() // -RW
 
 	if !ok {
-		panic("channel: not running !")
+		// panic("channel: not running !")
+		return nil // make: idempotent !
 	}
 
 	// if ok && c.Closed != 0 {
@@ -289,7 +288,7 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 	}
 
 	// PERFORM resend to internal chat service provider
-	_, err := c.Gateway.Internal.Client.SendMessage(
+	res, err := c.Gateway.Internal.Client.SendMessage(
 		ctx, // operation cancellation context
 		&chat.SendMessageRequest{
 
@@ -309,6 +308,12 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 
 	if err == nil {
 		event = c.Log.Debug()
+		// TODO: Remove if clause !
+		// For backwards capability only !
+		if res.Message != nil {
+
+			*(message) = *(res.Message)
+		}
 	} else {
 		event = c.Log.Error().Err(err)
 	}

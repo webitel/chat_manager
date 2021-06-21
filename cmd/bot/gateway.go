@@ -1,14 +1,14 @@
 package main
 
 import (
-
-	"time"
-	"sync"
 	"context"
-	"strings"
 	"net/http"
+	"strings"
+	"sync"
+	"time"
 
 	"encoding/json"
+
 	"github.com/rs/zerolog"
 
 	gate "github.com/webitel/chat_manager/api/proto/bot"
@@ -343,9 +343,12 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 
 		if !recepient.IsNew() && closed {
 			// NOTE: Closed by the webitel.chat.server !
+			if recepient.Closed == 0 {
+				recepient.Closed = time.Now().Unix() // SENT: COMMITTED !
+			}
 			defer func() {
 				// Mark "closed" DO NOT SEND .CloseConversation() request !
-				recepient.Closed = time.Now().Unix() // SENT: COMMITTED !
+				// recepient.Closed = time.Now().Unix() // SENT: COMMITTED !
 				// REMOVE: runtime state !
 				_ = recepient.Close() // (messageText)
 			} ()

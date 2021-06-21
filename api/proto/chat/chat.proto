@@ -155,6 +155,8 @@ message SendMessageRequest {
 }
 
 message SendMessageResponse {
+    // Message sent !
+    Message message = 1;
 }
 
 message StartConversationRequest {

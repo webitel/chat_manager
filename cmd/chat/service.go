@@ -1,37 +1,36 @@
 package main
 
 import (
-
-	"fmt"
-	"mime"
-	"path"
-	"time"
-	"strconv"
-	"strings"
 	"context"
-	"net/url"
-	"net/http"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"mime"
+	"net/http"
+	"net/url"
+	"path"
+	"strconv"
+	"strings"
+	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/jmoiron/sqlx"
+	"github.com/rs/zerolog"
 
 	// errs "github.com/pkg/errors"
-	"github.com/micro/go-micro/v2/errors"
 	"github.com/micro/go-micro/v2/broker"
+	"github.com/micro/go-micro/v2/errors"
 	"github.com/micro/go-micro/v2/metadata"
 
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/pkg/events"
 
+	pbbot "github.com/webitel/chat_manager/api/proto/bot"
+	pb "github.com/webitel/chat_manager/api/proto/chat"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/internal/auth"
 	event "github.com/webitel/chat_manager/internal/event_router"
 	"github.com/webitel/chat_manager/internal/flow"
 	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
-	pbbot "github.com/webitel/chat_manager/api/proto/bot"
-	pb "github.com/webitel/chat_manager/api/proto/chat"
 )
 
 type Service interface {
@@ -298,6 +297,10 @@ func (s *chatService) SendMessage(
 			Msg("FAILED Sending Message")
 		return err
 	}
+
+	// NOTE: normalized during .saveMessage() function
+	sentMessage := sendMessage
+	res.Message = sentMessage
 
 	return nil
 }
@@ -2421,6 +2424,15 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 	// if !saveMessage.UpdatedAt.IsZero() {
 	sendMessage.UpdatedAt = app.DateTimestamp(saveMessage.UpdatedAt)
 	// }
+	from := sender.User
+	sendMessage.From = &pb.Account{
+		Id:        from.ID,
+		Channel:   from.Channel,
+		Contact:   from.Contact,
+		FirstName: from.FirstName,
+		LastName:  from.LastName,
+		Username:  from.UserName,
+	}
 	// endregion
 
 	return saveMessage, nil

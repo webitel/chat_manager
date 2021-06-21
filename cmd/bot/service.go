@@ -1,21 +1,20 @@
 package main
 
 import (
-	
 	"net"
 	// "net/url"
-	
-	"fmt"
+
 	"context"
+	"fmt"
 	"strings"
 
-	"sync"
 	"net/http"
+	"sync"
 
 	"github.com/rs/zerolog"
 	// errs "github.com/pkg/errors"
 	"github.com/micro/go-micro/v2/errors"
-	
+
 	gate "github.com/webitel/chat_manager/api/proto/bot"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 )
@@ -175,8 +174,15 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		)
 
 		if err != nil {
-			// Failed to lookup profile by URI
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			re := errors.FromError(err)
+			switch re.Code {
+			case 404: // NOT FOUND
+				// Failed to lookup profile by URI
+				http.Error(w, err.Error(), http.StatusNotFound)
+			default:
+				// Failed to lookup profile by URI
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 			return
 		}
 

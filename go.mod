@@ -9,7 +9,7 @@ require (
 	github.com/golang/protobuf v1.4.3
 	github.com/google/uuid v1.1.2
 	github.com/gorilla/mux v1.7.3
-	github.com/gorilla/websocket v1.4.2 // indirect
+	github.com/gorilla/websocket v1.4.2
 	github.com/jackc/pgconn v1.7.2
 	github.com/jackc/pgtype v1.6.1
 	github.com/jackc/pgx/v4 v4.9.2
@@ -23,13 +23,12 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.19.0
 	github.com/webitel/protos v0.0.0-20210118102359-591a476da972 // indirect
-	github.com/webitel/protos/bot v0.0.0-20210118102359-591a476da972 // indirect
-	github.com/webitel/protos/chat v0.0.0-20210118102359-591a476da972 // indirect
+	github.com/webitel/protos/bot v0.0.0-20210618142934-0e88f093dc55 // indirect
+	github.com/webitel/protos/chat v0.0.0-20210618142934-0e88f093dc55 // indirect
 	github.com/webitel/protos/engine v0.0.0-20210118102359-591a476da972 // indirect
 	github.com/webitel/protos/storage v0.0.0-20210118102359-591a476da972 // indirect
 	github.com/webitel/protos/workflow v0.0.0-20210118102359-591a476da972 // indirect
 	golang.org/x/crypto v0.0.0-20201016220609-9e8e0b390897 // indirect
-	google.golang.org/genproto v0.0.0-20201021134325-0d71844de594
 	google.golang.org/grpc v1.33.1
 	google.golang.org/protobuf v1.25.0
 //	google.golang.org/protobuf/cmd/protoc-gen-go v1.25.0

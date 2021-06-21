@@ -1,11 +1,16 @@
 package main
 
 import (
+	"bufio"
+	"io"
+	"net"
+
 	"github.com/google/uuid"
-	
+
+	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
-	"net/http"
+
 	stdlog "github.com/micro/go-micro/v2/logger"
 )
 
@@ -62,6 +67,54 @@ func init() {
 	// }
 }
 
+type response struct {
+	http.ResponseWriter
+	*httptest.ResponseRecorder
+}
+
+func (w *response) Header() http.Header {
+	return w.ResponseRecorder.Header()
+}
+
+func (w *response) WriteHeader(code int) {
+	w.ResponseRecorder.WriteHeader(code)
+}
+
+func (w *response) Write(b []byte) (int, error) {
+	return w.ResponseRecorder.Write(b)
+}
+
+type conn struct {
+	net.Conn
+	r io.Reader
+	w io.Writer
+}
+
+func (w *response) Hijack() (c net.Conn, rw *bufio.ReadWriter, err error) {
+	hw, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		http.Error(w, "webserver doesn't support hijacking", http.StatusInternalServerError)
+		return
+	}
+	c, rw, err = hw.Hijack()
+	// if err == nil {
+	// 	c = &conn{
+	// 		Conn: c,
+	// 		r: io.TeeReader(c, os.Stdout),
+	// 		w: io.MultiWriter(c, os.Stdout),
+	// 	}
+	// }
+	return
+}
+
+func (c *conn) Read(p []byte) (n int, err error) {
+	return c.r.Read(p)
+}
+
+func (c *conn) Write(p []byte) (n int, err error){
+	return c.w.Write(p)
+}
+
 // ContentTypeHandler wraps and returns a http.Handler, validating the request
 // content type is compatible with the contentTypes list. It writes a HTTP 415
 // error if that fails.
@@ -82,10 +135,14 @@ func dumpMiddleware(next http.Handler) http.Handler {
 		}
 		
 		// src: https://stackoverflow.com/questions/29319783/go-logging-responses-to-incoming-http-requests-inside-http-handlefunc
-		recorder := httptest.NewRecorder()
+		wr := &response{
+			ResponseRecorder: httptest.NewRecorder(),
+			ResponseWriter: w,
+		}
+		// recorder := httptest.NewRecorder()
 		defer func() {
 
-			rw := recorder.Result()
+			rw := wr.Result() // recorder.Result()
 			if dump, err := httputil.DumpResponse(rw, rw.ContentLength > 0); err != nil {
 				stdlog.Tracef("httputil.DumpResponse(error): %v", err)
 			} else {
@@ -100,10 +157,12 @@ func dumpMiddleware(next http.Handler) http.Handler {
 			}
 
 			w.WriteHeader(rw.StatusCode)
-			recorder.Body.WriteTo(w)
+			// recorder.Body.WriteTo(w)
+			_, _ = wr.Body.WriteTo(w)
 
 		}()
 
-		next.ServeHTTP(recorder, r)
+		// next.ServeHTTP(recorder, r)
+		next.ServeHTTP(wr, r)
 	})
 }

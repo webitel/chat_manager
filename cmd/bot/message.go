@@ -2,17 +2,18 @@ package main
 
 import (
 	"strings"
+
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 )
 
 // Account contact info
 type Account struct {
-	ID        int64
-	FirstName string
-	LastName  string
-	Username  string
-	Channel   string // channel: communication type name, e.g.: user, flow, telephone, telegram, viber
-	Contact   string // channel: contact string value
+	ID        int64  `json:"id,omitempty"`
+	FirstName string `json:"first_name,omitempty"`
+	LastName  string `json:"last_name,omitempty"`
+	Username  string `json:"username,omitempty"`
+	Channel   string `json:"channel,omitempty"` // channel: communication type name, e.g.: user, flow, telephone, telegram, viber
+	Contact   string `json:"contact,omitempty"` // channel: contact string value
 }
 
 func (e *Account) IsBot() bool {

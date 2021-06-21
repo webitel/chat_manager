@@ -59,6 +59,8 @@ message Message {
     repeated Buttons buttons = 6;
     // Inline Keyboard Buttons SET
     repeated Buttons inline = 15;
+    // From sender user account
+    Account from = 16;
 
     // NewChatMembers description for {"type":"joined"} notification
     repeated Account new_chat_members = 20;
