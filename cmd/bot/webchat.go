@@ -508,19 +508,19 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if !c.Websocket.CheckOrigin(req) {
-		c.Websocket.Error(rsp, req, http.StatusForbidden,
-			fmt.Errorf("Origin: %s; Not Allowed", req.Header.Get(hdrOrigin)),
-		)
-		// http.Error(rsp, "403 Forbidden", http.StatusForbidden)
-		return
-	}
-
 	if !websocket.IsWebSocketUpgrade(req) {
 		// TODO: handle other supported options here
 		// http.ServeFile(rsp, req, "~/develop/webitel/chat/cmd/bot/webchat.html")
 		c.Websocket.Error(rsp, req, http.StatusBadRequest, nil)
 		// http.Error(rsp, "404 Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	if !c.Websocket.CheckOrigin(req) {
+		c.Websocket.Error(rsp, req, http.StatusForbidden,
+			fmt.Errorf("Origin: %s; Not Allowed", req.Header.Get(hdrOrigin)),
+		)
+		// http.Error(rsp, "403 Forbidden", http.StatusForbidden)
 		return
 	}
 
