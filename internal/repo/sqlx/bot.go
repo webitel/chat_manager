@@ -57,6 +57,8 @@ func NewBotStore(log *zerolog.Logger, primary *sql.DB, secondary ...*sql.DB) bot
 	}
 }
 
+
+
 func (s *pgsqlBotStore) Create(ctx *app.CreateOptions, obj *bot.Bot) error {
 
 	stmtQ, params, err := createBotRequest(ctx, obj)
@@ -121,51 +123,6 @@ func (s *pgsqlBotStore) Create(ctx *app.CreateOptions, obj *bot.Bot) error {
 
 	return nil
 }
-
-/*
-// V0
-func (s *pgsqlBotStore) Create(ctx *app.CreateOptions, obj *bot.Bot) error {
-
-	withQ := "WITH created AS (" +
-		pgsqlCreateBotQ +
-	")"
-
-	db := s.primary()
-
-	err := db.QueryRowContext(
-		// Cancelation Context
-		ctx.Context.Context,
-		// PostgreSQL Statement
-		pgsqlCreateBotQ,
-		// Statement Parameters
-		obj.GetDc().GetId(), // :dc // app responsible !
-		obj.GetUri(), // :uri
-		obj.GetName(), // :name,
-		obj.GetFlow().GetId(), // :schema_id,
-		obj.GetEnabled(), // :enabled
-		obj.GetProvider(), // :type,
-		obj.GetMetadata(), // :variables,
-		database.NullTimestamp(
-			obj.GetCreatedAt(), // :created_at,
-		),
-		obj.GetCreatedBy().GetId(),
-
-	).Scan(
-
-		&obj.Id,
-
-	)
-
-	if err != nil {
-
-		err = saveBotError(err)
-	}
-
-	return err
-	
-	panic("not implemented") // TODO: Implement
-}
-*/
 
 func (s *pgsqlBotStore) Search(ctx *app.SearchOptions) ([]*bot.Bot, error) {
 	
@@ -322,27 +279,7 @@ func (s *pgsqlBotStore) Delete(req *app.DeleteOptions) (int64, error) {
 	return count, nil
 }
 
-const (
 
-	// $1 - :dc -- domain component id
-	// $2 - :uri
-	// $3 - :name
-	// $4 - :flow_id
-	// $5 - :enabled
-	// $6 - :provider -- provider type
-	// $7 - :metadata -- provider options
-	// $8 - :created_at -- localtimestamp
-	// $9 - :created_by -- author|owner|user
-	pgsqlCreateBotQ =
-// `INSERT INTO chat.profile (domain_id, name, url_id, schema_id, type, variables, created_at)
-// VALUES ($1, $2, $3, $4, $5, $6, $7)
-// RETURNING id
-// `
-`INSERT INTO chat.bot (dc, uri, name, flow_id, enabled, provider, metadata, created_at, created_by, updated_at, updated_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $8, $9)
-`
-
-)
 
 func createBotRequest(req *app.CreateOptions, obj *bot.Bot) (stmtQ SelectStmt, params params, err error) {
 
@@ -759,329 +696,6 @@ func searchBotResults(rows *sql.Rows, limit int) ([]*bot.Bot, error) {
 	return list, err
 }
 
-/*
-// V0
-func searchBotRequest(req *app.SearchOptions) (stmtQ SelectStmt, params params, err error) {
-
-	// ----- FROM -----
-	stmtQ = psql.Select().From("chat.profile e")
-
-	params = map[string]interface{}{
-		"dc": req.Creds.GetDc(),
-	}
-	stmtQ = stmtQ.Where("e.domain_id = :dc")
-
-	const (
-
-		joinDomains uint8 = (1 << iota)
-		joinFlows
-
-	)
-
-	var (
-
-		join uint8
-	)
-
-	// INNER JOIN directory.wbt_domain AS srv
-	joinDomain := func() {
-		if join&joinDomains != 0 {
-			return // already
-		}
-		join |= joinDomains
-		stmtQ = stmtQ.Join("directory.wbt_domain srv on srv.dc = e.domain_id")
-	}
-	// LEFT JOIN flow.acr_routing_scheme AS flow
-	joinFlow := func() {
-		if join&joinFlows != 0 {
-			return // already
-		}
-		join |= joinFlows
-		stmtQ = stmtQ.LeftJoin("flow.acr_routing_scheme flow on flow.id = e.schema_id and flow.domain_id = e.domain_id")
-	}
-
-	// SELECT
-	if len(req.Fields) == 0 {
-		req.Fields = []string{
-			"id", // "dc",
-			"uri", "name",
-			"flow", "enabled",
-			"provider", "metadata",
-			"created_at", // "created_by",
-			// "updated_at", "updated_by",
-		}
-	}
-
-	for _, att := range req.Fields {
-		switch att {
-		case "dc":
-			joinDomain() // INNER JOIN directory.wbt_domain AS srv
-			stmtQ = stmtQ.Columns("e.domain_id dc", "srv.name \"domain\"")
-		case "id":
-			stmtQ = stmtQ.Column("e.id")
-		case "uri":
-			stmtQ = stmtQ.Column("('/'||e.url_id) uri")
-		case "name":
-			stmtQ = stmtQ.Column("e.name")
-		case "flow":
-			joinFlow() // LEFT JOIN flow.acr_routing_scheme AS flow
-			stmtQ = stmtQ.Columns("e.schema_id", "flow.name flow")
-		case "enabled":
-			stmtQ = stmtQ.Column("true enabled")
-		case "provider":
-			stmtQ = stmtQ.Column("e.type provider")
-		case "metadata":
-			stmtQ = stmtQ.Column("e.variables metadata")
-		case "created_at":
-			stmtQ = stmtQ.Column("e.created_at")
-		case "created_by":
-			stmtQ = stmtQ.LeftJoin("directory.wbt_user created on created.id = e.created_by")
-			stmtQ = stmtQ.Columns("e.created_by created_id", "coalesce(created.name, created.auth) created_by")
-		case "updated_at":
-			stmtQ = stmtQ.Column("e.updated_at")
-		case "updated_by":
-			stmtQ = stmtQ.LeftJoin("directory.wbt_user updated on updated.id = e.updated_by")
-			stmtQ = stmtQ.Columns("e.updated_by updated_id", "coalesce(updated.name, updated.auth) updated_by")
-		// ...
-		default:
-			// ERR: unknown field type
-		}
-	}
-
-	// ------ FILTER(s) ------
-	var (
-
-		oid int64 // GET
-	)
-
-	// BY: ?id=
-	if size := len(req.ID); size != 0 {
-		// Normalize requested size
-		if req.Size = size; size == 1 {
-			oid = req.ID[0] // GET
-			params.set("oid", oid)
-			stmtQ = stmtQ.Where("e.id = :oid")
-		} else {
-			param := pgtype.Int8Array{}
-			err = param.Set(req.ID)
-			if err != nil {
-				// ERR: failed to set param
-				return // stmt, params, !err
-			}
-			params.set("ids", &param)
-			stmtQ = stmtQ.Where("e.id = ANY(:ids)")
-		}
-	}
-
-	// BY: ?q=
-	if term := req.Term; term != "" {
-
-	}
-
-	for name, assert := range req.Filter {
-		switch name {
-		case "uri":
-			switch v := assert.(type) {
-			case string:
-				params.set("uri", v)
-				stmtQ = stmtQ.Where("e.url_id LIKE :uri")
-			default:
-				err = errors.BadRequest(
-					"chat.bot.assert.uri",
-					"chatbot: invalid URI filter %T type",
-					assert,
-				)
-			}
-		default:
-		}
-	}
-
-	// ------ ORDER BY ------
-	for _, att := range req.Order {
-
-		switch att {
-		case "id":
-		case "name":
-			// ...
-		default:
-			// ERR: unknown field type
-		}
-	}
-
-	// ------ OFFSET|LIMIT ------
-	if size := req.GetSize(); size > 0 {
-		// OFFSET (page-1)*size -- omit same-sized previous page(s) from result
-		if page := req.GetPage(); page > 1 {
-			stmtQ = stmtQ.Offset((uint64)((page-1)*(size)))
-		}
-		// LIMIT (size+1) -- to indicate whether there are more result entries
-		stmtQ = stmtQ.Limit((uint64)(size+1))
-	}
-
-	return 
-}
-
-func searchBotResults(rows *sql.Rows, limit int) ([]*bot.Bot, error) {
-
-	// Fetch result entries
-	cols, err := rows.Columns()
-
-	if err != nil {
-		return nil, err
-	}
-
-	// Build convertion(s)
-	var (
-
-		obj *bot.Bot // target: scan result entry
-		row = make([]func()interface{}, len(cols)) // projection: index[column]obj.value
-	)
-
-	for i, col := range cols {
-		switch col {
-		case "dc", "domain":
-			row[i] = func() interface{} {
-				return scanRefer(&obj.Dc) // **bot.Refer
-			}
-		case "id":
-			row[i] = func() interface{} {
-				return &obj.Id // *int64
-			}
-		case "uri":
-			row[i] = func() interface{} {
-				return &obj.Uri // *string
-			}
-		case "name":
-			row[i] = func() interface{} {
-				return &obj.Name // *string
-			}
-		case "schema_id", "flow":
-			row[i] = func() interface{} {
-				return scanRefer(&obj.Flow) // **bot.Refer
-			}
-		case "enabled":
-			row[i] = func() interface{} {
-				return &obj.Enabled // *bool NOTNULL
-			}
-		case "provider":
-			row[i] = func() interface{} {
-				return &obj.Provider // *string NOTNULL
-			}
-		case "metadata":
-			row[i] = func() interface{} {
-				return scanJSONB(&obj.Metadata) // *map[string]string
-			}
-		case "created_at":
-			row[i] = func() interface{} {
-				return scanStamp(&obj.CreatedAt) // *int64
-			}
-		case "created_id", "created_by":
-			row[i] = func() interface{} {
-				return scanRefer(&obj.CreatedBy) // **bot.Refer
-			}
-		case "updated_at":
-			row[i] = func() interface{} {
-				return scanStamp(&obj.UpdatedAt) // *int64
-			}
-		case "updated_id", "updated_by":
-			row[i] = func() interface{} {
-				return scanRefer(&obj.UpdatedBy) // **bot.Refer
-			}
-		default:
-		}
-	}
-
-	var (
-
-		page []bot.Bot
-		list []*bot.Bot
-		vals = make([]interface{}, len(cols)) // scan values
-	)
-
-	if limit > 0 {
-		page = make([]bot.Bot, limit)
-		list = make([]*bot.Bot, 0, limit+1)
-	}
-
-	for rows.Next() {
-
-		if 0 < limit && limit == len(list) {
-			// We reached the limit result count !
-			// Mark the result
-			list = append(list, nil)
-			break
-		}
-
-		// Alloc result entry
-		if len(page) != 0 {
-			obj = &page[0]
-			page = page[1:]
-		} else {
-			obj = new(bot.Bot)
-		}
-
-		// Build row2entry projection
-		for c, val := range row {
-			vals[c] = val()
-		}
-
-		// Scan entry values ...
-		err = rows.Scan(vals...)
-
-		if err != nil {
-			break
-		}
-
-		// Result entry !
-		list = append(list, obj)
-	}
-
-	if err == nil {
-		err = rows.Err()
-	}
-
-	return list, err
-}
-
-
-func updateBotRequest(req *app.UpdateOptions, set *bot.Bot) (stmt UpdateStmt, params params, err error) {
-
-	stmt = psql.Update("chat.profile e")
-	
-	params.set("id", set.GetId())
-	params.set("dc", set.GetDc().GetId())
-	// params.set("dc", req.Context.Creds.Dc)
-
-	stmt = stmt.Where("e.id = :id")
-	stmt = stmt.Where("e.domain_id = :dc")
-
-	fields := req.Fields
-	if len(fields) == 0 {
-		fields = []string{
-			"name",
-			// ...
-		}
-	}
-
-	for _, att := range fields {
-		switch att {
-		case "id":
-			err = errors.BadRequest(
-				"chat.bot.update.readonly",
-				"bot: attribute .id is readonly",
-			)
-			return // stmt, params, err
-		case "name":
-			stmt = stmt.Set("name", text(set.Name))
-
-		default:
-		}
-	}
-
-	return // stmt, params, nil
-}
-*/
-
 func updateBotRequest(req *app.UpdateOptions, set *bot.Bot) (stmt SelectStmt, params params, err error) {
 
 	// UPDATE
@@ -1099,9 +713,8 @@ func updateBotRequest(req *app.UpdateOptions, set *bot.Bot) (stmt SelectStmt, pa
 	if len(fields) == 0 {
 		// default: set
 		fields = []string{
-			// "id", "dc",
-			"name", "uri",
-			"enabled", "flow",
+			// "id", "dc", "uri",
+			"name", "flow", "enabled",
 			// "provider",
 			"metadata",
 			// "created_at", // "created_by",
@@ -1112,20 +725,20 @@ func updateBotRequest(req *app.UpdateOptions, set *bot.Bot) (stmt SelectStmt, pa
 	for _, att := range fields {
 		// READONLY
 		switch att {
-		case "id", "dc", "provider",
+		case "id", "dc", "uri", "provider",
 			"created_at", "created_by",
 			"updated_at", "updated_by":
 
 			err = errors.BadRequest(
-				"chat.bot.update.fields.readonly",
+				"chat.bot.update.field.readonly",
 				"chatbot: update .%s; attribute is readonly",
 				 att,
 			)
 			return // stmt, params, err
 		// EDITABLE
-		case "uri":
-			params.set("uri", set.GetUri())
-			update = update.Set("uri", dbl.Expr(":uri"))
+		// case "uri":
+		// 	params.set("uri", set.GetUri())
+		// 	update = update.Set("uri", dbl.Expr(":uri"))
 		case "name":
 			params.set("name", set.GetName())
 			update = update.Set("name", dbl.Expr(":name"))
@@ -1195,6 +808,8 @@ func updateBotRequest(req *app.UpdateOptions, set *bot.Bot) (stmt SelectStmt, pa
 
 	return // stmt, params, nil
 }
+
+
 
 func schemaBotError(err error) error {
 	if err == nil {
