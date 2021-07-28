@@ -1,10 +1,9 @@
 package sqlxrepo
 
 import (
-
-	"fmt"
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/webitel/chat_manager/app" // as model
 )
@@ -187,9 +186,9 @@ var psqlChatSessionQ = CompactSQL(
        'chatflow'          as chat_channel,
        chat.connection||coalesce('@'||service.node_id,'') as chat_contact,
        (false)             as flow_bridge, -- chat.flow_bridge,
-       bot.schema_id       as user_id,
+       bot.flow_id         as user_id,
        'bot'               as user_channel,
-       bot.schema_id::text as user_contact,
+       bot.flow_id::text   as user_contact,
        bot.name            as user_name,
        -- coalesce(contact.name, nullif(account.name, ''), account.username, chat.name) as chat_title,
        null                as props,
@@ -203,7 +202,7 @@ var psqlChatSessionQ = CompactSQL(
     join chat.channel as chat on chat.conversation_id = channel.id and chat.connection similar to '\d+'
                                      -- MUST chat@gateway as originator, created earlier this chat.conversation
                                      and chat.created_at <= channel.created_at + '3 millisecond'
-    join chat.profile as bot on (chat.connection::int8) = bot.id
+    join chat.bot on (chat.connection::int8) = bot.id
     left join chat.conversation_node as service on channel.id = service.conversation_id
 --     -- to be able to resolve CHAT title !
 --     left join chat.client as contact on not chat.internal and chat.user_id = contact.id -- external

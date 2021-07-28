@@ -1,14 +1,13 @@
 package event_router
 
 import (
-
-	"fmt"
-	"time"
 	"context"
 	"encoding/json"
+	"fmt"
+	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/micro/go-micro/v2/broker"
+	"github.com/rs/zerolog"
 
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/pkg/events"
@@ -19,7 +18,7 @@ import (
 )
 
 type eventRouter struct {
-	botClient gate.BotService
+	botClient gate.BotsService
 	// flowClient flow.Client
 	broker broker.Broker
 	repo   store.Repository
@@ -43,7 +42,7 @@ type Router interface {
 }
 
 func NewRouter(
-	botClient gate.BotService,
+	botClient gate.BotsService,
 	// flowClient flow.Client,
 	broker broker.Broker,
 	repo store.Repository,

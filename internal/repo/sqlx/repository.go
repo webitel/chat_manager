@@ -1,15 +1,15 @@
 package sqlxrepo
 
 import (
-	"time"
 	"context"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog"
 )
 
 type Repository interface {
-	ProfileRepository
+	// ProfileRepository
 	ConversationRepository
 	ChannelRepository
 	ClientRepository
@@ -37,22 +37,22 @@ type Repository interface {
 	CloseConversationTx(ctx context.Context, tx *sqlx.Tx, conversationID string) error
 }
 
-type ProfileRepository interface {
-	GetProfileByID(ctx context.Context, id int64, uri string) (*Profile, error)
-	GetProfiles(
-		ctx context.Context,
-		id int64,
-		size int32,
-		page int32,
-		fields []string,
-		sort []string,
-		profileType string,
-		domainID int64,
-	) ([]*Profile, error)
-	CreateProfile(ctx context.Context, p *Profile) error
-	UpdateProfile(ctx context.Context, p *Profile) error
-	DeleteProfile(ctx context.Context, id int64) error
-}
+// type ProfileRepository interface {
+// 	GetProfileByID(ctx context.Context, id int64, uri string) (*Profile, error)
+// 	GetProfiles(
+// 		ctx context.Context,
+// 		id int64,
+// 		size int32,
+// 		page int32,
+// 		fields []string,
+// 		sort []string,
+// 		profileType string,
+// 		domainID int64,
+// 	) ([]*Profile, error)
+// 	CreateProfile(ctx context.Context, p *Profile) error
+// 	UpdateProfile(ctx context.Context, p *Profile) error
+// 	DeleteProfile(ctx context.Context, id int64) error
+// }
 
 type ConversationRepository interface {
 	CloseConversation(ctx context.Context, id string) error

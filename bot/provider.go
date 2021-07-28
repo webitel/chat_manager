@@ -1,10 +1,8 @@
-package main
+package bot
 
 import (
-	
 	"context"
 	"net/http"
-
 	// chat "github.com/webitel/chat_manager/api/proto/chat"
 	// store "github.com/webitel/chat_manager/internal/repo/sqlxrepo"
 )
@@ -42,14 +40,19 @@ type Receiver interface {
 
 
 type Provider interface {
-	 // String provider code name
+	 // String provider's code name
 	 String() string
 	 Sender
 	 Receiver
+	 // Close shuts down bot and all it's running session(s)
+	 Close() error
 }
 
 // NewProvider factory method
-type NewProvider func(agent *Gateway) (Provider, error)
+// Gateway agent represents .Bot profile settings, linked to .Internal CHAT *Service provider.
+// Optional, (state != nil) specifies running Provider state, need to be updated with NEW agent revision.
+type NewProvider func(agent *Gateway, state Provider) (Provider, error)
+// type NewProvider func(agent *Gateway) (Provider, error)
 
 // Well-known providers registry
 var providers = make(map[string]NewProvider)
@@ -59,7 +62,7 @@ var providers = make(map[string]NewProvider)
 func Register(provider string, factory NewProvider) {
 
 	if _, ok := providers[provider]; ok {
-		panic("chat/provider: register "+ provider +" duplicate")
+		panic("chat: duplicate "+ provider +" provider register")
 	}
 
 	providers[provider] = factory

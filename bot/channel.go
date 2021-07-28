@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"context"
@@ -50,7 +50,7 @@ func (c *Channel) DomainID() int64 {
 }
 
 func (c *Channel) ProfileID() int64 {
-	return c.Gateway.Profile.GetId()
+	return c.Gateway.Bot.GetId()
 }
 
 // func (c *Channel) AccountID() int64 {
@@ -59,7 +59,7 @@ func (c *Channel) ProfileID() int64 {
 
 // BotID defines workflow.schema.id internal @bot end-user
 func (c *Channel) BotID() int64 {
-	return c.Gateway.Profile.GetId()
+	return c.Gateway.Bot.GetId() // .GetFlow().GetId()
 }
 
 // func (c *Channel) ContactID() int64 {
@@ -74,15 +74,48 @@ func (c *Channel) Provider() string {
 
 
 
+// func (c *Channel) Close(cause string) (err error) {
 func (c *Channel) Close() (err error) {
 
-	c.Gateway.Lock()   // +RW
-	e, ok := c.Gateway.external[c.ChatID]
-	if ok = ok && e == c; ok && c.Closed != 0 {
-		delete(c.Gateway.external, c.ChatID)
-		delete(c.Gateway.internal, c.Account.ID) // delete(c.Gateway.internal, c.ContactID)
+	bot := c.Gateway
+	bot.Lock()   // +RW
+	e, ok := bot.external[c.ChatID]
+	if ok = (ok && e == c); ok && c.Closed != 0 {
+		delete(bot.external, c.ChatID)
+		delete(bot.internal, c.Account.ID) // delete(c.Gateway.internal, c.ContactID)
+		if len(bot.external) == 0 {
+			// if !bot.Enabled {
+			// 	// NOTE: Removes srv.gateways[uri] index
+			// 	_ = bot.Deregister(context.TODO())
+			// }
+			if bot.deleted {
+				// NOTE: Removes srv.gateways[uri] index
+				_ = bot.Deregister(context.TODO())
+				// NOTE: Removes srv.profiles[oid] index
+				_ = bot.Remove()
+			} else if !bot.Enabled {
+				bot.Log.Warn().Msg("DISABLED")
+			}
+		}
+		// if len(bot.external) == 0 {
+		// 	// NOTE: We just destroy the last active channel link
+		// 	if !bot.Enabled {
+		// 		// DISABLED !
+		// 		_ = bot.Remove()
+		// 	} // else if next := bot.next; next != nil {
+		// }
+		// 		// UPGRADE !
+		// 		// We have NEW agent revision: close THIS and start NEXT !
+		// 		srv := bot.Internal
+		// 		srv.indexMx.Lock()   // +RW
+		// 		srv.profiles[bot.Id] = next
+		// 		srv.indexMx.Unlock() // +RW
+		// 		// TODO: Dispose(bot) !
+		// 		next.Log.Info().Msg("UPGRADED")
+		// 	}
+		// }
 	}
-	c.Gateway.Unlock() // -RW
+	bot.Unlock() // -RW
 
 	if !ok {
 		// panic("channel: not running !")
@@ -105,19 +138,21 @@ func (c *Channel) Close() (err error) {
 
 		// Mark SENT .CloseConversation(!)
 		c.Closed = time.Now().Unix()
-		// complete command /close with reply text
+		// // complete command /close with reply text
+		// // if cause == "" {
+		// // 	// cause = commandCloseRecvDisposiotion // FROM: external, end-user request !
+		// // 	// NOTE: default: "Conversation closed"; expected ...
+		// // }
+		// // cause := "" // ACK: "Conversation closed" expected !
 		// if cause == "" {
-		// 	// cause = commandCloseRecvDisposiotion // FROM: external, end-user request !
-		// 	// NOTE: default: "Conversation closed"; expected ...
+			cause := commandCloseRecvDisposiotion // FROM: external, end-user request !
 		// }
-		// cause := "" // ACK: "Conversation closed" expected !
-		cause := commandCloseRecvDisposiotion // FROM: external, end-user request !
-		// switch cause {
-		// case "": // default: "Conversation closed"
-		// 	// cause = commandCloseSendDisposiotion
-		// case commandCloseRecvDisposiotion:
-		// 	cause = "closed" // 
-		// }
+		// // switch cause {
+		// // case "": // default: "Conversation closed"
+		// // 	// cause = commandCloseSendDisposiotion
+		// // case commandCloseRecvDisposiotion:
+		// // 	cause = "closed" // 
+		// // }
 
 		c.Log.Warn().Str("cause", cause).Msg(">>>>> CLOSING >>>>>")
 		// PREPARE: request parameters
@@ -135,13 +170,45 @@ func (c *Channel) Close() (err error) {
 
 		if err != nil {
 			// FORCE: destroy runtime link
-			c.Gateway.Lock()   // +RW
-			e, ok := c.Gateway.external[c.ChatID]
-			if ok = ok && e == c; ok {
-				delete(c.Gateway.external, c.ChatID)
-				delete(c.Gateway.internal, c.Account.ID) // c.ContactID)
+			bot := c.Gateway
+			bot.Lock()   // +RW
+			e, ok := bot.external[c.ChatID]
+			if ok = (ok && e == c); ok {
+				delete(bot.external, c.ChatID)
+				delete(bot.internal, c.Account.ID) // c.ContactID)
+				if len(bot.external) == 0 {
+					// if !bot.Enabled {
+					// 	// NOTE: Removes srv.gateways[uri] index
+					// 	_ = bot.Deregister(context.TODO())
+					// }
+					if bot.deleted {
+						// NOTE: Removes srv.gateways[uri] index
+						_ = bot.Deregister(context.TODO())
+						// NOTE: Removes srv.profiles[oid] index
+						_ = bot.Remove()
+					} else if !bot.Enabled {
+						bot.Log.Warn().Msg("DISABLED")
+					}
+				}
+				// if len(bot.external) == 0 {
+				// 	// NOTE: We just destroy the last active channel link
+				// 	if !bot.Enabled {
+				// 		// DISABLED !
+				// 		_ = bot.Remove()
+				// 	} // else if next := bot.next; next != nil {
+				// }
+				// 		// UPGRADED !
+				// 		// We have NEW agent revision: close THIS and start NEXT !
+				// 		srv := bot.Internal
+				// 		srv.indexMx.Lock()   // +RW
+				// 		srv.profiles[bot.Id] = next
+				// 		srv.indexMx.Unlock() // +RW
+				// 		// TODO: Dispose(bot) !
+				// 		next.Log.Info().Msg("UPGRADED")
+				// 	}
+				// }
 			}
-			c.Gateway.Unlock() // -RW
+			bot.Unlock() // -RW
 
 			// TODO: defer c.Send("error: %s", err)
 			c.Log.Error().Err(err).Str("cause", cause).Msg(">>>>> CLOSING >>>>>")

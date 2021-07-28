@@ -1,4 +1,4 @@
-package main
+package webchat
 
 import (
 	"bytes"
@@ -16,10 +16,12 @@ import (
 	"sync"
 	"time"
 
+	errs "github.com/micro/go-micro/v2/errors"
 	"github.com/pkg/errors"
 
 	"github.com/gorilla/websocket"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/webitel/chat_manager/bot"
 )
 
 // webChat room with external client
@@ -28,7 +30,7 @@ type webChat struct {
 	 // Chat Service (internal) connection
 	 Bot *WebChatBot
 	 // Chat Channel (external) definition
-	*Channel
+	*bot.Channel
 	 // This chat opened connections (different tabs)
 	 conn []*websocket.Conn
 	 // Buffered channel for sync write operations.
@@ -81,7 +83,7 @@ func (pttn originWildcard) match(origin string) bool {
 // WebChatBot gateway provider
 type WebChatBot struct {
 	
-	*Gateway
+	*bot.Gateway
 	// Websocket configuration options
 	 Websocket websocket.Upgrader
 	 // ReadTimeout duration allowed to wait for
@@ -96,14 +98,14 @@ type WebChatBot struct {
 	 // JSON-encoded single frame/message MAX size.
 	 MessageSizeMax int64 
 	 // Unexported: runtime chat(s) store
-	 sync.RWMutex
+	*sync.RWMutex
 	 chat map[string]*webChat
 }
 
 // NewWebChatBot initialize new agent.Profile service provider
-func NewWebChatBot(agent *Gateway) (Provider, error) {
+// func NewWebChatBot(agent *bot.Gateway) (bot.Provider, error) {
+func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 	// panic("not mplemented")
-
 	bot := &WebChatBot{
 		Gateway: agent,
 		// Setup: defaults ...
@@ -140,13 +142,14 @@ func NewWebChatBot(agent *Gateway) (Provider, error) {
 		ReadTimeout: time.Second * 30,  // 30s (PING)
 		WriteTimeout: time.Second * 10, // 10s
 		MessageSizeMax: 4 << 10,        // 4096 (bytes)
-		// runtime chat store
-		chat: make(map[string]*webChat, 4096), // (slots)
+		// // runtime chat store
+		// chat: make(map[string]*webChat, 4096), // (slots)
 	}
 
 	opts := &bot.Websocket
-	config := agent.Profile
-	profile := config.GetVariables()
+	profile := agent.GetMetadata()
+	// config := agent.Profile
+	// profile := config.GetProfile()
 
 	if s := profile["handshake_timeout"]; s != "" {
 		tout, err := time.ParseDuration(s)
@@ -291,6 +294,14 @@ func NewWebChatBot(agent *Gateway) (Provider, error) {
 		}
 	}
 
+	if state, ok := state.(*WebChatBot); ok && state != nil {
+		bot.RWMutex = state.RWMutex
+		bot.chat = state.chat
+	} else {
+		bot.RWMutex = new(sync.RWMutex)
+		bot.chat = make(map[string]*webChat, 4096)
+	}
+
 	// go bot.runtime(context.Background())
 
 	return bot, nil
@@ -298,11 +309,11 @@ func NewWebChatBot(agent *Gateway) (Provider, error) {
 
 const (
 	// Canonical WebChat Provider name
-	webChatProvider = "webchat"
+	providerWebChat = "webchat"
 )
 
 func (*WebChatBot) String() string {
-	return webChatProvider
+	return providerWebChat
 }
 
 // Register webhook callback URI
@@ -317,7 +328,7 @@ func (*WebChatBot) Deregister(ctx context.Context) error {
 // SendNotify implements Sender interface.
 // channel := notify.Chat
 // contact := notify.User
-func (c *WebChatBot) SendNotify(ctx context.Context, notify *Update) error {
+func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 	// panic("not mplemented")
 
 	var (
@@ -478,6 +489,17 @@ func generateRandomString(length int) string { // (string, error) {
 //     return string(b)
 // }
 
+// Close bot and ALL it's running session(s) ...
+func (c *WebChatBot) Close() error {
+
+	c.Lock() // +RW
+	for _, room := range c.chat {
+		close(room.send)
+	}
+	c.Unlock() // -RW
+
+	return nil
+}
 
 var cookieNeverExp = time.Date(2038, time.January, 19, 03, 14, 8, 000000000, time.UTC) // 2147483648 (2^31)
 
@@ -510,9 +532,9 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 
 	if !websocket.IsWebSocketUpgrade(req) {
 		// TODO: handle other supported options here
-		// http.ServeFile(rsp, req, "~/develop/webitel/chat/cmd/bot/webchat.html")
+		// http.ServeFile(rsp, req, "~/webitel/chat/bot/webchat/webchat.html")
 		c.Websocket.Error(rsp, req, http.StatusBadRequest, nil)
-		// http.Error(rsp, "404 Bad Request", http.StatusBadRequest)
+		// // http.Error(rsp, "400 Bad Request", http.StatusBadRequest)
 		return
 	}
 
@@ -525,41 +547,35 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 	}
 
 	responseHeader := rsp.Header()
+	responseHeader.Set("Access-Control-Allow-Credentials", "true")
+	responseHeader.Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	responseHeader.Set("Access-Control-Allow-Headers", "Connection, Upgrade, Sec-Websocket-Version, Sec-Websocket-Extensions, Sec-Websocket-Key, Sec-Websocket-Protocol, Cookie")
+	responseHeader.Set("Access-Control-Allow-Origin", req.Header.Get(hdrOrigin))
+
+	var room *webChat
 	deviceID, ok := webChatDeviceID(req)
 	if !ok || deviceID == "" {
-		deviceID = generateRandomString(32)
-		cookie := &http.Cookie{
-			Name:       "cid",
-			Value:      deviceID, // unique client + device identifier
-			Path:       req.URL.Path, // "/"+ c.Profile.UrlId, // TODO: prefix from NGINX proxy location
-			Domain:     req.URL.Host, // req.Header.Get("Host"), // "10.10.10.8", // "dev.webitel.com",
-			Expires:    cookieNeverExp, // 2147483648 (2^31)
-			// RawExpires: "",
-			MaxAge:     0,
-			Secure:     httpIsSecure(req), // req.URL.Schema == "https"
-			HttpOnly:   false,
-			SameSite:   http.SameSiteLaxMode,
-			// Raw:        "",
-			// Unparsed:   nil,
+		// Definitely: creating NEW client !
+		if !httpIsSecure(req) {
+			http.Error(rsp,
+				"chat: secure connection required",
+				 http.StatusBadRequest,
+			)
 		}
-		responseHeader.Add(hdrSetCookie, cookie.String())
+		// Generate NEW client (+device) ID !
+		deviceID = generateRandomString(32)
+
+	} else {
+
+		c.RLock()
+		room = c.chat[deviceID]
+		c.RUnlock()
+
 	}
-
-	conn, err := c.Websocket.Upgrade(rsp, req, responseHeader)
-
-	// NOTE: req released !
-	if err != nil {
-		c.Log.Err(err)
-		return
-	}
-
-	c.RLock()
-	room := c.chat[deviceID]
-	c.RUnlock()
 
 	if room == nil {
 
-		endUser := &Account{
+		endUser := &bot.Account{
 			ID:        0,
 			FirstName: "Web",
 			LastName:  "Chat",
@@ -573,8 +589,15 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 		)
 	
 		if err != nil {
+			// MAY: bot is disabled !
 			c.Gateway.Log.Err(err).Msg("Failed to .GetChannel()")
-			panic(err)
+			// Failed locate chat channel !
+			re := errs.FromError(err); if re.Code == 0 {
+				re.Code = (int32)(http.StatusBadGateway)
+			}
+			// conn.Write(!)
+			http.Error(rsp, re.Detail, (int)(re.Code))
+			return // 503 Bad Gateway
 		}
 
 		room = &webChat{
@@ -588,11 +611,41 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			msgs: make([]*chat.Message, 0, 32),
 		}
 
-		bytes := c.Websocket.WriteBufferSize
-		if bytes > 0 { // reinit
-			room.wbuf.Grow(bytes)
+		size := c.Websocket.WriteBufferSize
+		if size > 0 { // reinit
+			room.wbuf.Grow(size)
 			room.wbuf.Reset()
 		}
+	}
+
+	if !ok {
+		// Set-Cookie:
+		cookie := &http.Cookie{
+			Name:       "cid",
+			Value:      deviceID, // unique client + device identifier
+			Path:       req.URL.Path, // "/"+ c.Profile.UrlId, // TODO: prefix from NGINX proxy location
+			// Domain:     domain, // req.Header.Get("Host"),
+			Expires:    cookieNeverExp, // 2147483648 (2^31)
+			// RawExpires: "",
+			MaxAge:     0,
+			Secure:     httpIsSecure(req), // req.URL.Schema == "https"
+			HttpOnly:   true,
+			// Cross-origin ([site]: example.com <-> [chat]: webitel.com) Set-Cookie
+			// NOTE: https://developer.mozilla.org/de/docs/Web/HTTP/Headers/Set-Cookie/SameSite#none
+			SameSite:   http.SameSiteNoneMode, // http.SameSiteLaxMode,
+			// Raw:        "",
+			// Unparsed:   nil,
+		}
+		responseHeader.Add(hdrSetCookie, cookie.String())
+	}
+
+	// UPGRADE: connection protocol !
+	conn, err := c.Websocket.Upgrade(rsp, req, responseHeader)
+
+	// NOTE: req released !
+	if err != nil {
+		c.Log.Err(err)
+		return
 	}
 
 	c.join(room, conn)
@@ -612,7 +665,7 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 // ChatInfo state message
 type webChatInfo struct {
 	Id   string          `json:"id"`
-	User *Account        `json:"user"`
+	User *bot.Account        `json:"user"`
 	Msgs []*chat.Message `json:"msgs,omitempty"`
 }
 
@@ -668,7 +721,7 @@ func (c *WebChatBot) join(client *webChat, conn *websocket.Conn) {
 		// TODO: show chatInfo
 		if client.Channel.IsNew() {
 			// /start
-			commandStart := Update {
+			commandStart := bot.Update {
 			
 				// ChatID: strconv.FormatInt(recvMessage.Chat.ID, 10),
 				
@@ -815,12 +868,12 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 		// // c.hub.broadcast <- message
 		if err == nil {
 			err = c.Bot.Read(context.TODO(),
-				&Update{
+				&bot.Update{
 					ID:      0,
 					Chat:    c.Channel,
 					User:    &c.Account,
 					Title:   "",
-					Event:   msg.GetType(), // "text"
+					// Event:   msg.GetType(), // "text"
 					Message: msg,
 				},
 			)
@@ -909,7 +962,7 @@ func (c *webChat) writePump() {
 			c.Bot.Unlock() // -RW
 			// Ensure service closed this chat !
 			if c.Channel.Closed == 0 {
-				c.Channel.Close()
+				_ = c.Channel.Close()
 			}
 		// }
 		// c.Log.Warn().Msg("[WS] >>> Shutdown <<<")
@@ -1090,5 +1143,5 @@ func (c *webChat) broadcast(m interface{}) {
 
 func init() {
 	// Register "webchat" provider ...
-	Register(webChatProvider, NewWebChatBot)
+	bot.Register(providerWebChat, NewWebChatBot)
 }

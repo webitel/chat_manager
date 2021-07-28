@@ -3,18 +3,18 @@ package sqlxrepo
 import (
 
 	// "fmt"
-	"time"
 	"context"
-	"strings"
-	"strconv"
 	"database/sql"
 	"encoding/json"
+	"strconv"
+	"strings"
+	"time"
 
-	"github.com/pkg/errors"
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 
-	"github.com/jackc/pgtype"
 	"github.com/jackc/pgconn"
+	"github.com/jackc/pgtype"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/webitel/chat_manager/app"
@@ -765,7 +765,7 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 		}
 		order := "" // ASC
 		switch ref[0] {
-		case '+':
+		case '+', ' ':
 			order = " ASC"
 			ref = ref[1:]
 		case '-', '!':

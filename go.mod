@@ -5,7 +5,6 @@ go 1.14
 require (
 	github.com/Masterminds/squirrel v1.5.0
 	github.com/go-telegram-bot-api/telegram-bot-api v4.6.4+incompatible
-	github.com/gogo/protobuf v1.2.2-0.20190723190241-65acae22fc9d // indirect
 	github.com/golang/protobuf v1.4.3
 	github.com/google/uuid v1.1.2
 	github.com/gorilla/mux v1.7.3
@@ -22,9 +21,9 @@ require (
 	github.com/mitchellh/mapstructure v1.3.3 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.19.0
-	github.com/webitel/protos v0.0.0-20210118102359-591a476da972 // indirect
-	github.com/webitel/protos/bot v0.0.0-20210618142934-0e88f093dc55 // indirect
-	github.com/webitel/protos/chat v0.0.0-20210618142934-0e88f093dc55 // indirect
+	github.com/webitel/protos v1.0.0 // indirect
+	github.com/webitel/protos/bot v0.0.0-20210728194921-d25cb1a4f895 // indirect
+	github.com/webitel/protos/chat v0.0.0-20210728194921-d25cb1a4f895 // indirect
 	github.com/webitel/protos/engine v0.0.0-20210118102359-591a476da972 // indirect
 	github.com/webitel/protos/storage v0.0.0-20210118102359-591a476da972 // indirect
 	github.com/webitel/protos/workflow v0.0.0-20210118102359-591a476da972 // indirect

@@ -1,4 +1,4 @@
-package main
+package infobip_whatsapp
 
 import (
 	"bytes"
@@ -10,7 +10,9 @@ import (
 	"strings"
 
 	"github.com/micro/go-micro/v2/errors"
+	gate "github.com/webitel/chat_manager/api/proto/bot"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/webitel/chat_manager/bot"
 
 	"github.com/rs/zerolog/log"
 )
@@ -26,7 +28,7 @@ type infobipWABot struct {
 	scenarioKey string
 	number      string
 	url         string
-	*Gateway
+	*bot.Gateway
 }
 
 type CreateScenarioRequest struct {
@@ -101,13 +103,14 @@ type Price struct {
 }
 
 func init() {
-	Register("infobip_whatsapp", NewInfobipWABot)
+	bot.Register("infobip_whatsapp", NewInfobipWABot)
 }
 
 
-func NewInfobipWABot(agent *Gateway) (Provider, error) {
-
-	apiKey, ok := agent.Profile.Variables["api_key"]
+// func NewInfobipWABot(agent *bot.Gateway) (bot.Provider, error) {
+func NewInfobipWABot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
+	profile := agent.Bot.GetMetadata()
+	apiKey, ok := profile["api_key"]
 	if !ok {
 		return nil, errors.BadRequest(
 			"chat.gateway.infobipWA.api_key.required",
@@ -115,7 +118,7 @@ func NewInfobipWABot(agent *Gateway) (Provider, error) {
 		)
 	}
 
-	number, ok := agent.Profile.Variables["number"]
+	number, ok := profile["number"]
 	if !ok {
 		return nil, errors.BadRequest(
 			"chat.gateway.infobipWA.number.required",
@@ -123,7 +126,7 @@ func NewInfobipWABot(agent *Gateway) (Provider, error) {
 		)
 	}
 
-	url, ok := agent.Profile.Variables["url"]
+	url, ok := profile["url"]
 	if !ok {
 		return nil, errors.BadRequest(
 			"chat.gateway.infobipWA.url.required",
@@ -131,7 +134,7 @@ func NewInfobipWABot(agent *Gateway) (Provider, error) {
 		)
 	}
 
-	scenarioKey, _ := agent.Profile.Variables["scenario_key"]
+	scenarioKey, _ := profile["scenario_key"]
 	if !ok {
 		log.Debug().Msg("creating scenario")
 		var err error
@@ -141,17 +144,31 @@ func NewInfobipWABot(agent *Gateway) (Provider, error) {
 			return nil, err
 		}
 
-		agent.Profile.Variables["scenario_key"] = scenarioKey
-		if _, err = agent.Internal.Client.UpdateProfile(context.TODO(), &chat.UpdateProfileRequest {
-			// Id:   profile.Id,
-			Item: agent.Profile,
-		}); err != nil {
+		profile["scenario_key"] = scenarioKey
+		// if _, err = agent.Internal.Client.UpdateProfile(context.TODO(), &chat.UpdateProfileRequest {
+		// 	// Id:   profile.Id,
+		// 	Item: agent.Profile,
+		// }); err != nil {
+		// 	log.Error().Msg(err.Error())
+		// 	return nil, err
+		// }
+		err = agent.Internal.UpdateBot(
+			context.TODO(),
+			&gate.UpdateBotRequest {
+				// Id:   profile.Id,
+				Bot: agent.Bot,
+				Fields: []string{"metadata"},
+			},
+			agent.Bot,
+		)
+		
+		if err != nil {
 			log.Error().Msg(err.Error())
 			return nil, err
 		}
 	}
 	return &infobipWABot {
-		agent.Profile.Id,
+		agent.Bot.GetId(),
 		apiKey,
 		scenarioKey,
 		number,
@@ -199,6 +216,10 @@ func createWAScenario(apiKey, number, url string) (scenarioKey string, err error
 	return
 }
 
+func (_ *infobipWABot) Close() error {
+	return nil
+}
+
 // String "infobip_whatsapp" provider's name
 func (_ *infobipWABot) String() string {
 	return "infobip_whatsapp"
@@ -213,7 +234,7 @@ func (b *infobipWABot) Deregister(ctx context.Context) error {
 	return nil
 }
 
-func (b *infobipWABot) SendNotify(ctx context.Context, notify *Update) error {
+func (b *infobipWABot) SendNotify(ctx context.Context, notify *bot.Update) error {
 
 	msg := SendMessageWARequest {
 		ScenarioKey: b.scenarioKey,
@@ -301,7 +322,7 @@ func (b *infobipWABot) WebHook(reply http.ResponseWriter, notice *http.Request) 
 
 		Msg("receive message")
 
-		contact := &Account {
+		contact := &bot.Account {
 			ID:        0, // LOOKUP
 			Username:  msg.Contact.Name,
 			Channel:   "infobip_whatsapp",
@@ -324,7 +345,7 @@ func (b *infobipWABot) WebHook(reply http.ResponseWriter, notice *http.Request) 
 			return // 503 Bad Gateway
 		}
 	
-		sendUpdate := Update {
+		sendUpdate := bot.Update {
 			Title:   channel.Title,
 			Chat:    channel,
 			User:    contact,

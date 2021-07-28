@@ -1,7 +1,0 @@
-{
-    "allow_origin": "https://dev.webitel.com,http://10.10.10.*",
-    "handshake_timeout": "10s",
-    "write_timeout": "10s",
-    "ping_interval": "60s",
-    "buffer_size": "4096"
-}

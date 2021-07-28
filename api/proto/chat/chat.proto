@@ -7,7 +7,7 @@ option go_package = "github.com/webitel/chat_manager/api/proto/chat";
 import "message.proto";
 
 service ChatService {
-
+  // SendMessage [FROM] created channel_id (+auth_user_id) [TO] conversation_id chat-room
   rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {}
   rpc StartConversation(StartConversationRequest) returns (StartConversationResponse) {}
   rpc CloseConversation(CloseConversationRequest) returns (CloseConversationResponse) {}
@@ -18,14 +18,9 @@ service ChatService {
   rpc CheckSession(CheckSessionRequest) returns (CheckSessionResponse) {}
   rpc WaitMessage(WaitMessageRequest) returns (WaitMessageResponse) {}
   rpc UpdateChannel(UpdateChannelRequest) returns (UpdateChannelResponse) {}
-  
-  rpc GetConversationByID(GetConversationByIDRequest) returns (GetConversationByIDResponse) {}
+
   rpc GetConversations(GetConversationsRequest) returns (GetConversationsResponse) {}
-  rpc GetProfiles(GetProfilesRequest) returns (GetProfilesResponse) {} 
-  rpc GetProfileByID(GetProfileByIDRequest) returns (GetProfileByIDResponse) {}
-  rpc CreateProfile(CreateProfileRequest) returns (CreateProfileResponse) {}
-  rpc DeleteProfile(DeleteProfileRequest) returns (DeleteProfileResponse) {}
-  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse) {}
+  rpc GetConversationByID(GetConversationByIDRequest) returns (GetConversationByIDResponse) {}
   rpc GetHistoryMessages(GetHistoryMessagesRequest) returns (GetHistoryMessagesResponse) {}
 }
 
@@ -234,70 +229,6 @@ message DeclineInvitationRequest {
 message DeclineInvitationResponse {
 }
 
-message GetProfilesRequest {
-  // ----- Base Filters ---------------------------
-  int64 id = 1;
-  // ----- Object-Specific Filters ------------------
-  string type = 2;
-  int64 domain_id = 3;
-  // ----- Search Options -------------------------
-  repeated string fields = 4; // select: output (fields,...)
-  repeated string sort = 5;   // select: order by (fields,...)
-  int32 page = 6;             // select: offset {page}
-  int32 size = 7;             // select: limit {size}
-}
-
-message GetProfilesResponse {
-  int32 page = 1; // select: offset {page}
-  bool next = 2; // search: has {next} page ?
-  repeated Profile items = 3;
-}
-
-message GetProfileByIDRequest {
-  // ID filter value to be exact match unique profile.id
-  int64 id = 1;
-
-  // URI filter value to be exact match unique profile.url_id
-  string uri = 2; // .url_id
-}
-
-message GetProfileByIDResponse {
-  Profile item = 1;
-}
-
-message CreateProfileRequest {
-  Profile item = 1;
-}
-
-message CreateProfileResponse {
-  Profile item = 1;
-}
-
-message DeleteProfileRequest {
-  int64 id = 1;
-}
-
-message DeleteProfileResponse {
-  Profile item = 1;
-}
-
-message UpdateProfileRequest {
-  Profile item = 1; // body: modifications/changes
-  repeated string fields = 2; // PATCH: partial update
-}
-
-message UpdateProfileResponse {
-  Profile item = 1;
-}
-
-message GetConversationByIDRequest {
-  string id = 1;
-}
-
-message GetConversationByIDResponse {
-  Conversation item = 1;
-}
-
 message GetConversationsRequest {
   // ----- Base Filters ---------------------------
   string id = 1;
@@ -317,6 +248,14 @@ message GetConversationsResponse {
   int32 page = 1; // select: offset {page}
   bool next = 2; // search: has {next} page ?
   repeated Conversation items = 3;
+}
+
+message GetConversationByIDRequest {
+  string id = 1;
+}
+  
+message GetConversationByIDResponse {
+  Conversation item = 1;
 }
 
 message GetHistoryMessagesRequest {

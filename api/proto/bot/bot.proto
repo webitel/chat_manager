@@ -4,13 +4,118 @@ package webitel.chat.bot;
 
 option go_package = "github.com/webitel/chat_manager/api/proto/bot";
 
-import "chat.proto";
 import "message.proto";
 
-service BotService {
+// Reference
+message Refer {
+    // Readonly. Object Unique IDentifier.
+    int64 id = 1;
+    // Readonly. Human-readable display name.
+    string name = 2;
+}
+
+// webitel.chat.server.Profile
+message Bot {
+
+  // Readonly. Object Unique IDentifier.
+  int64 id = 1;
+  // Readonly. Domain that owns this bot
+  Refer dc = 2;
+
+  // Required. Relative URI to register and serve this chat bot on.
+  string uri = 3;
+  // Required. Name this chat bot
+  string name = 4;
+  // Required. Flow schema to serve inbound communication(s)
+  Refer flow = 5;
+  // Optional. Enabled indicates whether this bot is activated or not 
+  bool enabled = 6;
+
+  // Required. Provider communication type to serve this bot connection(s)
+  string provider = 7;
+  // Optional. Provider specific bot settings
+  map<string, string> metadata = 8;
+
+  // Readonly. Created at timestamp
+  int64 created_at = 10;
+  // Readonly. Created by user
+  Refer created_by = 11;
+  // Readonly. Updated at timestamp
+  int64 updated_at = 12;
+  // Readonly. Updated by user
+  Refer updated_by = 13;
+
+  // // Readonly. Members whenever joined
+  // int32 joined = 20;
+  // // Readonly. Members currently active
+  // int32 active = 21;
+}
+
+// Bots service API
+service Bots {
+  // SendMessage [FROM] bot's profile [TO] external client communication
   rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {}
-  rpc AddProfile(AddProfileRequest) returns (AddProfileResponse) {}
-  rpc DeleteProfile(DeleteProfileRequest) returns (DeleteProfileResponse) {}
+
+  // Create new bot profile
+  rpc CreateBot(Bot) returns (Bot) {}
+  // Select returns a single bot profile by unique identifier
+  rpc SelectBot(SelectBotRequest) returns (Bot) {}
+  // Update single bot
+  rpc UpdateBot(UpdateBotRequest) returns (Bot) {}
+  // Delete bot(s) selection
+  rpc DeleteBot(SearchBotRequest) returns (SearchBotResponse) {}
+  // Search returns list of bots, posibly filtered out with search conditions
+  rpc SearchBot(SearchBotRequest) returns (SearchBotResponse) {}
+}
+
+message SearchBotRequest {
+  // ----- Base Filters ---------------------------
+  // Selection by unique IDentifier(s)
+  repeated int64 id = 1; // by id(s)
+  // Selection by [D]omain [C]omponent IDentifier
+  int64 dc = 2;
+  // Selection by general search term
+  string q = 3;
+  // ----- Object-Specific Filters ------------------
+  // Selection by caseExactSubstringsMatch relative URI component
+  string uri = 4; // caseExactSubstringsMatch
+  // Selection by caseIgnoreSubstringsMatch chat bot name
+  string name = 5; // caseIgnoreSubstringsMatch
+  // Selection by flow schema IDentifier
+  int64 flow = 6;
+  // Selection by caseExactStringMatch service provider's type name
+  repeated string provider = 7; // caseIgnoreStringMatch
+  // ----- Search Options -------------------------
+  repeated string fields = 10; // select: output (fields,...)
+  repeated string sort = 11;   // select: order by (fields,...)
+  int32 page = 12;             // select: offset {page}
+  int32 size = 13;             // select: limit {size}
+}
+
+message SearchBotResponse {
+  // Current page number
+  int32 page = 1; // {page} current number !
+  // Next indicates whether there are more result page(s)
+  bool next = 2;
+  // Items page results
+  repeated Bot items = 3;
+}
+
+message SelectBotRequest {
+  // Unique Bot IDentifier to lookup for
+  int64 id = 1;
+  // Unique Bot service relative URI
+  string uri = 2;
+
+  // Fields to be returned
+  repeated string fields = 3;
+}
+
+message UpdateBotRequest {
+  // New Bot revision
+  Bot bot = 1;
+  // Fields for partial update. PATCH
+  repeated string fields = 2;
 }
 
 message SendMessageRequest {
@@ -25,21 +130,4 @@ message SendMessageResponse {
   // // webitel.chat.server.Error error = 1;
   // webitel.chat.server.Message message = 1;
   map<string,string> bindings = 1; // SENT message binding variables
-}
-
-message AddProfileRequest {
-  webitel.chat.server.Profile profile = 1;
-}
-
-message AddProfileResponse {
-  //webitel.chat.server.Error error = 1;
-}
-
-message DeleteProfileRequest {
-  int64 id = 1;
-  string url_id = 2;
-}
-
-message DeleteProfileResponse {
-  //webitel.chat.server.Error error = 1;
 }

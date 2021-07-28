@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"bufio"
@@ -14,16 +14,16 @@ import (
 	stdlog "github.com/micro/go-micro/v2/logger"
 )
 
-type transportDump struct {
-	r http.RoundTripper
+type TransportDump struct {
+	Transport http.RoundTripper
 	WithBody bool
 }
 
-func (d *transportDump) RoundTrip(req *http.Request) (*http.Response, error) {
+func (c *TransportDump) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	// region: DUMP Request
 	reqId, _ := uuid.NewRandom() // fmt.Sprintf("%p", h.Context())
-	dump, err := httputil.DumpRequestOut(req, d.WithBody && req.ContentLength > 0)
+	dump, err := httputil.DumpRequestOut(req, c.WithBody && req.ContentLength > 0)
 	
 	tracef := stdlog.Tracef
 	if err != nil {
@@ -34,7 +34,7 @@ func (d *transportDump) RoundTrip(req *http.Request) (*http.Response, error) {
 	// endregion
 	
 	// PERFORM !
-	resp, err := d.r.RoundTrip(req)
+	resp, err := c.Transport.RoundTrip(req)
 	
 	if err != nil {
 		tracef = stdlog.Errorf
@@ -45,7 +45,7 @@ func (d *transportDump) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	// region: DUMP Response
-	dump, err = httputil.DumpResponse(resp, d.WithBody && resp.ContentLength > 0)
+	dump, err = httputil.DumpResponse(resp, c.WithBody && resp.ContentLength > 0)
 	
 	tracef = stdlog.Tracef
 	if err != nil {

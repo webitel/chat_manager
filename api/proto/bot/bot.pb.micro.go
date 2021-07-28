@@ -34,34 +34,43 @@ var _ context.Context
 var _ client.Option
 var _ server.Option
 
-// Api Endpoints for BotService service
+// Api Endpoints for Bots service
 
-func NewBotServiceEndpoints() []*api.Endpoint {
+func NewBotsEndpoints() []*api.Endpoint {
 	return []*api.Endpoint{}
 }
 
-// Client API for BotService service
+// Client API for Bots service
 
-type BotService interface {
+type BotsService interface {
+	// SendMessage [FROM] bot's profile [TO] external client communication
 	SendMessage(ctx context.Context, in *SendMessageRequest, opts ...client.CallOption) (*SendMessageResponse, error)
-	AddProfile(ctx context.Context, in *AddProfileRequest, opts ...client.CallOption) (*AddProfileResponse, error)
-	DeleteProfile(ctx context.Context, in *DeleteProfileRequest, opts ...client.CallOption) (*DeleteProfileResponse, error)
+	// Create new bot profile
+	CreateBot(ctx context.Context, in *Bot, opts ...client.CallOption) (*Bot, error)
+	// Select returns a single bot profile by unique identifier
+	SelectBot(ctx context.Context, in *SelectBotRequest, opts ...client.CallOption) (*Bot, error)
+	// Update single bot
+	UpdateBot(ctx context.Context, in *UpdateBotRequest, opts ...client.CallOption) (*Bot, error)
+	// Delete bot(s) selection
+	DeleteBot(ctx context.Context, in *SearchBotRequest, opts ...client.CallOption) (*SearchBotResponse, error)
+	// Search returns list of bots, posibly filtered out with search conditions
+	SearchBot(ctx context.Context, in *SearchBotRequest, opts ...client.CallOption) (*SearchBotResponse, error)
 }
 
-type botService struct {
+type botsService struct {
 	c    client.Client
 	name string
 }
 
-func NewBotService(name string, c client.Client) BotService {
-	return &botService{
+func NewBotsService(name string, c client.Client) BotsService {
+	return &botsService{
 		c:    c,
 		name: name,
 	}
 }
 
-func (c *botService) SendMessage(ctx context.Context, in *SendMessageRequest, opts ...client.CallOption) (*SendMessageResponse, error) {
-	req := c.c.NewRequest(c.name, "BotService.SendMessage", in)
+func (c *botsService) SendMessage(ctx context.Context, in *SendMessageRequest, opts ...client.CallOption) (*SendMessageResponse, error) {
+	req := c.c.NewRequest(c.name, "Bots.SendMessage", in)
 	out := new(SendMessageResponse)
 	err := c.c.Call(ctx, req, out, opts...)
 	if err != nil {
@@ -70,9 +79,9 @@ func (c *botService) SendMessage(ctx context.Context, in *SendMessageRequest, op
 	return out, nil
 }
 
-func (c *botService) AddProfile(ctx context.Context, in *AddProfileRequest, opts ...client.CallOption) (*AddProfileResponse, error) {
-	req := c.c.NewRequest(c.name, "BotService.AddProfile", in)
-	out := new(AddProfileResponse)
+func (c *botsService) CreateBot(ctx context.Context, in *Bot, opts ...client.CallOption) (*Bot, error) {
+	req := c.c.NewRequest(c.name, "Bots.CreateBot", in)
+	out := new(Bot)
 	err := c.c.Call(ctx, req, out, opts...)
 	if err != nil {
 		return nil, err
@@ -80,9 +89,9 @@ func (c *botService) AddProfile(ctx context.Context, in *AddProfileRequest, opts
 	return out, nil
 }
 
-func (c *botService) DeleteProfile(ctx context.Context, in *DeleteProfileRequest, opts ...client.CallOption) (*DeleteProfileResponse, error) {
-	req := c.c.NewRequest(c.name, "BotService.DeleteProfile", in)
-	out := new(DeleteProfileResponse)
+func (c *botsService) SelectBot(ctx context.Context, in *SelectBotRequest, opts ...client.CallOption) (*Bot, error) {
+	req := c.c.NewRequest(c.name, "Bots.SelectBot", in)
+	out := new(Bot)
 	err := c.c.Call(ctx, req, out, opts...)
 	if err != nil {
 		return nil, err
@@ -90,39 +99,93 @@ func (c *botService) DeleteProfile(ctx context.Context, in *DeleteProfileRequest
 	return out, nil
 }
 
-// Server API for BotService service
+func (c *botsService) UpdateBot(ctx context.Context, in *UpdateBotRequest, opts ...client.CallOption) (*Bot, error) {
+	req := c.c.NewRequest(c.name, "Bots.UpdateBot", in)
+	out := new(Bot)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
-type BotServiceHandler interface {
+func (c *botsService) DeleteBot(ctx context.Context, in *SearchBotRequest, opts ...client.CallOption) (*SearchBotResponse, error) {
+	req := c.c.NewRequest(c.name, "Bots.DeleteBot", in)
+	out := new(SearchBotResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *botsService) SearchBot(ctx context.Context, in *SearchBotRequest, opts ...client.CallOption) (*SearchBotResponse, error) {
+	req := c.c.NewRequest(c.name, "Bots.SearchBot", in)
+	out := new(SearchBotResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Server API for Bots service
+
+type BotsHandler interface {
+	// SendMessage [FROM] bot's profile [TO] external client communication
 	SendMessage(context.Context, *SendMessageRequest, *SendMessageResponse) error
-	AddProfile(context.Context, *AddProfileRequest, *AddProfileResponse) error
-	DeleteProfile(context.Context, *DeleteProfileRequest, *DeleteProfileResponse) error
+	// Create new bot profile
+	CreateBot(context.Context, *Bot, *Bot) error
+	// Select returns a single bot profile by unique identifier
+	SelectBot(context.Context, *SelectBotRequest, *Bot) error
+	// Update single bot
+	UpdateBot(context.Context, *UpdateBotRequest, *Bot) error
+	// Delete bot(s) selection
+	DeleteBot(context.Context, *SearchBotRequest, *SearchBotResponse) error
+	// Search returns list of bots, posibly filtered out with search conditions
+	SearchBot(context.Context, *SearchBotRequest, *SearchBotResponse) error
 }
 
-func RegisterBotServiceHandler(s server.Server, hdlr BotServiceHandler, opts ...server.HandlerOption) error {
-	type botService interface {
+func RegisterBotsHandler(s server.Server, hdlr BotsHandler, opts ...server.HandlerOption) error {
+	type bots interface {
 		SendMessage(ctx context.Context, in *SendMessageRequest, out *SendMessageResponse) error
-		AddProfile(ctx context.Context, in *AddProfileRequest, out *AddProfileResponse) error
-		DeleteProfile(ctx context.Context, in *DeleteProfileRequest, out *DeleteProfileResponse) error
+		CreateBot(ctx context.Context, in *Bot, out *Bot) error
+		SelectBot(ctx context.Context, in *SelectBotRequest, out *Bot) error
+		UpdateBot(ctx context.Context, in *UpdateBotRequest, out *Bot) error
+		DeleteBot(ctx context.Context, in *SearchBotRequest, out *SearchBotResponse) error
+		SearchBot(ctx context.Context, in *SearchBotRequest, out *SearchBotResponse) error
 	}
-	type BotService struct {
-		botService
+	type Bots struct {
+		bots
 	}
-	h := &botServiceHandler{hdlr}
-	return s.Handle(s.NewHandler(&BotService{h}, opts...))
+	h := &botsHandler{hdlr}
+	return s.Handle(s.NewHandler(&Bots{h}, opts...))
 }
 
-type botServiceHandler struct {
-	BotServiceHandler
+type botsHandler struct {
+	BotsHandler
 }
 
-func (h *botServiceHandler) SendMessage(ctx context.Context, in *SendMessageRequest, out *SendMessageResponse) error {
-	return h.BotServiceHandler.SendMessage(ctx, in, out)
+func (h *botsHandler) SendMessage(ctx context.Context, in *SendMessageRequest, out *SendMessageResponse) error {
+	return h.BotsHandler.SendMessage(ctx, in, out)
 }
 
-func (h *botServiceHandler) AddProfile(ctx context.Context, in *AddProfileRequest, out *AddProfileResponse) error {
-	return h.BotServiceHandler.AddProfile(ctx, in, out)
+func (h *botsHandler) CreateBot(ctx context.Context, in *Bot, out *Bot) error {
+	return h.BotsHandler.CreateBot(ctx, in, out)
 }
 
-func (h *botServiceHandler) DeleteProfile(ctx context.Context, in *DeleteProfileRequest, out *DeleteProfileResponse) error {
-	return h.BotServiceHandler.DeleteProfile(ctx, in, out)
+func (h *botsHandler) SelectBot(ctx context.Context, in *SelectBotRequest, out *Bot) error {
+	return h.BotsHandler.SelectBot(ctx, in, out)
+}
+
+func (h *botsHandler) UpdateBot(ctx context.Context, in *UpdateBotRequest, out *Bot) error {
+	return h.BotsHandler.UpdateBot(ctx, in, out)
+}
+
+func (h *botsHandler) DeleteBot(ctx context.Context, in *SearchBotRequest, out *SearchBotResponse) error {
+	return h.BotsHandler.DeleteBot(ctx, in, out)
+}
+
+func (h *botsHandler) SearchBot(ctx context.Context, in *SearchBotRequest, out *SearchBotResponse) error {
+	return h.BotsHandler.SearchBot(ctx, in, out)
 }

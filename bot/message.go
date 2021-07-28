@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"strings"
@@ -66,24 +66,24 @@ func (e *Account) DisplayName() string {
 type Update struct {
 	// Unique ID
 	ID int64
-	// Title for .this chat
-	Title string
-	// Chat gateway channel
+	// Chat that this message belongs to
 	Chat *Channel
 	// User channel contact
 	User *Account // 
-	// Action, e.g.: text, file, edit, send, read, joined, typing, kicked etc
-	Event string
+	// Title for .this chat
+	Title string
+	// // Action, e.g.: text, file, edit, send, read, joined, typing, kicked etc
+	// Event string
 	// Message envelope
 	Message *chat.Message // Message; embedded
-	// Edited message details
-	Edited int64 // date; if non-zero ~ .Event="edited"
-	// For edited message update, this is identifier of the original message
-	EditedMessageID int64
-	// joined
-	JoinMembers []*Account
-	// kicked
-	KickMembers []*Account
+	// // Edited message details
+	// Edited int64 // date; if non-zero ~ .Event="edited"
+	// // For edited message update, this is identifier of the original message
+	// EditedMessageID int64
+	// // joined
+	// JoinMembers []*Account
+	// // kicked
+	// KickMembers []*Account
 }
 
 const (

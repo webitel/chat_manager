@@ -1,25 +1,24 @@
-package main
+package viber
 
 import (
-
 	"bytes"
 	"context"
-	"strings"
-	"net/http"
 	"encoding/json"
-	
-	"github.com/rs/zerolog/log"
+	"net/http"
+	"strings"
+
 	"github.com/micro/go-micro/v2/errors"
+	"github.com/rs/zerolog/log"
 
 	chat "github.com/webitel/chat_manager/api/proto/chat"
-
+	"github.com/webitel/chat_manager/bot"
 )
 
 type viberBot struct {
 	Token      string
 	Events     []string
 	BotName    string
-	Gateway    *Gateway
+	Gateway    *bot.Gateway
 	Client     *http.Client
 }
 
@@ -100,12 +99,14 @@ type WebhookReq struct {
 
 func init() {
 	// NewProvider(viber)
-	Register("viber", NewViberBot)
+	bot.Register("viber", NewViberBot)
 }
 
 // NewViberBot initialize new agent.profile service provider
-func NewViberBot(agent *Gateway) (Provider, error) {
-	appToken, ok := agent.Profile.Variables["token"]
+// func NewViberBot(agent *bot.Gateway) (bot.Provider, error) {
+func NewViberBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
+	profile := agent.Bot.GetMetadata()
+	appToken, ok := profile["token"]
 	if !ok {
 		log.Error().Msg("AppToken not found")
 		return nil, errors.BadRequest(
@@ -114,13 +115,13 @@ func NewViberBot(agent *Gateway) (Provider, error) {
 		)
 	}
 
-	name, ok := agent.Profile.Variables["botName"]
+	name, ok := profile["botName"]
 	if !ok {
 		name = "bot"
 		log.Error().Msg("botName not found")
 	}
 
-	eventTypes, _ := agent.Profile.Variables["eventTypes"]
+	eventTypes, _ := profile["eventTypes"]
 	types := strings.Split(eventTypes, ",")
 
 	return &viberBot {
@@ -129,6 +130,10 @@ func NewViberBot(agent *Gateway) (Provider, error) {
 		BotName:    name,
 		Gateway:    agent,
 	}, nil
+}
+
+func (_ *viberBot) Close() error {
+	return nil
 }
 
 func (_ *viberBot) String() string {
@@ -166,7 +171,7 @@ func (v *viberBot) Deregister(ctx context.Context) error {
 	return nil
 }
 
-func (v *viberBot) SendNotify(ctx context.Context, notify *Update) error {
+func (v *viberBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 	
 	var (
 		// notify.Chat
@@ -391,7 +396,7 @@ func (v *viberBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	
 	switch req.Event {
 		case "message":
-			contact := &Account {
+			contact := &bot.Account {
 				ID:        0, // LOOKUP
 				Username:  req.Sender.Name,
 				Channel:   "viber",
@@ -413,7 +418,7 @@ func (v *viberBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 				return // 503 Bad Gateway
 			}
 
-			sendUpdate := Update {
+			sendUpdate := bot.Update {
 				Title:   channel.Title,
 				Chat:    channel,
 				User:    contact,
@@ -490,7 +495,7 @@ func (v *viberBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 func (v viberBot) userUnsubscribed(msg *eventPayload) {
 
-	contact := &Account{
+	contact := &bot.Account{
 		ID:        0,
 		Channel:   "viber",
 		Contact:   msg.UserID,

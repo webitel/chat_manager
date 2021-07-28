@@ -4,23 +4,26 @@ import (
 	// "github.com/webitel/chat_manager/internal/repo/postgres"
 	// "github.com/webitel/chat_manager/internal/repo/store"
 
-
+	"context"
 	"net/http"
 	_ "net/http/pprof"
-	
+	"time"
+
 	"os"
 
 	"github.com/rs/zerolog"
-	"github.com/webitel/chat_manager/log"
 	"github.com/webitel/chat_manager/internal/wrapper"
+	"github.com/webitel/chat_manager/log"
 
-	pb "github.com/webitel/chat_manager/api/proto/chat"
-	pbbot "github.com/webitel/chat_manager/api/proto/bot"
 	pbauth "github.com/webitel/chat_manager/api/proto/auth" // "github.com/webitel/chat_manager/api/proto/auth"
+	pbbot "github.com/webitel/chat_manager/api/proto/bot"
+	pb "github.com/webitel/chat_manager/api/proto/chat"
 	pbmanager "github.com/webitel/chat_manager/api/proto/workflow"
+
 	// import go_package= proto definition option
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	// ----- service clients -----
+	asm "github.com/webitel/chat_manager/cmd"
 	"github.com/webitel/chat_manager/internal/auth"
 	event "github.com/webitel/chat_manager/internal/event_router"
 	"github.com/webitel/chat_manager/internal/flow"
@@ -30,9 +33,7 @@ import (
 	// _ "github.com/lib/pq"
 	"github.com/micro/cli/v2"
 	"github.com/micro/go-micro/v2"
-	"github.com/micro/go-micro/v2/config/cmd"
 	"github.com/micro/go-plugins/broker/rabbitmq/v2"
-	"github.com/micro/go-plugins/registry/consul/v2"
 )
 
 type Config struct {
@@ -48,24 +49,24 @@ var (
 	// rabbitBroker broker.Broker
 	//redisTable    string
 	flowClient    pbmanager.FlowChatServerService
-	botClient     pbbot.BotService
+	botClient     pbbot.BotsService // pbbot.BotService
 	authClient    pbauth.AuthService
 	storageClient pbstorage.FileService
 	timeout       uint64
 )
 
-func init() {
-	// plugins
-	cmd.DefaultBrokers["rabbitmq"] = rabbitmq.NewBroker
-	//cmd.DefaultStores["redis"] = redis.NewStore
-	cmd.DefaultRegistries["consul"] = consul.NewRegistry
-}
+// func init() {
+// 	// plugins
+// 	cmd.DefaultBrokers["rabbitmq"] = rabbitmq.NewBroker
+// 	//cmd.DefaultStores["redis"] = redis.NewStore
+// 	cmd.DefaultRegistries["consul"] = consul.NewRegistry
+// }
 
 func main() {
 	cfg = &Config{}
 	service = micro.NewService(
 		micro.Name("webitel.chat.server"),
-		micro.Version("latest"),
+		micro.Version(asm.Version()), // ("latest"),
 		micro.Flags(
 			&cli.StringFlag{
 				Name:    "log_level",
@@ -105,10 +106,9 @@ func main() {
 				Usage:   "Conversation timeout. sec",
 			},
 			&cli.StringFlag{
-				Name:    "webitel_dbo_address",
+				Name:    "db-dsn",
 				EnvVars: []string{"WEBITEL_DBO_ADDRESS"},
-				Value:   "disable",
-				Usage:   "DB Connection string",
+				Usage:   "Persistent database driver name and a driver-specific data source name.",
 			},
 		),
 		micro.WrapHandler(log.HandlerWrapper(&logger)),
@@ -117,7 +117,7 @@ func main() {
 	service.Init(
 		micro.Action(func(c *cli.Context) error {
 			cfg.LogLevel = c.String("log_level")
-			cfg.DBSource = c.String("webitel_dbo_address")
+			cfg.DBSource = c.String("db-dsn")
 			//redisTable = c.String("store_table")
 			timeout = 600 //c.Uint64("conversation_timeout_sec")
 			var err error
@@ -158,18 +158,26 @@ func main() {
 		return
 	}
 	
-
-	db, err := OpenDB(cfg.DBSource)
+	// Validate DSN
+	dbo, err := OpenDB(cfg.DBSource)
 	if err != nil {
-		logger.Fatal().
-			Str("app", "failed to connect db"). // This is NOT a connect; just DSN validation !
-			Msg(err.Error())
+		logger.Fatal().Err(err).Msg("[--db-dsn] Invalid DSN String")
 		return
 	}
 
-	logger.Debug().
-		Str("cfg.DBSource", cfg.DBSource).
-		Msg("db connected")
+	// Connect DSN
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Second * 5)
+	err = dbo.DB.PingContext(ctx)
+	cancel()
+
+	if err != nil {
+		logger.Fatal().Err(err).Msg("[--db-dsn] Connect DSN Failed")
+		return
+	}
+
+	// logger.Debug().
+	// 	Str("cfg.DBSource", cfg.DBSource).
+	// 	Msg("db connected")
 
 	// v1: chain .this db transaction(s)
 	// service.Init(micro.WrapHandler(
@@ -178,11 +186,12 @@ func main() {
 	// v1
 	// pgstore := postgres.NewChatStore(db, &logger)
 	// v0
-	repo := pg.NewRepository(db, &logger)
+	repo := pg.NewRepository(dbo, &logger)
 
 	//cache := cache.NewChatCache(service.Options().Store)
 	
-	botClient = pbbot.NewBotService("webitel.chat.bot", service.Client())
+	botClient = pbbot.NewBotsService("webitel.chat.bot", service.Client())
+	// botClient = pbbot.NewBotsService("chat.bot", service.Client())
 	authClient = pbauth.NewAuthService("go.webitel.app", service.Client())
 	storageClient = pbstorage.NewFileService("storage", service.Client())
 	flowClient = pbmanager.NewFlowChatServerService("workflow",
@@ -207,7 +216,7 @@ func main() {
 		Addr: "127.0.0.1:6060",
 	}
 	go func() {
-		httpsrv.ListenAndServe()
+		_ = httpsrv.ListenAndServe()
 	} ()
 
 	if err := service.Run(); err != nil {

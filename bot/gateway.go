@@ -1,14 +1,16 @@
-package main
+package bot
 
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	"encoding/json"
 
+	"github.com/micro/go-micro/v2/errors"
 	"github.com/rs/zerolog"
 
 	gate "github.com/webitel/chat_manager/api/proto/bot"
@@ -18,57 +20,96 @@ import (
 // Gateway service agent
 type Gateway struct {
 	 // identity
+	*Bot // *chat.Profile
 	 Log *zerolog.Logger
-	 Profile *chat.Profile
+ 
 	 // communication
 	 Internal *Service // Local CHAT service client 
 	 External Provider // Remote CHAT service client Receiver|Sender
 	 // cache: memory
-	 sync.RWMutex
+	 *sync.RWMutex
 	 internal map[int64]*Channel // map[internal.user.id]
 	 external map[string]*Channel // map[provider.user.id]
+	 deleted bool // indicate whether we need to dispose this bot gateway after last channel closed
 }
 
 // DomainID that this gateway profile belongs to
 func (c *Gateway) DomainID() int64 {
-	return c.Profile.GetDomainId()
+	return c.Bot.GetDc().GetId()
 }
 
 // Register internal webhook callback handler to external service provider
 func (c *Gateway) Register(ctx context.Context, force bool) error {
 
-	if c.Profile.UrlId == "" {
-		panic("register: URL required")
+	var (
+
+		bot = c.Bot
+		pid = bot.GetId()
+		uri = bot.GetUri()
+		srv = c.Internal
+	)
+
+	if pid == 0 {
+		panic("register: bot <zero> identifier")
 	}
-	
-	// FIXME: c.External.Webhook.Registered() bool
-	//    or: c.Profile.EnabledAt == 0
-	linkURL := strings.TrimRight(c.Internal.URL, "/") +
-		("/" + c.Profile.UrlId)
+
+	if uri == "" {
+		panic("register: service URL required")
+	}
+
+	rel, err := url.Parse(uri)
+
+	if err != nil {
+		panic("register: invalid relative URI specified")
+	}
+
+	// FIXME: Validate once more ?
+	uri = rel.Path
+	if !strings.HasPrefix(uri, "/") {
+		uri = "/" + uri
+	}
+	bot.Uri = uri
 
 	// region: pre-register for callback(s) within register process
-	pid := c.Profile.Id
-	uri := c.Profile.UrlId
-
-	c.Internal.indexMx.Lock()      // +RW
-	c.Internal.profiles[pid] = c   // register: cache entry
-	c.Internal.gateways[uri] = pid // register: service URI
-	c.Internal.indexMx.Unlock()    // -RW
+	srv.indexMx.Lock()      // +RW
+	e := srv.profiles[pid]
+	// Register THIS runtime URI !
+	srv.profiles[pid] = c   // register: cache entry
+	srv.gateways[uri] = pid // register: service URI
+	srv.indexMx.Unlock()    // -RW
+	// Removes LAST URI -if- changed !
+	if e != nil {
+		e.Lock()
+		e.Enabled = c.Enabled // false
+		// if !e.Enabled && len(e.external) == 0 {
+		// 	// Deregister LAST route URI !
+		// 	_ = e.Deregister(ctx)
+		// }
+		if !e.Enabled && len(e.external) == 0 {
+			if e.Uri != uri {
+				// URI changed; DEREGISTER previous one;
+				_ = e.Deregister(ctx)
+			}
+		}
+		e.Unlock()
+	}
+	// c.Log.Info().Msg("ENABLED")
 	// endregion
 
-	// REGISTER public webhook, callback URL
-	err := c.External.Register(ctx, linkURL)
+	if force {
+		// FIXME: c.External.Webhook.Registered() bool
+		//    or: c.Profile.EnabledAt == 0
+		linkURI := strings.TrimRight(srv.URL, "/") + uri
+		// REGISTER NEW public webhook, - callback URL
+		err = c.External.Register(ctx, linkURI)
+	}
 
 	var event *zerolog.Event
 
 	if err == nil {
-
 		event = c.Log.Info()
-
 	} else {
-
 		_ = c.Remove()
-
 		event = c.Log.Error().Err(err)
 	}
 
@@ -78,7 +119,7 @@ func (c *Gateway) Register(ctx context.Context, force bool) error {
 }
 
 // Deregister internal webhook callback handler from external service provider
-func (c *Gateway) Deregister(ctx context.Context) error {
+/*func (c *Gateway) Deregister(ctx context.Context) error {
 	
 	// linkURL := strings.TrimRight(c.Internal.URL, "/") +
 	// 	("/" + c.Profile.UrlId)
@@ -90,15 +131,16 @@ func (c *Gateway) Deregister(ctx context.Context) error {
 
 	if err == nil {
 
-		pid := c.Profile.Id
-		uri := c.Profile.UrlId
+		pid := c.Bot.Id
+		uri := c.Bot.Uri
+		srv := c.Internal
 
-		c.Internal.indexMx.Lock()        // +RW
-		e, ok := c.Internal.profiles[pid]
-		if ok = ok && e == c; ok {
-			delete(c.Internal.gateways, uri) // deregister: service URI
+		srv.indexMx.Lock()        // +RW
+		e, ok := srv.profiles[pid]
+		if ok = (ok && e == c); ok {
+			delete(srv.gateways, uri) // deregister: service URI
 		}
-		c.Internal.indexMx.Unlock()      // -RW
+		srv.indexMx.Unlock()      // -RW
 
 		event = c.Log.Warn()
 
@@ -110,38 +152,136 @@ func (c *Gateway) Deregister(ctx context.Context) error {
 	event.Msg("DEREGISTER")
 
 	return err
+}*/
+
+func (c *Gateway) Deregister(ctx context.Context) error {
+
+	var (
+
+		pid = c.Bot.Id
+		uri = c.Bot.Uri
+		srv = c.Internal
+	)
+
+	srv.indexMx.Lock()   // +RW
+	// e, ok := srv.profiles[pid]
+	// if ok = (ok && e == c); ok {
+	oid, ok := srv.gateways[uri]
+	if ok = (ok && oid == pid); ok {
+		delete(srv.gateways, uri) // deregister: service URI
+	}
+	srv.indexMx.Unlock() // -RW
+
+	if !ok {
+		// c.Log.Warn().
+		// 	Str("error", "bot: out of service").
+		// 	// Str("link", uri).
+		// 	Msg("DEREGISTER")
+		return nil
+	}
+
+	// REGISTERED public webhook, callback URL
+	link := strings.TrimRight(srv.URL, "/") + uri
+
+	var (
+
+		event *zerolog.Event
+		// PERFORM: DEREGISTER
+		err = c.External.Deregister(ctx)
+	)
+
+	if err == nil {
+		event = c.Log.Warn()
+	} else {
+		event = c.Log.Error().Err(err)
+	}
+
+	event.
+		Str("link", link).
+		Msg("DEREGISTER")
+
+	return err
 }
 
 // Remove .this gateway runtime link
 // from internal service provider agent
 func (c *Gateway) Remove() bool {
 	
-	pid := c.Profile.Id
-	uri := c.Profile.UrlId
+	var (
+		pid = c.Bot.Id
+		uri = c.Bot.Uri
+		srv = c.Internal
+	)
 
-	c.Internal.indexMx.Lock()        // +RW
-	e, ok := c.Internal.profiles[pid]
-	if ok = ok && e == c; ok {
-		delete(c.Internal.profiles, pid) // register: cache entry
-		delete(c.Internal.gateways, uri) // register: service URI
+	srv.indexMx.Lock()   // +RW
+	e, ok := srv.profiles[pid]
+	if ok = (ok && e == c); ok {
+		delete(srv.profiles, pid) // register: cache entry
+		delete(srv.gateways, uri) // register: service URI
 	}
-	c.Internal.indexMx.Unlock()      // -RW
-
-	var event *zerolog.Event
+	srv.indexMx.Unlock() // -RW
 
 	if ok {
-
-		event = c.Log.Warn()
-
-	} else {
-
-		event = c.Log.Error().Str("error", "gateway: profile not running")
+		c.Log.Warn().Msg("DELETED")
 	}
 
-	event.Msg("REMOVE")
+	// var event *zerolog.Event
+
+	// if ok {
+
+	// 	event = c.Log.Warn()
+
+	// } else {
+	// 	// NOTE: There may be updated revision running
+	// 	event = c.Log.Warn().Str("error", "bot: profile not running")
+	// }
+
+	// event.Msg("DISABLE")
 
 	return ok
 }
+
+// func (c *Gateway) close(chat *Channel) bool {
+
+// 	c.Lock()   // +RW
+// 	e, ok := c.external[chat.ChatID]
+// 	if ok = (ok && e == chat); (ok && chat.Closed != 0) {
+// 		delete(c.internal, chat.Account.ID)
+// 		delete(c.external, chat.ChatID)
+// 		if len(c.external) == 0 && c.next != nil {
+// 			// NOTE: Closed last active channel !
+// 			srv := c.Internal
+
+// 			srv.indexMx.Lock()   // +RW
+// 			srv.profiles[c.Id] = c.next // APPLIED !
+// 			srv.indexMx.Unlock() // +RW
+// 		}
+// 	}
+// 	c.Unlock() // -RW
+
+// 	// ok = (ok && 0 != chat.Closed)
+	
+// 	// if !ok && c.next != nil {
+// 	// 	return c.next.close(chat)
+// 	// }
+
+// 	return ok
+// }
+
+// func (c *Gateway) Shutdown(force bool) error {
+
+// 	if !force {
+// 		// MARK: DO NOT accept NEW connections !
+// 		c.Bot.Enabled = false
+// 		// We need gracefully close all active sessions !
+// 		return nil
+// 	}
+
+// 	// FORCE !
+// 	for _, chat := range c.external {
+// 		chat.Close()
+// 	}
+// }
 
 // WebHook implements basic provider.Receiver interface
 // Just delegates control to the underlaying service provider
@@ -191,7 +331,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 		title := contact.DisplayName()
 		lookup := chat.CheckSessionRequest{
 			// gateway profile identity
-			ProfileId:  c.Profile.Id,
+			ProfileId:  c.Bot.Id,
 			// external client contact
 			ExternalId: chatID,
 			Username:   title,
@@ -237,10 +377,21 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 			c.Unlock() // -RW
 
 			channel.Log.Info().Msg("RECOVER")
-		
+
 		} else {
-			// created
+
+			// created: client !
 			contact.ID = chat.ClientId
+			
+			// NO Channel FOUND !
+			// CHECK: Can we accept NEW one ?
+			if !c.Bot.GetEnabled() {
+				return nil, errors.New(
+					"chat.bot.channel.disabled",
+					"chat: bot is disabled",
+					 http.StatusBadGateway,
+				)
+			}
 
 			// NOT FOUND !
 			channel = &Channel{
@@ -278,7 +429,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) error {
 
 	profileID := notify.GetProfileId()
-	if profileID != c.Profile.Id {
+	if profileID != c.Bot.Id {
 		panic("gateway: attempt to send to invalid profile.id")
 	}
 
@@ -293,20 +444,20 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 	sendUpdate := Update{
 		// attributes
 		ID:      sendMessage.GetId(),
-		Title:   recepient.Title,
 		// ChatID:  chatID,
 		Chat:    recepient, // TO: !
-		User:    nil, // &Account{} // UNKNOWN // TODO: reg.GetUser() as a sender
+		// User:    nil, // &Account{} // UNKNOWN // TODO: reg.GetUser() as a sender
+		Title:   recepient.Title,
 		// event arguments
 		//Event:   action,
 		Message: sendMessage,
-		// not applicable yet !
-		Edited:          0,
-		EditedMessageID: 0,
-		// JoinMembersCount: 0,
-		// KickMembersCount: 0,
-		JoinMembers: nil,
-		KickMembers: nil,
+		// // not applicable yet !
+		// Edited:          0,
+		// EditedMessageID: 0,
+		// // JoinMembersCount: 0,
+		// // KickMembersCount: 0,
+		// JoinMembers: nil,
+		// KickMembers: nil,
 	}
 
 	if recepient.Account.ID != 0 {
@@ -320,7 +471,7 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 
 	if sendMessage.File != nil {
 		
-		sendUpdate.Event = "file"
+		// sendUpdate.Event = "file"
 
 	// } else if sendMessage.Buttons != nil{
 
@@ -329,15 +480,15 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 
 	} else if sendMessage.Text != "" {
 
-		// messageText := sendMessage.GetText()
+		// // messageText := sendMessage.GetText()
 
-		sendUpdate.Event = "text"
-		// closed = closed || IsCommandClose(messageText) 
+		// sendUpdate.Event = "text"
+		// // closed = closed || IsCommandClose(messageText) 
 		
 		if closed {
-			// unify chat.closed reply text
-			sendUpdate.Event = "closed"
-			// messageText = "closed" // chat: closed
+			// // unify chat.closed reply text
+			// sendUpdate.Event = "closed"
+			// // messageText = "closed" // chat: closed
 			sendMessage.Text = "closed"
 		}
 
@@ -356,7 +507,11 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 	}
 
 	// PERFORM: deliver TO .remote (provider) side
-	err = c.External.SendNotify(ctx, &sendUpdate)
+	// Get *Gateway controller, linked on start message !
+	// This might be (gate == c) but may NOT, after .Bot UPDATE !
+	// So active channel(s) must work with the corresponding *Gateway controller(s), that was started on !
+	gate := recepient.Gateway
+	err = gate.External.SendNotify(ctx, &sendUpdate)
 
 	var event *zerolog.Event
 	
@@ -373,7 +528,7 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 
 	event.
 		
-		Str("send", sendUpdate.Event).
+		Str("send", sendUpdate.Message.GetType()). // sendUpdate.Event).
 		Str("text", sendUpdate.Message.GetText()).
 		EmbedObject(ZerologJSON("file", sendUpdate.Message.GetFile())).
 		

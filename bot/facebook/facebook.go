@@ -1,30 +1,31 @@
-package main
+package facebook
 
 import (
-	
-	"path/filepath"
 	"encoding/json"
+	"path/filepath"
+
 	//"io/ioutil"
-	"net/http"
+	"bytes"
 	"context"
+	"fmt"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
-	"net/url"
-	"bytes"
 	"sync"
-	"fmt"
-	
-	"github.com/rs/zerolog/log"
+
 	"github.com/micro/go-micro/v2/errors"
+	"github.com/rs/zerolog/log"
 
 	chat "github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/webitel/chat_manager/bot"
 )
 
 type facebookBot struct {
 	accessToken string
 	verifyToken string
 	url         string
-	Gateway     *Gateway
+	Gateway     *bot.Gateway
 	clients     map[int64]*userProfile
 	sync.RWMutex
 }
@@ -139,13 +140,14 @@ type FacebookPostback struct {
 
 func init() {
 	// NewProvider(facebook)
-	Register("facebook", NewFacebookBot)
+	bot.Register("facebook", NewFacebookBot)
 }
 
 // NewFacebookBot initialize new agent.profile service provider
-func NewFacebookBot(agent *Gateway) (Provider, error) {
+// func NewFacebookBot(agent *bot.Gateway) (bot.Provider, error) {
+func NewFacebookBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 
-	accessToken, ok := agent.Profile.Variables["AccessToken"]
+	accessToken, ok := agent.Bot.Metadata["AccessToken"]
 	if !ok {
 		log.Error().Msg("AccessToken not found")
 		return nil, errors.BadRequest(
@@ -154,7 +156,7 @@ func NewFacebookBot(agent *Gateway) (Provider, error) {
 		)
 	}
 
-	verifyToken, ok := agent.Profile.Variables["VerifyToken"]
+	verifyToken, ok := agent.Bot.Metadata["VerifyToken"]
 	if !ok {
 		log.Error().Msg("VerifyToken not found")
 		return nil, errors.BadRequest(
@@ -163,7 +165,7 @@ func NewFacebookBot(agent *Gateway) (Provider, error) {
 		)
 	}
 
-	url, ok := agent.Profile.Variables["url"]
+	url, ok := agent.Bot.Metadata["url"]
 	if !ok {
 		log.Error().Msg("url not found")
 		return nil, errors.BadRequest(
@@ -183,6 +185,10 @@ func NewFacebookBot(agent *Gateway) (Provider, error) {
 	}, nil
 }
 
+func (_ *facebookBot) Close() error {
+	return nil
+}
+
 func (_ *facebookBot) String() string {
 	return "facebook"
 }
@@ -195,7 +201,7 @@ func (b *facebookBot) Deregister(ctx context.Context) error {
 	return nil
 }
 
-func (b *facebookBot) SendNotify(ctx context.Context, notify *Update) error {
+func (b *facebookBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 	var (
 		channel = notify.Chat
 
@@ -308,7 +314,7 @@ func (b *facebookBot) SendNotify(ctx context.Context, notify *Update) error {
 
 func (b *facebookBot) userUnsubscribed(userID string) {
 
-	contact := &Account {
+	contact := &bot.Account {
 		ID:        0,
 		Channel:   "facebook",
 		Contact:   userID,
@@ -370,7 +376,7 @@ func (b *facebookBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 						b.Unlock() // -RW
 					}
 
-					contact := &Account {
+					contact := &bot.Account {
 						FirstName:  client.FirstName,
 						LastName:   client.LastName,
 						ID:         0, // LOOKUP
@@ -392,7 +398,7 @@ func (b *facebookBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 						return // 503 Bad Gateway
 					}
 		
-					sendUpdate := Update {
+					sendUpdate := bot.Update {
 						Title:   channel.Title,
 						Chat:    channel,
 						User:    contact,

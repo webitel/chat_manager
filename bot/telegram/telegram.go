@@ -1,55 +1,59 @@
-package main
+package telegram
 
 import (
-
-	"time"
 	"context"
-	"strings"
 	"strconv"
+	"strings"
+	"time"
 
 	// "net/url"
-	"net/http"
 	"io/ioutil"
-	
-	"path/filepath"
-	"encoding/json"
+	"net/http"
 
-	"github.com/webitel/chat_manager/app"
+	"encoding/json"
+	"path/filepath"
+
 	"github.com/micro/go-micro/v2/errors"
+	"github.com/webitel/chat_manager/app"
+	"github.com/webitel/chat_manager/bot"
 
 	// gate "github.com/webitel/chat_manager/api/proto/bot"
-	chat "github.com/webitel/chat_manager/api/proto/chat"
 	telegram "github.com/go-telegram-bot-api/telegram-bot-api"
+	chat "github.com/webitel/chat_manager/api/proto/chat"
 )
 
 func init() {
-	// NewProvider(telegram)
-	Register("telegram", NewTelegramBotV1)
+	bot.Register("telegram", NewTelegramBot)
 }
 
 // Telegram BOT chat provider
-type TelegramBotV1 struct {
-	*Gateway
+type TelegramBot struct {
+	*bot.Gateway
 	*telegram.BotAPI
 }
 
+func (_ *TelegramBot) Close() error {
+	return nil
+}
+
 // String "telegram" provider's name
-func (_ *TelegramBotV1) String() string {
+func (_ *TelegramBot) String() string {
 	return "telegram"
 }
 
 // NewTelegramBotV1 initialize new agent.profile service provider
-func NewTelegramBotV1(agent *Gateway) (Provider, error) {
+// func NewTelegramBot(agent *bot.Gateway) (bot.Provider, error) {
+func NewTelegramBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 
-	config := agent.Profile
-	profile := config.GetVariables()
+	config := agent.Bot
+	profile := config.GetMetadata()
 
 	token, ok := profile["token"]
 	
 	if !ok {
 		
 		return nil, errors.BadRequest(
-			"chat.gateway.telegram.token.required",
+			"chat.bot.telegram.token.required",
 			"telegram: bot API token required",
 		)
 	}
@@ -70,8 +74,8 @@ func NewTelegramBotV1(agent *Gateway) (Provider, error) {
 		if transport == nil {
 			transport = http.DefaultTransport
 		}
-		transport = &transportDump{
-			r: transport,
+		transport = &bot.TransportDump{
+			Transport: transport,
 			WithBody: true,
 		}
 		if httpClient == nil {
@@ -99,20 +103,20 @@ func NewTelegramBotV1(agent *Gateway) (Provider, error) {
 	if err != nil {
 
 		return nil, errors.New(
-			"chat.gateway.telegram.bot.error",
+			"chat.bot.telegram.setup.error",
 			"telegram: "+ err.Error(),
 			 http.StatusBadGateway,
 		)
 	}
 
-	return &TelegramBotV1{
+	return &TelegramBot{
 		Gateway: agent,
 		BotAPI: botAPI,
 	}, nil
 }
 
 // Register Telegram Bot Webhook endpoint URI
-func (c *TelegramBotV1) Register(ctx context.Context, linkURL string) error {
+func (c *TelegramBot) Register(ctx context.Context, linkURL string) error {
 
 	// // webhookInfo := tgbotapi.NewWebhookWithCert(fmt.Sprintf("%s/telegram/%v", cfg.TgWebhook, profile.Id), cfg.CertPath)
 	// linkURL := strings.TrimRight(c.Gateway.Internal.URL, "/") +
@@ -130,7 +134,7 @@ func (c *TelegramBotV1) Register(ctx context.Context, linkURL string) error {
 }
 
 // Deregister Telegram Bot Webhook endpoint URI
-func (c *TelegramBotV1) Deregister(ctx context.Context) error {
+func (c *TelegramBot) Deregister(ctx context.Context) error {
 	
 	res, err := c.BotAPI.RemoveWebhook()
 	
@@ -140,7 +144,7 @@ func (c *TelegramBotV1) Deregister(ctx context.Context) error {
 
 	if !res.Ok {
 		return errors.New(
-			"chat.gateway.deregister.telegram.error", 
+			"chat.bot.telegram.deregister.error", 
 			"telegram: "+ res.Description,
 			 (int32)(res.ErrorCode), // FIXME: 502 Bad Gateway ?
 		)
@@ -150,7 +154,7 @@ func (c *TelegramBotV1) Deregister(ctx context.Context) error {
 }
 
 // SendNotify implements provider.Sender interface for Telegram
-func (c *TelegramBotV1) SendNotify(ctx context.Context, notify *Update) error {
+func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 	// send *gate.SendMessageRequest
 	// externalID, err := strconv.ParseInt(send.ExternalUserId, 10, 64)
 
@@ -516,7 +520,7 @@ func newInlineKeyboard(buttons []*chat.Buttons) telegram.InlineKeyboardMarkup {
 }
 
 // WebHook implementes provider.Receiver interface for Telegram
-func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request) {
+func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 	var recvUpdate telegram.Update
 	err := json.NewDecoder(notice.Body).Decode(&recvUpdate)
@@ -630,7 +634,7 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 	senderChat := recvMessage.Chat
 
 	// region: contact
-	contact := &Account{
+	contact := &bot.Account{
 		ID:        0, // LOOKUP
 		Channel:   "telegram",
 		Contact:   strconv.Itoa(senderUser.ID),
@@ -659,17 +663,23 @@ func (c *TelegramBotV1) WebHook(reply http.ResponseWriter, notice *http.Request)
 	if err != nil {
 		// Failed locate chat channel !
 		re := errors.FromError(err); if re.Code == 0 {
-			re.Code = (int32)(http.StatusBadGateway)
+			re.Code = (int32)(http.StatusBadGateway) 
+			// HTTP 503 Bad Gateway
 		}
-		http.Error(reply, re.Detail, (int)(re.Code))
-		return // 503 Bad Gateway
+		// FIXME: Reply with 200 OK to NOT receive this message again ?!.
+		reply := telegram.NewMessage(senderChat.ID, re.Detail)
+		defer func() {
+			_, _ = c.BotAPI.Send(reply)
+		} ()
+		// http.Error(reply, re.Detail, (int)(re.Code))
+		return // HTTP 200 OK; WITH reply error message
 	}
 
 	// channel.Title = sender.Title
 	// contact.ID = channel.ContactID
 
 	// endregion
-	sendUpdate := Update {
+	sendUpdate := bot.Update {
 		
 		// ChatID: strconv.FormatInt(recvMessage.Chat.ID, 10),
 		

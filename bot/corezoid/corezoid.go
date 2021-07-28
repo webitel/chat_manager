@@ -1,33 +1,34 @@
-package main
+package corezoid
 
 import (
-
-	"time"
 	"bytes"
 	"context"
-	"strings"
 	"strconv"
+	"strings"
+	"time"
 	"unicode"
 
-	"net"
-	"net/url"
-	"net/http"
 	"encoding/json"
+	"net"
+	"net/http"
+	"net/url"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+
 	// "github.com/golang/protobuf/proto"
 	errs "github.com/micro/go-micro/v2/errors"
 
 	"github.com/webitel/chat_manager/app"
+	"github.com/webitel/chat_manager/bot"
+
 	// gate "github.com/webitel/chat_manager/api/proto/bot"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
-
 )
 
 func init() {
 	// NewProvider(corezoid)
-	Register("corezoid", NewCorezoidBot)
+	bot.Register("corezoid", NewCorezoidBot)
 }
 
 // chat request: command/message
@@ -58,8 +59,8 @@ func (m *corezoidRequest) GetTitle() string {
 }
 
 // GetContact returns end-user contact info
-func (m *corezoidRequest) GetContact() *Account {
-	return &Account{
+func (m *corezoidRequest) GetContact() *bot.Account {
+	return &bot.Account{
 		ID:        0, // LOOKUP: UNKNOWN !
 		Contact:   m.ChatID,
 		Channel:   m.Channel,
@@ -99,15 +100,16 @@ type CorezoidBot struct {
 	// Client HTTP to communicate with member, remote
 	Client *http.Client
 	// Gateway service agent
-	Gateway *Gateway
+	Gateway *bot.Gateway
 }
 
 // NewCorezoidBot initialize new chat service provider
 // corresponding to agent.Profile configuration
-func NewCorezoidBot(agent *Gateway) (Provider, error) {
+// func NewCorezoidBot(agent *bot.Gateway) (bot.Provider, error) {
+func NewCorezoidBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 
-	config := agent.Profile
-	profile := config.GetVariables()
+	config := agent.Bot
+	profile := config.GetMetadata()
 
 	host, _ := profile["url"]
 
@@ -182,8 +184,8 @@ func NewCorezoidBot(agent *Gateway) (Provider, error) {
 		if transport == nil {
 			transport = http.DefaultTransport
 		}
-		transport = &transportDump{
-			r: transport,
+		transport = &bot.TransportDump{
+			Transport: transport,
 			WithBody: true,
 		}
 		if client == nil {
@@ -209,6 +211,10 @@ func NewCorezoidBot(agent *Gateway) (Provider, error) {
 	},  nil
 }
 
+func (_ *CorezoidBot) Close() error {
+	return nil
+}
+
 // String "corezoid" provider name
 func (_ *CorezoidBot) String() string {
 	return "corezoid"
@@ -225,7 +231,7 @@ func (_ *CorezoidBot) Register(ctx context.Context, uri string) error {
 }
 
 // tries to decode latest provider-specific CHAT channel state ...
-func corezoidChannelState(channel *Channel, start *corezoidChatV1) (state *corezoidChatV1, err error) {
+func corezoidChannelState(channel *bot.Channel, start *corezoidChatV1) (state *corezoidChatV1, err error) {
 
 	// region: restore latest CHAT state
 	if hint := channel.Properties; hint != nil {
@@ -465,12 +471,12 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		defer func() {
 			// Also NOTIFY sender about restriction !
 			_ = c.SendNotify(
-				context.Background(), &Update{
+				context.Background(), &bot.Update{
 					ID:    0, // NOTICE
 					Chat:  channel, // target
 					User:  contact, // sender
 					Title: channel.Title,
-					Event: "text",
+					// Event: "text",
 					Message: &chat.Message{
 						
 						Id:   0,
@@ -601,23 +607,23 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		sendMessage.Variables = props
 	} // else { // BIND message properties ! }
 
-	recvUpdate := Update {
+	recvUpdate := bot.Update {
 	
 		ID:      0, // NEW
-		Title:   channel.Title,
 		// ChatID: update.ChatID,
 		Chat:    channel, // SENDER (!)
 		// Contact: update.Channel,
 		User:    contact,
+		Title:   channel.Title,
 		
-		Event:   sendMessage.Type, // "text" or "file" !
+		// Event:   sendMessage.Type, // "text" or "file" !
 		Message: sendMessage,
-		// not applicable yet !
-		Edited:           0,
-		EditedMessageID:  0,
+		// // not applicable yet !
+		// Edited:           0,
+		// EditedMessageID:  0,
 		
-		// JoinMembersCount: 0,
-		// KickMembersCount: 0,
+		// // JoinMembersCount: 0,
+		// // KickMembersCount: 0,
 	}
 
 	// PERFORM: receive incoming update from external chat channel !
@@ -639,7 +645,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 }
 
 // SendNotify implements provider.Sender interface
-func (c *CorezoidBot) SendNotify(ctx context.Context, notify *Update) error {
+func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 
 	var (
 

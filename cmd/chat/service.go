@@ -16,7 +16,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog"
 
-	// errs "github.com/pkg/errors"
 	"github.com/micro/go-micro/v2/broker"
 	"github.com/micro/go-micro/v2/errors"
 	"github.com/micro/go-micro/v2/metadata"
@@ -34,13 +33,8 @@ import (
 )
 
 type Service interface {
-	GetConversationByID(ctx context.Context, req *pb.GetConversationByIDRequest, res *pb.GetConversationByIDResponse) error
 	GetConversations(ctx context.Context, req *pb.GetConversationsRequest, res *pb.GetConversationsResponse) error
-	GetProfileByID(ctx context.Context, req *pb.GetProfileByIDRequest, res *pb.GetProfileByIDResponse) error
-	GetProfiles(ctx context.Context, req *pb.GetProfilesRequest, res *pb.GetProfilesResponse) error
-	CreateProfile(ctx context.Context, req *pb.CreateProfileRequest, res *pb.CreateProfileResponse) error
-	UpdateProfile(ctx context.Context, req *pb.UpdateProfileRequest, res *pb.UpdateProfileResponse) error
-	DeleteProfile(ctx context.Context, req *pb.DeleteProfileRequest, res *pb.DeleteProfileResponse) error
+	GetConversationByID(ctx context.Context, req *pb.GetConversationByIDRequest, res *pb.GetConversationByIDResponse) error
 	GetHistoryMessages(ctx context.Context, req *pb.GetHistoryMessagesRequest, res *pb.GetHistoryMessagesResponse) error
 
 	SendMessage(ctx context.Context, req *pb.SendMessageRequest, res *pb.SendMessageResponse) error
@@ -60,7 +54,7 @@ type chatService struct {
 	log           *zerolog.Logger
 	flowClient    flow.Client
 	authClient    auth.Client
-	botClient     pbbot.BotService
+	botClient     pbbot.BotsService
 	storageClient pbstorage.FileService
 	eventRouter   event.Router
 }
@@ -70,7 +64,7 @@ func NewChatService(
 	log *zerolog.Logger,
 	flowClient flow.Client,
 	authClient auth.Client,
-	botClient pbbot.BotService,
+	botClient pbbot.BotsService,
 	storageClient pbstorage.FileService,
 	eventRouter event.Router,
 ) Service {
@@ -1546,28 +1540,6 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 	return nil
 }
 
-func (s *chatService) GetConversationByID(ctx context.Context, req *pb.GetConversationByIDRequest, res *pb.GetConversationByIDResponse) error {
-	s.log.Trace().
-		Str("conversation_id", req.GetId()).
-		Msg("get conversation by id")
-	user, err := s.authClient.MicroAuthentication(&ctx)
-	if err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	}
-	conversation, err := s.repo.GetConversations(ctx, req.GetId(), 0, 0, nil, nil, user.DomainID, false, 0, 0)
-	//conversation, err := s.repo.GetConversationByID(ctx, req.GetId())
-	if err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	}
-	if conversation == nil {
-		return nil
-	}
-	res.Item = transformConversationFromRepoModel(conversation[0])
-	return nil
-}
-
 func (s *chatService) GetConversations(ctx context.Context, req *pb.GetConversationsRequest, res *pb.GetConversationsResponse) error {
 	s.log.Trace().
 		Str("conversation_id", req.GetId()).
@@ -1597,193 +1569,25 @@ func (s *chatService) GetConversations(ctx context.Context, req *pb.GetConversat
 	return nil
 }
 
-
-
-func (s *chatService) CreateProfile(
-	ctx context.Context,
-	req *pb.CreateProfileRequest,
-	res *pb.CreateProfileResponse) error {
-
+func (s *chatService) GetConversationByID(ctx context.Context, req *pb.GetConversationByIDRequest, res *pb.GetConversationByIDResponse) error {
+	s.log.Trace().
+		Str("conversation_id", req.GetId()).
+		Msg("get conversation by id")
 	user, err := s.authClient.MicroAuthentication(&ctx)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	s.log.Trace().
-		Str("name", req.GetItem().GetName()).
-		Str("type", req.GetItem().GetType()).
-		Int64("domain_id", user.DomainID). //req.GetItem().GetDomainId()).
-		Int64("schema_id", req.GetItem().GetSchemaId()).
-		Str("variables", fmt.Sprintf("%v", req.GetItem().GetVariables())).
-		Msg("create profile")
-
-	// if user.DomainID != req.GetItem().GetDomainId() {
-	// 	s.log.Error().Msg("invalid domain id")
-	// 	return errors.BadRequest("invalid domain id", "")
-	// }
-
-	req.Item.DomainId = user.DomainID
-
-	result, err := transformProfileToRepoModel(req.GetItem())
+	conversation, err := s.repo.GetConversations(ctx, req.GetId(), 0, 0, nil, nil, user.DomainID, false, 0, 0)
+	//conversation, err := s.repo.GetConversationByID(ctx, req.GetId())
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
-	if err := s.repo.CreateProfile(ctx, result); err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
+	if conversation == nil {
+		return nil
 	}
-	res.Item = req.Item
-	res.Item.Id = result.ID
-
-	addProfileReq := &pbbot.AddProfileRequest{
-		Profile: res.Item,
-	}
-	if _, err := s.botClient.AddProfile(ctx, addProfileReq); err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	}
-	return nil
-}
-
-func (s *chatService) DeleteProfile(
-	ctx context.Context,
-	req *pb.DeleteProfileRequest,
-	res *pb.DeleteProfileResponse) error {
-	s.log.Trace().
-		Int64("profile_id", req.GetId()).
-		Msg("delete profile")
-	user, err := s.authClient.MicroAuthentication(&ctx)
-	if err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	}
-	profile, err := s.repo.GetProfileByID(ctx, req.GetId(), "")
-	if err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	} else if profile == nil || profile.DomainID != user.DomainID {
-		return errors.BadRequest("profile not found", "")
-	}
-	if err := s.repo.DeleteProfile(ctx, req.GetId()); err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	}
-	deleteProfileReq := &pbbot.DeleteProfileRequest{
-		Id:    req.GetId(),
-		UrlId: profile.UrlID,
-	}
-	if _, err := s.botClient.DeleteProfile(ctx, deleteProfileReq); err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	}
-	res.Item, err = transformProfileFromRepoModel(profile)
-	return err
-}
-
-func (s *chatService) UpdateProfile(
-	ctx context.Context,
-	req *pb.UpdateProfileRequest,
-	res *pb.UpdateProfileResponse) error {
-	s.log.Trace().
-		Str("update", "profile").
-		Msgf("%v", req.GetItem())
-	user, err := s.authClient.MicroAuthentication(&ctx)
-	if err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	}
-	profile, err := transformProfileToRepoModel(req.GetItem())
-	if err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	}
-	if profile.DomainID != user.DomainID {
-		s.log.Error().Msg("invalid domain id")
-		return errors.BadRequest("invalid domain id", "")
-	}
-	if err := s.repo.UpdateProfile(ctx, profile); err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	}
-	res.Item, err = transformProfileFromRepoModel(profile)
-	return err
-}
-
-func (s *chatService) GetProfiles(ctx context.Context, req *pb.GetProfilesRequest, res *pb.GetProfilesResponse) error {
-	s.log.Trace().
-		Str("type", req.GetType()).
-		Int64("domain_id", req.GetDomainId()).
-		Msg("get profiles")
-	user, err := s.authClient.MicroAuthentication(&ctx)
-	if err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	}
-	var domainID int64
-	if user != nil {
-		domainID = user.DomainID
-	}
-	profiles, err := s.repo.GetProfiles(
-		ctx,
-		req.GetId(),
-		req.GetSize(),
-		req.GetPage(),
-		req.GetFields(),
-		req.GetSort(),
-		req.GetType(),
-		domainID, //req.GetDomainId(),
-	)
-	if err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	}
-	result, err := transformProfilesFromRepoModel(profiles)
-	if err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	}
-	res.Items = result
-	return nil
-}
-
-func (s *chatService) GetProfileByID(ctx context.Context, req *pb.GetProfileByIDRequest, res *pb.GetProfileByIDResponse) error {
-
-	user, err := s.authClient.MicroAuthentication(&ctx)
-	if err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	}
-	s.log.Trace().
-		Int64("pid", req.GetId()).
-		Str("uri", req.GetUri()).
-		Msg("get profile")
-	profile, err := s.repo.GetProfileByID(ctx, req.GetId(), req.GetUri())
-	if err != nil {
-		s.log.Error().Err(err).Msg("Failed to get profile")
-		return err
-	}
-	if profile == nil {
-
-		s.log.Warn().Int64("pid", req.GetId()).Str("uri", req.GetUri()).
-			Msg("Profile Not Found")
-
-		return errors.NotFound(
-			"chat.gateway.profile.not_found",
-			"chat: gateway profile id=%d uri=/%s not found",
-			req.GetId(), req.GetUri(),
-		)
-	}
-	if user != nil && profile.DomainID != user.DomainID {
-		s.log.Error().Msg("invalid domain id")
-		return errors.BadRequest("invalid domain id", "")
-	}
-	result, err := transformProfileFromRepoModel(profile)
-	if err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
-	}
-	res.Item = result
+	res.Item = transformConversationFromRepoModel(conversation[0])
 	return nil
 }
 

@@ -42,6 +42,7 @@ func NewChatServiceEndpoints() []*api.Endpoint {
 // Client API for ChatService service
 
 type ChatService interface {
+	// SendMessage [FROM] created channel_id (+auth_user_id) [TO] conversation_id chat-room
 	SendMessage(ctx context.Context, in *SendMessageRequest, opts ...client.CallOption) (*SendMessageResponse, error)
 	StartConversation(ctx context.Context, in *StartConversationRequest, opts ...client.CallOption) (*StartConversationResponse, error)
 	CloseConversation(ctx context.Context, in *CloseConversationRequest, opts ...client.CallOption) (*CloseConversationResponse, error)
@@ -52,13 +53,8 @@ type ChatService interface {
 	CheckSession(ctx context.Context, in *CheckSessionRequest, opts ...client.CallOption) (*CheckSessionResponse, error)
 	WaitMessage(ctx context.Context, in *WaitMessageRequest, opts ...client.CallOption) (*WaitMessageResponse, error)
 	UpdateChannel(ctx context.Context, in *UpdateChannelRequest, opts ...client.CallOption) (*UpdateChannelResponse, error)
-	GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, opts ...client.CallOption) (*GetConversationByIDResponse, error)
 	GetConversations(ctx context.Context, in *GetConversationsRequest, opts ...client.CallOption) (*GetConversationsResponse, error)
-	GetProfiles(ctx context.Context, in *GetProfilesRequest, opts ...client.CallOption) (*GetProfilesResponse, error)
-	GetProfileByID(ctx context.Context, in *GetProfileByIDRequest, opts ...client.CallOption) (*GetProfileByIDResponse, error)
-	CreateProfile(ctx context.Context, in *CreateProfileRequest, opts ...client.CallOption) (*CreateProfileResponse, error)
-	DeleteProfile(ctx context.Context, in *DeleteProfileRequest, opts ...client.CallOption) (*DeleteProfileResponse, error)
-	UpdateProfile(ctx context.Context, in *UpdateProfileRequest, opts ...client.CallOption) (*UpdateProfileResponse, error)
+	GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, opts ...client.CallOption) (*GetConversationByIDResponse, error)
 	GetHistoryMessages(ctx context.Context, in *GetHistoryMessagesRequest, opts ...client.CallOption) (*GetHistoryMessagesResponse, error)
 }
 
@@ -174,16 +170,6 @@ func (c *chatService) UpdateChannel(ctx context.Context, in *UpdateChannelReques
 	return out, nil
 }
 
-func (c *chatService) GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, opts ...client.CallOption) (*GetConversationByIDResponse, error) {
-	req := c.c.NewRequest(c.name, "ChatService.GetConversationByID", in)
-	out := new(GetConversationByIDResponse)
-	err := c.c.Call(ctx, req, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *chatService) GetConversations(ctx context.Context, in *GetConversationsRequest, opts ...client.CallOption) (*GetConversationsResponse, error) {
 	req := c.c.NewRequest(c.name, "ChatService.GetConversations", in)
 	out := new(GetConversationsResponse)
@@ -194,49 +180,9 @@ func (c *chatService) GetConversations(ctx context.Context, in *GetConversations
 	return out, nil
 }
 
-func (c *chatService) GetProfiles(ctx context.Context, in *GetProfilesRequest, opts ...client.CallOption) (*GetProfilesResponse, error) {
-	req := c.c.NewRequest(c.name, "ChatService.GetProfiles", in)
-	out := new(GetProfilesResponse)
-	err := c.c.Call(ctx, req, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *chatService) GetProfileByID(ctx context.Context, in *GetProfileByIDRequest, opts ...client.CallOption) (*GetProfileByIDResponse, error) {
-	req := c.c.NewRequest(c.name, "ChatService.GetProfileByID", in)
-	out := new(GetProfileByIDResponse)
-	err := c.c.Call(ctx, req, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *chatService) CreateProfile(ctx context.Context, in *CreateProfileRequest, opts ...client.CallOption) (*CreateProfileResponse, error) {
-	req := c.c.NewRequest(c.name, "ChatService.CreateProfile", in)
-	out := new(CreateProfileResponse)
-	err := c.c.Call(ctx, req, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *chatService) DeleteProfile(ctx context.Context, in *DeleteProfileRequest, opts ...client.CallOption) (*DeleteProfileResponse, error) {
-	req := c.c.NewRequest(c.name, "ChatService.DeleteProfile", in)
-	out := new(DeleteProfileResponse)
-	err := c.c.Call(ctx, req, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *chatService) UpdateProfile(ctx context.Context, in *UpdateProfileRequest, opts ...client.CallOption) (*UpdateProfileResponse, error) {
-	req := c.c.NewRequest(c.name, "ChatService.UpdateProfile", in)
-	out := new(UpdateProfileResponse)
+func (c *chatService) GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, opts ...client.CallOption) (*GetConversationByIDResponse, error) {
+	req := c.c.NewRequest(c.name, "ChatService.GetConversationByID", in)
+	out := new(GetConversationByIDResponse)
 	err := c.c.Call(ctx, req, out, opts...)
 	if err != nil {
 		return nil, err
@@ -257,6 +203,7 @@ func (c *chatService) GetHistoryMessages(ctx context.Context, in *GetHistoryMess
 // Server API for ChatService service
 
 type ChatServiceHandler interface {
+	// SendMessage [FROM] created channel_id (+auth_user_id) [TO] conversation_id chat-room
 	SendMessage(context.Context, *SendMessageRequest, *SendMessageResponse) error
 	StartConversation(context.Context, *StartConversationRequest, *StartConversationResponse) error
 	CloseConversation(context.Context, *CloseConversationRequest, *CloseConversationResponse) error
@@ -267,13 +214,8 @@ type ChatServiceHandler interface {
 	CheckSession(context.Context, *CheckSessionRequest, *CheckSessionResponse) error
 	WaitMessage(context.Context, *WaitMessageRequest, *WaitMessageResponse) error
 	UpdateChannel(context.Context, *UpdateChannelRequest, *UpdateChannelResponse) error
-	GetConversationByID(context.Context, *GetConversationByIDRequest, *GetConversationByIDResponse) error
 	GetConversations(context.Context, *GetConversationsRequest, *GetConversationsResponse) error
-	GetProfiles(context.Context, *GetProfilesRequest, *GetProfilesResponse) error
-	GetProfileByID(context.Context, *GetProfileByIDRequest, *GetProfileByIDResponse) error
-	CreateProfile(context.Context, *CreateProfileRequest, *CreateProfileResponse) error
-	DeleteProfile(context.Context, *DeleteProfileRequest, *DeleteProfileResponse) error
-	UpdateProfile(context.Context, *UpdateProfileRequest, *UpdateProfileResponse) error
+	GetConversationByID(context.Context, *GetConversationByIDRequest, *GetConversationByIDResponse) error
 	GetHistoryMessages(context.Context, *GetHistoryMessagesRequest, *GetHistoryMessagesResponse) error
 }
 
@@ -289,13 +231,8 @@ func RegisterChatServiceHandler(s server.Server, hdlr ChatServiceHandler, opts .
 		CheckSession(ctx context.Context, in *CheckSessionRequest, out *CheckSessionResponse) error
 		WaitMessage(ctx context.Context, in *WaitMessageRequest, out *WaitMessageResponse) error
 		UpdateChannel(ctx context.Context, in *UpdateChannelRequest, out *UpdateChannelResponse) error
-		GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, out *GetConversationByIDResponse) error
 		GetConversations(ctx context.Context, in *GetConversationsRequest, out *GetConversationsResponse) error
-		GetProfiles(ctx context.Context, in *GetProfilesRequest, out *GetProfilesResponse) error
-		GetProfileByID(ctx context.Context, in *GetProfileByIDRequest, out *GetProfileByIDResponse) error
-		CreateProfile(ctx context.Context, in *CreateProfileRequest, out *CreateProfileResponse) error
-		DeleteProfile(ctx context.Context, in *DeleteProfileRequest, out *DeleteProfileResponse) error
-		UpdateProfile(ctx context.Context, in *UpdateProfileRequest, out *UpdateProfileResponse) error
+		GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, out *GetConversationByIDResponse) error
 		GetHistoryMessages(ctx context.Context, in *GetHistoryMessagesRequest, out *GetHistoryMessagesResponse) error
 	}
 	type ChatService struct {
@@ -349,32 +286,12 @@ func (h *chatServiceHandler) UpdateChannel(ctx context.Context, in *UpdateChanne
 	return h.ChatServiceHandler.UpdateChannel(ctx, in, out)
 }
 
-func (h *chatServiceHandler) GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, out *GetConversationByIDResponse) error {
-	return h.ChatServiceHandler.GetConversationByID(ctx, in, out)
-}
-
 func (h *chatServiceHandler) GetConversations(ctx context.Context, in *GetConversationsRequest, out *GetConversationsResponse) error {
 	return h.ChatServiceHandler.GetConversations(ctx, in, out)
 }
 
-func (h *chatServiceHandler) GetProfiles(ctx context.Context, in *GetProfilesRequest, out *GetProfilesResponse) error {
-	return h.ChatServiceHandler.GetProfiles(ctx, in, out)
-}
-
-func (h *chatServiceHandler) GetProfileByID(ctx context.Context, in *GetProfileByIDRequest, out *GetProfileByIDResponse) error {
-	return h.ChatServiceHandler.GetProfileByID(ctx, in, out)
-}
-
-func (h *chatServiceHandler) CreateProfile(ctx context.Context, in *CreateProfileRequest, out *CreateProfileResponse) error {
-	return h.ChatServiceHandler.CreateProfile(ctx, in, out)
-}
-
-func (h *chatServiceHandler) DeleteProfile(ctx context.Context, in *DeleteProfileRequest, out *DeleteProfileResponse) error {
-	return h.ChatServiceHandler.DeleteProfile(ctx, in, out)
-}
-
-func (h *chatServiceHandler) UpdateProfile(ctx context.Context, in *UpdateProfileRequest, out *UpdateProfileResponse) error {
-	return h.ChatServiceHandler.UpdateProfile(ctx, in, out)
+func (h *chatServiceHandler) GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, out *GetConversationByIDResponse) error {
+	return h.ChatServiceHandler.GetConversationByID(ctx, in, out)
 }
 
 func (h *chatServiceHandler) GetHistoryMessages(ctx context.Context, in *GetHistoryMessagesRequest, out *GetHistoryMessagesResponse) error {
