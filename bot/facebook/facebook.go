@@ -345,7 +345,10 @@ func (b *facebookBot) userUnsubscribed(userID string) {
 }
 
 func (b *facebookBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
-	b.verifyWebhook(reply, notice)
+	
+	if b.verifyWebhook(reply, notice) {
+		return
+	}
 
 	var fbRequest FacebookRequest
 
@@ -623,11 +626,12 @@ func newFileMessageFb(f *chat.File, msg *messageContent) {
 	
 }
 
-func (b *facebookBot) verifyWebhook(w http.ResponseWriter, r *http.Request) {
+func (b *facebookBot) verifyWebhook(w http.ResponseWriter, r *http.Request) bool {
 	if r.FormValue("hub.mode") == "subscribe" {
 		if r.FormValue("hub.verify_token") == b.verifyToken {
-			w.Write([]byte(r.FormValue("hub.challenge")))
-			return
+			_, _ = w.Write([]byte(r.FormValue("hub.challenge")))
 		}
+		return true
 	}
+	return false
 }

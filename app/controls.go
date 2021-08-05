@@ -25,10 +25,12 @@ func AuthorizationRequire(methods ...auth.Method) Control {
 			bind = methods[i]
 			authZ, err = bind(ctx.Context)
 			
-			if err == nil && authZ.Token != "" {
-				// shallowcopy
-				ctx.Authorization = *(authZ)
-				break
+			if err == nil && authZ != nil {
+				if authZ.Token != "" {
+					// SUCCESS: shallowcopy
+					ctx.Authorization = *(authZ)
+					break
+				}
 			}
 		}
 

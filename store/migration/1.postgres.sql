@@ -71,3 +71,4 @@ order by profile.id
 ;
 
 -- alter table chat.profile rename to _profile;
+-- drop table chat._profile;
