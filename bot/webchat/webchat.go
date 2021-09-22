@@ -33,6 +33,7 @@ type webChat struct {
 	*bot.Channel
 	 // This chat opened connections (different tabs)
 	 conn []*websocket.Conn
+	 closed bool
 	 // Buffered channel for sync write operations.
 	 send chan func() // [sync] write(!)
 	 wbuf bytes.Buffer // codec write buffer: size = Bot.options.WriteBufferSize
@@ -125,8 +126,11 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 			},
 			Error:             func(rsp http.ResponseWriter, req *http.Request, code int, err error) {
 				// panic("not implemented")
+				if err == nil {
+					err = fmt.Errorf(http.StatusText(code))
+				}
 				rsp.Header().Set("Sec-Websocket-Version", "13")
-				http.Error(rsp, http.StatusText(code), code) // err.Error(), code)
+				http.Error(rsp, err.Error()/*http.StatusText(code)*/, code) // err.Error(), code)
 				
 				if err == nil {
 					agent.Log.Error().
@@ -379,6 +383,7 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 					conn.Close()
 				}
 				room.conn = room.conn[:0]
+				room.closed = true
 			}
 		} ()
 
@@ -557,10 +562,14 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 	if !ok || deviceID == "" {
 		// Definitely: creating NEW client !
 		if !httpIsSecure(req) {
-			http.Error(rsp,
-				"chat: secure connection required",
-				 http.StatusBadRequest,
+			c.Websocket.Error(rsp, req, http.StatusMethodNotAllowed,
+				fmt.Errorf("Chat: secure connection required"),
 			)
+			// http.Error(rsp,
+			// 	"chat: secure connection required",
+			// 	 http.StatusBadRequest,
+			// )
+			return
 		}
 		// Generate NEW client (+device) ID !
 		deviceID = generateRandomString(32)
@@ -636,6 +645,9 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			// Raw:        "",
 			// Unparsed:   nil,
 		}
+		// if !cookie.Secure {
+		// 	cookie.SameSite = http.SameSiteLaxMode
+		// }
 		responseHeader.Add(hdrSetCookie, cookie.String())
 	}
 
@@ -706,8 +718,10 @@ func (c *WebChatBot) join(client *webChat, conn *websocket.Conn) {
 	c.Lock()   // +RW
 	room, ok := c.chat[chatID]
 	if ok && room == client {
-		// TODO: duplicate this chat connection
-		// go client.readPump(conn)
+		// // TODO: duplicate this chat connection
+		// // go client.readPump(conn)
+		// DO NOT START WRITE ROUTINE !!!
+		primary = false
 	} else if room != nil {
 		panic("WebChatBot.join(): duplicate chat room id")
 	} else {
@@ -997,6 +1011,15 @@ func (c *webChat) writePump() {
 			send()
 		
 		case <-pingTracker.C:
+			// Next PING: no connections !..
+			// Force close this chat !
+			if len(c.conn) == 0 {
+				// _ = c.Channel.Close()
+				go c.Channel.Close()
+				continue // Gracefully shutdown this chat room !
+				// c.closed = true
+				// break
+			}
 			for i := len(c.conn)-1; i >= 0; i-- {
 				conn := c.conn[i]
 				_ = conn.SetWriteDeadline(time.Now().Add(c.Bot.WriteTimeout))
@@ -1015,7 +1038,7 @@ func (c *webChat) writePump() {
 			}
 		}
 
-		if len(c.conn) == 0 {
+		if c.closed && len(c.conn) == 0 {
 			break
 		}
 	}
