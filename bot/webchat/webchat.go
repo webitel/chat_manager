@@ -11,6 +11,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -628,11 +629,17 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 	}
 
 	if !ok {
+		// Proxy-Path:
+		cookiePath := "/"
+		if siteURL, err := url.Parse(c.Gateway.Internal.URL); err == nil {
+			cookiePath = siteURL.Path // Resolve path prefix from public URL
+		}
+		cookiePath = strings.TrimRight(cookiePath, "/") + req.URL.Path
 		// Set-Cookie:
 		cookie := &http.Cookie{
 			Name:       "cid",
 			Value:      deviceID, // unique client + device identifier
-			Path:       req.URL.Path, // "/"+ c.Profile.UrlId, // TODO: prefix from NGINX proxy location
+			Path:       cookiePath, // req.URL.Path, // "/"+ c.Profile.UrlId, // TODO: prefix from NGINX proxy location
 			// Domain:     domain, // req.Header.Get("Host"),
 			Expires:    cookieNeverExp, // 2147483648 (2^31)
 			// RawExpires: "",
