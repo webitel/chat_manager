@@ -560,17 +560,17 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 	var room *webChat
 	deviceID, ok := webChatDeviceID(req)
 	if !ok || deviceID == "" {
-		// Definitely: creating NEW client !
-		if !httpIsSecure(req) {
-			c.Websocket.Error(rsp, req, http.StatusMethodNotAllowed,
-				fmt.Errorf("Chat: secure connection required"),
-			)
-			// http.Error(rsp,
-			// 	"chat: secure connection required",
-			// 	 http.StatusBadRequest,
-			// )
-			return
-		}
+		// // Definitely: creating NEW client !
+		// if !httpIsSecure(req) {
+		// 	c.Websocket.Error(rsp, req, http.StatusMethodNotAllowed,
+		// 		fmt.Errorf("Chat: secure connection required"),
+		// 	)
+		// 	// http.Error(rsp,
+		// 	// 	"chat: secure connection required",
+		// 	// 	 http.StatusBadRequest,
+		// 	// )
+		// 	return
+		// }
 		// Generate NEW client (+device) ID !
 		deviceID = generateRandomString(32)
 
@@ -645,9 +645,9 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			// Raw:        "",
 			// Unparsed:   nil,
 		}
-		// if !cookie.Secure {
-		// 	cookie.SameSite = http.SameSiteLaxMode
-		// }
+		if !cookie.Secure {
+			cookie.SameSite = http.SameSiteLaxMode
+		}
 		responseHeader.Add(hdrSetCookie, cookie.String())
 	}
 
