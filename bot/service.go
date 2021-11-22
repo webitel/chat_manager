@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"sync"
 
+	"net/http/pprof"
+
 	"github.com/micro/go-micro/v2/errors"
 	"github.com/rs/zerolog"
 	"github.com/webitel/chat_manager/api/proto/chat"
@@ -101,8 +103,17 @@ func (srv *Service) Start() error {
 		log.Msgf("Server [http] Listening on %s", ln.Addr().String())
 	}
 
-	handler := srv
+	rmux := http.NewServeMux()
+	rmux.HandleFunc("/debug/pprof/", pprof.Index)
+	rmux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	rmux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	rmux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	rmux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	rmux.Handle("/", srv)
+
+	// handler := srv
 	// handler := dumpMiddleware(srv)
+	handler := dumpMiddleware(rmux)
 
 	go func() {
 		
