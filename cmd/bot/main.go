@@ -16,7 +16,6 @@ import (
 	"github.com/webitel/chat_manager/log"
 	"github.com/webitel/chat_manager/store/postgres"
 
-	"github.com/gorilla/mux"
 	"github.com/micro/cli/v2"
 	"github.com/micro/go-micro/v2"
 
@@ -166,7 +165,7 @@ func configure() error {
 
 	store := sqlxrepo.NewBotStore(&logger, dbo.DB)
 	
-	r := mux.NewRouter()
+	// r := mux.NewRouter()
 	
 	// if cfg.LogLevel == "trace" {
 	// 	r.Use(dumpMiddleware)
@@ -194,7 +193,7 @@ func configure() error {
 	srv.URL = cfg.SiteURL
 	srv.Addr = cfg.Address
 
-	r.PathPrefix("/").Methods("GET", "POST").Handler(srv)
+	// r.PathPrefix("/").Methods("GET", "POST").Handler(srv)
 
 	return nil
 }

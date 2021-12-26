@@ -554,7 +554,7 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 
 	responseHeader := rsp.Header()
 	responseHeader.Set("Access-Control-Allow-Credentials", "true")
-	responseHeader.Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	responseHeader.Set("Access-Control-Allow-Methods", "OPTIONS, GET")
 	responseHeader.Set("Access-Control-Allow-Headers", "Connection, Upgrade, Sec-Websocket-Version, Sec-Websocket-Extensions, Sec-Websocket-Key, Sec-Websocket-Protocol, Cookie")
 	responseHeader.Set("Access-Control-Allow-Origin", req.Header.Get(hdrOrigin))
 
@@ -577,9 +577,9 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 
 	} else {
 
-		c.RLock()
+		c.RWMutex.RLock()   // +R
 		room = c.chat[deviceID]
-		c.RUnlock()
+		c.RWMutex.RUnlock() // -R
 
 	}
 
@@ -593,7 +593,7 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			Channel:   c.String(),
 			Contact:   deviceID,
 		}
-	
+		// Find -or- Create chat User (client) !
 		channel, err := c.Gateway.GetChannel(
 			context.TODO(), deviceID, endUser,
 		)
@@ -627,7 +627,7 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			room.wbuf.Reset()
 		}
 	}
-
+	// Set-Cookie: cid=; IF not provided
 	if !ok {
 		// Proxy-Path:
 		cookiePath := "/"
@@ -722,21 +722,25 @@ func (c *WebChatBot) join(client *webChat, conn *websocket.Conn) {
 	// 	return nil
 	// })
 	// JOIN (!)
-	c.Lock()   // +RW
+	c.RWMutex.Lock()   // +RW
 	room, ok := c.chat[chatID]
 	if ok && room == client {
 		// // TODO: duplicate this chat connection
 		// // go client.readPump(conn)
+		c.RWMutex.Unlock() // -RW
 		// DO NOT START WRITE ROUTINE !!!
 		primary = false
 	} else if room != nil {
+		c.RWMutex.Unlock() // -RW
 		panic("WebChatBot.join(): duplicate chat room id")
 	} else {
+		// Register NEW !
 		c.chat[client.ChatID] = client
+		c.RWMutex.Unlock() // -RW
 		// secondary = false
 		client.Log.Info().Msg("JOIN")
 	}
-	c.Unlock() // -RW
+	
 	// STARTUP (!)
 	if primary { // primary
 		// TODO: show chatInfo
@@ -798,7 +802,7 @@ type webChatResponse struct {
 // single websocket [conn]ection READer routine
 func (c *webChat) readPump(conn *websocket.Conn) {
 	defer func() {
-		// // c.Lock() //   +RW
+		// // c.RWMutex.Lock() //   +RW
 		select { // sync remove operation
 		case c.send <- func() {
 			// [sync] remove this conn
@@ -810,14 +814,20 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 			}
 		}:
 		default:
+			// FIXME: Expect to be closed !
+			// How to check it's NOT but full ?
 		}
 		
-		// c.Unlock() // -RW
-		conn.Close()
-
-		c.Log.Warn().
-			Str("ws", conn.RemoteAddr().String()).
-			Msg("[WS] >>> READ.Close(!) <<<")
+		// c.RWMutex.Unlock() // -RW
+		if err := conn.Close(); err != nil {
+			c.Log.Err(err).
+				Str("ws", conn.RemoteAddr().String()).
+				Msg("[WS] >>> READ.Close(!) <<<")
+		} else {
+			c.Log.Warn().
+				Str("ws", conn.RemoteAddr().String()).
+				Msg("[WS] >>> READ.Close(!) <<<")
+		}
 
 	}()
 
@@ -888,7 +898,8 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 		// message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
 		// // c.hub.broadcast <- message
 		if err == nil {
-			err = c.Bot.Read(context.TODO(),
+			err = c.Bot.Read(
+				context.TODO(),
 				&bot.Update{
 					ID:      0,
 					Chat:    c.Channel,
@@ -975,15 +986,18 @@ func (c *webChat) writePump() {
 		// 	conn.Close()
 		// }
 		// if len(c.conn) == 0 {
-			c.Bot.Lock()   // +RW
-			if c == c.Bot.chat[c.ChatID] {
+			c.Bot.RWMutex.Lock()   // +RW
+			found := (c == c.Bot.chat[c.ChatID])
+			if found {
 				delete(c.Bot.chat, c.ChatID)
-				c.Log.Warn().Msg("[WS] <<< STOP >>>")
 			}
-			c.Bot.Unlock() // -RW
+			c.Bot.RWMutex.Unlock() // -RW
 			// Ensure service closed this chat !
 			if c.Channel.Closed == 0 {
 				_ = c.Channel.Close()
+			}
+			if found {
+				c.Log.Warn().Msg("[WS] <<< STOP >>>")
 			}
 		// }
 		// c.Log.Warn().Msg("[WS] >>> Shutdown <<<")
@@ -1012,21 +1026,14 @@ func (c *webChat) writePump() {
 					defer conn.Close()
 				}
 				c.conn = c.conn[:0]
+				c.closed = true
 				break // return
 			}
 			// sync
 			send()
 		
 		case <-pingTracker.C:
-			// Next PING: no connections !..
-			// Force close this chat !
-			if len(c.conn) == 0 {
-				// _ = c.Channel.Close()
-				go c.Channel.Close()
-				continue // Gracefully shutdown this chat room !
-				// c.closed = true
-				// break
-			}
+
 			for i := len(c.conn)-1; i >= 0; i-- {
 				conn := c.conn[i]
 				_ = conn.SetWriteDeadline(time.Now().Add(c.Bot.WriteTimeout))
@@ -1042,6 +1049,15 @@ func (c *webChat) writePump() {
 						Str("ws", conn.RemoteAddr().String()).
 						Msg("PING")
 				}
+			}
+			// Next PING: no connections !..
+			// Force close this chat !
+			if len(c.conn) == 0 {
+				// _ = c.Channel.Close()
+				// go c.Channel.Close()
+				// continue // Gracefully shutdown this chat room !
+				c.closed = true
+				break
 			}
 		}
 
