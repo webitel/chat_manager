@@ -28,7 +28,7 @@ func GetContext(ctx context.Context, ctl ...Control) (app *Context, err error) {
 		app = &Context{
 			Date: CurrentTime(),
 		}
-		// Chain cuurent app context ...
+		// Chain current app context ...
 		// GetContext(app.Context) == app
 		app.Context = NewContext(ctx, app)
 	}

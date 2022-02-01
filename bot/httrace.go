@@ -2,7 +2,6 @@ package bot
 
 import (
 	"bufio"
-	"io"
 	"net"
 
 	"github.com/google/uuid"
@@ -84,12 +83,6 @@ func (w *response) Write(b []byte) (int, error) {
 	return w.ResponseRecorder.Write(b)
 }
 
-type conn struct {
-	net.Conn
-	r io.Reader
-	w io.Writer
-}
-
 func (w *response) Hijack() (c net.Conn, rw *bufio.ReadWriter, err error) {
 	hw, ok := w.ResponseWriter.(http.Hijacker)
 	if !ok {
@@ -97,22 +90,7 @@ func (w *response) Hijack() (c net.Conn, rw *bufio.ReadWriter, err error) {
 		return
 	}
 	c, rw, err = hw.Hijack()
-	// if err == nil {
-	// 	c = &conn{
-	// 		Conn: c,
-	// 		r: io.TeeReader(c, os.Stdout),
-	// 		w: io.MultiWriter(c, os.Stdout),
-	// 	}
-	// }
 	return
-}
-
-func (c *conn) Read(p []byte) (n int, err error) {
-	return c.r.Read(p)
-}
-
-func (c *conn) Write(p []byte) (n int, err error){
-	return c.w.Write(p)
 }
 
 // ContentTypeHandler wraps and returns a http.Handler, validating the request

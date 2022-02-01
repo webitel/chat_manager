@@ -7,7 +7,6 @@ require (
 	github.com/go-telegram-bot-api/telegram-bot-api v4.6.4+incompatible
 	github.com/golang/protobuf v1.4.3
 	github.com/google/uuid v1.1.2
-	github.com/gorilla/mux v1.7.3
 	github.com/gorilla/websocket v1.4.2
 	github.com/jackc/pgconn v1.7.2
 	github.com/jackc/pgtype v1.6.1
@@ -28,6 +27,7 @@ require (
 	github.com/webitel/protos/storage v0.0.0-20210118102359-591a476da972 // indirect
 	github.com/webitel/protos/workflow v0.0.0-20210118102359-591a476da972 // indirect
 	golang.org/x/crypto v0.0.0-20201016220609-9e8e0b390897 // indirect
+	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 	google.golang.org/grpc v1.33.1
 	google.golang.org/protobuf v1.25.0
 //	google.golang.org/protobuf/cmd/protoc-gen-go v1.25.0

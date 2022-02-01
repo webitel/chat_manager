@@ -22,11 +22,11 @@ message Bot {
   // Readonly. Domain that owns this bot
   Refer dc = 2;
 
-  // Required. Relative URI to register and serve this chat bot on.
+  // Required. Relative URI to register and serve this chat bot updates on.
   string uri = 3;
   // Required. Name this chat bot
   string name = 4;
-  // Required. Flow schema to serve inbound communication(s)
+  // Required. Flow schema to connect and serve inbound communication(s)
   Refer flow = 5;
   // Optional. Enabled indicates whether this bot is activated or not 
   bool enabled = 6;

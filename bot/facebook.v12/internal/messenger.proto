@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package webitel.chat.bot;
+
+option go_package = "github.com/webitel/chat_manager/bot/facebook.v12/internal;proro";
+
+message Messenger {
+    repeated Page pages = 1;
+}
+
+// Page Account
+message Page {
+    // Facebook Page unique IDentifier
+    string id = 1;
+    // Facebook Page Full Name
+    string name = 2;
+    string picture = 3;
+
+    message Account {
+        // [P]age-[S]coped User [ID]
+        string psid = 1;
+        // Facebook User full Name
+        string name = 2;
+        string picture = 3;
+        // Page (+User) scoped access_token
+        string access_token = 4;
+    }
+    // Page's Accounts connected 
+    repeated Account accounts = 4;
+    // Page's fields Webhook subscribed for updates
+    // Empty means NOT subscribed.
+    repeated string subscribed_fields = 5;
+}

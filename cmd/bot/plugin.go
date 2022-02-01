@@ -8,6 +8,7 @@ import (
 	// Register Chat Bot Provider(s) ...
 	_ "github.com/webitel/chat_manager/bot/corezoid"
 	_ "github.com/webitel/chat_manager/bot/facebook"
+	_ "github.com/webitel/chat_manager/bot/facebook.v12"
 	_ "github.com/webitel/chat_manager/bot/telegram"
 
 	_ "github.com/webitel/chat_manager/bot/infobip_whatsapp" // infobip

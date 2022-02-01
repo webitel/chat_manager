@@ -94,11 +94,11 @@ type Bot struct {
 	Id int64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Readonly. Domain that owns this bot
 	Dc *Refer `protobuf:"bytes,2,opt,name=dc,proto3" json:"dc,omitempty"`
-	// Required. Relative URI to register and serve this chat bot on.
+	// Required. Relative URI to register and serve this chat bot updates on.
 	Uri string `protobuf:"bytes,3,opt,name=uri,proto3" json:"uri,omitempty"`
 	// Required. Name this chat bot
 	Name string `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
-	// Required. Flow schema to serve inbound communication(s)
+	// Required. Flow schema to connect and serve inbound communication(s)
 	Flow *Refer `protobuf:"bytes,5,opt,name=flow,proto3" json:"flow,omitempty"`
 	// Optional. Enabled indicates whether this bot is activated or not
 	Enabled bool `protobuf:"varint,6,opt,name=enabled,proto3" json:"enabled,omitempty"`

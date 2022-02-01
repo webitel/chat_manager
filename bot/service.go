@@ -2,9 +2,11 @@ package bot
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"sync"
 
 	"net/http/pprof"
@@ -64,6 +66,9 @@ func NewService(
 // and serve external chat incoming notifications
 func (srv *Service) Start() error {
 
+	// Validate TLS Config
+	var secure *tls.Config
+
 	// region: force RE-REGISTER all profiles
 	// // - fetch .Registry.GetService(service.Options().Name)
 	// // - lookup DB for profiles, NOT in registered service nodes list; hosted!
@@ -94,13 +99,36 @@ func (srv *Service) Start() error {
 	// endregion
 
 	ln, err := net.Listen("tcp", srv.Addr)
-
 	if err != nil {
 		return err
 	}
-
+	// Normalize address
+	srv.Addr = ln.Addr().String()
 	if log := srv.Log.Info(); log.Enabled() {
-		log.Msgf("Server [http] Listening on %s", ln.Addr().String())
+		log.Msgf("Server [http] Listening on %s", srv.Addr)
+	}
+	// Normalize Reverse URL
+	var hostURL *url.URL
+	if srv.URL == "" {
+		hostURL = &url.URL{
+			Scheme: "http",
+			Host: srv.Addr,
+		}
+		if secure != nil {
+			hostURL.Scheme += "s"
+		}
+		
+	} else {
+		hostURL, err = url.ParseRequestURI(srv.URL)
+		if err != nil {
+			// Invalid --site-url parameter spec
+			_ = ln.Close()
+			return err
+		}
+	}
+	srv.URL = hostURL.String()
+	if log := srv.Log.Info(); log.Enabled() {
+		log.Msgf("Server [http] Reverse Host %s", srv.URL)
 	}
 
 	rmux := http.NewServeMux()
@@ -114,6 +142,7 @@ func (srv *Service) Start() error {
 	// handler := srv
 	// handler := dumpMiddleware(srv)
 	handler := dumpMiddleware(rmux)
+	// handler := rmux
 
 	go func() {
 		
@@ -160,6 +189,10 @@ func (srv *Service) Close() error {
 	// }
 
 	return nil
+}
+
+func (srv *Service) HostURL() string {
+	return srv.URL
 }
 
 // Gateway returns profile's runtime gateway instance
@@ -550,6 +583,8 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 
 // ServeHTTP handler to deal with external chat channel notifications
 func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	// TODO: Allow GET or POST Methods ONLY !
 
 	srv.Log.Debug().
 		Str("uri", r.URL.Path).

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -13,8 +14,10 @@ import (
 	"github.com/micro/go-micro/v2/errors"
 	"github.com/rs/zerolog"
 
+	auth "github.com/webitel/chat_manager/api/proto/auth"
 	gate "github.com/webitel/chat_manager/api/proto/bot"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/webitel/chat_manager/app"
 )
 
 // Gateway service agent
@@ -423,6 +426,93 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 	}
 
 	return channel, nil
+}
+
+// CallbackURL returns reverse URL string
+// to reach this c.Bot's webhook handler
+func (c *Gateway) CallbackURL() string {
+
+	srv := c.Internal
+	botURL, err := url.ParseRequestURI(srv.HostURL())
+	if err != nil {
+		panic(err)
+	}
+	
+	// Combine URL Path
+	bot := c.Bot
+	botURL.Path = path.Join(
+		botURL.Path, "/", bot.GetUri(),
+	)
+
+	return botURL.String()
+}
+
+// SetMetadata merge and update profile's metadata keys on behalf of Bot request
+func (c *Gateway) SetMetadata(ctx context.Context, set map[string]string) error {
+
+	bot := c.Bot
+	src := bot.GetMetadata()
+	dst := make(map[string]string, len(src)+len(set))
+	for key, val := range src {
+		dst[key] = val // COPY !
+	}
+	for key, val := range set {
+		if key != "" && val != "" {
+			dst[key] = val   // RESET !
+		} else {
+			delete(dst, key) // REMOVE !
+		}
+	}
+	// if len(dst) == 0 {
+	// 	dst = nil
+	// }
+	// SET NEW .Metadata
+	bot.Metadata = dst
+
+	rpc, _ := app.GetContext(ctx,
+		func(ctx *app.Context) error {
+			// Bot SELF Authorization
+			if ctx.Authorization.Creds == nil {
+				ctx.Authorization.Creds = &auth.Userinfo{
+					Dc:                bot.Dc.GetId(),
+					Domain:            bot.Dc.GetName(),
+					// Update RESETs Bot-entry's .Updated_* fields
+					// So we provide the latest values to NOT track bot's self updates !
+					UserId:            bot.UpdatedBy.GetId(),
+					Name:              bot.UpdatedBy.GetName(),
+					Username:          "",
+					PreferredUsername: "",
+					Extension:         "",
+					Scope:             nil,
+					Roles:             nil,
+					License:           nil,
+					Permissions:       nil,
+					UpdatedAt:         0,
+					ExpiresAt:         0,
+				}
+			}
+			return nil
+		},
+	)
+
+	srv := c.Internal
+	err := srv.store.Update(
+		&app.UpdateOptions{
+			Context: *(rpc),
+			Fields: []string{
+				"metadata",
+			},
+		},
+		c.Bot,
+	)
+
+	if err != nil {
+		// RESET OLD .Metadata
+		bot.Metadata = src
+		return err
+	}
+
+	return nil
 }
 
 // Send notification [FROM] internal: chat.server [TO] external: chat.provider
