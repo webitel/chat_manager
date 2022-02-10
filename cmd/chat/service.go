@@ -59,6 +59,8 @@ type chatService struct {
 	eventRouter   event.Router
 }
 
+var _ pb.ChatServiceHandler = (*chatService)(nil)
+
 func NewChatService(
 	repo pg.Repository,
 	log *zerolog.Logger,
@@ -419,6 +421,7 @@ func (s *chatService) StartConversation(
 
 		case "text":
 		case "file":
+		case "contact":
 
 		default:
 			// FIXME: any other message event types are disallowed !
@@ -2001,7 +2004,8 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		
 		saveMessage.Type = "contact"
 		saveMessage.Text = contact.Contact
-
+		// FIXME: This may be NOT our client's contact !
+		// Client (human) can share some it's own contact with our bot !
 		err := c.repo.UpdateClientNumber(ctx, sender.User.ID, contact.Contact)
 		if err != nil {
 			c.log.Error().Err(err).Msg("Failed to store Client number")
