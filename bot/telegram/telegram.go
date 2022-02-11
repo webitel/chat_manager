@@ -169,6 +169,20 @@ func (c *TelegramBot) Deregister(ctx context.Context) error {
 	return nil
 }
 
+func utf16Length(s string) (n int) {
+
+	const runeSelf = 0x10000
+	for _, r := range s {
+		switch {
+		case r < runeSelf:
+			n++    //  word: 1*uint16 [2b]
+		default:
+			n += 2 // dword: 2*uint16 [4b]
+		}
+	}
+	return // n
+}
+
 // SendNotify implements provider.Sender interface for Telegram
 func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 	// send *gate.SendMessageRequest
@@ -363,18 +377,20 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		sendMessage := telegram.NewMessage(chatID,
 			"👤 " + personFirstName,
 		)
-
+		// https://core.telegram.org/bots/api#messageentity
+		utf16EmojiLen := utf16Length("👤 ")
+		utf16AgentLen := utf16Length(personFirstName)
 		sendMessage.Entities = append(
-			sendMessage.Entities,
+			sendMessage.Entities, 
 			telegram.MessageEntity{
-				Type: "bold",
-				Length: len(personFirstName),
-				Offset: 3,
+				Type:  "bold",
+				Length: utf16AgentLen,
+				Offset: utf16EmojiLen,
 			},
 			telegram.MessageEntity{
-				Type: "underline",
-				Length: len(personFirstName),
-				Offset: 3,
+				Type:  "underline",
+				Length: utf16AgentLen,
+				Offset: utf16EmojiLen,
 			},
 		)
 
@@ -417,18 +433,20 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		sendMessage := telegram.NewMessage(chatID,
 			"👤 " + personFirstName,
 		)
-
+		// https://core.telegram.org/bots/api#messageentity
+		utf16EmojiLen := utf16Length("👤 ")
+		utf16AgentLen := utf16Length(personFirstName)
 		sendMessage.Entities = append(
 			sendMessage.Entities, 
 			telegram.MessageEntity{
-				Type: "bold",
-				Length: len(personFirstName),
-				Offset: 3,
+				Type:  "bold",
+				Length: utf16AgentLen,
+				Offset: utf16EmojiLen,
 			},
 			telegram.MessageEntity{
-				Type: "strikethrough",
-				Length: len(personFirstName),
-				Offset: 3,
+				Type:  "strikethrough",
+				Length: utf16AgentLen,
+				Offset: utf16EmojiLen,
 			},
 		)
 
@@ -770,7 +788,7 @@ func newReplyKeyboard(buttons []*chat.Buttons) interface{} { // telegram.ReplyKe
 	return keyboard
 }*/
 
-func newInlineKeyboard(buttons []*chat.Buttons) telegram.InlineKeyboardMarkup {
+/*func newInlineKeyboard(buttons []*chat.Buttons) telegram.InlineKeyboardMarkup {
 
 	keyboard := make([][]telegram.InlineKeyboardButton, 0, len(buttons))
 	for _, markup := range buttons {
@@ -803,7 +821,7 @@ func newInlineKeyboard(buttons []*chat.Buttons) telegram.InlineKeyboardMarkup {
 	}
 
 	return telegram.NewInlineKeyboardMarkup(keyboard...)
-}
+}*/
 
 
 type File telegram.File
