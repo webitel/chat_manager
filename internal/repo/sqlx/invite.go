@@ -1,12 +1,12 @@
 package sqlxrepo
 
 import (
-
-	"time"
 	"context"
 	"strings"
+	"time"
 
 	"database/sql"
+
 	"github.com/jackc/pgconn"
 	"github.com/jmoiron/sqlx"
 
@@ -248,7 +248,7 @@ func (repo *sqlxRepository) CreateInvite(ctx context.Context, m *Invite) (err er
 			m.InviterChannelID,
 			m.CreatedAt,
 			m.DomainID,
-			m.Variables,
+			NullMetadata(m.Variables),
 		)
 
 	} else { // typical logic }

@@ -21,11 +21,11 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.19.0
 	github.com/webitel/protos v1.0.0 // indirect
-	github.com/webitel/protos/bot v0.0.0-20210728194921-d25cb1a4f895 // indirect
-	github.com/webitel/protos/chat v0.0.0-20210728194921-d25cb1a4f895 // indirect
-	github.com/webitel/protos/engine v0.0.0-20210118102359-591a476da972 // indirect
-	github.com/webitel/protos/storage v0.0.0-20210118102359-591a476da972 // indirect
-	github.com/webitel/protos/workflow v0.0.0-20210118102359-591a476da972 // indirect
+	github.com/webitel/protos/bot v0.0.0-20220217164132-21b57cdb72c4 // indirect
+	github.com/webitel/protos/chat v0.0.0-20220217164132-21b57cdb72c4 // indirect
+	github.com/webitel/protos/engine v0.0.0-20220217164132-21b57cdb72c4 // indirect
+	github.com/webitel/protos/storage v0.0.0-20220217164132-21b57cdb72c4 // indirect
+	github.com/webitel/protos/workflow v0.0.0-20220217164132-21b57cdb72c4 // indirect
 	golang.org/x/crypto v0.0.0-20201016220609-9e8e0b390897 // indirect
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 	google.golang.org/grpc v1.33.1

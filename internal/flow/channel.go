@@ -1,26 +1,27 @@
 package flow
 
 import (
-
 	"context"
-	"strings"
+	"fmt"
 	"strconv"
+	"strings"
+	"time"
+
 	// "net/http"
 
 	"github.com/rs/zerolog"
 
-	"github.com/micro/go-micro/v2/errors"
 	"github.com/micro/go-micro/v2/client"
 	"github.com/micro/go-micro/v2/client/selector"
+	"github.com/micro/go-micro/v2/errors"
 	"github.com/micro/go-micro/v2/registry"
 
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	bot "github.com/webitel/chat_manager/api/proto/workflow"
+	"github.com/webitel/chat_manager/app"
 	store "github.com/webitel/chat_manager/internal/repo/sqlx"
 	// strategy "github.com/webitel/chat_manager/internal/selector"
-
 )
-
 
 // Channel [FROM] chat.srv [TO] workflow
 // CHAT communication channel; chat@bot
@@ -51,6 +52,7 @@ type Channel struct {
 	// // LATEST
 	// Update *chat.Message
 
+	Variables map[string]string
 }
 
 // NewChannel chat@workflow
@@ -174,8 +176,8 @@ func (c *Channel) lookup(services []*registry.Service) selector.Next {
 			Str("error", "node: not found").
 			Msg(perform)
 
-		return selector.Random(services)
-		// return strategy.PrefferedHost("10.9.8.111")(services)
+			return selector.Random(services)
+			// return strategy.PrefferedHost("10.9.8.111")(services)
 	}
 
 	var event *zerolog.Event
@@ -399,19 +401,40 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 func (c *Channel) Start(message *chat.Message) error {
 	
 	c.Log.Debug().
+		Interface("metadata", c.Variables).
 		Str("conversation_id", c.ChatID()).
 		Int64("profile_id", c.UserID()).
 		Int64("domain_id", c.DomainID()).
-		Msg("init conversation")
+		Interface("message", message).
+		Msg("START Conversation")
 	
-	const commandStart = "start"
+	// const commandStart = "start"
 	//messageText := commandStart
+
+	// region: TEST PURPOSE ONLY !
+	var schemaId int64
+	if envars := c.Variables; len(envars) != 0 {
+		schemaId, _ = strconv.ParseInt(c.Variables["flow"], 10, 64)
+		delete(c.Variables, "flow")
+		// REMOVE FOR PRODUCTION !
+		metadata := message.Variables
+		if metadata == nil {
+			metadata = make(map[string]string, len(envars))
+		}
+		for key, val := range envars {
+			metadata[key] = val
+		}
+		message.Variables = metadata
+	}
+	// endregion: TEST PURPOSE ONLY !
+
 	start := &bot.StartRequest{
 		
+		ConversationId: c.ChatID(),
 		DomainId:       c.DomainID(),
 		// FIXME: why flow_manager need to know about some external chat-bot profile identity ?
 		ProfileId:      c.UserID(),
-		ConversationId: c.ChatID(),
+		SchemaId:       int32(schemaId),
 		Message:        message,
 		// Message: &bot.Message{
 		// 	Id:   message.GetId(),
@@ -421,7 +444,7 @@ func (c *Channel) Start(message *chat.Message) error {
 		// 	},
 		// },
 
-		//Variables: message.GetVariables(),
+		Variables:      c.Variables, // message.GetVariables(),
 	}
 
 
@@ -494,6 +517,7 @@ func (c *Channel) Start(message *chat.Message) error {
 	c.Log.Info().
 		Int64("pdc", c.DomainID()).
 		Int64("pid", c.UserID()).
+		Int64("schema-id", schemaId).
 		Str("host", c.Host).
 		Str("channel-id", c.ID).
 		Msg(">>>>> START <<<<<")
@@ -502,7 +526,7 @@ func (c *Channel) Start(message *chat.Message) error {
 }
 
 // Close .this channel @workflow.Break(!)
-func (c *Channel) Close() error {
+func (c *Channel) Close(cause string) error {
 
 	_, err := c.Agent.Break(
 		// cancellation context
@@ -510,6 +534,7 @@ func (c *Channel) Close() error {
 		// request
 		&bot.BreakRequest{
 			ConversationId: c.ID,
+			Cause: cause,
 		},
 		// callOptions ...
 		c.sendOptions,
@@ -555,7 +580,7 @@ func (c *Channel) Close() error {
 		Int64("pid", c.UserID()).
 		Str("host", c.Host).
 		Str("channel-id", c.ChatID()).
-		Msg("<<<<< CLOSE >>>>>")
+		Msg("<<<<< STOP >>>>>")
 	// //s.chatCache.DeleteCachedMessages(conversationID)
 	// s.chatCache.DeleteConfirmation(conversationID)
 	// s.chatCache.DeleteConversationNode(conversationID)
@@ -617,6 +642,110 @@ func (c *Channel) BreakBridge(cause BreakBridgeCause) error {
 		Str("host", c.Host).
 		Str("channel-id", c.ChatID()).
 		Msg("<<<<< BREAK >>>>>")
+
+	return nil
+}
+
+func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) error {
+
+	chatFromID := originator.Chat.ID
+	// Stop current workflow schema routine on this c channel.
+	err := c.Close("transfer") // workflow@Break()
+	if err != nil {
+		return err
+	}
+	
+	// Format: [;]date:from:to
+	// from: channel_id
+	// to: schema_id
+	date := app.DateTimestamp(
+		time.Now().UTC(),
+	)
+	xferNext := fmt.Sprintf("%d:%s:%d",
+		date, chatFromID, schemaToID,
+	)
+	xferFull := xferNext
+	xferThis := c.Variables["xfer"]
+	if xferThis != "" {
+		xferFull = strings.Join(
+			// FIXME: PUSH ? OR APPEND ?
+			// QUEUE ? OR STACK ?
+			[]string{xferThis, xferNext}, ";",
+		)
+	}
+	if c.Variables == nil {
+		c.Variables = make(map[string]string)
+	}
+	c.Variables["xfer"] = xferFull
+	schemaThisID := c.Variables["flow"]
+	c.Variables["flow"] = strconv.FormatInt(schemaToID, 10)
+	// Start NEW workflow schema routine within this c channel.
+	user := originator.User
+	err = c.Start(&chat.Message{
+		Id:   0,
+		Type: "xfer",
+		Text: "transfer",
+		Variables: map[string]string{
+			"flow": strconv.FormatInt(schemaToID, 10),
+			"xfer": xferNext,
+		},
+		CreatedAt:     date,
+		// originator.Chat.User
+		From:  &chat.Account{
+			Id:        user.ID,
+			Channel:   user.Channel,
+			Contact:   user.Contact,
+			FirstName: user.FirstName,
+			LastName:  user.LastName,
+			Username:  user.UserName,
+		},
+	})
+
+	if err != nil {
+		// Restore current state
+		c.Variables["xfer"] = xferThis
+		c.Variables["flow"] = schemaThisID
+		return err
+	}
+
+
+	// _, err := c.Agent.TransferChatPlan(
+	// 	// cancellation context
+	// 	context.TODO(),
+	// 	// request
+	// 	&bot.TransferChatPlanRequest{
+	// 		ConversationId: c.ChatID(),
+	// 		PlanId: int32(schemaToID),
+	// 	},
+	// 	// callOptions
+	// 	c.sendOptions,
+
+	// )
+
+	if err != nil {
+		// re := errors.FromError(err)
+		// switch re.Id {
+		// case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
+		// 	// NOTE: got Not Found ! make idempotent !
+		// 	return nil // FIXME: no matter !
+		// 	// Affected ON .LeaveConversation, after .workflow service,
+		// 	// that run .this chat session - was stopped !
+
+		// default:
+
+		// 	return re // Failure !
+		// }
+		return err
+	}
+
+	c.Log.Info().
+		Int64("pdc", c.DomainID()).
+		Int64("pid", c.UserID()).
+		Str("host", c.Host).
+		Str("flow-chat-id", c.ChatID()).
+		Str("from-chat-id", chatFromID).
+		Int64("to-schema-id", schemaToID).
+		Msg(">>>>> TRANSFERED <<<<<")
 
 	return nil
 }

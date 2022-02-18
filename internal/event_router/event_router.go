@@ -533,7 +533,7 @@ func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversatio
 	
 	if err != nil {
 		e.log.Warn().Err(err).
-			Str("notify", "new_chat_member").
+			Str("notify", "left_chat_member").
 			Str("channel_id", channel.ID).
 			Int64("user_id", channel.UserID).
 			Str("conversation_id", channel.ConversationID).

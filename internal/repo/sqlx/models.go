@@ -1,12 +1,13 @@
 package sqlxrepo
 
 import (
-	"github.com/pkg/errors"
-	"github.com/webitel/chat_manager/internal/contact"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/webitel/chat_manager/internal/contact"
 
 	"github.com/jmoiron/sqlx/types"
 )
@@ -32,12 +33,12 @@ type Channel struct {
 	ClosedAt       sql.NullTime   `db:"closed_at" json:"closed_at,omitempty"`
 	UpdatedAt      time.Time      `db:"updated_at" json:"updated_at,omitempty"`
 	DomainID       int64          `db:"domain_id" json:"domain_id"`
+	// FlowID         int64          `db:"-" json:"flow_id"`
 	FlowBridge     bool           `db:"flow_bridge" json:"flow_bridge"`
 	Name           string         `db:"name" json:"name"`
 	ClosedCause    sql.NullString `db:"closed_cause" json:"closed_cause,omitempty"`
 	JoinedAt       sql.NullTime   `db:"joined_at" json:"joined_at,omitempty"`
-
-	Properties     map[string]string `db:"props" json:"props,omitempty"`
+	Variables      Metadata       `db:"props" json:"props,omitempty"`
 }
 
 func (m *Channel) Contact() string {
@@ -148,7 +149,7 @@ func (m *Channel) Scan(row *sql.Rows) error {
 
 		case "flow_bridge":     target(&m.FlowBridge)
 
-		case "props":           target(ScanProperties(&m.Properties))
+		case "props":           target(&m.Variables)
 
 		default:
 
@@ -183,8 +184,9 @@ type Conversation struct {
 	DomainID      int64          `db:"domain_id" json:"domain_id"`
 	Members       ConversationMembers
 	Messages      []*Message // ConversationMessages
-	MembersBytes  []byte `db:"members" json:"members"`
-	MessagesBytes []byte `db:"messages" json:"messages"`
+	MembersBytes  []byte         `db:"members" json:"members"`
+	MessagesBytes []byte         `db:"messages" json:"messages"`
+	Variables     Metadata       `db:"vars" json:"variables"`
 }
 
 type ConversationMembers []*ConversationMember
@@ -236,7 +238,7 @@ type Invite struct {
 	ClosedAt         sql.NullTime      `db:"closed_at" json:"closed_at,omitempty"`
 	CreatedAt        time.Time         `db:"created_at" json:"created_at,omitempty"`
 	DomainID         int64             `db:"domain_id" json:"domain_id"`
-	Variables        Properties        `db:"props" json:"props"`
+	Variables        Metadata          `db:"props" json:"props"`
 }
 
 type Document struct {
@@ -266,7 +268,7 @@ type Message struct {
 	ForwardFromMessageID int64          `db:"-"    json:"forward_from_message_id,omitempty"`
 	// TODO: Variables map[string]string
 	// Variables            types.JSONText `db:"variables" json:"variables,omitempty"`
-	Variables            Properties     `db:"variables" json:"variables,omitempty"`
+	Variables            Metadata       `db:"variables" json:"variables,omitempty"`
 }
 
 type Profile struct {

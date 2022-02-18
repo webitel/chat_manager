@@ -3,8 +3,8 @@ package flow
 import (
 	"github.com/webitel/chat_manager/internal/contact"
 
-	"sync"
 	"strconv"
+	"sync"
 
 	// "errors"
 	// "context"
@@ -13,31 +13,26 @@ import (
 	"github.com/rs/zerolog"
 
 	// strategy "github.com/webitel/chat_manager/internal/selector"
-	"github.com/webitel/chat_manager/app"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	flow "github.com/webitel/chat_manager/api/proto/workflow"
+	"github.com/webitel/chat_manager/app"
 	store "github.com/webitel/chat_manager/internal/repo/sqlx"
-
 	// "github.com/micro/go-micro/v2/client"
 	// "github.com/micro/go-micro/v2/client/selector"
 	// "github.com/micro/go-micro/v2/registry"
-	
 )
 
-type BreakBridgeCause int32
+type BreakBridgeCause string
 
 const (
-	DeclineInvitationCause BreakBridgeCause = iota
-	LeaveConversationCause
-	TimeoutCause
+	DeclineInvitationCause = BreakBridgeCause("DECLINE_INVITATION")
+	LeaveConversationCause = BreakBridgeCause("LEAVE_CONVERSATION")
+	TransferCause = BreakBridgeCause("TRANSFER")
+	TimeoutCause = BreakBridgeCause("TIMEOUT")
 )
 
 func (c BreakBridgeCause) String() string {
-	return [...]string{
-		"DECLINE_INVITATION",
-		"LEAVE_CONVERSATION",
-		"TIMEOUT",
-	}[c]
+	return string(c)
 }
 
 type Client interface {
@@ -46,9 +41,10 @@ type Client interface {
 	// Init(conversationID string, profileID, domainID int64, message *chat.Message) error
 	Init(sender *store.Channel, message *chat.Message) error
 	BreakBridge(conversationID string, cause BreakBridgeCause) error
-	CloseConversation(conversationID string) error
+	CloseConversation(conversationID, cause string) error
 	// BreakBridge(sender *store.Channel, cause BreakBridgeCause) error
 	// CloseConversation(sender *store.Channel) error
+	TransferToSchema(conversationID string, originator *app.Channel, schemaToID int64) error
 
 	SendMessageV1(target *app.Channel, message *chat.Message) error
 }
@@ -352,7 +348,7 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 	// date := now.UTC().Unix()
 
 	// resolve end-user for .this NEW channel: flow.schema.id
-	schemaProfileID, err := strconv.ParseInt(
+	botGatewayID, err := strconv.ParseInt(
 		sender.Connection.String, 10, 64,
 	)
 
@@ -378,7 +374,7 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 		// },
 		
 		// DomainID: sender.DomainID,
-		ProfileID: schemaProfileID, 
+		ProfileID: botGatewayID,
 
 		Invite:  "", // .Invite(!) token
 		Pending: "", // .WaitMessage(!) token
@@ -388,6 +384,8 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 		// Started: 0,
 		// Joined:  0,
 		// Closed:  0,
+
+		Variables: sender.Variables,
 	}
 
 	// c.Log.Debug().
@@ -554,7 +552,7 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 	// /
 }*/
 
-func (c *Agent) CloseConversation(conversationID string) error {
+func (c *Agent) CloseConversation(conversationID, cause string) error {
 	
 	channel, err := c.GetChannel(conversationID)
 	
@@ -562,7 +560,7 @@ func (c *Agent) CloseConversation(conversationID string) error {
 		return err
 	}
 
-	err = channel.Close()
+	err = channel.Close(cause)
 
 	if err != nil {
 		return err
@@ -660,3 +658,21 @@ func (c *Agent) BreakBridge(conversationID string, cause BreakBridgeCause) error
 		}
 	}
 }*/
+
+func (c *Agent) TransferToSchema(conversationID string, originator *app.Channel, schemaToID int64) error {
+
+	channel, err := c.GetChannel(conversationID)
+	
+	if err != nil {
+		return err
+	}
+
+	err = channel.TransferToSchema(originator, schemaToID)
+
+	if err != nil {
+		// NOTE: ignore "grpc.chat.conversation.not_found" !
+		return err
+	}
+	
+	return nil
+}

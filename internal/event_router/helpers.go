@@ -1,12 +1,13 @@
 package event_router
 
 import (
-
-	"fmt"
 	"context"
+	"fmt"
+
 	// "strings"
-	"strconv"
 	"database/sql"
+	"strconv"
+
 	"github.com/pkg/errors"
 
 	"github.com/webitel/chat_manager/app"
@@ -114,7 +115,7 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 			if message.Id == 0 {
 				// NOTE: there was a service-level message notification
 				//       result bindings applies to target channel, not message !
-				if err := c.repo.BindChannel(
+				if _, err := c.repo.BindChannel(
 					context.TODO(), to.ID, sentBinding,
 				); err != nil {
 
@@ -277,7 +278,7 @@ func (c *eventRouter) SendMessageToGateway(target *app.Channel, message *chat.Me
 			if message.Id == 0 {
 				// NOTE: there was a service-level message notification
 				//       result bindings applies to target channel, not message !
-				if err := c.repo.BindChannel(
+				if _, err := c.repo.BindChannel(
 					context.TODO(), target.ID, sentBinding,
 				); err != nil {
 

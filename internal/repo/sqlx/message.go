@@ -1,17 +1,18 @@
 package sqlxrepo
 
 import (
-
-	"fmt"
-	"time"
 	"context"
+	"fmt"
 	"strconv"
+	"time"
+
 	// "encoding/json"
 
 	"database/sql"
-	"github.com/jmoiron/sqlx"
+
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgtype"
+	"github.com/jmoiron/sqlx"
 
 	errs "github.com/pkg/errors"
 	// "github.com/micro/go-micro/v2/errors"
@@ -253,7 +254,7 @@ func MessageRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 				break // FIXME: ISNULL ?
 			}
 			// JSONB::bytes
-			data := NullProperties(q)
+			data := NullMetadata(q)
 			if len(data) == 0 {
 				err = errs.Errorf("search=message filter=props convert=%#v error=failed to encode props", q)
 				return SelectStmt{}, nil, err
@@ -674,8 +675,8 @@ func SaveMessage(ctx context.Context, dcx sqlx.ExtContext, msg *Message) (err er
 			// ---------------------------------------------------------------------------
 			NullInteger(msg.ReplyToMessageID),     // $10 - NEW message is reply to some previous message id
 			NullInteger(msg.ForwardFromMessageID), // $11 - NEW message is forwarding from previous message id
-			NullProperties(msg.Variables),         // $12 - NEW message extra properties
-			// NullProperties(props),                 // $12 - NEW message extra properties
+			NullMetadata(msg.Variables),           // $12 - NEW message extra properties
+			// NullMetadata(props),                   // $12 - NEW message extra properties
 			// msg.Variables,                         // $12 - NEW message extra properties
 		)
 
@@ -743,7 +744,7 @@ func (repo *sqlxRepository) BindMessage(ctx context.Context, oid int64, vars map
 
 	_, err := repo.db.ExecContext(ctx,
 		"UPDATE chat.message SET variables = $2 WHERE id = $1",
-		oid, NullProperties(vars),
+		oid, NullMetadata(vars),
 	)
 
 	return err

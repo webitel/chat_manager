@@ -238,11 +238,29 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 	// 	title = c.Title
 	// }
 
+	if message.UpdatedAt != 0 {
+		c.Log.Warn().Str("error", "ignore: start the conversation by editing the message").Msg("BOT: START")
+		return nil
+	}
+
 	if c.Title == "" {
 		c.Title = c.Account.DisplayName()
 	}
 
 	providerID := strconv.FormatInt(c.ProfileID(), 10)
+
+	metadata, _ := c.Properties.(map[string]string)
+	if metadata == nil {
+		metadata = make(map[string]string, 2)
+	}
+	// Flow Schema unique IDentifier
+	metadata["flow"] = strconv.FormatInt(c.Gateway.Bot.Flow.Id, 10)
+	// Chat channel's provider type
+	metadata["chat"] = c.Account.Channel
+	// External User's (Contact) unique IDentifier; Chat's type- specific !
+	metadata["user"] = c.Account.Contact
+	// External User's (Contact) Full Name
+	metadata["from"] = c.Account.DisplayName()
 
 	start := chat.StartConversationRequest{
 		DomainId: c.DomainID(),
@@ -254,13 +272,7 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 			Internal:   false,
 		},
 		Message: message, // start
-		// Message: &chat.Message{
-		// 	Type: "text",
-		// 	Value: &chat.Message_Text{
-		// 		Text: "/start",
-		// 	},
-		// 	// Variables: env,
-		// },
+		Properties: metadata,
 	}
 
 	agent := c.Gateway

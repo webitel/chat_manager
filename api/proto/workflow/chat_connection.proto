@@ -8,13 +8,14 @@ package workflow;
 
 option go_package = "github.com/webitel/chat_manager/api/proto/workflow";
 
-import "chat/message.proto"; // .Message, .Error
+import "message.proto";
 
 service FlowChatServerService {
     rpc Start(StartRequest) returns (StartResponse) {}
     rpc Break(BreakRequest) returns (BreakResponse) {}
     rpc BreakBridge(BreakBridgeRequest) returns (BreakBridgeResponse) {}
     rpc ConfirmationMessage(ConfirmationMessageRequest) returns (ConfirmationMessageResponse) {}
+    rpc TransferChatPlan(TransferChatPlanRequest) returns (TransferChatPlanResponse) {}
 }
 
 message BreakBridgeRequest {
@@ -26,12 +27,23 @@ message BreakBridgeResponse {
 
 }
 
+message TransferChatPlanRequest {
+    string conversation_id = 1;
+    int32 plan_id = 2;
+}
+
+
+message TransferChatPlanResponse {
+
+}
+
 message StartRequest {
     string conversation_id = 1;
     int64 profile_id = 2;
     int64 domain_id = 3;
     webitel.chat.server.Message message = 4;
-   // map<string, string>  variables = 5;
+     map<string, string>  variables = 5;
+    int32 schema_id = 6;
 }
 
 message StartResponse {
@@ -40,6 +52,7 @@ message StartResponse {
 
 message BreakRequest {
     string conversation_id = 1;
+    string cause = 2;
 }
 
 message BreakResponse {

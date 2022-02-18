@@ -89,6 +89,7 @@ func channelFetch(rows *sql.Rows) ([]*app.Channel, error) {
 		case "user_name":       proj[i] = func() interface{} { return &obj.User.FirstName }
 		// FROM: chat room title name
 		// case "title":              
+		case "props":           proj[i] = func() interface{} { return ScanMetadata(&obj.Variables) }
 
 		case "created_at":      proj[i] = func() interface{} { return ScanTimestamp(&obj.Created) }
 		case "updated_at":      proj[i] = func() interface{} { return ScanTimestamp(&obj.Updated) }
@@ -144,12 +145,6 @@ func channelFetch(rows *sql.Rows) ([]*app.Channel, error) {
 
 
 
-// const psqlSessionQ =
-// `SELECT m.*
-//   FROM chat.channels AS c, chat.channels AS m
-// WHERE c.chat = $1 AND m.session = c.session
-// `
-
 // Select CHAT session with all it's member channels
 // on behalf of given single, unique member channel ID
 //
@@ -191,7 +186,7 @@ var psqlChatSessionQ = CompactSQL(
        bot.flow_id::text   as user_contact,
        bot.name            as user_name,
        -- coalesce(contact.name, nullif(account.name, ''), account.username, chat.name) as chat_title,
-       null                as props,
+       channel.props,
 
        chat.created_at + interval '1 millisecond' as created_at,
        null as joined_at,
@@ -282,7 +277,7 @@ select
     chat.user_name, -- TO: this channel end-user
     -- -- chat.chat_title,
     -- (case when chat.user_name = room.chat_title then room.user_name else room.chat_title end) as chat_title, -- FROM: chatroom title
-    -- chat.props,
+    chat.props,
 
     chat.created_at,
     chat.joined_at,

@@ -47,6 +47,9 @@ type Service interface {
 	WaitMessage(ctx context.Context, req *pb.WaitMessageRequest, res *pb.WaitMessageResponse) error
 	CheckSession(ctx context.Context, req *pb.CheckSessionRequest, res *pb.CheckSessionResponse) error
 	UpdateChannel(ctx context.Context, req *pb.UpdateChannelRequest, res *pb.UpdateChannelResponse) error
+
+	SetVariables(ctx context.Context, in *pb.SetVariablesRequest, out *pb.ChatVariablesResponse) error
+	BlindTransfer(ctx context.Context, in *pb.ChatTransferRequest, out *pb.ChatTransferResponse) error
 }
 
 type chatService struct {
@@ -332,6 +335,12 @@ func (s *chatService) StartConversation(
 		// LOG: this is the only case expected for now !..
 	}
 
+	metadata := req.GetProperties()
+	if len(metadata) != 0 {
+		// Clear invalid (empty) key !
+		delete(metadata, "")
+	}
+
 	s.log.Trace().
 
 		Int64("domain.id",     req.GetDomainId()).
@@ -345,7 +354,7 @@ func (s *chatService) StartConversation(
 	// ORIGINATOR: CHAT channel, sender
 	channel := pg.Channel{
 
-		Type: req.GetUser().GetType(),
+		Type:   req.GetUser().GetType(),
 		UserID: req.GetUser().GetUserId(),
 		
 		CreatedAt: localtime,
@@ -367,7 +376,7 @@ func (s *chatService) StartConversation(
 		Name:     title,
 
 		// NOTE: for now this endpoint if called by
-		Properties: req.GetMessage().GetVariables(), // req.GetProperties(),
+		Variables: metadata, // req.GetMessage().GetVariables(), // req.GetProperties(),
 	}
 	// NOTE: sender CHAT channel represents A leg, so must be created earlier
 	// than, target CHAT channel represents B leg, the first recepient, chat@bot channel
@@ -382,6 +391,8 @@ func (s *chatService) StartConversation(
 		Title: sql.NullString{
 			String: title, Valid: title != "",
 		},
+		// Metadata chaining ...
+		Variables: metadata,
 	}
 	// CHAT start message
 	startMessage := req.GetMessage()
@@ -484,6 +495,7 @@ func (s *chatService) StartConversation(
 			Updated:  app.DateTimestamp(channel.UpdatedAt),
 			// Joined:   0,
 			// Closed:   0,
+			Variables: channel.Variables,
 		}
 		// Save historical START conversation message ...
 		if _, err := s.saveMessage(ctx, tx, &sender, startMessage); err != nil {
@@ -892,6 +904,7 @@ func (s *chatService) JoinConversation(
 		)
 	}
 
+	timestamp := app.CurrentTime().UTC()
 	channel := &pg.Channel{
 		ID:             invite.ID, // FROM: INVITE token !
 		Type:           "webitel",
@@ -900,11 +913,13 @@ func (s *chatService) JoinConversation(
 		UserID:         invite.UserID,
 		DomainID:       invite.DomainID,
 		Name:           user.Name,
+		CreatedAt:      invite.CreatedAt,
+		UpdatedAt:      timestamp,
 		JoinedAt:       sql.NullTime{
-			Time:       app.CurrentTime().UTC(),
+			Time:       timestamp,
 			Valid:      true,
 		},
-		Properties:     invite.Variables,
+		Variables:      invite.Variables,
 	}
 
 	if !invite.InviterChannelID.Valid {
@@ -943,10 +958,10 @@ func (s *chatService) JoinConversation(
 	return nil
 }
 
-func (s *chatService) LeaveConversation(
+func (s *chatService) leaveChat(
 	ctx context.Context,
 	req *pb.LeaveConversationRequest,
-	res *pb.LeaveConversationResponse,
+	cause flow.BreakBridgeCause,
 ) error {
 
 	var (
@@ -1014,15 +1029,15 @@ func (s *chatService) LeaveConversation(
 	await := make(chan error, 2)
 	for _, async := range []func() {
 		func() {
-			// FIXME: why ?
-			await <- s.flowClient.BreakBridge(
-				sender.ConversationID, flow.LeaveConversationCause,
-			)
-		},
-		func() {
 			// NOTIFY: All related CHAT member(s) !
 			await <- s.eventRouter.RouteLeaveConversation(
 				closed, &sender.ConversationID,
+			)
+		// },
+		// func() {
+			// FIXME: why ?
+			await <- s.flowClient.BreakBridge(
+				sender.ConversationID, cause,
 			)
 		},
 	} {
@@ -1069,6 +1084,15 @@ func (s *chatService) LeaveConversation(
 	return nil
 }
 
+func (s *chatService) LeaveConversation(
+	ctx context.Context,
+	req *pb.LeaveConversationRequest,
+	res *pb.LeaveConversationResponse,
+) error {
+
+	return s.leaveChat(ctx, req, flow.LeaveConversationCause)
+}
+
 func (s *chatService) InviteToConversation(
 	ctx context.Context,
 	req *pb.InviteToConversationRequest,
@@ -1079,6 +1103,13 @@ func (s *chatService) InviteToConversation(
 	// 	s.log.Error().Msg(err.Error())
 	// 	return err
 	// }
+
+	metadata := req.GetVariables()
+	if len(metadata) != 0 {
+		// Remove invalid (empty) key !
+		delete(metadata, "")
+	}
+
 	s.log.Trace().
 		Str("user.connection", req.GetUser().GetConnection()).
 		Str("user.type", req.GetUser().GetType()).
@@ -1089,6 +1120,7 @@ func (s *chatService) InviteToConversation(
 		Int64("domain_id", req.GetDomainId()).
 		Int64("timeout_sec", req.GetTimeoutSec()).
 		Int64("auth_user_id", req.GetAuthUserId()).
+		Interface("variables", metadata).
 		// Bool("from_flow", req.GetFromFlow()).
 		Msg("INVITE TO Conversation")
 	
@@ -1101,11 +1133,13 @@ func (s *chatService) InviteToConversation(
 
 	domainID := req.GetDomainId()
 	invite := &pg.Invite{
+
 		UserID:         req.GetUser().GetUserId(),
 		DomainID:       domainID,
-		Variables:      req.GetVariables(),
 		TimeoutSec:     req.GetTimeoutSec(),
 		ConversationID: req.GetConversationId(),
+
+		Variables:      metadata,
 	}
 	if title := req.GetTitle(); title != "" {
 		invite.Title = sql.NullString{
@@ -1534,7 +1568,7 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 		res.ClientId = contact.ID
 		res.ChannelId = channel.ID
 		res.Exists = channel.ID != ""
-		res.Properties = channel.Properties
+		res.Properties = channel.Variables
 	} else {
 		res.ClientId = contact.ID
 		res.Exists = false
@@ -2521,7 +2555,7 @@ func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session,
 			}
 			// Send workflow channel .Break() message to stop chat.flow routine ...
 			// FIXME: - delete: chat.confirmation; - delete: chat.flow.node
-			err = c.flowClient.CloseConversation(member.Chat.ID) // .ConversationID
+			err = c.flowClient.CloseConversation(member.Chat.ID, "") // .ConversationID
 			
 			// if err != nil {
 			// 	c.log.Error().Err(err).
@@ -2585,4 +2619,177 @@ func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session,
 	// }
 
 	return sent, nil // err
+}
+
+
+func (c *chatService) SetVariables(ctx context.Context, req *pb.SetVariablesRequest, res *pb.ChatVariablesResponse) error {
+	
+	channelId := req.GetChannelId()
+	if channelId == "" {
+		return errors.BadRequest(
+			"chat.channel.id.required",
+			"chat: channel.id required but missing",
+		)
+	}
+
+	changes := req.GetVariables()
+	if len(changes) != 0 {
+		// Remove invalid (empty) key !
+		delete(changes, "")
+	}
+
+	if len(changes) == 0 {
+		return errors.BadRequest(
+			"chat.channel.vars.required",
+			"chat: channel.vars required but missing",
+		)
+	}
+
+	// // region: lookup target chat session by unique sender chat channel id
+	// chat, err := c.repo.GetSession(ctx, channelId)
+
+	// if err != nil {
+	// 	// lookup operation error
+	// 	return err
+	// }
+
+	// if chat == nil || chat.ID != channelId {
+	// 	// sender channel ID not found
+	// 	return errors.BadRequest(
+	// 		"chat.send.channel.from.not_found",
+	// 		"send: FROM channel ID=%s sender not found or been closed",
+	// 		 channelId,
+	// 	)
+	// }
+	
+	// channel := chat.Channel
+	// channel.MergeVars(req.GetVariables())
+	envars, err := c.repo.BindChannel(ctx, channelId, changes)
+
+	if err != nil {
+		return err
+	}
+	
+	res.ChannelId = channelId
+	res.Variables = envars
+	return nil
+}
+
+func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferRequest, res *pb.ChatTransferResponse) error {
+	
+	var (
+
+		schemaToID = req.GetSchemaId()
+		chatFromID = req.GetChannelId()
+		chatFlowID = req.GetConversationId()
+	)
+
+	c.log.Debug().
+		Str("conversation_id", chatFlowID).
+		Str("channel_id", chatFromID).
+		Int64("schema_id", schemaToID).
+		Msg("TRANSFER Conversation")
+
+	if chatFlowID == "" && chatFromID == "" {
+		return errors.BadRequest(
+			"chat.transfer.conversation.required",
+			"transfer: chat .conversation_id or sender .channel_id required but missing",
+		)
+	}
+
+	if schemaToID == 0 {
+		return errors.BadRequest(
+			"chat.transfer.flow.schema_id.required",
+			"chat: transfer:to schema_id required but missing",
+		)
+	}
+
+	coalesce := func(s ...string) string {
+		for _, v := range s {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				return v
+			}
+		}
+		return ""
+	}
+
+	chat, err := c.repo.GetSession(
+		ctx, coalesce(chatFromID, chatFlowID),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	if chat == nil || (chatFlowID != "" && chat.Channel.Chat.Invite != chatFlowID) {
+		// The Conversation (chat@flow) channel not found
+		return errors.BadRequest(
+			"chat.transfer.conversation.not_found",
+			"transfer: conversation ID=%s not found or been closed",
+			 chatFlowID,
+		)
+	}
+	chatFlowID = chat.Channel.Chat.Invite
+
+	if chatFromID != "" && chat.ID != chatFromID {
+		// The Originator (user@webitel) channel not found
+		return errors.BadRequest(
+			"chat.transfer.channel.not_found",
+			"transfer: user channel ID=%s not found or been closed",
+			 chatFromID,
+		)
+	}
+	chatFromID = chat.ID
+
+	originator := chat.Channel
+	switch originator.Channel {
+	case "websocket":
+
+		if chatFromID == chatFlowID {
+			// Transfer request from Flow schema itself !
+			// DO NOTHING More !..
+			break
+		}
+		// if originator.FlowBridge {
+		// 	// LeaveConversation()
+		// } else {
+		// 	// DeclineInvitation()
+		// }
+		// In case of NON-Accepted Invite Request !
+		var decline pb.DeclineInvitationResponse
+		// NOTE: Ignore errors; Calling this just to be sure that originator's channel is kicked !
+		_ = c.DeclineInvitation(ctx,
+			&pb.DeclineInvitationRequest{
+				ConversationId: chatFlowID,
+				InviteId: chatFromID,
+				AuthUserId: originator.User.ID,
+			}, &decline,
+		)
+		// In case of Agent (Originator) Bridge Application running !
+		// var leave pb.LeaveConversationResponse
+		// NOTE: Ignore errors; Calling this just to be sure that originator's channel is kicked !
+		_ = c.leaveChat(ctx,
+		// _ = c.LeaveConversation(ctx,
+			&pb.LeaveConversationRequest{
+				ConversationId: chatFlowID,
+				AuthUserId: originator.User.ID,
+				ChannelId: chatFromID,
+			}, flow.TransferCause, // &leave,
+		)
+
+	case "chatflow":
+		// FIXME:
+	}
+
+	// PERFORM: SWITCH Flow runtime schema(s) !
+	err = c.flowClient.TransferToSchema(
+		chatFlowID, originator, schemaToID,
+	)
+	
+	if err != nil {
+		return err
+	}
+	// res.* ?
+	return nil
 }

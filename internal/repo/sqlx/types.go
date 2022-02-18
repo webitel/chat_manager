@@ -1,10 +1,11 @@
 package sqlxrepo
 
 import (
-	"time"
-	"fmt"
-	"encoding/json"
+	"bytes"
 	"database/sql"
+	"encoding/json"
+	"fmt"
+	"time"
 )
 
 // ScanFunc is custom database/sql.Scanner
@@ -100,32 +101,45 @@ func ScanJSON(dst interface{}) ScanFunc {
 	}
 }
 
+var (
 
+	jsonNull = []byte("null")
+	// jsonNullArray = []byte("[]")
+	jsonNullObject = []byte("{}")
+)
 
-func NullProperties(props map[string]string) []byte { // JSONB
+func NullMetadata(md map[string]string) []byte { // JSONB
 
 	// if props == nil {
 	// 	return nil
 	// }
 	
 	// delete(props, "")
-	if len(props) == 0 {
+	if len(md) == 0 {
 		return nil
 	}
 
-	jsonb, _ := json.Marshal(props)
+	jsonb, _ := json.Marshal(md)
+	for _, null := range [][]byte{
+		jsonNull, jsonNullObject, // jsonNullArray,
+	} {
+		if bytes.Equal(jsonb, null) {
+			jsonb = nil
+			break
+		}
+	}
 
 	return jsonb
 }
 
-func ScanProperties(props *map[string]string) ScanFunc {
+func ScanMetadata(md *map[string]string) ScanFunc {
 
-	_ = *(props) // early pointer value binding
+	_ = *(md) // early pointer value binding
 
 	return func(src interface{}) error {
 
 		if src == nil {
-			*(props) = nil
+			*(md) = nil
 			return nil
 		}
 
@@ -133,7 +147,7 @@ func ScanProperties(props *map[string]string) ScanFunc {
 
 		switch v := src.(type) {
 		case map[string]string:
-			*(props) = v
+			*(md) = v
 			return nil
 		case json.RawMessage:
 			jsonb = v
@@ -144,18 +158,18 @@ func ScanProperties(props *map[string]string) ScanFunc {
 				jsonb = []byte(v)
 			}
 		default:
-			return fmt.Errorf("postgres: convert %[1]T value %[1]v to type %[2]T", src, props)
+			return fmt.Errorf("postgres: convert %[1]T value %[1]v to type %[2]T", src, md)
 		}
 
 		if len(jsonb) == 0 {
-			*(props) = nil
+			*(md) = nil
 			return nil
 		}
 
-		err := json.Unmarshal(jsonb, props)
+		err := json.Unmarshal(jsonb, md)
 		if err != nil {
-			*(props) = nil
-			return fmt.Errorf("postgres: convert %[1]T value %[1]v to type %[2]T; %[3]s", src, props, err)
+			*(md) = nil
+			return fmt.Errorf("postgres: convert %[1]T value %[1]v to type %[2]T; %[3]s", src, md, err)
 		}
 
 		return nil
@@ -164,14 +178,14 @@ func ScanProperties(props *map[string]string) ScanFunc {
 
 
 // Properties represents extra key:value variables
-type Properties map[string]string
+type Metadata map[string]string
 
-func (e Properties) Value() (interface{}, error) {
-	return NullProperties(e), nil
+func (e Metadata) Value() (interface{}, error) {
+	return NullMetadata(e), nil
 }
 
-func (e *Properties) Scan(src interface{}) error {
-	return ScanProperties((*map[string]string)(e))(src)
+func (e *Metadata) Scan(src interface{}) error {
+	return ScanMetadata((*map[string]string)(e))(src)
 }
 
 

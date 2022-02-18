@@ -171,15 +171,22 @@ func (c *TelegramBot) Deregister(ctx context.Context) error {
 
 func utf16Length(s string) (n int) {
 
-	const runeSelf = 0x10000
+	// return len(utf16.Encode([]rune(s)))
+
+	// See https://pkg.go.dev/unicode/utf16#EncodeRune
+	const (
+		runeSelf = 0x10000
+		runeMax  = '\U0010FFFF' // Maximum valid Unicode code point.
+	)
+
 	for _, r := range s {
-		switch {
-		case r < runeSelf:
-			n++    //  word: 1*uint16 [2b]
-		default:
-			n += 2 // dword: 2*uint16 [4b]
+		if runeSelf <= r && r <= runeMax {
+			n += 2 // needs surrogate sequence
+			continue
 		}
+		n++ // self -or- overflow (replacementChar)
 	}
+
 	return // n
 }
 

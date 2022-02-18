@@ -1,16 +1,18 @@
 package sqlxrepo
 
 import (
-
 	"fmt"
-	"time"
 	"strings"
+	"time"
+
 	// "strconv"
 	"context"
 
 	"database/sql"
-	"github.com/jmoiron/sqlx"
+
 	"github.com/jackc/pgconn"
+	"github.com/jmoiron/sqlx"
+
 	// "github.com/jackc/pgtype"
 
 	"github.com/google/uuid"
@@ -125,7 +127,16 @@ func (repo *sqlxRepository) GetConversations(
 	messageSize int32,
 ) ([]*Conversation, error) {
 	// conversations := make([]*Conversation, 0, size)
-	fieldsStr, whereStr, sortStr, limitStr := "c.*, m.*, ch.*", "", "order by c.created_at desc", ""
+	var (
+		fieldsStr = // "c.*, m.*, ch.*"
+			"c.id, c.title, c.created_at, c.closed_at, c.updated_at, c.domain_id" +
+			", m.messages" +
+			", ch.members"
+		
+		whereStr  = ""
+		sortStr   = "order by c.created_at desc"
+		limitStr  = ""
+	)
 	if size == 0 {
 		size = 15
 	}
@@ -324,6 +335,8 @@ func NewSession(dcx sqlx.ExtContext, ctx context.Context, session *Conversation)
 		session.CreatedAt.UTC(),
 		session.UpdatedAt.UTC(),
 		nil, // session.ClosedAt,
+
+		NullMetadata(session.Variables),
 	)
 
 	if err != nil {
@@ -592,6 +605,7 @@ func ConversationList(rows *sql.Rows, limit int) ([]*Conversation, error) {
 		case "closed_at":  plan[c] = func() interface{} { return &obj.ClosedAt }                // NULL: *sql.NullTime
 
 		case "domain_id":  plan[c] = func() interface{} { return ScanInteger(&obj.DomainID) }   // NOTNULL: (!)
+		case "props":      plan[c] = func() interface{} { return &obj.Variables } // NULL: *pg.Metadata
 
 		case "members":    plan[c] = func() interface{} { return ScanJSON(&obj.Members) }   // NOTNULL: (!)
 		case "messages":   plan[c] = func() interface{} { return ScanJSON(&obj.Messages) }   // NOTNULL: (!)
@@ -774,9 +788,10 @@ UPDATE chat.channel
 // $4  - session.created_at
 // $5  - session.updated_at
 // $6  - session.closed_at // FIXME: NULL ?
+// $7  - session.Variables
 const psqlSessionNewQ =
 `INSERT INTO chat.conversation (
-  id, domain_id, title, created_at, updated_at, closed_at
+  id, domain_id, title, created_at, updated_at, closed_at, props
 ) VALUES (
-  $1, $2, $3, $4, $5, $6
+  $1, $2, $3, $4, $5, $6, $7
 )`

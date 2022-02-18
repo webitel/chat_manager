@@ -2,6 +2,8 @@ package app
 
 import (
 	// "context"
+	"strings"
+
 	"github.com/google/uuid"
 )
 
@@ -25,8 +27,34 @@ type Channel struct {
 	 Updated int64  `json:"updated,omitempty"`
 	 Joined  int64  `json:"joined,omitempty"`
 	 Closed  int64  `json:"closed,omitempty"`
+	// Variables is a local evironment for this Channel
+	 Variables map[string]string `json:"variables,omitempty"`
 }
 
 func (c *Channel) IsClosed() bool {
 	return c == nil || c.Closed != 0
+}
+
+func (c *Channel) SetVars(set map[string]string) {
+
+	env := c.Variables
+
+	for key, val := range set {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if val == ""{
+			if len(env) != 0 {
+				delete(env, key)
+			}
+			continue
+		}
+		if env == nil {
+			env = make(map[string]string, len(set))
+		}
+		env[key] = val
+	}
+
+	c.Variables = env
 }

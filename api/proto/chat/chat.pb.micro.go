@@ -56,6 +56,9 @@ type ChatService interface {
 	GetConversations(ctx context.Context, in *GetConversationsRequest, opts ...client.CallOption) (*GetConversationsResponse, error)
 	GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, opts ...client.CallOption) (*GetConversationByIDResponse, error)
 	GetHistoryMessages(ctx context.Context, in *GetHistoryMessagesRequest, opts ...client.CallOption) (*GetHistoryMessagesResponse, error)
+	// API /v1
+	SetVariables(ctx context.Context, in *SetVariablesRequest, opts ...client.CallOption) (*ChatVariablesResponse, error)
+	BlindTransfer(ctx context.Context, in *ChatTransferRequest, opts ...client.CallOption) (*ChatTransferResponse, error)
 }
 
 type chatService struct {
@@ -200,6 +203,26 @@ func (c *chatService) GetHistoryMessages(ctx context.Context, in *GetHistoryMess
 	return out, nil
 }
 
+func (c *chatService) SetVariables(ctx context.Context, in *SetVariablesRequest, opts ...client.CallOption) (*ChatVariablesResponse, error) {
+	req := c.c.NewRequest(c.name, "ChatService.SetVariables", in)
+	out := new(ChatVariablesResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *chatService) BlindTransfer(ctx context.Context, in *ChatTransferRequest, opts ...client.CallOption) (*ChatTransferResponse, error) {
+	req := c.c.NewRequest(c.name, "ChatService.BlindTransfer", in)
+	out := new(ChatTransferResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for ChatService service
 
 type ChatServiceHandler interface {
@@ -217,6 +240,9 @@ type ChatServiceHandler interface {
 	GetConversations(context.Context, *GetConversationsRequest, *GetConversationsResponse) error
 	GetConversationByID(context.Context, *GetConversationByIDRequest, *GetConversationByIDResponse) error
 	GetHistoryMessages(context.Context, *GetHistoryMessagesRequest, *GetHistoryMessagesResponse) error
+	// API /v1
+	SetVariables(context.Context, *SetVariablesRequest, *ChatVariablesResponse) error
+	BlindTransfer(context.Context, *ChatTransferRequest, *ChatTransferResponse) error
 }
 
 func RegisterChatServiceHandler(s server.Server, hdlr ChatServiceHandler, opts ...server.HandlerOption) error {
@@ -234,6 +260,8 @@ func RegisterChatServiceHandler(s server.Server, hdlr ChatServiceHandler, opts .
 		GetConversations(ctx context.Context, in *GetConversationsRequest, out *GetConversationsResponse) error
 		GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, out *GetConversationByIDResponse) error
 		GetHistoryMessages(ctx context.Context, in *GetHistoryMessagesRequest, out *GetHistoryMessagesResponse) error
+		SetVariables(ctx context.Context, in *SetVariablesRequest, out *ChatVariablesResponse) error
+		BlindTransfer(ctx context.Context, in *ChatTransferRequest, out *ChatTransferResponse) error
 	}
 	type ChatService struct {
 		chatService
@@ -296,4 +324,12 @@ func (h *chatServiceHandler) GetConversationByID(ctx context.Context, in *GetCon
 
 func (h *chatServiceHandler) GetHistoryMessages(ctx context.Context, in *GetHistoryMessagesRequest, out *GetHistoryMessagesResponse) error {
 	return h.ChatServiceHandler.GetHistoryMessages(ctx, in, out)
+}
+
+func (h *chatServiceHandler) SetVariables(ctx context.Context, in *SetVariablesRequest, out *ChatVariablesResponse) error {
+	return h.ChatServiceHandler.SetVariables(ctx, in, out)
+}
+
+func (h *chatServiceHandler) BlindTransfer(ctx context.Context, in *ChatTransferRequest, out *ChatTransferResponse) error {
+	return h.ChatServiceHandler.BlindTransfer(ctx, in, out)
 }

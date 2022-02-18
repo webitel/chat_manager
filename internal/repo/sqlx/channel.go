@@ -6,11 +6,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	errs "github.com/micro/go-micro/v2/errors"
 	"github.com/pkg/errors"
 
 	"github.com/jackc/pgconn"
@@ -516,21 +518,21 @@ func (repo *sqlxRepository) UpdateChannelHost(ctx context.Context, channelID, ho
 	return err
 }
 
-func (repo *sqlxRepository) BindChannel(ctx context.Context, channelID string, propts map[string]string) error {
+func (repo *sqlxRepository) BindChannel(ctx context.Context, channelID string, vars map[string]string) (env map[string]string, err error) {
 
-	if propts != nil {
-		// remove empty key(s)
-		delete(propts, "")
+	if vars != nil {
+		// remove invalid (empty) key
+		delete(vars, "")
 	}
 	
-	if len(propts) == 0 {
+	if len(vars) == 0 {
 		// FIXME: remove all binding keys ?
-		return nil
+		return nil, nil
 	}
 
 	var (
 	
-		setup = "props"
+		expr = "COALESCE(vars,'{}')" // "props"
 		params = make([]interface{}, 0, 3)
 	)
 
@@ -547,19 +549,23 @@ func (repo *sqlxRepository) BindChannel(ctx context.Context, channelID string, p
 		set map[string]string // key(s) to be reseted
 	)
 
-	for key, value := range propts {
+	for key, value := range vars {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue // omit empty keys
+		}
 		// CASE: blank "" -or- null
 		if value == "" {
 			// TODO: "props - '$key'"
 			if del == nil {
-				del = make([]string, 0, len(propts))
+				del = make([]string, 0, len(vars))
 			}
 			del = append(del, key)
 			continue
 		}
 		// TODO: "props || '{$key: $value}'::jsonb"
 		if set == nil {
-			set = make(map[string]string, len(propts))
+			set = make(map[string]string, len(vars))
 		}
 		set[key] = value
 	}
@@ -569,22 +575,61 @@ func (repo *sqlxRepository) BindChannel(ctx context.Context, channelID string, p
 		var keys pgtype.TextArray
 		_ = keys.Set(del)
 
-		setup += " - "+ param(&keys) +"::text[]"
+		expr += " - "+ param(&keys) +"::text[]"
 	}
 	// 2. Reset attributes
 	if len(set) != 0 {
 		
 		jsonb, _ := json.Marshal(set)
 
-		setup += " || "+ param(string(jsonb)) +"::jsonb"
+		expr += " || "+ param(string(jsonb)) +"::jsonb"
 	}
 
-	_, err := repo.db.ExecContext(ctx, 
-		"UPDATE chat.channel SET props="+ setup +" WHERE id=$1",
-		 params...,
+	var setupVars = CompactSQL(
+	`-- conversation_id
+	WITH s AS (
+		UPDATE chat.conversation
+		   SET props = %[1]s
+		 WHERE id = $1
+		RETURNING props
 	)
+	-- channel_id
+	, c AS (
+		UPDATE chat.channel
+		   SET props = %[1]s
+		 WHERE NOT EXISTS(SELECT true FROM s) AND id = $1
+		RETURNING props
+	)
+	-- invite_id ???
+	SELECT props FROM s
+	 UNION ALL
+	SELECT props FROM c
+	`)
+
+	// _, err := repo.db.ExecContext(ctx, 
+	// 	"UPDATE chat.channel SET props="+ expr +" WHERE id=$1",
+	// 	 params...,
+	// )
+
+	var res Metadata
+	err = repo.db.GetContext(ctx, &res,
+		// dbx.ScanJSONBytes(&env),
+		fmt.Sprintf(setupVars, expr),
+		params...,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// Invalid channel_id
+			err = errs.NotFound(
+				"chat.channel.id.invalid",
+				"chat: channel id=%s not found",
+				 channelID,
+			)
+		}
+	}
 	
-	return err
+	return res, err
 }
 
 
@@ -992,10 +1037,11 @@ func NewChannel(dcx sqlx.ExtContext, ctx context.Context, channel *Channel) erro
 		channel.Connection,
 		channel.ServiceHost,
 
-		NullProperties(channel.Properties), // $10
+		NullMetadata(channel.Variables), // $10
 
 		channel.CreatedAt.UTC(),
 		channel.UpdatedAt.UTC(),
+		channel.JoinedAt,
 
 		nil, // channel.ClosedAt,
 		channel.FlowBridge,
@@ -1030,18 +1076,19 @@ RETURNING c.*
 // $10 - props
 // $11 - created_at
 // $12 - updated_at
-// $13 - closed_at
-// $14 - flow_bridge
+// $13 - joined_at
+// $14 - closed_at
+// $15 - flow_bridge
 const psqlChannelNewQ =
 `WITH created AS (
  INSERT INTO chat.channel (
    id, type, name, user_id, domain_id,
    conversation_id, internal, connection, host, props,
-   created_at, updated_at, closed_at, flow_bridge
+   created_at, updated_at, joined_at, closed_at, flow_bridge
  ) VALUES (
    $1, $2, $3, $4, $5,
    $6, $7, $8, $9, $10,
-   $11, $12, $13, $14
+   $11, $12, $13, $14, $15
  )
  RETURNING conversation_id
 )
