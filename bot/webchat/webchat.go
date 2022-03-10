@@ -364,14 +364,23 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 	case "joined":
 	case "closed":
 		defer func() {
-			// c.Lock()   // +RW
-			// delete(c.chat, chat.ChatID)
-			// c.Unlock() // -RW
+			// // c.Lock()   // +RW
+			// // delete(c.chat, chat.ChatID)
+			// // c.Unlock() // -RW
+			// close(room.send)
 			room.send <- func() {
 				for i := len(room.conn)-1; i >= 0; i-- {
 					conn := room.conn[i]
-					_ = conn.SetWriteDeadline(time.Now().Add(c.WriteTimeout))
-					err := conn.WriteMessage(websocket.CloseMessage, []byte{})
+					_ = conn.SetWriteDeadline(
+						time.Now().Add(c.WriteTimeout),
+					)
+					err := conn.WriteMessage(
+						websocket.CloseMessage, // []byte{},
+						websocket.FormatCloseMessage(
+							websocket.CloseNormalClosure,
+							"BYE",
+						),
+					)
 					if err != nil {
 						c.Log.Err(err).
 							Str("conn", conn.RemoteAddr().String()).
@@ -806,28 +815,44 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 		select { // sync remove operation
 		case c.send <- func() {
 			// [sync] remove this conn
+			var ok bool
 			for i, this := range c.conn {
-				if this == conn {
+				if ok = (this == conn); ok {
 					c.conn = append(c.conn[:i], c.conn[i+1:]...)
 					break
 				}
 			}
+			// if ok {
+			// 	c.Log.Info().
+			// 		Str("ws", conn.RemoteAddr().String()).
+			// 		Msg("[WS] >>> READ.Close(!) <<< OK")
+			// } else {
+			// 	c.Log.Warn().
+			// 		Str("ws", conn.RemoteAddr().String()).
+			// 		Msg("[WS] >>> READ.Close(!) <<< NOT FOUND")
+			// }
+			// // NOTE: DO NOT c.closed = true due to
+			// // page reloaded conn may return !
 		}:
 		default:
+			c.Log.Error().
+				Str("ws", conn.RemoteAddr().String()).
+				Msg("[WS] >>> READ.Close(!) <<< OMITTED")
 			// FIXME: Expect to be closed !
 			// How to check it's NOT but full ?
 		}
 		
 		// c.RWMutex.Unlock() // -RW
-		if err := conn.Close(); err != nil {
-			c.Log.Err(err).
-				Str("ws", conn.RemoteAddr().String()).
-				Msg("[WS] >>> READ.Close(!) <<<")
-		} else {
-			c.Log.Warn().
-				Str("ws", conn.RemoteAddr().String()).
-				Msg("[WS] >>> READ.Close(!) <<<")
-		}
+		_ = conn.Close() // Undelaying TCP
+		// if err := conn.Close(); err != nil {
+		// 	c.Log.Err(err).
+		// 		Str("ws", conn.RemoteAddr().String()).
+		// 		Msg("[WS] >>> READ.Close(!) <<<")
+		// } else {
+		// 	c.Log.Warn().
+		// 		Str("ws", conn.RemoteAddr().String()).
+		// 		Msg("[WS] >>> READ.Close(!) <<<")
+		// }
 
 	}()
 
@@ -854,16 +879,23 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 			if websocket.IsUnexpectedCloseError(
 				err, websocket.CloseGoingAway,
 				websocket.CloseAbnormalClosure,
-				// websocket.CloseNoStatusReceived, // FIXME: net error ?
+				websocket.CloseNoStatusReceived, // FIXME: Normal Close just with NO status text provided ?
 			) {
 				c.Log.Err(err).
 					Str("ws", conn.RemoteAddr().String()).
 					Msg("READ.Unexpected(!)")
-			} // else {
+			} else {
 			// 	c.Log.Warn().Err(err).
 			// 		Str("ws", conn.RemoteAddr().String()).
 			// 		Msg("READ.Expected(+)")
-			// }
+				// _ = conn.WriteMessage(
+				// 	websocket.CloseMessage, // []byte{},
+				// 	websocket.FormatCloseMessage(
+				// 		websocket.CloseNormalClosure,
+				// 		"BYE",
+				// 	),
+				// )
+			}
 			return // runtime
 		}
 		// validate request
@@ -1012,22 +1044,30 @@ func (c *webChat) writePump() {
 				// NOTE: (send == nil)
 				for i := 0; i < len(c.conn); i++ {
 					conn := c.conn[i]
-					_ = conn.SetWriteDeadline(time.Now().Add(c.Bot.WriteTimeout))
-					err := conn.WriteMessage(websocket.CloseMessage, []byte{})
+					_ = conn.SetWriteDeadline(
+						time.Now().Add(c.Bot.WriteTimeout),
+					)
+					err := conn.WriteMessage(
+						websocket.CloseMessage, // []byte{},
+						websocket.FormatCloseMessage(
+							websocket.CloseNormalClosure,
+							"BYE",
+						),
+					)
 					if err != nil {
 						c.Log.Err(err).
 							Str("ws", conn.RemoteAddr().String()).
-							Msg("WS.Close(!)")
+							Msg("WRITE.Close(!)")
 					} else {
 						c.Log.Warn().
 							Str("ws", conn.RemoteAddr().String()).
-							Msg("WS.Close(!)")
+							Msg("WRITE.Close(!)")
 					}
 					defer conn.Close()
 				}
 				c.conn = c.conn[:0]
 				c.closed = true
-				break // return
+				break // select
 			}
 			// sync
 			send()
@@ -1057,12 +1097,12 @@ func (c *webChat) writePump() {
 				// go c.Channel.Close()
 				// continue // Gracefully shutdown this chat room !
 				c.closed = true
-				break
+				break // select
 			}
 		}
 
 		if c.closed && len(c.conn) == 0 {
-			break
+			break // for
 		}
 	}
 }
@@ -1099,6 +1139,7 @@ func (c *webChat) sendFrame(conn *websocket.Conn, typeof int, data []byte) (err 
 	var w io.WriteCloser
 	w, err = conn.NextWriter(typeof)
 	if err != nil {
+		// if err == websocket.ErrCloseSent {}
 		c.Log.Err(err).
 			Str("ws", conn.RemoteAddr().String()).
 			Msg("WS.NextWriter(!)")

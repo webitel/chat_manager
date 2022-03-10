@@ -69,7 +69,7 @@ type Success struct {
 // API Result structure
 type Result struct {
 	 // Data envelope
-	 Data // Anonymous field
+	 Data `json:",omitempty"` // Anonymous field
 	 Error *Error `json:"error,omitempty"`
 }
 

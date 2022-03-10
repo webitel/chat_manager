@@ -65,33 +65,34 @@ func (authZ *Authorization) CanAccess(scope *authN.Objclass, mode AccessMode) bo
 
 	var (
 		
-		super, access string
+		bypass, require string
 	)
 
 	switch mode {
 	case ADD, READ|ADD:
-		access, super = "x", "add"
+		require, bypass = "x", "add"
 	case READ, NONE: // default
-		access, super = "r", "read"
+		require, bypass = "r", "read"
 	case WRITE, READ|WRITE:
-		access, super = "w", "write"
+		require, bypass = "w", "write"
 	case DELETE, READ|DELETE:
-		access, super = "d", "delete"
+		require, bypass = "d", "delete"
 	}
 
 	// Check can BYPASS Security Policy(-ies) ?
-	if authZ.HasPermission(super) {
+	if bypass != "" && authZ.HasPermission(bypass) {
 		return true
 	}
 	// Check has requested access mode GRANTED ?
-	for i := len(access)-1; i >= 0; i-- {
-		mode := access[i]
+	for i := len(require)-1; i >= 0; i-- {
+		mode := require[i]
 		if strings.IndexByte(scope.Access, mode) < 0 {
-			break // ERR: require MODE access TO scope.Class but NOT GRANTED !
+			// break // ERR: require MODE access TO scope.Class but NOT GRANTED !
+			return false
 		}
 	}
 
-	return false
+	return true
 }
 
 // func IsExpired(exp int64, now time.Time) bool {

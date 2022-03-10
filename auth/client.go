@@ -117,7 +117,8 @@ func microContextAuthZ(ctx context.Context) (*Authorization, error) {
 
 type Client struct {
 	// Service Client
-	Service auth.AuthService
+	Service   auth.AuthService
+	Customers auth.CustomersService
 	// Local Cache
 	sync.RWMutex
 	// Async Authorization events
@@ -133,7 +134,8 @@ type ClientOption func(c *Client)
 func ClientService(srv micro.Service) ClientOption {
 	return func(ctl *Client) {
 		
-		ctl.Service = auth.NewAuthService("go.webitel.app", srv.Client())
+		ctl.Service   = auth.NewAuthService("go.webitel.app", srv.Client())
+		ctl.Customers = auth.NewCustomersService("go.webitel.app", srv.Client())
 		
 		sub, err := srv.Options().Broker.Subscribe(
 			"invalidate.#", ctl.invalidateCache,
@@ -329,4 +331,34 @@ func (c *Client) invalidateCache(notice broker.Event) error {
 	}
 
 	return nil
+}
+
+func (c *Client) GetCustomer(ctx context.Context, token string) (*auth.Customer, error) {
+	// Request to verify token
+	res, err := c.Customers.GetCustomer(
+		// context
+		metadata.NewContext(ctx,
+			metadata.Metadata{
+				h2pAccessToken: token,
+			},
+		),
+		// request
+		&auth.GetCustomerRequest{
+			// Id:    "",
+			Valid: true,
+			// Domain: &auth.ObjectId{
+			// 	Id:   0,
+			// 	Name: "",
+			// },
+			// Fields: nil,
+			// Sort:   nil,
+		},
+		// options ...
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return res.GetCustomer(), nil
 }

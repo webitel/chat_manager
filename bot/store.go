@@ -1,6 +1,8 @@
 package bot
 
 import (
+	"context"
+
 	"github.com/micro/go-micro/v2/errors"
 	"github.com/webitel/chat_manager/app"
 )
@@ -12,6 +14,9 @@ type Store interface {
 	Search(ctx *app.SearchOptions) ([]*Bot, error)
 	Update(ctx *app.UpdateOptions, obj *Bot) error
 	Delete(ctx *app.DeleteOptions) (int64, error)
+	// AnalyticsActiveBotsCount returns count of all, currently enabled chat-gateways (bots)
+	// NOTE: Count NOT for given pdc domain only, BUT for his customer's all domain(s)
+	AnalyticsActiveBotsCount(ctx context.Context, pdc int64) (n int, err error)
 }
 
 // LocateBot fetches single result entry or returns an error

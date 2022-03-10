@@ -1,6 +1,7 @@
 package sqlxrepo
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"math/rand"
@@ -56,7 +57,6 @@ func NewBotStore(log *zerolog.Logger, primary *sql.DB, secondary ...*sql.DB) bot
 		dbo: dbo,
 	}
 }
-
 
 
 func (s *pgsqlBotStore) Create(ctx *app.CreateOptions, obj *bot.Bot) error {
@@ -280,6 +280,47 @@ func (s *pgsqlBotStore) Delete(req *app.DeleteOptions) (int64, error) {
 }
 
 
+func (s *pgsqlBotStore) AnalyticsActiveBotsCount(ctx context.Context, pdc int64) (n int, err error) {
+
+	// $1 - [p]rimary [d]omain [c]omponent ID
+	const pgsqlTenantBotsCountQ =
+`WITH tenant AS (
+  SELECT customer_id FROM directory.wbt_domain WHERE dc = $1
+)
+SELECT count(id)
+  FROM chat.bot
+  JOIN tenant ON true
+  JOIN directory.wbt_domain srv on bot.dc = srv.dc AND srv.customer_id = tenant.customer_id
+ WHERE bot.enabled
+`
+	var row *sql.Rows
+	row, err = s.secondary().QueryContext(
+		// context, statement,
+		ctx, pgsqlTenantBotsCountQ,
+		// params...
+		pdc,
+	)
+
+	if err != nil {
+		return 0, err
+	}
+
+	defer row.Close()
+
+	if !row.Next() {
+		err = row.Err()
+	} else {
+		err = row.Scan(&n)
+	}
+
+	if err != nil {
+		// if err == sql.ErrNoRows {}
+		return 0, err
+	}
+
+	return // n, nil
+}
+
 
 func createBotRequest(req *app.CreateOptions, obj *bot.Bot) (stmtQ SelectStmt, params params, err error) {
 
@@ -492,6 +533,21 @@ func searchBotRequest(req *app.SearchOptions) (stmtQ SelectStmt, params params, 
 					"chat.bot.search.uri.invalid",
 					"chatbot: invalid URI filter %T type",
 					assert,
+				)
+			}
+		case "enabled":
+			switch data := assert.(type) {
+			case bool:
+				expr := "bot.enabled"
+				if !data {
+					expr = "NOT "+ expr
+				}
+				stmtQ = stmtQ.Where(expr)
+			default:
+				err = errors.BadRequest(
+					"chat.bot.search.enabled.invalid",
+					"chatbot: invalid filter=%s value=%T type",
+					 name, assert,
 				)
 			}
 		default:

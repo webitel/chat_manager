@@ -552,7 +552,7 @@ func (c *Client) Register(ctx context.Context, uri string) error {
 		"fields": {strings.Join([]string{
 			// "standby",
 			"messages", 
-			// "messaging_postbacks",
+			"messaging_postbacks",
 			// "messaging_handovers",
 			// "user_action",
 		}, ",")},
@@ -584,9 +584,15 @@ func (c *Client) Register(ctx context.Context, uri string) error {
 	defer rsp.Body.Close()
 
 	var (
-		ret graph.Success
-		res = graph.Result{
-			Data: &ret,
+		// ret graph.Success
+		// res = graph.Result{
+		// 	Data: ret,
+		// }
+		res = struct{
+			graph.Success // Embedded (Anonymous)
+			Error *graph.Error `json:"error,omitempty"`
+		} {
+			// Alloc
 		}
 	)
 
@@ -600,7 +606,7 @@ func (c *Client) Register(ctx context.Context, uri string) error {
 		return res.Error
 	}
 
-	if !ret.Ok {
+	if !res.Ok {
 		return fmt.Errorf("subscribe: success not confirmed")
 	}
 
@@ -657,9 +663,15 @@ func (c *Client) Deregister(ctx context.Context) error {
 
 	var (
 
-		ret graph.Success
-		res = graph.Result{
-			Data: &ret,
+		// ret graph.Success
+		// res = graph.Result{
+		// 	Data: &ret, // NOTE: Does NOT work ! Embedded (Anonymous) field must be Struct or Pointer to Struct !
+		// }
+		res = struct{
+			graph.Success // Embedded (Anonymous)
+			Error *graph.Error `json:"error,omitempty"`
+		} {
+			// Alloc
 		}
 	)
 
@@ -673,7 +685,7 @@ func (c *Client) Deregister(ctx context.Context) error {
 		return res.Error
 	}
 
-	if !ret.Ok {
+	if !res.Ok {
 		return fmt.Errorf("unsubscribe: success not confirmed")
 	}
 

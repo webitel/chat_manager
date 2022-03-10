@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/micro/go-micro/v2/errors"
@@ -19,7 +20,7 @@ import (
 // implements ...
 var _ bot.BotsHandler = (*Service)(nil)
 
-const objclassBots = "users" // "bots"
+const objclassBots = "chat_bots"
 
 // Search returns list of bots, posibly filtered out with search conditions
 func (srv *Service) SearchBot(ctx context.Context, req *bot.SearchBotRequest, rsp *bot.SearchBotResponse) error {
@@ -46,7 +47,7 @@ func (srv *Service) SearchBot(ctx context.Context, req *bot.SearchBotRequest, rs
 		// ERR: Has NO access to objclass been GRANTED !
 		return errors.Forbidden(
 			"chat.bot.access.forbidden",
-			"chatbot: objclass access NOT GRANTED !",
+			"chatbot: objclass READ privilege NOT GRANTED !",
 		)
 	}
 
@@ -307,6 +308,14 @@ func (srv *Service) CreateBot(ctx context.Context, add *bot.Bot, obj *bot.Bot) e
 	}
 	// endregion: Authorization
 
+	if add.Enabled {
+		err = srv.constraintChatBotsLimit(authN, +1)
+		if err != nil {
+			// ERR: chat: gateway registration is limited to a maximum of active at a time
+			return err
+		}
+	}
+
 	// Preset values !
 	add.Id = 0 // NEW !
 	add.Dc = &Refer{
@@ -411,7 +420,58 @@ func (srv *Service) CreateBot(ctx context.Context, add *bot.Bot, obj *bot.Bot) e
 
 	return nil
 
-	panic("not implemented") // TODO: Implement
+	// panic("not implemented") // TODO: Implement
+}
+
+func (srv *Service) constraintChatBotsLimit(req *app.Context, delta int) error {
+
+	tenant, err := srv.Auth.GetCustomer(
+		req.Context, req.Authorization.Token,
+	)
+
+	if err != nil {
+		return err
+	}
+	// Choose license.product(s).CHAT maximum .limit count
+	var limitMax int32
+	for _, grant := range tenant.GetLicense() {
+		if grant.Product != "CHAT" {
+			continue // Lookup CHAT only !
+		}
+		if len(grant.Status.Errors) != 0 {
+			continue // Currently invalid
+		}
+		if limitMax < grant.Limit {
+			limitMax = grant.Limit
+		}
+	}
+
+	if limitMax == 0 {
+		// FIXME: No CHAT product(s) issued !
+		return errors.New(
+			"bot.register.product.not_found",
+			"bots: CHAT product required but missing",
+			 http.StatusPreconditionFailed,
+		)
+	}
+
+	n, err := srv.store.AnalyticsActiveBotsCount(
+		req.Context, req.Authorization.Creds.GetDc(),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	if (int)(limitMax) < (n+delta) {
+		return errors.New(
+			"bot.register.limit.exhausted",
+			"bots: gateway registration is limited; maximum number of active: "+ strconv.FormatInt((int64)(limitMax), 10),
+			 http.StatusPreconditionFailed,
+		)
+	}
+
+	return nil
 }
 
 // Update single bot
@@ -500,7 +560,7 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 		// ERR: NOT GRANTED !
 		return errors.Forbidden(
 			"chat.bot.access.forbidden",
-			"chatbot: objclass ADD privilege NOT GRANTED !",
+			"chatbot: objclass WRITE privilege NOT GRANTED !",
 		)
 	}
 	// Chain API Context
@@ -544,6 +604,15 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 	res := proto.Clone(src).(*bot.Bot) // NEW Target !
 	// DO: Merge changes ...
 	app.MergeProto(res, dst, fields...)
+
+	// DO: REGISTER ?
+	if (res.Enabled && !src.Enabled) {
+		err = srv.constraintChatBotsLimit(authN, +1)
+		if err != nil {
+			// ERR: chat: gateway registration is limited to a maximum of active at a time
+			return err
+		}
+	}
 	
 	// // TODO: Validate result object !
 	// err = Validate(res)
@@ -613,14 +682,16 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 
 	// NOTE: (gate.Bot == res) !
 
-	toggle := (gate.Enabled != src.Enabled)
+	toggle := (gate.Bot.Enabled != src.Enabled)
 	// REGISTER *Gateway UPDATED !
-	err = gate.Register(ctx, gate.Enabled && toggle)
+	err = gate.Register(ctx, gate.Bot.Enabled && toggle)
 	// err = gate.Register(ctx, gate.Enabled && (toggle ||
 	// 	(app.HasScope(fields, "uri") && gate.Uri != src.Uri)),
 	// )
 
 	if err != nil {
+		gate.Bot.Enabled = false
+		// TODO: Update persistent DB record
 		return err
 	}
 
@@ -883,7 +954,7 @@ func (srv *Service) DeleteBot(ctx context.Context, req *bot.SearchBotRequest, rs
 
 	return nil
 	
-	panic("not implemented") // TODO: Implement
+	// panic("not implemented") // TODO: Implement
 }
 
 

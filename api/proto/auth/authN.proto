@@ -76,3 +76,102 @@ message Userinfo {
     int64 updated_at = 20; // user last updated
     int64 expires_at = 21 [json_name="exp"]; // unix
 }
+
+
+service Customers {
+    // GET Customer without products analytics
+    rpc GetCustomer(GetCustomerRequest) returns (GetCustomerResponse) {}
+    // GET Authentication Customer's License details
+    rpc LicenseUsage(LicenseUsageRequest) returns (LicenseUsageResponse) {
+
+    }
+}
+
+message Verification {
+    repeated string errors = 1; // invalid 
+    repeated string notify = 2; // non-fatal warnings, e.g.: 
+}
+
+message Customer {
+
+    string id = 1; // serial number assigned (global::Customer-ID)
+    // string version = 2; // version
+    // local store details
+    int64 created_at = 2;   // local created ms
+    int64 updated_at = 3;   // last uploaded ms
+    int64 revoked_at = 4;   // local revoked ms
+    // registration name
+    string organization = 5;
+    // validity boundaries
+    int64 issued_at = 6;    // [required] issuer(CA) created at
+    int64 not_before = 7;   // [optional] valid from
+    int64 not_after = 8;    // [required] valid till
+    // signature validity
+    int64 this_update = 9;  // [optional]: issuer(CA) signed at
+    int64 next_update = 10; // [optional]: signature expires; update required after
+    // Verification status
+    Verification verify = 11; // [optional] validation results
+    // extensions granted
+    map<string,int32> limit = 12; // defines map[class]limit usage
+    // int32 competitive = 13; // zero-based competitive sessions limit ?
+    repeated LicenseV1 license = 14; // grants issued
+    repeated ObjectId dnsrv = 15; // [optional] domains
+}
+
+// GET /customer:sessionCustomer
+// GET /customers/{id}
+message GetCustomerRequest {
+    // Available Filters
+    string id = 1; // show by customer id; serial number (uuid)
+    bool valid = 2; // show if valid only!
+    ObjectId domain = 3; // find by domain relation
+    // Request Controls
+    repeated string fields = 10; // serial, 
+    repeated string sort = 11;
+}
+
+message GetCustomerResponse {
+    Customer customer = 1;
+}
+
+message LicenseV1 {
+
+    string id = 1; // serial number assigned (global::License-ID)
+    int64 not_before = 2; // optional
+    int64 not_after = 3; // optional
+    string product = 4; // product name, e.g.: DEVICE, MANAGER, OPERATOR
+    repeated string scope = 5; // list of known classes, &this product grants mandatory access to, e.g.: 'users', 'roles', 'cc_agent', 'calendars', ...
+    bool competitive = 6;
+    int32 limit = 7; // required: limit count (maximum allowed usage quantity)
+    // operational attributes ...
+    // remain = limit - len(users)
+    int32 remain = 8; // available 
+    repeated LicenseUser users = 9; // users.id (grantees)
+    Verification status = 10;
+}
+
+message LicenseUsageRequest {
+    // ----- Search Options ----- //
+    int32 size = 1; // default: 16
+    int32 page = 2; // default: 1
+    repeated string fields = 3; // set of output fields
+    repeated string sort = 4; // e.g.: "updated_at" - ASC; "!updated_at" - DESC;
+    // ----- Search Filters ----- //
+    ObjectId user = 5; // to user assigned
+    ObjectId domain = 6; 
+    string customer_id = 7;
+    repeated string id = 8; // by serial number(s)
+    repeated string product = 9; // by product name(s)
+    // view: all|valid|grantable
+    bool valid = 10; // show: available to be granted
+    string q = 11; // filter: term of search
+}
+
+message LicenseUsageResponse {
+    // ----- Result paging ----- //
+    int32 page = 1; // this page number !
+     bool next = 2; // next page exists ? more results ?
+    //    size = (.next ? len(items) : undef (> len(size)))
+    // ----- Result entries ----- //
+    repeated LicenseV1 items = 3;
+}

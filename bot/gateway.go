@@ -389,6 +389,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 			// NO Channel FOUND !
 			// CHECK: Can we accept NEW one ?
 			if !c.Bot.GetEnabled() {
+				c.Log.Warn().Msg("DISABLED")
 				return nil, errors.New(
 					"chat.bot.channel.disabled",
 					"chat: bot is disabled",

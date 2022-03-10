@@ -93,3 +93,83 @@ type authHandler struct {
 func (h *authHandler) UserInfo(ctx context.Context, in *UserinfoRequest, out *Userinfo) error {
 	return h.AuthHandler.UserInfo(ctx, in, out)
 }
+
+// Api Endpoints for Customers service
+
+func NewCustomersEndpoints() []*api.Endpoint {
+	return []*api.Endpoint{}
+}
+
+// Client API for Customers service
+
+type CustomersService interface {
+	// GET Customer without products analytics
+	GetCustomer(ctx context.Context, in *GetCustomerRequest, opts ...client.CallOption) (*GetCustomerResponse, error)
+	// GET Authentication Customer's License details
+	LicenseUsage(ctx context.Context, in *LicenseUsageRequest, opts ...client.CallOption) (*LicenseUsageResponse, error)
+}
+
+type customersService struct {
+	c    client.Client
+	name string
+}
+
+func NewCustomersService(name string, c client.Client) CustomersService {
+	return &customersService{
+		c:    c,
+		name: name,
+	}
+}
+
+func (c *customersService) GetCustomer(ctx context.Context, in *GetCustomerRequest, opts ...client.CallOption) (*GetCustomerResponse, error) {
+	req := c.c.NewRequest(c.name, "Customers.GetCustomer", in)
+	out := new(GetCustomerResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *customersService) LicenseUsage(ctx context.Context, in *LicenseUsageRequest, opts ...client.CallOption) (*LicenseUsageResponse, error) {
+	req := c.c.NewRequest(c.name, "Customers.LicenseUsage", in)
+	out := new(LicenseUsageResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Server API for Customers service
+
+type CustomersHandler interface {
+	// GET Customer without products analytics
+	GetCustomer(context.Context, *GetCustomerRequest, *GetCustomerResponse) error
+	// GET Authentication Customer's License details
+	LicenseUsage(context.Context, *LicenseUsageRequest, *LicenseUsageResponse) error
+}
+
+func RegisterCustomersHandler(s server.Server, hdlr CustomersHandler, opts ...server.HandlerOption) error {
+	type customers interface {
+		GetCustomer(ctx context.Context, in *GetCustomerRequest, out *GetCustomerResponse) error
+		LicenseUsage(ctx context.Context, in *LicenseUsageRequest, out *LicenseUsageResponse) error
+	}
+	type Customers struct {
+		customers
+	}
+	h := &customersHandler{hdlr}
+	return s.Handle(s.NewHandler(&Customers{h}, opts...))
+}
+
+type customersHandler struct {
+	CustomersHandler
+}
+
+func (h *customersHandler) GetCustomer(ctx context.Context, in *GetCustomerRequest, out *GetCustomerResponse) error {
+	return h.CustomersHandler.GetCustomer(ctx, in, out)
+}
+
+func (h *customersHandler) LicenseUsage(ctx context.Context, in *LicenseUsageRequest, out *LicenseUsageResponse) error {
+	return h.CustomersHandler.LicenseUsage(ctx, in, out)
+}

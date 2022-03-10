@@ -374,6 +374,10 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 	)
 
 	if err != nil {
+		// TODO: Auto-respond with this error message
+		// to the given chat message event !
+		re := errors.FromError(err)
+		_, _ = c.SendText(pageASID, userPSID, re.Detail)
 		return err
 	}
 
