@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -718,6 +719,8 @@ func (c *Client) MessengerPages(rsp http.ResponseWriter, req *http.Request) {
 		http.Error(rsp, err.Error(), http.StatusNotFound)
 		return
 	}
+
+	sort.SliceStable(pages, func(i, j int) bool { return pages[i].ID < pages[j].ID })
 
 	header := rsp.Header()
 	header.Set("Pragma", "no-cache")

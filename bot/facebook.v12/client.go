@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"net/url"
 	"path"
@@ -176,20 +177,63 @@ func (c *Client) completeOAuth(req *http.Request, scope ...string) (*oauth2.Toke
 	return token, nil
 }
 
+var completeOAuthHTML, _ = template.New("complete.html").Parse(
+`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+  <script>
+    const message = {
+      {{- if .}}
+      status: 'error',
+      detail: {{.Detail}},
+      {{- else}}
+      status: 'success',
+      {{- end}}
+    };
+    window.opener.postMessage(message, '*');
+    window.close();
+  </script>
+</head>
+<body>
+
+</body>
+</html>`,
+)
+
+func writeCompleteOAuthHTML(w http.ResponseWriter, err error) error {
+	
+	h := w.Header()
+	h.Set("Pragma", "no-cache")
+	h.Set("Cache-Control", "no-cache")
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+
+	var re *errors.Error
+	if err != nil {
+		re = errors.FromError(err)
+	}
+	
+	return completeOAuthHTML.Execute(w, re)
+}
+
 func (c *Client) SetupPages(rsp http.ResponseWriter, req *http.Request) {
 
 	// USER_ACCESS_TOKEN
 	token, err := c.completeOAuth(req, messengerScope...)
 
 	if err != nil {
-		http.Error(rsp, err.Error(), http.StatusBadRequest)
+		// http.Error(rsp, err.Error(), http.StatusBadRequest)
+		_ = writeCompleteOAuthHTML(rsp, err)
 		return
 	}
 
 	accounts, err := c.getMessengerPages(token)
 
 	if err != nil {
-		http.Error(rsp, err.Error(), http.StatusBadGateway)
+		// http.Error(rsp, err.Error(), http.StatusBadGateway)
+		_ = writeCompleteOAuthHTML(rsp, err)
 		return
 	}
 
@@ -214,7 +258,8 @@ func (c *Client) SetupPages(rsp http.ResponseWriter, req *http.Request) {
 	)
 
 	if err != nil {
-		http.Error(rsp, err.Error(), http.StatusInternalServerError)
+		// http.Error(rsp, err.Error(), http.StatusInternalServerError)
+		_ = writeCompleteOAuthHTML(rsp, err)
 		return
 	}
 
@@ -227,12 +272,45 @@ func (c *Client) SetupPages(rsp http.ResponseWriter, req *http.Request) {
 	// // user, err := c.GetProfile(debugToken["user_id"].(string))
 	// // GET /{user_id}
 
-	// 302 Found https://dev.webitel.com/ws8/messenger/pages
-	http.Redirect(rsp, req,
-		c.CallbackURL()+ "?pages=",
-		// "https://dev.webitel.com" + path.Join("/chat/ws8/messenger")+ "?pages",
-		http.StatusFound,
-	)
+	// // 302 Found https://dev.webitel.com/ws8/messenger/pages
+	// http.Redirect(rsp, req,
+	// 	c.CallbackURL()+ "?pages=",
+	// 	// "https://dev.webitel.com" + path.Join("/chat/ws8/messenger")+ "?pages",
+	// 	http.StatusFound,
+	// )
+
+	// 200 OK
+	// NOTE: Static HTML to help UI close popup window !
+	_ = writeCompleteOAuthHTML(rsp, nil)
+	// header := rsp.Header()
+	// header.Set("Pragma", "no-cache")
+	// header.Set("Cache-Control", "no-cache")
+	// header.Set("Content-Type", "text/html; charset=utf-8")
+	// rsp.WriteHeader(http.StatusOK)
+
+	// var re *errors.Error
+	// if err != nil {
+	// 	re = errors.FromError(err)
+	// }
+	
+	// _ = completeOAuthHTML.Execute(rsp, re)
+
+// 	_, _ = rsp.Write([]byte(
+// `<!DOCTYPE html>
+// <html lang="en">
+// <head>
+//   <meta charset="UTF-8">
+//   <title>Title</title>
+//   <script>
+//     window.opener.postMessage('success');
+//     // window.close();
+//   </script>
+// </head>
+// <body>
+
+// </body>
+// </html>`))
+
 }
 
 // UserAccounts represents set of the
@@ -449,10 +527,10 @@ func (c *Client) subscribePages(pages []*Page) error {
 	var (
 
 		subscribedPageFields = []string{
-			"standby",
+			// "standby",
 			"messages",
 			"messaging_postbacks",
-			"messaging_handovers",
+			// "messaging_handovers",
 			// "user_action",
 		}
 
@@ -517,15 +595,21 @@ func (c *Client) subscribePages(pages []*Page) error {
 		return err
 	}
 	var (
-		re graph.Success
-		res = graph.Result{
-			Data: &re,
+		// ret graph.Success
+		// res = graph.Result{
+		// 	Data: ret,
+		// }
+		res = struct{
+			graph.Success // Embedded (Anonymous)
+			Error *graph.Error `json:"error,omitempty"`
+		} {
+			// Alloc
 		}
 	)
 	// BATCH Request(s) order !
 	for i, page := range pages {
 		// NULLify
-		re.Ok = false
+		res.Ok = false
 		res.Error = nil
 		// Decode JSON Result
 		err = json.NewDecoder(
@@ -535,7 +619,7 @@ func (c *Client) subscribePages(pages []*Page) error {
 		if err == nil && res.Error != nil {
 			err = res.Error
 		}
-		if err == nil && !re.Ok {
+		if err == nil && !res.Ok {
 			err = fmt.Errorf("subscribe: page=%s not confirmed", page.ID)
 		}
 		
@@ -624,19 +708,27 @@ func (c *Client) unsubscribePages(pages []*Page) error {
 	}
 	// BATCH Request(s) order !
 	var (
-		re struct {
+		// re struct {
+		// 	Success bool `json:"success,omitempty"`
+		// 	MessagingSuccess bool `json:"messaging_success,omitempty"`
+		// }
+		// res = graph.Result{
+		// 	Data: &re,
+		// }
+		res = struct{
+			// Embedded (Anonymous)
 			Success bool `json:"success,omitempty"`
 			MessagingSuccess bool `json:"messaging_success,omitempty"`
-		}
-		res = graph.Result{
-			Data: &re,
+			Error *graph.Error `json:"error,omitempty"`
+		} {
+			// Alloc
 		}
 	)
 	for i, page := range pages {
 		// NULLify
 		res.Error = nil
-		re.Success = false
-		re.MessagingSuccess = false
+		res.Success = false
+		res.MessagingSuccess = false
 
 		err = json.NewDecoder(
 			strings.NewReader(ret[i].Body),
@@ -662,8 +754,8 @@ func (c *Client) unsubscribePages(pages []*Page) error {
 					page.SubscribedFields = nil
 
 					res.Error = nil
-					re.Success = true
-					re.MessagingSuccess = true
+					res.Success = true
+					res.MessagingSuccess = true
 					// continue // next page result !
 				}
 
@@ -672,7 +764,7 @@ func (c *Client) unsubscribePages(pages []*Page) error {
 			}
 			err = res.Error
 		}
-		if err == nil && !re.Success {
+		if err == nil && !res.Success {
 			err = fmt.Errorf("unsubscribe: success not confirmed")
 		}
 		// if err == nil && !re.MessagingSuccess {

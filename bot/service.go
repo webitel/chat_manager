@@ -581,10 +581,38 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 	return gate, nil
 }*/
 
+var (
+
+	hdrOrigin = http.CanonicalHeaderKey("Origin")
+)
+
 // ServeHTTP handler to deal with external chat channel notifications
 func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: Allow GET or POST Methods ONLY !
+	switch r.Method {
+	case http.MethodOptions:
+		fallthrough
+	case http.MethodGet:
+		header := w.Header()
+		header.Set("Access-Control-Allow-Credentials", "true")
+		header.Set("Access-Control-Allow-Methods", "OPTIONS, GET")
+		header.Set("Access-Control-Allow-Headers", "Authorization, X-Webitel-Access, Cookie, "+
+			"Connection, Upgrade, Sec-Websocket-Version, Sec-Websocket-Extensions, Sec-Websocket-Key, Sec-Websocket-Protocol",
+		)
+		origin := r.Header.Get(hdrOrigin)
+		if origin == "" {
+			origin = "*"
+		}
+		header.Set("Access-Control-Allow-Origin", origin)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return // 200 OK
+		}
+	case http.MethodPost:
+		// Receive Update Event !
+	default:
+	}
 
 	srv.Log.Debug().
 		Str("uri", r.URL.Path).
