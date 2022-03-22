@@ -653,60 +653,61 @@ func newKeyboardMarkup(buttons []*chat.Buttons) (quickReplies [][]telegram.Inlin
 
 	var (
 
-		inlineMarkup [][]telegram.InlineKeyboardButton
-		replyMarkup  [][]telegram.KeyboardButton
-		replyRemove  bool
+		buttonsRemove bool
+		buttonsMarkup [][]telegram.KeyboardButton
+		repliesMarkup [][]telegram.InlineKeyboardButton
 
-		inlineLayout []telegram.InlineKeyboardButton
-		replyLayout  []telegram.KeyboardButton
+		buttonsLayout []telegram.KeyboardButton
+		repliesLayout []telegram.InlineKeyboardButton
 	)
 
 	for _, markup := range buttons {
-		
 		for _, button := range markup.Button {
-			switch button.Type {
+			switch strings.ToLower(button.Type) {
 			// remove_keyboard
-			case "remove_keyboard", "remove", "clear":
+			case "clear", "remove", "remove_keyboard":
 				// Invalidate keyboard (persistent menu)
 				// return telegram.NewRemoveKeyboard(true)
-				replyRemove = true
+				buttonsRemove = true
 			// keyboard_button (persistent menu)
-			case "contact", "phone":
-				if replyRemove { break }
-				replyLayout = append(replyLayout,
+			case "phone", "contact":
+				if buttonsRemove { break }
+				buttonsLayout = append(buttonsLayout,
 					telegram.NewKeyboardButtonContact(button.Text),
 				)
-			case "email":
-				if replyRemove { break }
+			case "email", "mail":
+				if buttonsRemove { break }
 				// NOT Supported !
+			// keyboard_button (persistent menu)
 			case "location":
-				if replyRemove { break }
-				replyLayout = append(replyLayout,
+				if buttonsRemove { break }
+				buttonsLayout = append(buttonsLayout,
 					telegram.NewKeyboardButtonLocation(button.Text),
 				)
-			// quick_reply 
+			// inline_keyboard: quick_reply 
 			case "url":
-				inlineLayout = append(inlineLayout,
+				repliesLayout = append(repliesLayout,
 					telegram.NewInlineKeyboardButtonURL(
 						button.Text, button.Url,
 					),
 				)
-			// case "switch":
-			// 	inlineLayout = append(inlineLayout,
-			// 		telegram.NewInlineKeyboardButtonSwitch(
-			// 			button.Text, button.Code,
-			// 		),
-			// 	)
-			case "postback", "inline", "reply":
-				inlineLayout = append(inlineLayout,
+			case "reply": //, "postback":
+				repliesLayout = append(repliesLayout,
 					telegram.NewInlineKeyboardButtonData(
 						button.Text, button.Code,
 					),
 				)
+			case "postback":
+				if buttonsRemove { break }
+				// NOTE: In this (Telegram) implementation .code attribute cannot be involved,
+				// so you must be vigilant in handling localized menu button labels as postback messages !
+				buttonsLayout = append(buttonsLayout,
+					telegram.NewKeyboardButton(button.Text),
+				)
 			default:
 			// case "reply", "postback":
-				if replyRemove { break }
-				replyLayout = append(replyLayout,
+				if buttonsRemove { break }
+				buttonsLayout = append(buttonsLayout,
 					telegram.NewKeyboardButton(button.Text),
 				)
 			}
@@ -714,23 +715,23 @@ func newKeyboardMarkup(buttons []*chat.Buttons) (quickReplies [][]telegram.Inlin
 
 		// rotate keyboard row(s) ...
 
-		if len(inlineLayout) != 0 {
-			inlineMarkup = append(inlineMarkup, inlineLayout)
-			inlineLayout = nil
+		if len(repliesLayout) != 0 {
+			repliesMarkup = append(repliesMarkup, repliesLayout)
+			repliesLayout = nil
 		}
 
-		if len(replyLayout) != 0 {
-			replyMarkup = append(replyMarkup, replyLayout)
-			replyLayout = nil
+		if len(buttonsLayout) != 0 {
+			buttonsMarkup = append(buttonsMarkup, buttonsLayout)
+			buttonsLayout = nil
 		}
 	}
 
-	quickReplies = inlineMarkup
-	if replyRemove {
+	quickReplies = repliesMarkup
+	if buttonsRemove {
 		keyboardMenu = telegram.NewRemoveKeyboard(true)
-	} else if len(replyMarkup) != 0 {
+	} else if len(buttonsMarkup) != 0 {
 		keyboardMenu = telegram.NewOneTimeReplyKeyboard(
-			replyMarkup...,
+			buttonsMarkup...,
 		)
 	}
 
