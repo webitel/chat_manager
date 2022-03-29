@@ -1227,7 +1227,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		}
 		// Optional. Caption for the audio
 		sendMessage.Text = coalesce(
-			recvMessage.Caption, audio.Title, "Audio",
+			recvMessage.Caption, audio.Title, // "Audio",
 		)
 	
 	} else if voice := recvMessage.Voice; voice != nil {
@@ -1259,7 +1259,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		}
 		// Optional. Caption for the voice
 		sendMessage.Text = coalesce(
-			recvMessage.Caption, "Voice",
+			recvMessage.Caption, // "Voice",
 		)
 
 	} else if video := recvMessage.Video; video != nil {
@@ -1290,7 +1290,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		}
 		// Optional. Caption for the video
 		sendMessage.Text = coalesce(
-			recvMessage.Caption, "Video",
+			recvMessage.Caption, // "Video",
 		)
 
 	} else if videoNote := recvMessage.VideoNote; videoNote != nil {
@@ -1322,7 +1322,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		}
 		// FIXME: NOT declared for videoNote !
 		sendMessage.Text = coalesce(
-			recvMessage.Text, recvMessage.Caption, "Video Note",
+			recvMessage.Text, recvMessage.Caption, // "Video Note",
 		)
 
 	} else if location := recvMessage.Location; location != nil {
@@ -1365,7 +1365,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		}
 		// FIXME !
 		sendMessage.Text = coalesce(
-			sticker.Emoji, sticker.SetName, "Sticker",
+			sticker.Emoji, sticker.SetName, // "Sticker",
 		)
 
 	} else if contact := recvMessage.Contact; contact != nil {
