@@ -44,12 +44,19 @@ func NewChatServiceEndpoints() []*api.Endpoint {
 type ChatService interface {
 	// SendMessage [FROM] created channel_id (+auth_user_id) [TO] conversation_id chat-room
 	SendMessage(ctx context.Context, in *SendMessageRequest, opts ...client.CallOption) (*SendMessageResponse, error)
+	// StartConversation starts bot's (.user.type:.user.connection) flow schema NEW routine
 	StartConversation(ctx context.Context, in *StartConversationRequest, opts ...client.CallOption) (*StartConversationResponse, error)
+	// CloseConversation stops and close chat-bot's schema routine with all it's recipient(s)
 	CloseConversation(ctx context.Context, in *CloseConversationRequest, opts ...client.CallOption) (*CloseConversationResponse, error)
+	// JoinConversation accepts user's invitation to chat conversation
 	JoinConversation(ctx context.Context, in *JoinConversationRequest, opts ...client.CallOption) (*JoinConversationResponse, error)
+	// LeaveConversation kicks requested user from chat conversation
 	LeaveConversation(ctx context.Context, in *LeaveConversationRequest, opts ...client.CallOption) (*LeaveConversationResponse, error)
+	// InviteToConversation publish NEW invitation for .user
 	InviteToConversation(ctx context.Context, in *InviteToConversationRequest, opts ...client.CallOption) (*InviteToConversationResponse, error)
+	// DeclineInvitation declines chat invitation FROM user
 	DeclineInvitation(ctx context.Context, in *DeclineInvitationRequest, opts ...client.CallOption) (*DeclineInvitationResponse, error)
+	// CheckSession returns internal chat channel for external chat user
 	CheckSession(ctx context.Context, in *CheckSessionRequest, opts ...client.CallOption) (*CheckSessionResponse, error)
 	WaitMessage(ctx context.Context, in *WaitMessageRequest, opts ...client.CallOption) (*WaitMessageResponse, error)
 	UpdateChannel(ctx context.Context, in *UpdateChannelRequest, opts ...client.CallOption) (*UpdateChannelResponse, error)
@@ -228,12 +235,19 @@ func (c *chatService) BlindTransfer(ctx context.Context, in *ChatTransferRequest
 type ChatServiceHandler interface {
 	// SendMessage [FROM] created channel_id (+auth_user_id) [TO] conversation_id chat-room
 	SendMessage(context.Context, *SendMessageRequest, *SendMessageResponse) error
+	// StartConversation starts bot's (.user.type:.user.connection) flow schema NEW routine
 	StartConversation(context.Context, *StartConversationRequest, *StartConversationResponse) error
+	// CloseConversation stops and close chat-bot's schema routine with all it's recipient(s)
 	CloseConversation(context.Context, *CloseConversationRequest, *CloseConversationResponse) error
+	// JoinConversation accepts user's invitation to chat conversation
 	JoinConversation(context.Context, *JoinConversationRequest, *JoinConversationResponse) error
+	// LeaveConversation kicks requested user from chat conversation
 	LeaveConversation(context.Context, *LeaveConversationRequest, *LeaveConversationResponse) error
+	// InviteToConversation publish NEW invitation for .user
 	InviteToConversation(context.Context, *InviteToConversationRequest, *InviteToConversationResponse) error
+	// DeclineInvitation declines chat invitation FROM user
 	DeclineInvitation(context.Context, *DeclineInvitationRequest, *DeclineInvitationResponse) error
+	// CheckSession returns internal chat channel for external chat user
 	CheckSession(context.Context, *CheckSessionRequest, *CheckSessionResponse) error
 	WaitMessage(context.Context, *WaitMessageRequest, *WaitMessageResponse) error
 	UpdateChannel(context.Context, *UpdateChannelRequest, *UpdateChannelResponse) error

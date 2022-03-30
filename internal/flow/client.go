@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"github.com/micro/go-micro/v2/errors"
 	"github.com/webitel/chat_manager/internal/contact"
 
 	"strconv"
@@ -44,7 +45,7 @@ type Client interface {
 	CloseConversation(conversationID, cause string) error
 	// BreakBridge(sender *store.Channel, cause BreakBridgeCause) error
 	// CloseConversation(sender *store.Channel) error
-	TransferToSchema(conversationID string, originator *app.Channel, schemaToID int64) error
+	TransferTo(conversationID string, originator *app.Channel, schemaToID, userToID int64) error
 
 	SendMessageV1(target *app.Channel, message *chat.Message) error
 }
@@ -659,7 +660,7 @@ func (c *Agent) BreakBridge(conversationID string, cause BreakBridgeCause) error
 	}
 }*/
 
-func (c *Agent) TransferToSchema(conversationID string, originator *app.Channel, schemaToID int64) error {
+func (c *Agent) TransferTo(conversationID string, originator *app.Channel, schemaToID, userToID int64) error {
 
 	channel, err := c.GetChannel(conversationID)
 	
@@ -667,7 +668,16 @@ func (c *Agent) TransferToSchema(conversationID string, originator *app.Channel,
 		return err
 	}
 
-	err = channel.TransferToSchema(originator, schemaToID)
+	if schemaToID != 0 {
+		err = channel.TransferToSchema(originator, schemaToID)
+	} else if userToID != 0 {
+		err = channel.TransferToUser(originator, userToID)
+	} else {
+		err = errors.BadRequest(
+			"chat.transfer.target.required",
+			"chat: transfer:to target(.schema_id|.user_id) required but missing",
+		)
+	}
 
 	if err != nil {
 		// NOTE: ignore "grpc.chat.conversation.not_found" !

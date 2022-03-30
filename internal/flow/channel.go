@@ -525,6 +525,116 @@ func (c *Channel) Start(message *chat.Message) error {
 	return nil
 }
 
+func (c *Channel) startUser(message *chat.Message, userToID int64) error {
+	
+	c.Log.Debug().
+		Interface("metadata", c.Variables).
+		Str("conversation_id", c.ChatID()).
+		Int64("user_id", userToID).
+		Int64("domain_id", c.DomainID()).
+		Interface("message", message).
+		Msg("START Conversation")
+	
+	// const commandStart = "start"
+	//messageText := commandStart
+
+	start := &bot.StartRequest{
+		
+		ConversationId: c.ChatID(),
+		DomainId:       c.DomainID(),
+		// FIXME: why flow_manager need to know about some external chat-bot profile identity ?
+		ProfileId:      c.UserID(),
+		Message:        message,
+		UserId:         userToID,
+		// Message: &bot.Message{
+		// 	Id:   message.GetId(),
+		// 	Type: message.GetType(),
+		// 	Value: &bot.Message_Text{
+		// 		Text: messageText, // req.GetMessage().GetTextMessage().GetText(),
+		// 	},
+		// },
+
+		Variables:      c.Variables, // message.GetVariables(),
+	}
+
+
+	// if message != nil {
+		
+	// 	if message.File != nil{
+	// 		start.Message.Value =
+	// 			&bot.Message_File_{
+	// 				File: &bot.Message_File{
+	// 					Id:       message.File.GetId(),
+	// 					Url:      message.File.GetUrl(),
+	// 					MimeType: message.File.GetMime(),
+	// 				},
+	// 			}
+	// 	}else{
+	// 		if message.Text != "" {
+	// 			messageText = message.Text
+	// 		}
+			
+	// 		start.Message.Value = &bot.Message_Text{
+	// 			Text: messageText,
+	// 		}
+	// 	}
+	// }
+
+	// Request to start flow-routine for NEW-chat incoming message !
+	c.Host = "lookup" // NEW: selector.Random
+	
+	_, err := c.Agent.Start(
+		// channel context
+		context.TODO(), start,
+		// callOptions
+		c.sendOptions,
+	)
+
+	if err != nil {
+
+		c.Log.Error().Err(err).
+			Msg("Failed to /start chat@bot routine")
+
+		return err
+
+	}
+
+	// var re *errors.Error
+	
+	// if err != nil {
+	// 	re = errors.FromError(err)
+	// } else {
+	// 	re = chatFlowError(res.GetError())
+	// }
+	
+	// if re := res.GetError(); re != nil {
+
+	// 	c.Log.Error().
+	// 		Str("errno", re.GetId()).
+	// 		Str("error", re.GetMessage()).
+	// 		Msg("Failed to /start chat@bot routine")
+
+	// 	// return errors.New(
+	// 	// 	re.GetId(),
+	// 	// 	re.GetMessage(),
+	// 	// 	502, // 502 Bad Gateway
+	// 	// 	// The server, while acting as a gateway or proxy,
+	// 	// 	// received an invalid response from the upstream server it accessed
+	// 	// 	// in attempting to fulfill the request.
+	// 	// )
+	// }
+
+	c.Log.Info().
+		Int64("pdc", c.DomainID()).
+		Int64("pid", c.UserID()).
+		Int64("user-id", userToID).
+		Str("host", c.Host).
+		Str("channel-id", c.ID).
+		Msg(">>>>> START <<<<<")
+
+	return nil
+}
+
 // Close .this channel @workflow.Break(!)
 func (c *Channel) Close(cause string) error {
 
@@ -646,6 +756,111 @@ func (c *Channel) BreakBridge(cause BreakBridgeCause) error {
 	return nil
 }
 
+func (c *Channel) TransferToUser(originator *app.Channel, userToID int64) error {
+
+	chatFromID := originator.Chat.ID
+	// Stop current workflow schema routine on this c channel.
+	err := c.Close("transfer") // workflow@Break()
+	if err != nil {
+		return err
+	}
+	
+	// Format: [;]date:from:to
+	// from: channel_id
+	// to: user_id
+	date := app.DateTimestamp(
+		time.Now().UTC(),
+	)
+	xferNext := fmt.Sprintf("%d:%s:user:%d",
+		date, chatFromID, userToID,
+	)
+	xferFull := xferNext
+	xferThis := c.Variables["xfer"]
+	if xferThis != "" {
+		xferFull = strings.Join(
+			// FIXME: PUSH ? OR APPEND ?
+			// QUEUE ? OR STACK ?
+			[]string{xferThis, xferNext}, ";",
+		)
+	}
+	if c.Variables == nil {
+		c.Variables = make(map[string]string)
+	}
+	c.Variables["xfer"] = xferFull
+	// schemaThisID := c.Variables["flow"]
+	// c.Variables["flow"] = strconv.FormatInt(schemaToID, 10)
+	// Start NEW workflow schema routine within this c channel.
+	user := originator.User
+	err = c.startUser(&chat.Message{
+		Id:   0,
+		Type: "xfer",
+		Text: "transfer",
+		Variables: map[string]string{
+			// "flow": strconv.FormatInt(schemaToID, 10),
+			"xfer": xferNext,
+		},
+		CreatedAt:     date,
+		// originator.Chat.User
+		From:  &chat.Account{
+			Id:        user.ID,
+			Channel:   user.Channel,
+			Contact:   user.Contact,
+			FirstName: user.FirstName,
+			LastName:  user.LastName,
+			Username:  user.UserName,
+		},
+	}, userToID,
+	)
+
+	if err != nil {
+		// Restore current state
+		c.Variables["xfer"] = xferThis
+		// c.Variables["flow"] = schemaThisID
+		return err
+	}
+
+
+	// _, err := c.Agent.TransferChatPlan(
+	// 	// cancellation context
+	// 	context.TODO(),
+	// 	// request
+	// 	&bot.TransferChatPlanRequest{
+	// 		ConversationId: c.ChatID(),
+	// 		PlanId: int32(schemaToID),
+	// 	},
+	// 	// callOptions
+	// 	c.sendOptions,
+
+	// )
+
+	if err != nil {
+		// re := errors.FromError(err)
+		// switch re.Id {
+		// case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
+		// 	// NOTE: got Not Found ! make idempotent !
+		// 	return nil // FIXME: no matter !
+		// 	// Affected ON .LeaveConversation, after .workflow service,
+		// 	// that run .this chat session - was stopped !
+
+		// default:
+
+		// 	return re // Failure !
+		// }
+		return err
+	}
+
+	c.Log.Info().
+		Int64("pdc", c.DomainID()).
+		Int64("pid", c.UserID()).
+		Str("host", c.Host).
+		Str("flow-chat-id", c.ChatID()).
+		Str("from-chat-id", chatFromID).
+		Int64("to-user-id", userToID).
+		Msg(">>>>> TRANSFERED <<<<<")
+
+	return nil
+}
+
 func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) error {
 
 	chatFromID := originator.Chat.ID
@@ -661,7 +876,7 @@ func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) er
 	date := app.DateTimestamp(
 		time.Now().UTC(),
 	)
-	xferNext := fmt.Sprintf("%d:%s:%d",
+	xferNext := fmt.Sprintf("%d:%s:schema:%d",
 		date, chatFromID, schemaToID,
 	)
 	xferFull := xferNext

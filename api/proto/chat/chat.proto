@@ -9,12 +9,19 @@ import "message.proto";
 service ChatService {
   // SendMessage [FROM] created channel_id (+auth_user_id) [TO] conversation_id chat-room
   rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {}
+  // StartConversation starts bot's (.user.type:.user.connection) flow schema NEW routine
   rpc StartConversation(StartConversationRequest) returns (StartConversationResponse) {}
+  // CloseConversation stops and close chat-bot's schema routine with all it's recipient(s)
   rpc CloseConversation(CloseConversationRequest) returns (CloseConversationResponse) {}
+  // JoinConversation accepts user's invitation to chat conversation
   rpc JoinConversation(JoinConversationRequest) returns (JoinConversationResponse) {}
+  // LeaveConversation kicks requested user from chat conversation
   rpc LeaveConversation(LeaveConversationRequest) returns (LeaveConversationResponse) {}
+  // InviteToConversation publish NEW invitation for .user
   rpc InviteToConversation(InviteToConversationRequest) returns (InviteToConversationResponse) {}
+  // DeclineInvitation declines chat invitation FROM user
   rpc DeclineInvitation(DeclineInvitationRequest) returns (DeclineInvitationResponse) {}
+  // CheckSession returns internal chat channel for external chat user
   rpc CheckSession(CheckSessionRequest) returns (CheckSessionResponse) {}
   rpc WaitMessage(WaitMessageRequest) returns (WaitMessageResponse) {}
   rpc UpdateChannel(UpdateChannelRequest) returns (UpdateChannelResponse) {}
@@ -208,17 +215,17 @@ message LeaveConversationResponse {
 
 message InviteToConversationRequest {
 
-  User user = 1;
-  string conversation_id = 2;
-  string inviter_channel_id = 3;
-  int64 timeout_sec = 4;
-  int64 domain_id = 5;
-  int64 auth_user_id = 6;
-  //  bool from_flow = 7;
-  string title = 7;
-  string app_id = 8;
-
-  map<string,string> variables = 9;
+    User user = 1;                    // invite: .user.*
+    string conversation_id = 2;       // TO: chat
+    string inviter_channel_id = 3;    // FROM: chat
+    int64 timeout_sec = 4;            // invite: timeout
+    int64 domain_id = 5;              // invite: .user.domain
+    int64 auth_user_id = 6;           // FROM: user.id
+    //  bool from_flow = 7;
+    string title = 7;                 // invite: chat title
+    string app_id = 8;                // ???
+  
+    map<string,string> variables = 9; // invite: chat metadata
 }
 
 message InviteToConversationResponse {
@@ -341,6 +348,7 @@ message ChatTransferRequest {
     // Required. [TO] Flow schema unique ID,
     // to which a conversation must be transfered
     int64 schema_id = 3;
+    int64 user_id = 5;
     // Optional. Origination Variables to be chained (merged)
     map<string,string> variables = 4;
 }

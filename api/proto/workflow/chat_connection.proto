@@ -44,6 +44,7 @@ message StartRequest {
     webitel.chat.server.Message message = 4;
      map<string, string>  variables = 5;
     int32 schema_id = 6;
+    int64 user_id = 7;
 }
 
 message StartResponse {

@@ -224,7 +224,8 @@ func (s *chatService) SendMessage(
 
 		Str("type",  sendMessage.GetType()).
 		Str("text",  sendMessage.GetText()).
-		Bool("file", sendMessage.GetFile() != nil).
+		// Bool("file", sendMessage.GetFile() != nil).
+		Interface("file", sendMessage.GetFile()).
 
 		Msg("SEND Message")
 
@@ -2679,6 +2680,7 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 	
 	var (
 
+		userToID   = req.GetUserId()
 		schemaToID = req.GetSchemaId()
 		chatFromID = req.GetChannelId()
 		chatFlowID = req.GetConversationId()
@@ -2688,6 +2690,7 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 		Str("conversation_id", chatFlowID).
 		Str("channel_id", chatFromID).
 		Int64("schema_id", schemaToID).
+		Int64("user_id", userToID).
 		Msg("TRANSFER Conversation")
 
 	if chatFlowID == "" && chatFromID == "" {
@@ -2697,10 +2700,22 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 		)
 	}
 
-	if schemaToID == 0 {
+	// if schemaToID == 0 {
+	// 	return errors.BadRequest(
+	// 		"chat.transfer.flow.schema_id.required",
+	// 		"chat: transfer:to schema_id required but missing",
+	// 	)
+	// }
+
+	if schemaToID == 0 && userToID == 0 {
 		return errors.BadRequest(
-			"chat.transfer.flow.schema_id.required",
-			"chat: transfer:to schema_id required but missing",
+			"chat.transfer.target.required",
+			"chat: transfer:to target(.schema_id|.user_id) required but missing",
+		)
+	} else if schemaToID != 0 && userToID != 0 {
+		return errors.BadRequest(
+			"chat.transfer.target.ambiguous",
+			"chat: transfer:to target(.schema_id&.user_id) is ambiguous",
 		)
 	}
 
@@ -2736,13 +2751,42 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 		// The Originator (user@webitel) channel not found
 		return errors.BadRequest(
 			"chat.transfer.channel.not_found",
-			"transfer: user channel ID=%s not found or been closed",
+			"transfer: origin channel ID=%s not found or been closed",
 			 chatFromID,
 		)
 	}
 	chatFromID = chat.ID
 
 	originator := chat.Channel
+
+	/*var userToID int64 = 72
+	if userToID != 0 {
+		var res pb.InviteToConversationResponse
+		err = c.InviteToConversation(ctx,
+			&pb.InviteToConversationRequest{
+				User: &pb.User{
+					UserId:     userToID,
+					Type:       "",
+					Connection: "",
+					Internal:   true,
+				},
+				ConversationId:   originator.Chat.Invite, // chatFlowID,
+				InviterChannelId: originator.Chat.ID, // chatFromID,
+				AuthUserId:       originator.User.ID,
+				DomainId:         originator.DomainID,
+				Title:            originator.Title,
+				TimeoutSec:       16,
+				AppId:            "",
+				Variables:        req.GetVariables(),
+			},
+			&res,
+		)
+		if err != nil {
+			return err
+		}
+		// return err // err | <nil>
+	}*/
+
 	switch originator.Channel {
 	case "websocket":
 
@@ -2782,9 +2826,16 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 		// FIXME:
 	}
 
+	/*/ COMPLETE: Transfer TO User ?
+	if userToID != 0 {
+		// res.* ?
+		return nil
+	}*/
+
 	// PERFORM: SWITCH Flow runtime schema(s) !
-	err = c.flowClient.TransferToSchema(
-		chatFlowID, originator, schemaToID,
+	err = c.flowClient.TransferTo(
+		chatFlowID, originator,
+		schemaToID, userToID,
 	)
 	
 	if err != nil {
