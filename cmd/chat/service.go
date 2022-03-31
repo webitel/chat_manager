@@ -1854,11 +1854,23 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		)
 
 		if err != nil {
-			return nil, errors.BadRequest(
+			var forwardFrom interface{} = forwardFromMessageID
+			if forwardFromMessageID == 0 {
+				forwardFrom = forwardFromBinding
+			}
+			err = errors.BadRequest(
 				"chat.message.lookup.error",
-				"forward: message ID=%d lookup: %s",
-				 forwardFromMessageID, err,
+				"forward: message %v lookup: %s",
+				 forwardFrom, err,
 			)
+			c.log.Warn().Interface("sender", sender.Chat).AnErr("error", err).Msg("FORWARD[FROM]")
+			forwardMessage = nil
+			err = nil // continue
+			// return nil, errors.BadRequest(
+			// 	"chat.message.lookup.error",
+			// 	"forward: message ID=%d lookup: %s",
+			// 	 forwardFromMessageID, err,
+			// )
 		}
 
 		// CHECK: original message found ?
@@ -1878,33 +1890,47 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		}
 
 		if !found {
-			return nil, errors.BadRequest(
+			var forwardFrom interface{} =
+				forwardFromMessageID
+			if forwardFromMessageID == 0 {
+				forwardFrom = forwardFromBinding
+			}
+			// return nil, errors.BadRequest(
+			// 	"chat.forward.message.not_found",
+			// 	"forward: original message %v not found",
+			// 	 forwardFrom,
+			// )
+			err = errors.BadRequest(
 				"chat.forward.message.not_found",
-				"forward: original message ID=%d not found",
-				 forwardFromMessageID,
+				"forward: original message %v not found",
+				 forwardFrom,
 			)
-		}
+			c.log.Warn().Interface("sender", sender.Chat).AnErr("error", err).Msg("FORWARD[FROM]")
+			err = nil // continue
 
-		// MARK message FORWARDED !
-		saveMessage.ForwardFromMessageID = forwardMessage.ID
-		// COPY Original Message Source !
-		saveMessage.Type = forwardMessage.Type
-		saveMessage.Text = forwardMessage.Text
-		saveMessage.File = forwardMessage.File
+		} else {
 
-		// Populate result message payload !
-		sendMessage.ForwardFromMessageId = forwardMessage.ID
-		sendMessage.ForwardFromChatId    = forwardMessage.ConversationID
-		// Forward Message Payload
-		sendMessage.Type = forwardMessage.Type
-		sendMessage.Text = forwardMessage.Text
-		if doc := forwardMessage.File; doc != nil {
-			sendMessage.File = &pb.File{
-				Id:   doc.ID,
-				Url:  "",
-				Size: doc.Size,
-				Mime: doc.Type,
-				Name: doc.Name,
+			// MARK message FORWARDED !
+			saveMessage.ForwardFromMessageID = forwardMessage.ID
+			// COPY Original Message Source !
+			saveMessage.Type = forwardMessage.Type
+			saveMessage.Text = forwardMessage.Text
+			saveMessage.File = forwardMessage.File
+
+			// Populate result message payload !
+			sendMessage.ForwardFromMessageId = forwardMessage.ID
+			sendMessage.ForwardFromChatId    = forwardMessage.ConversationID
+			// Forward Message Payload
+			sendMessage.Type = forwardMessage.Type
+			sendMessage.Text = forwardMessage.Text
+			if doc := forwardMessage.File; doc != nil {
+				sendMessage.File = &pb.File{
+					Id:   doc.ID,
+					Url:  "",
+					Size: doc.Size,
+					Mime: doc.Type,
+					Name: doc.Name,
+				}
 			}
 		}
 	
@@ -1918,11 +1944,24 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			)
 
 			if err != nil {
-				return nil, errors.BadRequest(
+				// return nil, errors.BadRequest(
+				// 	"chat.message.lookup.error",
+				// 	"reply: message ID=%d lookup: %s",
+				// 	 replyToMessageID, err,
+				// )
+				var replyTo interface{} = 
+					replyToMessageID
+				if replyToMessageID == 0 {
+					replyTo = replyToBinding
+				}
+				err = errors.BadRequest(
 					"chat.message.lookup.error",
-					"reply: message ID=%d lookup: %s",
-					 replyToMessageID, err,
+					"reply: message %v lookup: %s",
+					 replyTo, err,
 				)
+				c.log.Warn().Interface("sender", sender.Chat).AnErr("error", err).Msg("REPLY[TO]")
+				replyToMessage = nil
+				err = nil // continue
 			}
 
 			// CHECK: original message found ?
@@ -1942,18 +1981,33 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			}
 
 			if !found {
-				return nil, errors.BadRequest(
+				// return nil, errors.BadRequest(
+				// 	"chat.reply.message.not_found",
+				// 	"reply: original message ID=%d not found",
+				// 	 replyToMessageID,
+				// )
+				var replyTo interface{} = 
+					replyToMessageID
+				if replyToMessageID == 0 {
+					replyTo = replyToBinding
+				}
+				err = errors.BadRequest(
 					"chat.reply.message.not_found",
-					"reply: original message ID=%d not found",
-					 replyToMessageID,
+					"reply: original message %v not found",
+					 replyTo,
 				)
+				c.log.Warn().Interface("sender", sender.Chat).AnErr("error", err).Msg("REPLY[TO]")
+				err = nil // continue
+
+			} else {
+
+				// MARK message as REPLY !
+				saveMessage.ReplyToMessageID = replyToMessage.ID
+
+				// Disclose operation details
+				sendMessage.ReplyToMessageId = replyToMessage.ID
+
 			}
-
-			// MARK message as REPLY !
-			saveMessage.ReplyToMessageID = replyToMessage.ID
-
-			// Disclose operation details
-			sendMessage.ReplyToMessageId = replyToMessage.ID
 		}
 	}
 
