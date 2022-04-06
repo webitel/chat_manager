@@ -2226,7 +2226,7 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			doc.Id   = res.Id
 			doc.Url  = res.Url // src.String()
 			doc.Size = res.Size
-			doc.Mime = res.Mime
+			// doc.Mime = res.Mime
 			// doc.Name = res.Name // Normalized ABOVE !
 		}
 

@@ -158,6 +158,8 @@ type Button struct {
 	// Extensions:
 	//
 	// URL Button; https://developers.facebook.com/docs/messenger-platform/reference/buttons/url#properties
+	// This URL is opened in a mobile browser when the button is tapped. Must use HTTPS protocol if messenger_extensions is true.
+	URL string `json:"url,omitempty"`
 	// Call Button; https://developers.facebook.com/docs/messenger-platform/reference/buttons/call#properties
 	// Login Button; https://developers.facebook.com/docs/messenger-platform/reference/buttons/login#properties
 	// . . . 

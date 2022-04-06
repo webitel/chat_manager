@@ -457,10 +457,15 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 				continue // NEXT !
 			}
 
+			mime := doc.Type
 			name := path.Base(url.Path)
 			switch name {
 			case "/", ".":
 				name = ""
+			}
+
+			if ext := path.Ext(name); ext != "" {
+				mime = path.Join(mime, ext[1:]) // crop leading dot(.)
 			}
 
 			if sendMsg.File != nil {
@@ -479,7 +484,7 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 			sendMsg.File = &chat.File{
 				Id:   0, // TO Be downloaded ON chat_manager service !
 				Url:  data.URL,
-				Mime: doc.Type,
+				Mime: mime,
 				Name: name,
 				Size: 0, // Unknown !
 			}

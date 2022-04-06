@@ -69,7 +69,7 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 	}
 	client.Timeout = time.Second * 15
 
-	const version = "v12.0"
+	const version = "v13.0"
 
 	app := &Client{
 
@@ -245,7 +245,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 					// Type    string
 					// Code    string
 					// Url     string
-					switch src.Type {
+					switch strings.ToLower(src.Type) {
 					case "email", "mail":    // https://developers.facebook.com/docs/messenger-platform/send-messages/quick-replies#email
 						replies = append(replies, &messenger.QuickReply{
 							Type: "user_email",
@@ -255,9 +255,19 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 							Type: "user_phone_number",
 						})
 					case "location":         // https://developers.facebook.com/docs/messenger-platform/send-messages/quick-replies#locations
-						replies = append(replies, &messenger.QuickReply{
-							Type: "location",
-						})
+						// March 16, 2022
+						// Error: (#100) Location Quick Reply is now deprecated on API 4.0. Please refer to our Developer Documentation for more info.
+						// https://developers.facebook.com/docs/messenger-platform/changelog/#20190610
+						//
+						// June 10, 2019 (Changes)
+						// - Location quick reply which allows people to send their location in the Messenger thread will no longer be rendered.
+						// We recommend businesses ask for zip code and address information within the thread.
+						// While we are sunsetting the existing version of Share Location,
+						// in the coming months we will be introducing new ways for people to communicate their location to businesses in more valuable ways.
+						
+						// replies = append(replies, &messenger.QuickReply{
+						// 	Type: "location",
+						// })
 					case "postback":         // https://developers.facebook.com/docs/messenger-platform/send-messages/buttons#postback
 						// Buttons !
 						buttons = append(buttons, &messenger.Button{
@@ -265,8 +275,14 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 							Title: coalesce(src.Caption, src.Text),
 							Payload: coalesce(src.Code, src.Text),
 						})
+					case "url":              // https://developers.facebook.com/docs/messenger-platform/send-messages/buttons#button-format
+						buttons = append(buttons, &messenger.Button{
+							Type: "web_url",
+							Title: coalesce(src.Caption, src.Text),
+							URL:   src.GetUrl(),
+						})
 					default:                 // https://developers.facebook.com/docs/messenger-platform/send-messages/quick-replies#text
-					// case "text", "reply":
+					// case "reply", "text":
 						replies = append(replies, &messenger.QuickReply{
 							Type: "text",
 							// Required if content_type is 'text'.
