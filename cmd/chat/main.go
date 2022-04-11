@@ -12,6 +12,7 @@ import (
 	"os"
 
 	"github.com/rs/zerolog"
+	"github.com/webitel/chat_manager/cmd"
 	"github.com/webitel/chat_manager/internal/wrapper"
 	"github.com/webitel/chat_manager/log"
 
@@ -68,6 +69,11 @@ func main() {
 		micro.Name("webitel.chat.server"),
 		micro.Version(asm.Version()), // ("latest"),
 		micro.Flags(
+			&cli.BoolFlag{
+				Name:    "version",
+				Aliases: []string{"ver"},
+				Usage:   "Show build version and exit",
+			},
 			&cli.StringFlag{
 				Name:    "log_level",
 				EnvVars: []string{"LOG_LEVEL"},
@@ -116,6 +122,11 @@ func main() {
 	)
 	service.Init(
 		micro.Action(func(c *cli.Context) error {
+
+			if c.Bool("version") {
+				return cmd.ShowVersion(c)
+			}
+
 			cfg.LogLevel = c.String("log_level")
 			cfg.DBSource = c.String("db-dsn")
 			//redisTable = c.String("store_table")

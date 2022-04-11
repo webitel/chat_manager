@@ -55,6 +55,11 @@ func main() {
 		micro.Name("webitel.chat.bot"), // ("chat.bot"),
 		micro.Version(cmd.Version()), // ("latest"),
 		micro.Flags(
+			&cli.BoolFlag{
+				Name:    "version",
+				Aliases: []string{"ver"},
+				Usage:   "Show build version and exit",
+			},
 			&cli.StringFlag{
 				Name:    "log_level",
 				EnvVars: []string{"LOG_LEVEL"},
@@ -96,6 +101,11 @@ func main() {
 
 	service.Init(
 		micro.Action(func(c *cli.Context) error {
+
+			if c.Bool("version") {
+				return cmd.ShowVersion(c)
+			}
+
 			cfg.LogLevel = c.String("log_level")
 			cfg.SiteURL = c.String("site_url")
 			cfg.Address = c.String("address")
