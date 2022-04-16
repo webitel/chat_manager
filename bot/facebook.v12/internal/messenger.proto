@@ -30,4 +30,17 @@ message Page {
     // Page's fields Webhook subscribed for updates
     // Empty means NOT subscribed.
     repeated string subscribed_fields = 5;
+    // Instagram Professional -or- Business Account
+    message Instagram {
+        // IGSID [I]nsta[G]ram-[S]coped User Account [ID]
+        string id = 1;
+        // Instagram Account Name
+        string name = 2;
+        // Instagram Profile Picture URL
+        string picture = 3;
+        // Instagram Account Username
+        string username = 4;
+    }
+    // Instagram Professional -or- Business Account association
+    Instagram instagram = 6;
 }

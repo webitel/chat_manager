@@ -165,7 +165,7 @@ func (c *Client) WebhookEvent(rsp http.ResponseWriter, req *http.Request) {
 	// }
 
 	switch event.Object {
-	case "page":
+	case "page", "instagram":
 		// Note that entry is an array and may contain multiple objects,
 		// so ensure your code iterates over it to process all events.
 		// https://developers.facebook.com/docs/messenger-platform/webhook#format
@@ -179,6 +179,13 @@ func (c *Client) WebhookEvent(rsp http.ResponseWriter, req *http.Request) {
 		}
 
 		c.WebhookPage(batch)
+
+	// 1. Create Instagram Professional Or Business Account
+	// 2. Connect Facebook Page to the created Instagram Account
+	// 3. Setup and Subscribe Instagram Account(s) and it's connected Facebook Page(s)
+	// 4. https://developers.facebook.com/docs/messenger-platform/instagram/get-started#connected-tools-toggle
+	// case "instagram":
+
 
 	// case "user":
 	// case "permissions":
@@ -254,6 +261,9 @@ func (c *Client) getExternalThread(chat *bot.Channel) (*Chat, error) {
 	// Find the Messenger Page by [A]pp-[s]coped unique ID
 	page := c.pages.getPage(pageASID)
 	if page == nil {
+		page = c.instagram.getPage(pageASID)
+	}
+	if page == nil {
 		err := errors.NotFound(
 			"bot.messenger.chat.page.not_found",
 			"messenger: conversation .user=%s .page=%s not found",
@@ -295,6 +305,9 @@ func (c *Client) GetChannel(ctx context.Context, userPSID, pageASID string) (*bo
 	// page := c.getPageAccount(pageASID, "messages")
 	page := c.pages.getPage(pageASID)
 	if page == nil {
+		page = c.instagram.getPage(pageASID)
+	}
+	if page == nil {
 		err := errors.BadRequest(
 			"bot.messenger.page.not_found",
 			"messenger: account page=%s not found",
@@ -331,8 +344,12 @@ func (c *Client) GetChannel(ctx context.Context, userPSID, pageASID string) (*bo
 		// NOTE: This is the [P]age-[S]coped User [ID]
 		// For the same Facebook User, but different Pages
 		// this value differs
-		Channel:    "messenger",
+		Channel:    "facebook", // "messenger",
 		Contact:    sender.ID,
+	}
+
+	if pageASID == thread.Page.IGSID() {
+		contact.Channel = "instagram"
 	}
 
 	// GET Chat
@@ -366,7 +383,7 @@ func (c *Client) GetChannel(ctx context.Context, userPSID, pageASID string) (*bo
 func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 
 	userPSID := event.Sender.ID    // [P]age-[s]coped [ID]
-	pageASID := event.Recipient.ID // [A]pp-[s]coped [ID]
+	pageASID := event.Recipient.ID // [A]pp-[s]coped [ID] -or- [I]nsta[G]ram-[s]coped [ID]
 
 	ctx := context.TODO()
 	channel, err := c.getInternalThread(
@@ -411,6 +428,10 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 		thread, _ := channel.Properties.(*Chat)
 		props[paramMessengerPage] = thread.Page.ID
 		props[paramMessengerName] = thread.Page.Name
+		if instagram := thread.Page.Instagram; instagram != nil {
+			props[paramInstagramPage] = instagram.ID
+			props[paramInstagramName] = instagram.Username
+		}
 	} // else { // BIND Message SENT properties ! }
 	sendMsg.Variables = props
 
@@ -573,6 +594,10 @@ func (c *Client) WebhookPostback(event *messenger.Messaging) error {
 		thread, _ := channel.Properties.(*Chat)
 		props[paramMessengerPage] = thread.Page.ID
 		props[paramMessengerName] = thread.Page.Name
+		if instagram := thread.Page.Instagram; instagram != nil {
+			props[paramInstagramPage] = instagram.ID
+			props[paramInstagramName] = instagram.Username
+		}
 	} // else { // BIND Message SENT properties ! }
 	sendMsg.Variables = props
 

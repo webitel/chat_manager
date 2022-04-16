@@ -3,8 +3,11 @@ package facebook
 import (
 	"sync"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/micro/go-micro/v2/errors"
 	graph "github.com/webitel/chat_manager/bot/facebook.v12/graph/v12.0"
+	internal "github.com/webitel/chat_manager/bot/facebook.v12/internal"
+	protowire "google.golang.org/protobuf/proto"
 )
 
 type PageToken struct {
@@ -45,6 +48,24 @@ type Page struct {
 	 // Applications that have real time update subscriptions for this Page.
 	 // Note that we will only return information about the current app
 	 SubscribedFields []string `json:"subscribed_fields,omitempty"`
+}
+
+// ASID represents an [A]pp-[S]coped Facebook Page [ID]entifier
+func (p *Page) ASID() string {
+	if p != nil && p.Page != nil {
+		return p.Page.ID
+	}
+	return ""
+}
+
+// ASID represents an [I]nsta[G]ram-[S]coped Facebook Page [ID]entifier
+func (p *Page) IGSID() string {
+	if p != nil && p.Page != nil {
+		if p.Page.Instagram != nil {
+			return p.Page.Instagram.ID
+		}
+	}
+	return ""
 }
 
 func (p *Page) GetAccessToken() string {
@@ -142,6 +163,9 @@ func (p *Page) IsAuthorized() bool {
 // The Messenger Pages state
 type messengerPages struct {
 	 mx sync.RWMutex
+	 // Pages indexes
+	 // [ASID]:  page.id
+	 // [IGSID]: page.instagram.id
 	 pages map[string]*Page
 }
 
@@ -169,6 +193,23 @@ func (c *messengerPages) setPages(accounts *UserAccounts) []*Page {
 				page = this
 				// Update latest info !
 				that.Name = page.Name
+				if IGSID := page.IGSID(); IGSID != "" { // NEW
+					if igsid := that.IGSID(); igsid != "" {
+						if igsid != IGSID {
+							// REMOVE OLD Index
+							delete(c.pages, igsid)
+						} // else {
+						// 	// IGSID MATCH Index
+						// }
+					} else {
+						// CREATE NEW Index
+						c.pages[IGSID] = that
+					}
+				} else if igsid := that.IGSID(); igsid != "" { // OLD
+					// NOTE: page.Instagram == nil ! // NEW
+					delete(c.pages, igsid)
+				}
+				that.Instagram = page.Instagram
 				that.SubscribedFields = page.SubscribedFields
 				// Mark as proceed !
 				progress = append(progress[:n], progress[n+1:]...)
@@ -190,12 +231,17 @@ func (c *messengerPages) setPages(accounts *UserAccounts) []*Page {
 			if !that.IsAuthorized() {
 				// PAGE deleted !
 				delete(c.pages, asid)
+				igsid := that.IGSID()
+				if igsid != "" {
+					delete(c.pages, igsid)
+				}
 			}
 		}
 	}
 	// Install NEW !
 	for _, add := range progress {
-		page = c.pages[add.ID]
+		ASID := add.ASID()
+		page = c.pages[ASID]
 		if page == nil {
 			page = &Page{
 				Page:             add.Page,
@@ -208,7 +254,11 @@ func (c *messengerPages) setPages(accounts *UserAccounts) []*Page {
 			IssuedAt:    0,
 			ExpiresAt:   0,
 		})
-		c.pages[add.ID] = page
+		c.pages[ASID] = page
+		IGSID := page.IGSID()
+		if IGSID != "" {
+			c.pages[IGSID] = page
+		}
 		// CREATED !
 		results = append(results, page)
 	}
@@ -235,7 +285,12 @@ func (c *messengerPages) getPages(pageIds ...string) ([]*Page, error) {
 	// Find all requested page(s) ...
 	if len(pageIds) == 0 {
 		// ALL
-		for _, page := range c.pages {
+		for asid, page := range c.pages {
+			if asid != page.ASID() {
+				// NOT page.id index
+				// MAY page.instagram.id index
+				continue
+			}
 			// TOP::latest access_token
 			pages = append(pages, page)
 		}
@@ -244,6 +299,14 @@ func (c *messengerPages) getPages(pageIds ...string) ([]*Page, error) {
 		// EXACT
 		for _, asid := range pageIds {
 			if page, ok := c.pages[asid]; ok {
+				i := len(pages)-1
+				for ; i >= 0 && pages[i] != page; i-- {
+					// Lookup for duplicate index
+				}
+				if i >= 0 {
+					// FOUND !
+					continue
+				}
 				pages = append(pages, page)
 			} else {
 				return nil, errors.NotFound(
@@ -283,5 +346,179 @@ func (c *messengerPages) delPage(id string) *Page {
 		return page
 	}
 
+	return nil
+}
+
+
+
+func (c *messengerPages) backup() []byte {
+	// TODO: encode internal c.Pages accounts to secure data set
+	var dataset internal.Messenger
+
+	// DO NOT Edit while backing up ...
+	c.mx.Lock()         // +RW
+	defer c.mx.Unlock() // -RW
+
+	for _, def := range c.pages {
+		if !def.IsAuthorized() {
+			continue
+		}
+		page := &internal.Page{
+			Id:       def.ID,
+			Name:     def.Name,
+			// Picture:  def.Picture.Data.URL,
+			Accounts: make([]*internal.Page_Account, 0, len(def.Accounts)),
+			SubscribedFields: def.SubscribedFields,
+		}
+		// page.ID
+		// page.Name
+		if IGUser := def.Instagram; IGUser != nil {
+			page.Instagram = &internal.Page_Instagram{
+				Id:       IGUser.ID,
+				Name:     IGUser.Name,
+				Picture:  IGUser.PictureURL,
+				Username: IGUser.Username,
+			}
+		}
+		for _, account := range def.Accounts {
+			// account.User
+			// account.AccessToken
+			// account.SubscribedFields
+			page.Accounts = append(
+				page.Accounts, &internal.Page_Account{
+					Psid:             account.User.ID,
+					Name:             account.User.Name,
+					// Picture:          account.User.Picture.Data.URL,
+					AccessToken:      account.AccessToken,
+					
+				},
+			)
+		}
+		dataset.Pages = append(dataset.Pages, page)
+	}
+	// Encode state ...
+	data, err := protowire.Marshal(proto.MessageV2(&dataset))
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
+func (c *messengerPages) restore(data []byte) error {
+	// TODO: decode secure data set into c.Pages accounts !
+	// Decode state ...
+	var dataset internal.Messenger
+	err := protowire.Unmarshal(data, proto.MessageV2(&dataset))
+	if err != nil {
+		return err
+	}
+
+	var (
+		users = make(map[string]*graph.User)
+		getUser = func(psid string) *graph.User {
+			user := users[psid]
+			if user != nil {
+				return user
+			}
+			lookup:
+			for _, page := range c.pages {
+				for _, grant := range page.Accounts {
+					if grant.User.ID == psid {
+						user = grant.User
+						break lookup
+					}
+				}
+			}
+			if user != nil {
+				users[psid] = user
+				return user
+			}
+			return nil
+		}
+	)
+
+	// DO NOT Edit while restoring ...
+	c.mx.Lock()         // +RW
+	defer c.mx.Unlock() // -RW
+
+	for _, bak := range dataset.Pages {
+		ASID := bak.Id
+		page := c.pages[ASID] // c.pages.getPage(ASID) // LOCKED
+		if page == nil {
+			page = &Page{
+				Page: &graph.Page{
+					ID:   ASID,
+					Name: bak.Name,
+					// Picture: &graph.PagePicture{
+					// 	Data: &graph.ProfilePicture{
+					// 		Width: 50,
+					// 		Height: 50,
+					// 		URL: channel.Picture,
+					// 	},
+					// },
+					// AccessToken: bak.AccessToken,
+				},
+				// User: &graph.User{
+				// 	ID: account.Psid,
+				// 	Name: account.Name,
+				// 	// Picture: &graph.PagePicture{
+				// 	// 	Data: &graph.ProfilePicture{
+				// 	// 		Width: 50,
+				// 	// 		Height: 50,
+				// 	// 		URL: account.Picture,
+				// 	// 	},
+				// 	// },
+				// },
+				SubscribedFields: bak.SubscribedFields,
+			}
+		}
+		if IGUser := bak.Instagram; IGUser != nil {
+			page.Instagram = &graph.InstagramUser{
+				ID:             IGUser.Id,
+				Name:           IGUser.Name,
+				Username:       IGUser.Username,
+				// PictureURL:     IGUser.Picture,
+				// FollowersCount: 0,
+				// Website:        "",
+			}
+		}
+		// accounts := make([]*PageToken, 0, len(bak.Accounts))
+		accounts := page.Accounts
+		if cap(accounts) < len(bak.Accounts) {
+			accounts = make([]*PageToken, len(accounts), len(bak.Accounts))
+			copy(accounts, page.Accounts)
+		}
+		page.Accounts = accounts
+		// NOTE: Latest (0) must be ACTIVATED !
+		for i := len(bak.Accounts)-1; i >= 0; i-- {
+			token := bak.Accounts[i]
+			user := getUser(token.Psid)
+			if user == nil {
+				user = &graph.User{
+					ID:   token.Psid,
+					Name: token.Name,
+					// Picture: &graph.PagePicture{
+					// 	Data: &graph.ProfilePicture{
+					// 		Width: 50,
+					// 		Height: 50,
+					// 		URL: account.Picture,
+					// 	},
+					// },
+				}
+				users[token.Psid] = user
+			}
+			page.Authorize(&PageToken{
+				User:        user,
+				IssuedAt:    0,
+				ExpiresAt:   0,
+				AccessToken: token.AccessToken,
+			})
+		}
+		c.pages[ASID] = page
+		IGSID := page.IGSID()
+		if IGSID != "" {
+			c.pages[IGSID] = page
+		}
+	}
 	return nil
 }

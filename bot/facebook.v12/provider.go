@@ -29,10 +29,14 @@ const (
 
 	PageInboxApplicationID = "263902037430900"
 
-	// Messenger Bot's Conversation WITH Page ID
+	// Messenger Bot's Conversation WITH Facebook Page ID
 	paramMessengerPage = "messenger_page"
-	// Messenger Bot's Conversation WITH Page Name
+	// Messenger Bot's Conversation WITH Facebook Page Name
 	paramMessengerName = "messenger_name"
+	// Messenger Bot's Conversation WITH Instagram Page ID
+	paramInstagramPage = "instagram_page"
+	// Messenger Bot's Conversation WITH Instagram Username
+	paramInstagramName = "instagram_name"
 )
 
 func init() {
@@ -110,10 +114,12 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 
 	if current, _ := state.(*Client); current != nil {
 		
-		app.chatMx = current.chatMx
-		app.chats  = current.chats
+		app.chatMx    = current.chatMx
+		app.chats     = current.chats
 
-		app.pages  = current.pages
+		app.pages     = current.pages
+		// app.facebook  = current.facebook
+		app.instagram = current.instagram
 
 		if app.Config.ClientSecret == current.Config.ClientSecret {
 			app.proofMx  = current.proofMx
@@ -128,15 +134,43 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 		app.pages  = &messengerPages{
 			pages: make(map[string]*Page),
 		}
-
-		if s := metadata["accounts"]; s != "" {
+		app.instagram = &messengerPages{
+			pages: make(map[string]*Page),
+		}
+		// backwards capability
+		if ds, legacy := metadata["accounts"]; legacy {
+			if _, latest := metadata["fb"]; !latest {
+				metadata["fb"] = ds // POPULATE
+			}
+			// delete(metadata, "accounts")
+			// OVERRIDE OR DELETE
+			_ = agent.SetMetadata(
+				context.TODO(), map[string]string{
+					"fb": metadata["fb"],
+					"accounts": "",
+				},
+			)
+			// PULL Updats !
+			metadata = agent.Bot.Metadata
+		}
+		if s := metadata["fb"]; s != "" {
 			encoding := base64.RawURLEncoding
 			data, err := encoding.DecodeString(s)
 			if err == nil {
-				err = restoreAccounts(app, data)
+				err = app.pages.restore(data)
 			}
 			if err != nil {
 				app.Log.Err(err).Msg("MESSENGER: ACCOUNTS")
+			}
+		}
+		if s := metadata["ig"]; s != "" {
+			encoding := base64.RawURLEncoding
+			data, err := encoding.DecodeString(s)
+			if err == nil {
+				err = app.instagram.restore(data)
+			}
+			if err != nil {
+				app.Log.Err(err).Msg("INSTAGRAM: ACCOUNTS")
 			}
 		}
 	}
@@ -431,15 +465,58 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 		}
 
 		// TODO: Check for ?code=|error= OAuth 2.0 flow stage
-		if IsOAuthCallback(query) {
-			c.SetupPages(rsp, req)
-			return // (302) Found ?search=pages
+		if state, is := IsOAuthCallback(query); is {
+			switch state {
+			case "fb": // Messenger Pages
+				c.SetupMessengerPages(rsp, req)
+				return
+			case "ig": // Instagram Pages
+				c.SetupInstagramPages(rsp, req)
+				return
+			default:
+				_ = writeCompleteOAuthHTML(rsp,
+					fmt.Errorf("state: invalid or missing"),
+				)
+				return
+			}
 		}
 
-		
+		// Tab: Instagram section ...
+		if _, is := query["instagram"]; is {
+
+			switch op := query.Get("instagram"); op {
+			case "setup":
+
+				c.PromptSetup(
+					rsp, req,
+					messengerInstagramScope, "ig", // "instagram"
+					oauth2.SetAuthURLParam(
+						"display", "popup",
+					),
+				)
+				return // (302) Found
+
+			// case "remove":
+			case "search", "":
+
+				c.GetInstagramPages(rsp, req)
+				return // (200) OK
+			}
+
+			http.Error(rsp, "instagram: operation not supported", http.StatusBadRequest)
+			return // (400) Bad Request
+		}
+
 		switch qop := query.Get("pages"); qop {
 		case "setup":
-			c.PromptPages(rsp, req)
+
+			c.PromptSetup(
+				rsp, req,
+				messengerInstagramScope, "fb", // "facebook"
+				oauth2.SetAuthURLParam(
+					"display", "popup",
+				),
+			)
 			return // (302) Found
 
 		case "remove",
@@ -492,8 +569,6 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			http.Error(rsp, "pages: operation not supported", http.StatusBadRequest)
 			return // (400) Bad Request
 		}
-		
-		
 
 	case http.MethodPost:
 		
@@ -517,8 +592,8 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 	// return
 }
 
-// Register webhook callback URI
-func (c *Client) Register(ctx context.Context, uri string) error {
+// Subscribe Webhook Callback URI to Facebook well-known Object(s).Fields...
+func (c *Client) SubscribeObjects(ctx context.Context, uri string) error {
 	
 	// https://developers.facebook.com/docs/graph-api/reference/app/subscriptions#publish
 
@@ -530,81 +605,72 @@ func (c *Client) Register(ctx context.Context, uri string) error {
 		return err
 	}
 
-	// subs := []webhooks.Subscription{
-	// 	{
-	// 		Active:      false,
-	// 		Object:      "page",
-	// 		Fields:      []string{
-	// 			"messages",
-	// 		},
-	// 		CallbackURL: uri,
-	// 	},
-	// 	{
-	// 		Active:      false,
-	// 		Object:      "permissions",
-	// 		Fields:      []string{
-	// 			"connected",
-	// 			"pages_show_list",
-	// 			"pages_messaging",
-	// 			"pages_messaging_subscriptions",
-	// 			"pages_manage_metadata",
-	// 		},
-	// 		CallbackURL: uri,
-	// 	},
-	// }
-
 	// Generate random Verify Token string !
 	webhook := &c.webhook
 	webhook.URL = uri
 	webhook.Token = RandomBase64String(64)
 	webhook.Verified = ""
 
-	form := url.Values{
-		// Indicates the object type that this subscription applies to.
-		// enum{user, page, permissions, payments}
-		"object": {"page"},
-		// The URL that will receive the POST request when an update is triggered, and a GET request when attempting this publish operation. See our guide to constructing a callback URL page.
-		"callback_url": {webhook.URL},
-		// One or more of the set of valid fields in this object to subscribe to.
-		"fields": {strings.Join([]string{
-			// "standby",
-			"messages", 
-			"messaging_postbacks",
-			// "messaging_handovers",
-			// "user_action",
-		}, ",")},
-		// Indicates if change notifications should include the new values.
-		"include_values": {"true"},
-		// An arbitrary string that can be used to confirm to your server that the request is valid.
-		"verify_token": {webhook.Token},
-	}
-
-	form = c.requestForm(form, token.AccessToken)
-	// SWITCH ON Webhook subscription !
-	req, err := http.NewRequest(http.MethodPost,
-		"https://graph.facebook.com" + path.Join(
-			"/", c.Version, c.Config.ClientID, "subscriptions",
-		),
-		strings.NewReader(form.Encode()),
-	)
-	
-	if err != nil {
-		return err
-	}
-
-	rsp, err := c.Client.Do(req)
-
-	if err != nil {
-		return err
-	}
-
-	defer rsp.Body.Close()
-
 	var (
-		// ret graph.Success
-		// res = graph.Result{
-		// 	Data: ret,
-		// }
+		// Request Template
+		// https://developers.facebook.com/docs/graph-api/reference/app/subscriptions#publishingfields
+		form = url.Values{
+			// // Indicates the object type that this subscription applies to.
+			// // enum{user, page, permissions, payments}
+			// "object": {"page"},
+			// // One or more of the set of valid fields in this object to subscribe to.
+			// "fields": {strings.Join([]string{
+			// 	// "standby",
+			// 	"messages", 
+			// 	"messaging_postbacks",
+			// 	// "messaging_handovers",
+			// 	// "user_action",
+			// }, ",")},
+			// Indicates if change notifications should include the new values.
+			"include_values": {"true"},
+			// The URL that will receive the POST request when an update is triggered, and a GET request when attempting this publish operation. See our guide to constructing a callback URL page.
+			"callback_url": {webhook.URL},
+			// An arbitrary string that can be used to confirm to your server that the request is valid.
+			"verify_token": {webhook.Token},
+		}
+		// Object(s) Subscription(s)
+		subs = []webhooks.Subscription{
+		{
+			Object: "page",
+			// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events
+			Fields: []string{
+				// "standby",
+				"messages",
+				// "message_reads",
+				// "message_reactions",
+				// "messaging_referrals",
+				"messaging_postbacks",
+				// "messaging_handovers",
+				// "user_action",
+			},
+		},
+		{
+			Object: "instagram",
+			Fields: []string{
+				// "standby",
+				"messages",
+				// "message_reactions", 
+				"messaging_postbacks",
+				// "messaging_handovers",
+				// "messaging_seen",
+			},
+		// },
+		// {
+		// 	Object: "permissions",
+		// 	Fields: []string{
+		// 		"connected",
+		// 		"pages_show_list",
+		// 		"pages_messaging",
+		// 		"pages_messaging_subscriptions",
+		// 		"pages_manage_metadata",
+		// 	},
+		}}
+
 		res = struct{
 			graph.Success // Embedded (Anonymous)
 			Error *graph.Error `json:"error,omitempty"`
@@ -613,21 +679,58 @@ func (c *Client) Register(ctx context.Context, uri string) error {
 		}
 	)
 
-	err = json.NewDecoder(rsp.Body).Decode(&res)
+	// [RE]Authorize Each Request
+	form = c.requestForm(form, token.AccessToken)
+	for _, sub := range subs {
 
-	if err != nil {
-		return err
-	}
+		form.Set("object", sub.Object)
+		form.Set("fields", strings.Join(sub.Fields, ","))
 
-	if res.Error != nil {
-		return res.Error
-	}
+		// SWITCH ON Webhook subscription !
+		req, err := http.NewRequestWithContext(
+			ctx, http.MethodPost,
+			"https://graph.facebook.com" + path.Join(
+				"/", c.Version, c.Config.ClientID, "subscriptions",
+			),
+			strings.NewReader(form.Encode()),
+		)
+		
+		if err != nil {
+			return err
+		}
 
-	if !res.Ok {
-		return fmt.Errorf("subscribe: success not confirmed")
+		rsp, err := c.Client.Do(req)
+
+		if err != nil {
+			return err
+		}
+
+		// NULLify
+		res.Ok = false
+		// Decode Response
+		err = json.NewDecoder(rsp.Body).Decode(&res)
+		// Close Response
+		rsp.Body.Close()
+
+		if err != nil {
+			return err
+		}
+
+		if res.Error != nil {
+			return res.Error
+		}
+
+		if !res.Ok {
+			return fmt.Errorf("subscribe: object=%s; success not confirmed", sub.Object)
+		}
 	}
 
 	return nil
+}
+
+// Register webhook callback URI
+func (c *Client) Register(ctx context.Context, uri string) error {
+	return c.SubscribeObjects(ctx, uri)
 }
 
 // Deregister webhook callback URI
@@ -644,7 +747,8 @@ func (c *Client) Deregister(ctx context.Context) error {
 	}
 
 	form := url.Values{
-		// // A specific object type to remove subscriptions for. If this optional field is not included, all subscriptions for this app will be removed.
+		// // A specific object type to remove subscriptions for.
+		// If this optional field is not included, all subscriptions for this app will be removed.
 		// // enum{ user, page, permissions, payments }
 		// "object": {"page"},
 		// // One or more of the set of valid fields in this object to unsubscribe from.
@@ -659,6 +763,7 @@ func (c *Client) Deregister(ctx context.Context) error {
 
 	form = c.requestForm(form, token.AccessToken)
 	// SWITCH ON Webhook subscription !
+	// https://developers.facebook.com/docs/graph-api/reference/app/subscriptions#delete
 	req, err := http.NewRequest(http.MethodDelete,
 		"https://graph.facebook.com" + path.Join(
 			"/", c.Version, c.Config.ClientID, "subscriptions",
@@ -680,10 +785,6 @@ func (c *Client) Deregister(ctx context.Context) error {
 
 	var (
 
-		// ret graph.Success
-		// res = graph.Result{
-		// 	Data: &ret, // NOTE: Does NOT work ! Embedded (Anonymous) field must be Struct or Pointer to Struct !
-		// }
 		res = struct{
 			graph.Success // Embedded (Anonymous)
 			Error *graph.Error `json:"error,omitempty"`
