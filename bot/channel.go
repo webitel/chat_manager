@@ -251,7 +251,7 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 
 	metadata, _ := c.Properties.(map[string]string)
 	if metadata == nil {
-		metadata = make(map[string]string, 2)
+		metadata = make(map[string]string, 4)
 	}
 	// Flow Schema unique IDentifier
 	metadata["flow"] = strconv.FormatInt(c.Gateway.Bot.Flow.Id, 10)
