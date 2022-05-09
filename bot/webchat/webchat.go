@@ -827,7 +827,7 @@ func (c *WebChatBot) uploadMultiMedia(rsp http.ResponseWriter, req *http.Request
 
 	} else {
 
-		filename := req.URL.Query().Get("name")
+		filename := req.URL.Query().Get("filename")
 
 		media := &chat.File{
 			Id:   0,
