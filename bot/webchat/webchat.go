@@ -9,20 +9,26 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/micro/go-micro/v2/client"
 	errs "github.com/micro/go-micro/v2/errors"
 	"github.com/pkg/errors"
 
 	"github.com/gorilla/websocket"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
+
+	"github.com/webitel/chat_manager/api/proto/storage"
 )
 
 // webChat room with external client
@@ -98,7 +104,9 @@ type WebChatBot struct {
 	 WriteTimeout time.Duration
 	 // MessageSizeMax allowed from/for peer connection.
 	 // JSON-encoded single frame/message MAX size.
-	 MessageSizeMax int64 
+	 MessageMaxSize int64
+	 // MediaMaxSize allows the maximum file size to upload.
+	 MediaMaxSize int64
 	 // Unexported: runtime chat(s) store
 	*sync.RWMutex
 	 chat map[string]*webChat
@@ -146,7 +154,8 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 		},
 		ReadTimeout: time.Second * 30,  // 30s (PING)
 		WriteTimeout: time.Second * 10, // 10s
-		MessageSizeMax: 4 << 10,        // 4096 (bytes)
+		MessageMaxSize: (4 << 10),      // 4096 (bytes)
+		MediaMaxSize: (10 << 20),       // 10 Mb.
 		// // runtime chat store
 		// chat: make(map[string]*webChat, 4096), // (slots)
 	}
@@ -197,12 +206,38 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 				size = sizeMax
 			}
 			// SET
-			bot.MessageSizeMax = int64(size)
+			bot.MessageMaxSize = int64(size)
 			opts.ReadBufferSize = size
 			opts.WriteBufferSize = size
 			
 		} else {
 			// FIXME: assume no PING
+		}
+	}
+
+	if s := profile["media_max_size"]; s != "" {
+		size, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return nil, errors.Wrap(err, "[media_max_size]: %s invalid integer value")
+		}
+		if size > 0 {
+			// const (
+			// 	sizeMin = 1 << 10 // 1K
+			// 	sizeMax = sizeMin << 3 // 8K
+			// )
+			// // Check: MIN
+			// if size < sizeMin {
+			// 	size = sizeMin
+			// }
+			// // Check: MAX
+			// if size > sizeMax {
+			// 	size = sizeMax
+			// }
+			// SET
+			bot.MediaMaxSize = int64(size)
+			
+		} else {
+			// FIXME: default ! 10 Mb.
 		}
 	}
 
@@ -518,6 +553,335 @@ func (c *WebChatBot) Close() error {
 
 var cookieNeverExp = time.Date(2038, time.January, 19, 03, 14, 8, 000000000, time.UTC) // 2147483648 (2^31)
 
+func respondError(rsp http.ResponseWriter, err error) {
+
+	re := errs.FromError(err)
+	if re.Code == 0 {
+		// Default: (500) Internal Server Error
+		re.Code = http.StatusInternalServerError
+	}
+	respondJson(rsp, re, int(re.Code))
+}
+
+func respondJson(rsp http.ResponseWriter, res interface{}, code int) {
+
+	if code == 0 {
+		code = http.StatusOK
+	}
+
+	rsp.Header().Set("Pragma", "no-cache")
+	rsp.Header().Set("Content-Type", "application/json; chatset=utf-8")
+	rsp.WriteHeader(code)
+	
+	enc := json.NewEncoder(rsp)
+	enc.SetEscapeHTML(false)
+	
+	_ = enc.Encode(res)
+}
+
+func (c *WebChatBot) mediaMaxSizeLimit() (sizeMax int64) {
+	sizeMax = c.MediaMaxSize
+	return
+}
+
+type limitedReader struct {
+	N int64
+	R io.Reader
+}
+
+var errMediaTooLarge = &errs.Error{
+	Id: "chat.web.media.too_large",
+	Detail: "webchat: media file too large",
+	Code: http.StatusRequestEntityTooLarge, // 413
+	Status: "Media File Too Large",
+}
+
+func (c *limitedReader) Read(b []byte) (n int, err error) {
+	if c.N >= 0 {
+		if int64(len(b)) > c.N+1 {
+			b = b[0:c.N+1]
+		}
+		n, err = c.R.Read(b)
+		c.N -= int64(n)
+	}
+	if c.N < 0 {
+		return 0, errMediaTooLarge
+	}
+	return // n, err
+}
+
+// type mediaFile struct {
+// 	Id        int64  `json:"id"`
+// 	MimeType  string `json:"mime"`
+// 	Name      string `json:"name"`
+// 	Size      int64  `json:"size"`
+// 	SharedUrl string `json:"shared"`
+// }
+
+func (c *WebChatBot) uploadMediaFile(sender *bot.Channel, media *chat.File, content io.Reader) (*chat.File, error) {
+
+	client := client.DefaultClient
+	store := storage.NewFileService("storage", client)
+	stream, err := store.UploadFile(context.TODO())
+
+	if err != nil {
+		return nil, err
+	}
+
+	var randomId [16]byte
+	_, _ = rand.Read(randomId[:])
+	filename := fmt.Sprintf("%x", randomId[:])
+	media.Name = strings.TrimSpace(media.Name)
+	if media.Name != "" {
+		filename += "_" + media.Name
+	}
+
+	err = stream.Send(&storage.UploadFileRequest{
+		Data: &storage.UploadFileRequest_Metadata_{
+			Metadata: &storage.UploadFileRequest_Metadata{
+				DomainId: sender.DomainID(),
+				MimeType: media.Mime,
+				Name:     filename,
+				Uuid:     sender.ChannelID, // parent
+			},
+		},
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close()
+
+	var (
+		n int
+		buf = make([]byte, 4096) // Chunks Size
+		data = storage.UploadFileRequest_Chunk{
+			// Chunk: nil, // buf[:],
+		}
+		push = storage.UploadFileRequest{
+			Data: &data,
+		}
+	)
+
+	for {
+		n, err = content.Read(buf)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+				// n = 0
+			} else {
+				break
+			}
+		}
+		data.Chunk = buf[0:n]
+		err = stream.Send(&push)
+		if err != nil {
+			break
+		}
+		if n == 0 {
+			break
+		}
+	}
+
+	if err != nil {
+		// stream.Close() // CANCEL !
+		return nil, err
+	}
+
+	var res storage.UploadFileResponse
+	err = stream.RecvMsg(&res)
+	if err != nil {
+		return nil, err
+	}
+
+	fileURI := res.FileUrl
+	if path.IsAbs(fileURI) {
+		// NOTE: We've got not a valid URL but filepath
+		srv := c.Gateway.Internal
+		hostURL, err := url.ParseRequestURI(srv.HostURL())
+		if err != nil {
+			panic(err)
+		}
+		fileURL := &url.URL{
+			Scheme: hostURL.Scheme,
+			Host:   hostURL.Host,
+		}
+		fileURL, err = fileURL.Parse(fileURI)
+		if err != nil {
+			panic(err)
+		}
+		fileURI = fileURL.String()
+		res.FileUrl = fileURI
+	}
+
+	media.Id   = res.FileId
+	media.Url  = res.FileUrl
+	media.Size = res.Size
+
+	return media, nil
+}
+
+func (c *WebChatBot) uploadMultiMedia(rsp http.ResponseWriter, req *http.Request) {
+
+	defer req.Body.Close()
+
+	cookie, err := req.Cookie("cid")
+	if err != nil || cookie.Value == "" {
+		// http.Error(rsp, "(401) Unauthorized", http.StatusUnauthorized)
+		respondError(rsp, errs.Unauthorized(
+			"chat.web.client.unauthorized",
+			"webchat: unauthorized; please /start new chat first",
+		))
+		return // 401 Unauthorized (!)
+	}
+
+	deviceID := cookie.Value
+	// TODO: Find active room with User's (Device) cID
+	c.RWMutex.RLock()   // +R
+	room, _ := c.chat[deviceID]
+	c.RWMutex.RUnlock() // -R
+
+	if room == nil {
+		// NOTE: You need to /start webchat first
+		// to be able to upload media file(s) ...
+		// http.Error(rsp, "(401) Unauthorized", http.StatusUnauthorized)
+		respondError(rsp, errs.Unauthorized(
+			"chat.web.client.unauthorized",
+			"webchat: unauthorized; please /start new chat first",
+		))
+		return // 401 Unauthorized (!)
+	}
+	
+	sender := room.Channel
+
+	// TODO: RESTRICT MEDIA SIZE !
+	// req.ParseMultipartForm()
+
+	multiMedia := make([]*chat.File, 0)
+
+	mediaMaxSize := c.mediaMaxSizeLimit()
+	contentType := req.Header.Get("Content-Type")
+	mediaType, params, err := mime.ParseMediaType(contentType)
+
+	if err != nil {
+		// Invalid Content's Media Type !
+		// http.Error(rsp, "(400) Bad Request\n"+ err.Error(), http.StatusBadRequest)
+		respondError(rsp, errs.BadRequest(
+			"chat.web.media.type.invalid",
+			"webchat: media type is invalid; %s",
+			 err,
+		))
+		return // (400) Bad Request (!)
+	}
+
+	if strings.HasPrefix(mediaType, "multipart/form-data") {
+		content := multipart.NewReader(req.Body, params["boundary"])
+		var (
+			file limitedReader
+			part *multipart.Part
+		)
+
+		for {
+
+			part, err = content.NextPart()
+			
+			if err == io.EOF {
+				err = nil
+				break // There are NO more parts !
+			}
+
+			if err != nil {
+				// panic(err)
+				break // fixme
+			}
+
+			// file := &model.JobUploadFile{}
+			// file.Name = model.NewId() + "_" + part.FileName()
+			// file.MimeType = part.Header.Get("Content-Type")
+			// file.DomainId = c.Session.DomainId
+			// file.Uuid = c.Params.Id
+
+			media := &chat.File{
+				Id:   0,
+				Url:  "",
+				Name: part.FileName(),
+				Mime: part.Header.Get("Content-Type"),
+				Size: 0,
+			}
+
+			file.R = part // Content
+			file.N = mediaMaxSize // Size Limit (!)
+
+			media, err = c.uploadMediaFile(
+				sender, media, &file,
+			)
+
+			_ = part.Close() // Ensure Close(!)
+
+			if err != nil {
+				break
+			}
+
+			multiMedia = append(multiMedia, media)
+		}
+
+	} else {
+
+		filename := req.URL.Query().Get("name")
+
+		media := &chat.File{
+			Id:   0,
+			Url:  "",
+			Name: filename,
+			Mime: mediaType,
+			Size: req.ContentLength,
+		}
+
+		if mediaMaxSize < media.Size {
+			// http.Error(rsp, "media: file too large", http.StatusBadRequest)
+			respondError(rsp, errMediaTooLarge)
+			return // (400) Bad Request (!)
+		}
+
+		media, err = c.uploadMediaFile(sender, media, req.Body)
+
+		if err != nil {
+			// break
+		} else {
+			multiMedia = append(multiMedia, media)
+		}
+
+		// file := &model.JobUploadFile{}
+		// file.Name = model.NewId() + "_" + r.URL.Query().Get("name")
+		// file.MimeType = r.Header.Get("Content-Type")
+		// file.DomainId = c.Session.DomainId
+		// file.Uuid = c.Params.Id
+
+		// // TODO PERMISSION
+		// if err := c.App.SyncUpload(r.Body, file); err != nil {
+		// 	c.Err = err
+		// 	return
+		// }
+
+		// sig, _ := c.App.GeneratePreSignetResourceSignature(model.AnyFileRouteName, "download", file.Id, file.DomainId)
+		// files = append(files, &fileResponse{
+		// 	Id:        file.Id,
+		// 	Name:      file.Name,
+		// 	Size:      file.Size,
+		// 	MimeType:  file.MimeType,
+		// 	SharedUrl: sig,
+		// })
+	}
+
+	if err != nil {
+		// http.Error(rsp, err.Error(), http.StatusBadRequest)
+		respondError(rsp, err)
+		return
+	}
+
+	respondJson(rsp, multiMedia, http.StatusOK)
+}
+
 // Receiver
 // WebHook callback http.Handler
 // 
@@ -539,12 +903,20 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 
 	// c.Gateway.Log.Info().Msgf("[RW]: %T", rsp)
 
-	if req.Method != http.MethodGet {
+	switch req.Method {
+	case http.MethodPost:
+		// Upload MultiMedia(!)
+		c.uploadMultiMedia(rsp, req)
+		return
+	case http.MethodGet:
+		// websocket.IsWebSocketUpgrade(req)
+	default:
 		c.Websocket.Error(rsp, req, http.StatusMethodNotAllowed, nil)
 		// http.Error(rsp, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// GET !
 	if !websocket.IsWebSocketUpgrade(req) {
 		// TODO: handle other supported options here
 		// http.ServeFile(rsp, req, "~/webitel/chat/bot/webchat/webchat.html")
@@ -858,7 +1230,7 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 
 	pongTimeout := c.Bot.ReadTimeout
 
-	conn.SetReadLimit(c.Bot.MessageSizeMax)
+	conn.SetReadLimit(c.Bot.MessageMaxSize)
 	conn.SetReadDeadline(time.Now().Add(pongTimeout))
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(pongTimeout))
