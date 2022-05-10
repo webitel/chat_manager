@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/micro/go-micro/v2/client"
@@ -147,13 +148,21 @@ func (c *App) String() string {
 	return providerType
 }
 
-func trimLen(text string, max int) string {
+func trimChars(text string, max int) string {
+	text = strings.TrimSpace(text)
 	if len(text) <= max {
 		return text
 	}
-	return strings.TrimRightFunc(
-		text[0:max], unicode.IsSpace,
-	)
+	var a, c int
+	for a < len(text) {
+		_, c = utf8.DecodeRuneInString(text[a:])
+		a += c
+		if max--; max == 0 {
+			text = text[0:a]
+			break
+		}
+	}
+	return text
 }
 
 func coalesce(text ...string) string {
@@ -185,8 +194,8 @@ func quickReplies(buttons []*chat.Buttons) []Button {
 			case "reply", "postback":
 				action := &actions[n]
 				action.Type = "REPLY"
-				action.Title = trimLen(coalesce(button.Text, button.Caption, button.Code), 20)
-				action.ID = trimLen(coalesce(button.Code, button.Text, button.Caption), 256)
+				action.Title = trimChars(coalesce(button.Text, button.Caption, button.Code), 20)
+				action.ID = trimChars(coalesce(button.Code, button.Text, button.Caption), 256)
 				if (n)++; n == 3 {
 					break setup
 				}
@@ -458,7 +467,7 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 			message.Header = header
 		}
 		message.Action.Buttons = replies
-		message.Body.Text = trimLen(sentMessage.Text, 1024)
+		message.Body.Text = trimChars(sentMessage.Text, 1024)
 		if message.Body.Text == "" {
 			c.Gateway.Log.Error().
 			Str("error", "content: interactive.body.text required but missing").
@@ -473,17 +482,17 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 		}
 		switch mediaType(doc.Mime) {
 		case MediaImage, MediaVideo:
-			message.Caption = trimLen(sentMessage.Text, 3000)
+			message.Caption = trimChars(sentMessage.Text, 3000)
 		case MediaAudio, "STICKER":
 			// content.Caption = ""
 		case MediaFile:
-			message.Filename = trimLen(doc.Name, 240)
-			message.Caption = trimLen(sentMessage.Text, 3000)
+			message.Filename = trimChars(doc.Name, 240)
+			message.Caption = trimChars(sentMessage.Text, 3000)
 		}
 		sendContent = message
 	} else if text := sentMessage.Text; text != "" {
 		message := &SendTextMessage{
-			Text: trimLen(text, 4096),
+			Text: trimChars(text, 4096),
 			PreviewURL: false,
 		}
 		sendContent = message
