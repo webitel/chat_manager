@@ -899,24 +899,45 @@ func (c *WebChatBot) uploadMultiMedia(rsp http.ResponseWriter, req *http.Request
 // 
 func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 
-	// TODO: Check preconfigured CORS Options ...
-
-	// c.Gateway.Log.Info().Msgf("[RW]: %T", rsp)
-
+	// CORS: Methods
 	switch req.Method {
 	case http.MethodPost:
 		// Upload MultiMedia(!)
-		c.uploadMultiMedia(rsp, req)
-		return
 	case http.MethodGet:
-		// websocket.IsWebSocketUpgrade(req)
+		// WebsocketUpgrade(req)
 	default:
 		c.Websocket.Error(rsp, req, http.StatusMethodNotAllowed, nil)
-		// http.Error(rsp, "405 Method Not Allowed", http.StatusMethodNotAllowed)
+		return // (405) Method Not Allowed
+	}
+
+	// CORS: Origin
+	origin := req.Header.Get(hdrOrigin)
+	responseHeader := rsp.Header()
+	if !c.Websocket.CheckOrigin(req) {
+		// Sanitize from HTTP Gateway Main Handler
+		responseHeader.Del("Access-Control-Allow-Credentials")
+		responseHeader.Del("Access-Control-Allow-Methods")
+		responseHeader.Del("Access-Control-Allow-Headers")
+		responseHeader.Del("Access-Control-Allow-Origin")
+		c.Websocket.Error(rsp, req, http.StatusForbidden,
+			fmt.Errorf("Origin: %s; Not Allowed", origin),
+		)
 		return
 	}
 
-	// GET !
+	responseHeader.Set("Access-Control-Allow-Credentials", "true")
+	responseHeader.Set("Access-Control-Allow-Methods", "OPTIONS, GET, POST")
+	responseHeader.Set("Access-Control-Allow-Headers", "Authorization, X-Webitel-Access, Cookie, Content-Type, "+
+		"Connection, Upgrade, Sec-Websocket-Version, Sec-Websocket-Extensions, Sec-Websocket-Key, Sec-Websocket-Protocol")
+	responseHeader.Set("Access-Control-Allow-Origin", origin)
+
+	// POST /media?filename=
+	if req.Method == http.MethodPost {
+		c.uploadMultiMedia(rsp, req)
+		return
+	}
+
+	// GET /websocket
 	if !websocket.IsWebSocketUpgrade(req) {
 		// TODO: handle other supported options here
 		// http.ServeFile(rsp, req, "~/webitel/chat/bot/webchat/webchat.html")
@@ -925,20 +946,7 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if !c.Websocket.CheckOrigin(req) {
-		c.Websocket.Error(rsp, req, http.StatusForbidden,
-			fmt.Errorf("Origin: %s; Not Allowed", req.Header.Get(hdrOrigin)),
-		)
-		// http.Error(rsp, "403 Forbidden", http.StatusForbidden)
-		return
-	}
-
-	responseHeader := rsp.Header()
-	responseHeader.Set("Access-Control-Allow-Credentials", "true")
-	responseHeader.Set("Access-Control-Allow-Methods", "OPTIONS, GET")
-	responseHeader.Set("Access-Control-Allow-Headers", "Connection, Upgrade, Sec-Websocket-Version, Sec-Websocket-Extensions, Sec-Websocket-Key, Sec-Websocket-Protocol, Cookie")
-	responseHeader.Set("Access-Control-Allow-Origin", req.Header.Get(hdrOrigin))
-
+	// Authorization
 	var room *webChat
 	deviceID, ok := webChatDeviceID(req)
 	if !ok || deviceID == "" {

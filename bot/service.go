@@ -612,6 +612,8 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		// Receive Update Event !
 	default:
+		http.Error(w, "(405) Method Not Allowed", http.StatusMethodNotAllowed)
+		return
 	}
 
 	srv.Log.Debug().
