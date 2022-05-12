@@ -187,10 +187,10 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 		}
 	}
 
-	if s := profile["message_size_max"]; s != "" {
+	if s := profile["message_max_size"]; s != "" {
 		size, err := strconv.Atoi(s)
 		if err != nil {
-			return nil, errors.Wrap(err, "[message_size_max]: %s invalid integer value")
+			return nil, errors.Wrap(err, "[message_max_size]: %s invalid integer value")
 		}
 		if size > 0 {
 			const (
@@ -1073,7 +1073,10 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 // ChatInfo state message
 type webChatInfo struct {
 	Id   string          `json:"id"`
-	User *bot.Account        `json:"user"`
+	User *bot.Account    `json:"user"`
+	// Options
+	MediaMaxSize int64   `json:"media_max_size,omitempty"`
+	// History
 	Msgs []*chat.Message `json:"msgs,omitempty"`
 }
 
@@ -1088,6 +1091,7 @@ func (c *WebChatBot) join(client *webChat, conn *websocket.Conn) {
 			Id:   client.ChannelID,
 			User: &client.Account,
 			Msgs: client.msgs,
+			MediaMaxSize: c.mediaMaxSizeLimit(),
 		}
 		jsonb, ok := client.encodeJSON(chatInfo) // json.Marshal(chatInfo)
 		err := client.sendFrame(conn, websocket.TextMessage, jsonb)
