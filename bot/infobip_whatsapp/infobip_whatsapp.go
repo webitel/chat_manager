@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/errors"
 	gate "github.com/webitel/chat_manager/api/proto/bot"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
@@ -53,11 +53,11 @@ type SendMessageWARequest struct {
 }
 
 type WhatsAppMessage struct {
-	Text       string `json:"text,omitempty"`
-	FileURL    string `json:"fileUrl,omitempty"`
-	VideoURL   string `json:"videoUrl,omitempty"`
-	AudioURL   string `json:"audioUrl,omitempty"`
-	ImageURL   string `json:"imageUrl,omitempty"`
+	Text     string `json:"text,omitempty"`
+	FileURL  string `json:"fileUrl,omitempty"`
+	VideoURL string `json:"videoUrl,omitempty"`
+	AudioURL string `json:"audioUrl,omitempty"`
+	ImageURL string `json:"imageUrl,omitempty"`
 }
 
 type Destination struct {
@@ -106,7 +106,6 @@ func init() {
 	bot.Register("infobip_whatsapp", NewInfobipWABot)
 }
 
-
 // func NewInfobipWABot(agent *bot.Gateway) (bot.Provider, error) {
 func NewInfobipWABot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 	profile := agent.Bot.GetMetadata()
@@ -154,20 +153,20 @@ func NewInfobipWABot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 		// }
 		err = agent.Internal.UpdateBot(
 			context.TODO(),
-			&gate.UpdateBotRequest {
+			&gate.UpdateBotRequest{
 				// Id:   profile.Id,
-				Bot: agent.Bot,
+				Bot:    agent.Bot,
 				Fields: []string{"metadata"},
 			},
 			agent.Bot,
 		)
-		
+
 		if err != nil {
 			log.Error().Msg(err.Error())
 			return nil, err
 		}
 	}
-	return &infobipWABot {
+	return &infobipWABot{
 		agent.Bot.GetId(),
 		apiKey,
 		scenarioKey,
@@ -178,10 +177,10 @@ func NewInfobipWABot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 }
 
 func createWAScenario(apiKey, number, url string) (scenarioKey string, err error) {
-	body, err := json.Marshal(CreateScenarioRequest {
+	body, err := json.Marshal(CreateScenarioRequest{
 		Name:    number,
 		Default: true,
-		Flow: []*Flow {
+		Flow: []*Flow{
 			{
 				From:    number,
 				Channel: "WHATSAPP",
@@ -236,12 +235,12 @@ func (b *infobipWABot) Deregister(ctx context.Context) error {
 
 func (b *infobipWABot) SendNotify(ctx context.Context, notify *bot.Update) error {
 
-	msg := SendMessageWARequest {
+	msg := SendMessageWARequest{
 		ScenarioKey: b.scenarioKey,
-		WhatsApp: &WhatsAppMessage {},
-		Destinations: []*Destination {
+		WhatsApp:    &WhatsAppMessage{},
+		Destinations: []*Destination{
 			{
-				To: &NumberDestination {
+				To: &NumberDestination{
 					PhoneNumber: notify.Chat.ChatID,
 				},
 			},
@@ -249,18 +248,18 @@ func (b *infobipWABot) SendNotify(ctx context.Context, notify *bot.Update) error
 	}
 
 	switch notify.Message.Type {
-		
-		case "text":
-			msg.WhatsApp.Text = "webitel " + notify.Message.GetText()
 
-		case "file":
-			whatsappMessageFile(notify.Message.GetFile(), &msg)
+	case "text":
+		msg.WhatsApp.Text = "webitel " + notify.Message.GetText()
 
-		case "closed":
-			msg.WhatsApp.Text = "webitel " + notify.Message.GetText()
+	case "file":
+		whatsappMessageFile(notify.Message.GetFile(), &msg)
 
-		default:
-			return nil // UNKNOWN Event
+	case "closed":
+		msg.WhatsApp.Text = "webitel " + notify.Message.GetText()
+
+	default:
+		return nil // UNKNOWN Event
 	}
 
 	body, err := json.Marshal(msg)
@@ -285,26 +284,27 @@ func (b *infobipWABot) SendNotify(ctx context.Context, notify *bot.Update) error
 
 func whatsappMessageFile(f *chat.File, m *SendMessageWARequest) {
 
-	switch{
+	switch {
 
-		case strings.HasPrefix(f.Mime, "image"):
-			m.WhatsApp.ImageURL = f.Url
+	case strings.HasPrefix(f.Mime, "image"):
+		m.WhatsApp.ImageURL = f.Url
 
-		case strings.HasPrefix(f.Mime, "video"):
-			m.WhatsApp.VideoURL = f.Url
+	case strings.HasPrefix(f.Mime, "video"):
+		m.WhatsApp.VideoURL = f.Url
 
-		case strings.HasPrefix(f.Mime, "audio"):
-			m.WhatsApp.AudioURL = f.Url
+	case strings.HasPrefix(f.Mime, "audio"):
+		m.WhatsApp.AudioURL = f.Url
 
-		default:
-			m.WhatsApp.FileURL = f.Url
-			m.WhatsApp.Text = f.Name
+	default:
+		m.WhatsApp.FileURL = f.Url
+		m.WhatsApp.Text = f.Name
 	}
 }
+
 // WebHook implementes provider.Receiver interface for infobipWA
 func (b *infobipWABot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
-	update := &InfobipWABody {}
+	update := &InfobipWABody{}
 
 	if err := json.NewDecoder(notice.Body).Decode(update); err != nil {
 		log.Error().Msgf("could not decode request body: %s", err)
@@ -314,23 +314,21 @@ func (b *infobipWABot) WebHook(reply http.ResponseWriter, notice *http.Request) 
 	for _, msg := range update.Results {
 
 		log.Debug().
-
 			Str("from", msg.From).
 			Str("username", msg.Contact.Name).
 			Str("type", msg.Message.Type).
 			Str("text", msg.Message.Text).
+			Msg("receive message")
 
-		Msg("receive message")
-
-		contact := &bot.Account {
-			ID:        0, // LOOKUP
-			Username:  msg.Contact.Name,
-			Channel:   "infobip_whatsapp",
-			Contact:   msg.From,
+		contact := &bot.Account{
+			ID:       0, // LOOKUP
+			Username: msg.Contact.Name,
+			Channel:  "infobip_whatsapp",
+			Contact:  msg.From,
 		}
 
 		// endregion
-		
+
 		// region: channel
 		chatID := msg.From
 		channel, err := b.Gateway.GetChannel(
@@ -338,65 +336,66 @@ func (b *infobipWABot) WebHook(reply http.ResponseWriter, notice *http.Request) 
 		)
 		if err != nil {
 			// Failed locate chat channel !
-			re := errors.FromError(err); if re.Code == 0 {
+			re := errors.FromError(err)
+			if re.Code == 0 {
 				re.Code = (int32)(http.StatusBadGateway)
 			}
 			http.Error(reply, re.Detail, (int)(re.Code))
 			return // 503 Bad Gateway
 		}
-	
-		sendUpdate := bot.Update {
-			Title:   channel.Title,
-			Chat:    channel,
-			User:    contact,
+
+		sendUpdate := bot.Update{
+			Title: channel.Title,
+			Chat:  channel,
+			User:  contact,
 		}
 
 		switch msg.Message.Type {
 
-			case "TEXT":
-				sendUpdate.Message = &chat.Message {
-					Type: "text",
-					Text: strings.TrimPrefix(msg.Message.Text, "webitel "),
-				}
+		case "TEXT":
+			sendUpdate.Message = &chat.Message{
+				Type: "text",
+				Text: strings.TrimPrefix(msg.Message.Text, "webitel "),
+			}
 
-			case "IMAGE", "VIDEO", "DOCUMENT":
-				sendUpdate.Message = &chat.Message {
-					Type: "file",
-					File: &chat.File {
-						Url: msg.Message.URL,
-						Name: msg.Message.Caption,
-					},
-				}
+		case "IMAGE", "VIDEO", "DOCUMENT":
+			sendUpdate.Message = &chat.Message{
+				Type: "file",
+				File: &chat.File{
+					Url:  msg.Message.URL,
+					Name: msg.Message.Caption,
+				},
+			}
 
-			case "AUDIO":
-				sendUpdate.Message = &chat.Message {
-					Type: "file",
-					File: &chat.File {
-						Url: msg.Message.URL,
-						Name: msg.Message.Caption,
-					},
-				}
+		case "AUDIO":
+			sendUpdate.Message = &chat.Message{
+				Type: "file",
+				File: &chat.File{
+					Url:  msg.Message.URL,
+					Name: msg.Message.Caption,
+				},
+			}
 
-			case "VOICE":
-				sendUpdate.Message = &chat.Message {
-					Type: "file",
-					File: &chat.File {
-						Url: msg.Message.URL,
-						Name: msg.Message.Caption,
-					},
-				}
+		case "VOICE":
+			sendUpdate.Message = &chat.Message{
+				Type: "file",
+				File: &chat.File{
+					Url:  msg.Message.URL,
+					Name: msg.Message.Caption,
+				},
+			}
 
-			case "CONTACT":
-				// TODO ....
-				continue
+		case "CONTACT":
+			// TODO ....
+			continue
 
-			case "LOCATION":
-				// TODO ....
-				continue
+		case "LOCATION":
+			// TODO ....
+			continue
 		}
 
 		err = b.Gateway.Read(notice.Context(), &sendUpdate)
-			
+
 		if err != nil {
 			//http.Error(reply, "Failed to deliver infobip_whatsapp .Update message", http.StatusInternalServerError)
 			//return // 502 Bad Gateway
@@ -404,6 +403,6 @@ func (b *infobipWABot) WebHook(reply http.ResponseWriter, notice *http.Request) 
 	}
 
 	reply.WriteHeader(http.StatusOK)
-	return 
+	return
 
 }

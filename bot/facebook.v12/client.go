@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/bot"
 	graph "github.com/webitel/chat_manager/bot/facebook.v12/graph/v12.0"
 	"github.com/webitel/chat_manager/bot/facebook.v12/webhooks"
@@ -26,19 +26,19 @@ import (
 type Client struct {
 	*bot.Gateway // internal
 	*http.Client // external
-	 oauth2.Config
-	 Version string // "v12.0"
-	 webhook webhooks.WebHook
-	 creds oauth2.TokenSource
+	oauth2.Config
+	Version string // "v12.0"
+	webhook webhooks.WebHook
+	creds   oauth2.TokenSource
 
-	 pages *messengerPages // App Messenger Product Config
-	 instagram *messengerPages // App Messenger Product Config
-	 
-	 chatMx *sync.RWMutex // guards c.chats
-	 chats map[string]Chat // map[userPSID]{.user,.page}
+	pages     *messengerPages // App Messenger Product Config
+	instagram *messengerPages // App Messenger Product Config
 
-	 proofMx *sync.Mutex // guards c.proofs
-	 proofs map[string]string // map[access_token]appsecret_proof
+	chatMx *sync.RWMutex   // guards c.chats
+	chats  map[string]Chat // map[userPSID]{.user,.page}
+
+	proofMx *sync.Mutex       // guards c.proofs
+	proofs  map[string]string // map[access_token]appsecret_proof
 }
 
 func (c *Client) requestForm(params url.Values, accessToken string) url.Values {
@@ -51,8 +51,9 @@ func (c *Client) requestForm(params url.Values, accessToken string) url.Values {
 		return params
 	}
 
-	c.proofMx.Lock()   // +RW
-	clientProof, ok := c.proofs[accessToken]; if !ok {
+	c.proofMx.Lock() // +RW
+	clientProof, ok := c.proofs[accessToken]
+	if !ok {
 		clientProof = graph.SecretProof(
 			accessToken, c.Config.ClientSecret,
 		)
@@ -118,7 +119,7 @@ func (c *Client) completeOAuth(req *http.Request, scope ...string) (*oauth2.Toke
 			Str("error", err).
 			Str("details", query.Get("error_description")).
 			Msg("Facebook: Login FAILED")
-		
+
 		if re := query.Get("error_description"); re != "" {
 			err += ": " + re
 		}
@@ -157,7 +158,7 @@ func (c *Client) completeOAuth(req *http.Request, scope ...string) (*oauth2.Toke
 	if err != nil {
 		// switch re := err.(type) {
 		// case *oauth2.RetrieveError:
-		//	err = 
+		//	err =
 		// }
 		return nil, err
 	}
@@ -166,7 +167,7 @@ func (c *Client) completeOAuth(req *http.Request, scope ...string) (*oauth2.Toke
 }
 
 var completeOAuthHTML, _ = template.New("complete.html").Parse(
-`<!DOCTYPE html>
+	`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -191,7 +192,7 @@ var completeOAuthHTML, _ = template.New("complete.html").Parse(
 )
 
 func writeCompleteOAuthHTML(w http.ResponseWriter, err error) error {
-	
+
 	h := w.Header()
 	h.Set("Pragma", "no-cache")
 	h.Set("Cache-Control", "no-cache")
@@ -202,10 +203,9 @@ func writeCompleteOAuthHTML(w http.ResponseWriter, err error) error {
 	if err != nil {
 		re = errors.FromError(err)
 	}
-	
+
 	return completeOAuthHTML.Execute(w, re)
 }
-
 
 // DeauthorizeRequest parameters
 type DeauthorizeRequest struct {
@@ -227,12 +227,12 @@ func (c *Client) DeauthorizeRequest(signed string) (*DeauthorizeRequest, error) 
 
 	// POST /{deauthorize_callback_url}
 	// Content-Type: application/x-www-form-urlencoded
-	// 
+	//
 	// signed_request=9MLZPR8Wl48BjO8DYOuPsk8lC2J1oXoXHxsxip8isE0.eyJwcm9maWxlX2lkIjoiMTEyMzcxOTcxMjc4MTk4IiwidXNlcl9pZCI6IiIsImFsZ29yaXRobSI6IkhNQUMtU0hBMjU2IiwiaXNzdWVkX2F0IjoxNjQyNDIyNzA1fQ
 
 	// NOTE: This kind triggered when we DELETE /{page}/subscribed_apps
 	// {
-	// 	"profile_id": "112371971278198", // PAGE_ID; 
+	// 	"profile_id": "112371971278198", // PAGE_ID;
 	// 	"user_id": "", // FIXME: Stands for self APP ? for ALL Users ?
 	// 	"algorithm": "HMAC-SHA256",
 	// 	"issued_at": 1642422705
@@ -288,16 +288,16 @@ func (c *Client) Deauthorize(signedRequest string) error {
 
 	if err != nil {
 		c.Log.Error().
-		Str("error", "signature: invalid").
-		Msg("DEAUTHORIZE: REQUEST")
+			Str("error", "signature: invalid").
+			Msg("DEAUTHORIZE: REQUEST")
 		return err
 	}
 
 	c.Log.Warn().
-	Str("page-id", req.PageID).
-	Str("user-id", req.UserID).
-	Time("issued", time.Unix(req.IssuedAt, 0)).
-	Msg("MESSENGER: DEAUTHORIZE")
+		Str("page-id", req.PageID).
+		Str("user-id", req.UserID).
+		Time("issued", time.Unix(req.IssuedAt, 0)).
+		Msg("MESSENGER: DEAUTHORIZE")
 
 	if req.UserID == "" {
 		// FIXME: Triggered by myself !
@@ -317,7 +317,7 @@ func (c *Client) Deauthorize(signedRequest string) error {
 
 	if err != nil {
 		c.Log.Err(err).
-		Msg("MESSENGER: DEAUTHORIZE")
+			Msg("MESSENGER: DEAUTHORIZE")
 		return err
 	}
 
@@ -333,7 +333,7 @@ func (c *Client) Deauthorize(signedRequest string) error {
 
 	if err != nil {
 		c.Log.Err(err).
-		Msg("INSTAGRAM: DEAUTHORIZE")
+			Msg("INSTAGRAM: DEAUTHORIZE")
 		return err
 	}
 
@@ -351,7 +351,7 @@ func (c *Client) Deauthorize(signedRequest string) error {
 
 	var (
 		fb, ig string
-		enc = base64.RawURLEncoding
+		enc    = base64.RawURLEncoding
 	)
 	// if data := backupAccounts(c); len(data) != 0 {
 	if data := c.pages.backup(); len(data) != 0 {
@@ -403,7 +403,6 @@ func (c *Client) RemovePages(pageIds ...string) ([]*Page, error) {
 			_ = c.pages.delPage(page.ID)
 		}
 	}
-	
 
 	return pages, nil
 }
@@ -421,7 +420,7 @@ func (c *Client) introspect(accessToken string) (map[string]interface{}, error) 
 	form = c.requestForm(form, clientToken.AccessToken)
 
 	req, err := http.NewRequest(
-		http.MethodGet, "https://graph.facebook.com" +
+		http.MethodGet, "https://graph.facebook.com"+
 			path.Join("/", c.Version, "/debug_token"),
 		strings.NewReader(form.Encode()),
 	)
@@ -438,7 +437,7 @@ func (c *Client) introspect(accessToken string) (map[string]interface{}, error) 
 
 	var res graph.Result
 	err = json.NewDecoder(rsp.Body).Decode(&res)
-	
+
 	if err != nil {
 		return nil, err
 	}
@@ -463,7 +462,7 @@ type Chat struct {
 func (c *Client) getChat(page *Page, psid string) (*Chat, error) {
 
 	// TODO: Lookup internal cache first ...
-	c.chatMx.RLock()   // +R
+	c.chatMx.RLock() // +R
 	chat := c.chats[psid]
 	c.chatMx.RUnlock() // -R
 
@@ -484,14 +483,14 @@ func (c *Client) getChat(page *Page, psid string) (*Chat, error) {
 	chat.Page = page
 
 	query := c.requestForm(url.Values{
-			"fields": {"name"}, // ,first_name,middle_name,last_name,picture{width(50),height(50)}"},
-		}, page.AccessToken,
+		"fields": {"name"}, // ,first_name,middle_name,last_name,picture{width(50),height(50)}"},
+	}, page.AccessToken,
 	)
 
 	req, err := http.NewRequest(http.MethodGet,
-		"https://graph.facebook.com" + path.Join(
+		"https://graph.facebook.com"+path.Join(
 			"/", c.Version, psid,
-		) + "?" + query.Encode(),
+		)+"?"+query.Encode(),
 		nil,
 	)
 
@@ -518,7 +517,7 @@ func (c *Client) getChat(page *Page, psid string) (*Chat, error) {
 	}
 
 	// TODO: Cache result for PSID
-	c.chatMx.Lock()   // +W
+	c.chatMx.Lock() // +W
 	c.chats[psid] = chat
 	c.chatMx.Unlock() // -W
 

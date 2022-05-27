@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/errors"
 
 	auth "github.com/webitel/chat_manager/auth"
 )
@@ -12,19 +12,18 @@ type Control func(ctx *Context) error
 // AuthorizationRequire Control
 func AuthorizationRequire(methods ...auth.Method) Control {
 	return func(ctx *Context) (err error) {
-		
-		var (
 
-			bind auth.Method
+		var (
+			bind  auth.Method
 			authZ *auth.Authorization
 			authN = &ctx.Authorization
 		)
 		// Bind Authorization !
 		for i := 0; "" == authN.Token && i < len(methods); i++ {
-			
+
 			bind = methods[i]
 			authZ, err = bind(ctx.Context)
-			
+
 			if err == nil && authZ != nil {
 				if authZ.Token != "" {
 					// SUCCESS: shallowcopy
@@ -55,7 +54,6 @@ func AuthorizationRequire(methods ...auth.Method) Control {
 	}
 }
 
-
 func ClientRequire() Control {
 	return func(ctx *Context) error {
 
@@ -69,7 +67,6 @@ func ClientRequire() Control {
 		return nil
 	}
 }
-
 
 func DomainRequire() Control {
 	return func(ctx *Context) error {

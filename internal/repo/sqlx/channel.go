@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	errs "github.com/micro/go-micro/v2/errors"
+	errs "github.com/micro/micro/v3/service/errors"
 	"github.com/pkg/errors"
 
 	"github.com/jackc/pgconn"
@@ -24,13 +24,13 @@ import (
 )
 
 func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Channel, error) {
-	
+
 	search := SearchOptions{
 		// prepare filter(s)
 		Params: map[string]interface{}{
 			"id": id, // MUST
 		},
-		Fields: []string{"id","*"}, // NOT applicable
+		Fields: []string{"id", "*"}, // NOT applicable
 		Sort:   []string{},
 		Page:   0,
 		Size:   1, // GET(!)
@@ -65,24 +65,23 @@ func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Cha
 	return obj, nil
 }
 
-
 /*func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Channel, error) {
-	
+
 	res := &Channel{}
 	err := repo.db.GetContext(ctx, res, "select e.* from chat.channel e where e.id=$1", id)
-	
+
 	if err != nil {
-	
+
 		if err == sql.ErrNoRows {
 			return nil, nil // NOT Found !
 		}
-	
+
 		repo.log.Error().Err(err).Str("id", id).
 			Msg("Failed lookup for channel")
-	
+
 			return nil, err
 	}
-	
+
 	return res, nil
 }*/
 
@@ -142,7 +141,7 @@ func (repo *sqlxRepository) GetChannels(
 		if list[size-1] == nil {
 			// NOTE: page .next exists !
 			// FIXME: v0 compatible
-			list = list[0:size-1]
+			list = list[0 : size-1]
 		}
 	}
 
@@ -182,7 +181,7 @@ func (repo *sqlxRepository) GetChannels(
 	}
 
 	query := "SELECT * FROM chat.channel"
-	
+
 	if len(queryArgs) > 0 {
 		where := " WHERE closed_at ISNULL"
 		for i := range queryArgs {
@@ -202,9 +201,9 @@ func (repo *sqlxRepository) GetChannels(
 	var res []*Channel
 	err := repo.db.SelectContext(ctx, &res, query, queryArgs...) // "SELECT * FROM chat.channel")
 	return res, err
-	
+
 	// rows, err := repo.db.QueryContext(ctx, query, queryArgs...)
-	
+
 	// if err != nil {
 	// 	return nil, err
 	// }
@@ -233,7 +232,7 @@ func (repo *sqlxRepository) CreateChannel(ctx context.Context, c *Channel) error
 		c.Connection.String, c.ServiceHost.String =
 			contact.ContactServiceNode(c.Connection.String)
 	}
-	
+
 	c.Connection.Valid = c.Connection.String != ""
 
 	_, err := repo.db.ExecContext(ctx,
@@ -260,7 +259,7 @@ func (repo *sqlxRepository) CreateChannel(ctx context.Context, c *Channel) error
 		c.CreatedAt,
 		c.UpdatedAt,
 		c.ClosedAt,
-		
+
 		c.FlowBridge,
 
 	)
@@ -302,18 +301,16 @@ func (repo *sqlxRepository) CreateChannel(ctx context.Context, c *Channel) error
 }*/
 
 func (repo *sqlxRepository) CloseChannel(ctx context.Context, id string) (*Channel, error) {
-	
+
 	if id == "" {
 		return nil, errors.New("Close: channel.id required")
 	}
-	
-	var (
 
+	var (
 		now = time.Now()
 		// res = &Channel{}
 	)
 
-	
 	rows, err := repo.db.QueryContext(ctx, psqlChannelCloseQ, id, now.UTC())
 
 	if err != nil {
@@ -348,21 +345,21 @@ func (repo *sqlxRepository) CloseChannel(ctx context.Context, id string) (*Chann
 	}
 
 	return obj, nil
-	
+
 	// err := repo.db.GetContext(ctx, res, psqlChannelCloseQ, id, now.UTC())
 
 	// if err != nil {
-		
+
 	// 	if err == sql.ErrNoRows {
 	// 		return nil, nil // NOT FOUND !
 	// 	}
 
 	// 	repo.log.Warn().Err(err).
 	// 		Msg("Failed to mark channel closed")
-		
+
 	// 	return nil, err
 	// }
-	
+
 	// return res, nil
 }
 
@@ -389,12 +386,12 @@ func (repo *sqlxRepository) CloseChannel(ctx context.Context, id string) (*Chann
 }*/
 
 func (repo *sqlxRepository) CloseChannels(ctx context.Context, conversationID string) error {
-	
+
 	_, err := repo.db.ExecContext(ctx,
 		"UPDATE chat.channel SET closed_at=$2 WHERE conversation_id=$1",
-		 conversationID, app.CurrentTime().UTC(),
+		conversationID, app.CurrentTime().UTC(),
 	)
-	
+
 	return err
 }
 
@@ -402,10 +399,10 @@ func (repo *sqlxRepository) CheckUserChannel(ctx context.Context, channelID stri
 	search := SearchOptions{
 		// prepare filter(s)
 		Params: map[string]interface{}{
-			"id":      channelID, // MUST
+			"id": channelID, // MUST
 			// "user.id": userID,
 		},
-		Fields: []string{"id","*"}, // NOT applicable
+		Fields: []string{"id", "*"}, // NOT applicable
 		Sort:   []string{},
 		Page:   0,
 		Size:   1, // GET(!)
@@ -456,9 +453,9 @@ func (repo *sqlxRepository) CheckUserChannel(ctx context.Context, channelID stri
 }*/
 
 /*func (repo *sqlxRepository) UpdateChannel(ctx context.Context, channelID string) (int64, error) {
-	
+
 	updatedAt := time.Now()
-	
+
 	_, err := repo.db.ExecContext(ctx,
 		"UPDATE chat.channel SET updated_at=$2 WHERE id=$1",
 		 channelID, updatedAt.UTC(),
@@ -476,18 +473,18 @@ func (repo *sqlxRepository) CheckUserChannel(ctx context.Context, channelID stri
 func (repo *sqlxRepository) UpdateChannel(ctx context.Context, chatID string, readAt *time.Time) error {
 
 	now := app.CurrentTime() // time.Now()
-	
+
 	if readAt != nil && !readAt.IsZero() {
 
 		const divergence = time.Millisecond
 
 		lastMs := now.Truncate(divergence)
 		readMs := readAt.Truncate(divergence)
-		
+
 		if readMs.After(lastMs) {
 			return errors.Errorf(
 				"channel: update until %s date is beyond localtime %s",
-				 readMs.Format(app.TimeStamp), lastMs.Format(app.TimeStamp),
+				readMs.Format(app.TimeStamp), lastMs.Format(app.TimeStamp),
 			)
 		}
 
@@ -495,10 +492,10 @@ func (repo *sqlxRepository) UpdateChannel(ctx context.Context, chatID string, re
 
 		readAt = &now // MARK reed ALL messages !
 	}
-	
+
 	_, err := repo.db.ExecContext(ctx,
 		"UPDATE chat.channel SET updated_at=$2 WHERE id=$1 AND coalesce(updated_at,created_at)<$2",
-		 chatID, readAt.UTC(),
+		chatID, readAt.UTC(),
 	)
 
 	if err != nil {
@@ -509,12 +506,12 @@ func (repo *sqlxRepository) UpdateChannel(ctx context.Context, chatID string, re
 }
 
 func (repo *sqlxRepository) UpdateChannelHost(ctx context.Context, channelID, host string) error {
-	
+
 	_, err := repo.db.ExecContext(ctx,
 		"UPDATE chat.channel SET host=$2 WHERE id=$1",
-		 channelID, host,
+		channelID, host,
 	)
-	
+
 	return err
 }
 
@@ -524,15 +521,14 @@ func (repo *sqlxRepository) BindChannel(ctx context.Context, channelID string, v
 		// remove invalid (empty) key
 		delete(vars, "")
 	}
-	
+
 	if len(vars) == 0 {
 		// FIXME: remove all binding keys ?
 		return nil, nil
 	}
 
 	var (
-	
-		expr = "COALESCE(vars,'{}')" // "props"
+		expr   = "COALESCE(vars,'{}')" // "props"
 		params = make([]interface{}, 0, 3)
 	)
 
@@ -544,7 +540,6 @@ func (repo *sqlxRepository) BindChannel(ctx context.Context, channelID string, v
 	_ = param(channelID)
 
 	var (
-
 		del []string          // key(s) to be removed
 		set map[string]string // key(s) to be reseted
 	)
@@ -571,22 +566,22 @@ func (repo *sqlxRepository) BindChannel(ctx context.Context, channelID string, v
 	}
 	// 1. Remove empty value[d] keys
 	if len(del) != 0 {
-		
+
 		var keys pgtype.TextArray
 		_ = keys.Set(del)
 
-		expr += " - "+ param(&keys) +"::text[]"
+		expr += " - " + param(&keys) + "::text[]"
 	}
 	// 2. Reset attributes
 	if len(set) != 0 {
-		
+
 		jsonb, _ := json.Marshal(set)
 
-		expr += " || "+ param(string(jsonb)) +"::jsonb"
+		expr += " || " + param(string(jsonb)) + "::jsonb"
 	}
 
 	var setupVars = CompactSQL(
-	`-- conversation_id
+		`-- conversation_id
 	WITH s AS (
 		UPDATE chat.conversation
 		   SET props = %[1]s
@@ -606,7 +601,7 @@ func (repo *sqlxRepository) BindChannel(ctx context.Context, channelID string, v
 	SELECT props FROM c
 	`)
 
-	// _, err := repo.db.ExecContext(ctx, 
+	// _, err := repo.db.ExecContext(ctx,
 	// 	"UPDATE chat.channel SET props="+ expr +" WHERE id=$1",
 	// 	 params...,
 	// )
@@ -624,20 +619,19 @@ func (repo *sqlxRepository) BindChannel(ctx context.Context, channelID string, v
 			err = errs.NotFound(
 				"chat.channel.id.invalid",
 				"chat: channel id=%s not found",
-				 channelID,
+				channelID,
 			)
 		}
 	}
-	
+
 	return res, err
 }
-
 
 // ChannelsRequest prepares SELECT chat.channel command statement
 func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, err error) {
 
 	param := func(args ...interface{}) (sql string) {
-		
+
 		if params == nil {
 			params = make([]interface{}, 0, len(args))
 		}
@@ -656,34 +650,33 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 		// }
 		return sql
 	}
-	
-	stmt = psql.Select().
-	From("chat.channel c").
-	Columns(
-		
-		"c.id",
-		"c.type",
-		"c.name",
-		
-		"c.user_id",
-		"c.domain_id",
-		
-		"c.conversation_id",
-		"c.connection",
-		"c.internal",
-		"c.host",
-		"c.props", // Chat.StartConversation(.message.variables)
-		
-		"c.created_at",
-		"c.updated_at",
-		
-		"c.joined_at",
-		"c.closed_at",
-		"c.closed_cause",
-		
-		"c.flow_bridge",
 
-	)
+	stmt = psql.Select().
+		From("chat.channel c").
+		Columns(
+
+			"c.id",
+			"c.type",
+			"c.name",
+
+			"c.user_id",
+			"c.domain_id",
+
+			"c.conversation_id",
+			"c.connection",
+			"c.internal",
+			"c.host",
+			"c.props", // Chat.StartConversation(.message.variables)
+
+			"c.created_at",
+			"c.updated_at",
+
+			"c.joined_at",
+			"c.closed_at",
+			"c.closed_cause",
+
+			"c.flow_bridge",
+		)
 
 	// region: apply filters
 
@@ -699,7 +692,7 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 
 	// 	// }
 	// 	id, err := uuid.Parse(s)
-		
+
 	// 	if err != nil {
 	// 		return nil, err // uuid.Must(!)
 	// 	} else {
@@ -718,7 +711,7 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 			// stmt = stmt.Where("c.id="+param(id))
 
 			req.Size = 1 // normalized !
-			stmt = stmt.Where("c.id="+param(q))
+			stmt = stmt.Where("c.id=" + param(q))
 
 		case []string: // []UUID
 			size := len(q)
@@ -729,8 +722,8 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 			var v pgtype.Int8Array
 			_ = v.Set(q)
 
-			stmt = stmt.Where("c.id = ANY("+param(&v)+")")
-			
+			stmt = stmt.Where("c.id = ANY(" + param(&v) + ")")
+
 		default:
 			// err = errors.InternalServerError(
 			// 	"chat.channel.search.id.filter",
@@ -742,10 +735,10 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 	}
 	if q, ok := req.Params["user.id"]; ok && q != nil {
 		switch q := q.(type) {
-		// case string: 
-			// TODO: username[@domain]
+		// case string:
+		// TODO: username[@domain]
 		case int64:
-			stmt = stmt.Where("c.user_id="+param(q))
+			stmt = stmt.Where("c.user_id=" + param(q))
 		default:
 			err = errors.Errorf("search=channel filter=user.id convert=%#v", q)
 			return SelectStmt{}, nil, err
@@ -754,7 +747,7 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 	if q, ok := req.Params["conversation.id"]; ok && q != nil {
 		switch q := q.(type) {
 		case string: // UUID
-			stmt = stmt.Where("c.conversation_id="+param(q))
+			stmt = stmt.Where("c.conversation_id=" + param(q))
 		default:
 			err = errors.Errorf("search=channel filter=conversation.id convert=%#v", q)
 			return SelectStmt{}, nil, err
@@ -762,9 +755,9 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 	}
 	if q, ok := req.Params["contact"]; ok && q != nil {
 		switch q := q.(type) {
-		case string: 
+		case string:
 			// TODO: escape !!!
-			stmt = stmt.Where("c.connection="+param(q))
+			stmt = stmt.Where("c.connection=" + param(q))
 		default:
 			err = errors.Errorf("search=channel filter=contact convert=%#v", q)
 			return SelectStmt{}, nil, err
@@ -773,11 +766,11 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 	if q, ok := req.Params["internal"]; ok && q != nil {
 		// FIXME: (.type = 'webitel')
 		switch v := q.(type) {
-		// case string: 
-			// TODO: username[@domain]
+		// case string:
+		// TODO: username[@domain]
 		case bool:
 			// userId := q
-			stmt = stmt.Where("c.internal="+param(v))
+			stmt = stmt.Where("c.internal=" + param(v))
 		default:
 			err = errors.Errorf("search=channel filter=internal convert=%#v", q)
 			return SelectStmt{}, nil, err
@@ -786,7 +779,7 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 	if q, ok := req.Params["except"]; ok && q != nil { // FIXME: "sender" ?
 		switch q := q.(type) {
 		case string: // UUID
-			stmt = stmt.Where("c.id <> "+param(q))
+			stmt = stmt.Where("c.id <> " + param(q))
 		default:
 			err = errors.Errorf("search=channel filter=except convert=%#v", q)
 			return SelectStmt{}, nil, err
@@ -797,7 +790,7 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 		stmt = stmt.Where("c.closed_at ISNULL")
 	}
 	// endregion
-	
+
 	// region: sort order
 	sort := req.Sort
 	if len(sort) == 0 {
@@ -827,10 +820,10 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 		stmt = stmt.OrderBy(ref + order)
 	}
 	// endregion
-	
+
 	// region: limit/offset
 	size, page := req.GetSize(), req.GetPage()
-	
+
 	if size > 0 {
 		// OFFSET (page-1)*size -- omit same-sized previous page(s) from result
 		if page > 1 {
@@ -852,13 +845,12 @@ func ChannelList(rows *sql.Rows, limit int) ([]*Channel, error) {
 
 	// TODO: prepare projection
 
-	// 
+	//
 	if limit < 0 {
 		limit = 0
 	}
 
 	var (
-
 		page []Channel
 		list []*Channel
 	)
@@ -871,7 +863,6 @@ func ChannelList(rows *sql.Rows, limit int) ([]*Channel, error) {
 	}
 
 	var (
-		
 		err error
 		row *Channel
 	)
@@ -881,7 +872,7 @@ func ChannelList(rows *sql.Rows, limit int) ([]*Channel, error) {
 		if 0 < limit && len(list) == limit {
 			// indicate next page exists !
 			// if rows.Next() {
-				list = append(list, nil)
+			list = append(list, nil)
 			// }
 			break
 		}
@@ -897,7 +888,7 @@ func ChannelList(rows *sql.Rows, limit int) ([]*Channel, error) {
 		}
 
 		err := row.Scan(rows) // , plan)
-		
+
 		if err != nil {
 			break
 		}
@@ -950,7 +941,7 @@ func GetChannels(dcx sqlx.ExtContext, ctx context.Context, req *SearchOptions) (
 	if err != nil {
 		return nil, err // 500
 	}
-	
+
 	// region: bind context transaction
 	// // dc := session
 	// tx, err := session.BeginTxx(ctx, nil) // +R
@@ -999,7 +990,7 @@ func NewChannel(dcx sqlx.ExtContext, ctx context.Context, channel *Channel) erro
 		channel.UpdatedAt = channel.CreatedAt
 	}
 	channel.ClosedAt.Valid = false
-	
+
 	// normalizing ...
 	if channel.ServiceHost.String != "" {
 		channel.Connection.String, _ =
@@ -1057,8 +1048,7 @@ func NewChannel(dcx sqlx.ExtContext, ctx context.Context, channel *Channel) erro
 // postgres: chat.channel.close(!)
 // $1 - channel_id
 // $2 - local timestamp
-const psqlChannelCloseQ =
-`WITH closed AS (UPDATE chat.channel c SET closed_at=$2 WHERE c.id=$1 AND c.closed_at ISNULL RETURNING c.*)
+const psqlChannelCloseQ = `WITH closed AS (UPDATE chat.channel c SET closed_at=$2 WHERE c.id=$1 AND c.closed_at ISNULL RETURNING c.*)
 UPDATE chat.conversation s SET updated_at=$2 FROM closed c WHERE s.id=c.conversation_id
 RETURNING c.*
 `
@@ -1079,8 +1069,7 @@ RETURNING c.*
 // $13 - joined_at
 // $14 - closed_at
 // $15 - flow_bridge
-const psqlChannelNewQ =
-`WITH created AS (
+const psqlChannelNewQ = `WITH created AS (
  INSERT INTO chat.channel (
    id, type, name, user_id, domain_id,
    conversation_id, internal, connection, host, props,

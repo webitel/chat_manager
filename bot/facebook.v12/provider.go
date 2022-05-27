@@ -14,7 +14,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/bot"
 	graph "github.com/webitel/chat_manager/bot/facebook.v12/graph/v12.0"
 	"github.com/webitel/chat_manager/bot/facebook.v12/messenger"
@@ -24,7 +24,6 @@ import (
 )
 
 const (
-
 	providerType = "messenger" // "facebook"
 
 	PageInboxApplicationID = "263902037430900"
@@ -46,14 +45,13 @@ func init() {
 
 // Implementation
 var (
-
 	_ bot.Sender   = (*Client)(nil)
 	_ bot.Receiver = (*Client)(nil)
 	_ bot.Provider = (*Client)(nil)
 )
 
 func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
-	
+
 	// agent: NEW config (to validate provider settings integrity)
 	// state: RUN config (current to grab internal state if needed)
 	// current, _ := state.(*Client)
@@ -77,11 +75,11 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 
 	app := &Client{
 
-		Gateway:      agent,
-		Client:       &client,
-		Version:      version,
+		Gateway: agent,
+		Client:  &client,
+		Version: version,
 
-		Config:       oauth2.Config{
+		Config: oauth2.Config{
 			ClientID:     metadata["client_id"],
 			ClientSecret: metadata["client_secret"],
 			Endpoint: oauth2.Endpoint{
@@ -99,7 +97,7 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 		},
 	}
 
-	creds := clientcredentials.Config {
+	creds := clientcredentials.Config{
 		ClientID:       app.Config.ClientID,
 		ClientSecret:   app.Config.ClientSecret,
 		TokenURL:       app.Config.Endpoint.TokenURL,
@@ -113,25 +111,25 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 	))
 
 	if current, _ := state.(*Client); current != nil {
-		
-		app.chatMx    = current.chatMx
-		app.chats     = current.chats
 
-		app.pages     = current.pages
+		app.chatMx = current.chatMx
+		app.chats = current.chats
+
+		app.pages = current.pages
 		// app.facebook  = current.facebook
 		app.instagram = current.instagram
 
 		if app.Config.ClientSecret == current.Config.ClientSecret {
-			app.proofMx  = current.proofMx
-			app.proofs   = current.proofs
+			app.proofMx = current.proofMx
+			app.proofs = current.proofs
 		}
 
 	} else { // INIT
 
 		app.chatMx = new(sync.RWMutex)
-		app.chats  = make(map[string]Chat)
+		app.chats = make(map[string]Chat)
 
-		app.pages  = &messengerPages{
+		app.pages = &messengerPages{
 			pages: make(map[string]*Page),
 		}
 		app.instagram = &messengerPages{
@@ -146,7 +144,7 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 			// OVERRIDE OR DELETE
 			_ = agent.SetMetadata(
 				context.TODO(), map[string]string{
-					"fb": metadata["fb"],
+					"fb":       metadata["fb"],
 					"accounts": "",
 				},
 			)
@@ -177,9 +175,9 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 
 	if app.proofs == nil {
 		app.proofMx = new(sync.Mutex)
-		app.proofs  = make(map[string]string)
+		app.proofs = make(map[string]string)
 	}
-	
+
 	return app, nil
 }
 
@@ -191,12 +189,11 @@ func (c *Client) String() string {
 // channel := notify.Chat
 // contact := notify.User
 func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
-	
-	var (
 
+	var (
 		channel = notify.Chat
 		message = notify.Message
-		binding map[string]string  //TODO
+		binding map[string]string //TODO
 	)
 
 	bind := func(key, value string) {
@@ -207,7 +204,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 	}
 	// Resolve Facebook conversation (User+Page)
 	// by channel.Account.Contact [P]age-[s]coped User [ID]
-	chatID := channel.ChatID // channel.Account.Contact 
+	chatID := channel.ChatID // channel.Account.Contact
 	recipientUserPSID := chatID
 	chat, err := c.getExternalThread(channel)
 	if err != nil {
@@ -219,7 +216,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 		err := errors.NotFound(
 			"bot.messenger.send.chat.not_found",
 			"messenger: send TO.user=%s FROM.page=? not found",
-			 recipientUserPSID,
+			recipientUserPSID,
 		)
 		// return err
 		c.Log.Err(err).Msg("MESSENGER: SEND")
@@ -254,7 +251,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 	case "text", "":
 		// Text Message !
 		sendMessage.Text = message.Text
-		
+
 		menu := message.Buttons
 		if menu == nil {
 			// FIXME: Flow "menu" application does NOT process .Inline buttons =(
@@ -264,7 +261,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 		// 	// newReplyKeyboardFb(message.GetButtons(), &reqBody.Message);
 		// 	// See https://developers.facebook.com/docs/messenger-platform/send-messages/buttons
 
-		// } 
+		// }
 		if /*menu := message.Inline;*/ len(menu) != 0 {
 			// newInlineboardFb(message.GetInline(), &reqBody.Message, message.Text);
 			// See https://developers.facebook.com/docs/messenger-platform/reference/buttons/quick-replies#quick_reply
@@ -280,7 +277,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 					// Code    string
 					// Url     string
 					switch strings.ToLower(src.Type) {
-					case "email", "mail":    // https://developers.facebook.com/docs/messenger-platform/send-messages/quick-replies#email
+					case "email", "mail": // https://developers.facebook.com/docs/messenger-platform/send-messages/quick-replies#email
 						replies = append(replies, &messenger.QuickReply{
 							Type: "user_email",
 						})
@@ -288,7 +285,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 						replies = append(replies, &messenger.QuickReply{
 							Type: "user_phone_number",
 						})
-					case "location":         // https://developers.facebook.com/docs/messenger-platform/send-messages/quick-replies#locations
+					case "location": // https://developers.facebook.com/docs/messenger-platform/send-messages/quick-replies#locations
 						// March 16, 2022
 						// Error: (#100) Location Quick Reply is now deprecated on API 4.0. Please refer to our Developer Documentation for more info.
 						// https://developers.facebook.com/docs/messenger-platform/changelog/#20190610
@@ -298,25 +295,25 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 						// We recommend businesses ask for zip code and address information within the thread.
 						// While we are sunsetting the existing version of Share Location,
 						// in the coming months we will be introducing new ways for people to communicate their location to businesses in more valuable ways.
-						
+
 						// replies = append(replies, &messenger.QuickReply{
 						// 	Type: "location",
 						// })
-					case "postback":         // https://developers.facebook.com/docs/messenger-platform/send-messages/buttons#postback
+					case "postback": // https://developers.facebook.com/docs/messenger-platform/send-messages/buttons#postback
 						// Buttons !
 						buttons = append(buttons, &messenger.Button{
-							Type: "postback",
-							Title: coalesce(src.Caption, src.Text),
+							Type:    "postback",
+							Title:   coalesce(src.Caption, src.Text),
 							Payload: coalesce(src.Code, src.Text),
 						})
-					case "url":              // https://developers.facebook.com/docs/messenger-platform/send-messages/buttons#button-format
+					case "url": // https://developers.facebook.com/docs/messenger-platform/send-messages/buttons#button-format
 						buttons = append(buttons, &messenger.Button{
-							Type: "web_url",
+							Type:  "web_url",
 							Title: coalesce(src.Caption, src.Text),
 							URL:   src.GetUrl(),
 						})
-					default:                 // https://developers.facebook.com/docs/messenger-platform/send-messages/quick-replies#text
-					// case "reply", "text":
+					default: // https://developers.facebook.com/docs/messenger-platform/send-messages/quick-replies#text
+						// case "reply", "text":
 						replies = append(replies, &messenger.QuickReply{
 							Type: "text",
 							// Required if content_type is 'text'.
@@ -344,7 +341,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 					Payload: &messenger.TemplateAttachment{
 						TemplateType: "button",
 						ButtonTemplate: &messenger.ButtonTemplate{
-							Text: coalesce(message.Text, "Де текст ?"),
+							Text:    coalesce(message.Text, "Де текст ?"),
 							Buttons: buttons,
 						},
 					},
@@ -369,7 +366,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 		}
 
 		sendAttachment.Payload = messenger.FileAttachment{
-			URL: sentAttachment.Url,
+			URL:        sentAttachment.Url,
 			IsReusable: false,
 		}
 
@@ -382,36 +379,36 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 
 	// https://developers.facebook.com/docs/messenger-platform/send-messages/personas
 	// case "joined": // NEW Member(s) joined the conversation
-		// newChatMember := message.NewChatMembers[0]
-		// persona := graph.Persona{
-		// 	Name: newChatMember.GetFullName(),
-		// 	PictureURL: "",
-		// }
-		// // https://developers.facebook.com/docs/messenger-platform/send-messages/personas#create
-		// // POST https://graph.facebook.com/me/personas?access_token=<PAGE_ACCESS_TOKEN>
-		// // {
-		// // 	"name": "John Mathew",
-		// // 	"profile_picture_url": "https://facebook.com/john_image.jpg",
-		// // }
-		// // ----------------------------------------------------------------------------
-		// // {
-		// // 	"id": "<PERSONA_ID>"
-		// // }
-		// // ----------------------------------------------------------------------------
-		// // Note: persona_id is a optional property.
-		// // If persona_id is not included, the message will be sent normally.
-		// sendRequest.PersonaID = string
+	// newChatMember := message.NewChatMembers[0]
+	// persona := graph.Persona{
+	// 	Name: newChatMember.GetFullName(),
+	// 	PictureURL: "",
+	// }
+	// // https://developers.facebook.com/docs/messenger-platform/send-messages/personas#create
+	// // POST https://graph.facebook.com/me/personas?access_token=<PAGE_ACCESS_TOKEN>
+	// // {
+	// // 	"name": "John Mathew",
+	// // 	"profile_picture_url": "https://facebook.com/john_image.jpg",
+	// // }
+	// // ----------------------------------------------------------------------------
+	// // {
+	// // 	"id": "<PERSONA_ID>"
+	// // }
+	// // ----------------------------------------------------------------------------
+	// // Note: persona_id is a optional property.
+	// // If persona_id is not included, the message will be sent normally.
+	// sendRequest.PersonaID = string
 
-	// case "left": // Someone left the conversation thread ! 
+	// case "left": // Someone left the conversation thread !
 
 	case "closed":
 		sendMessage.Text = message.GetText()
-	
+
 	default:
 		c.Log.Warn().
-		// Str("type", message.Type).
-		Str("error", "message: type="+message.Type+" not implemented yet").
-		Msg("MESSENGER: SEND")
+			// Str("type", message.Type).
+			Str("error", "message: type="+message.Type+" not implemented yet").
+			Msg("MESSENGER: SEND")
 		return nil
 	}
 
@@ -420,7 +417,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 	if err != nil {
 		return err // nil
 	}
-	
+
 	// TARGET[chat_id]: MESSAGE[message_id]
 	bind(chatID, messageID)
 	// sentBindings := map[string]string {
@@ -520,11 +517,10 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			return // (302) Found
 
 		case "remove",
-			 "subscribe",
-			 "unsubscribe":
+			"subscribe",
+			"unsubscribe":
 
 			var (
-
 				err error
 				res []*Page
 				ids = Fields(query["id"]...)
@@ -571,7 +567,7 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 		}
 
 	case http.MethodPost:
-		
+
 		// Deauthorize Request ?
 		if rs := req.FormValue("signed_request"); rs != "" {
 			err := c.Deauthorize(rs)
@@ -580,7 +576,7 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			}
 			break // 200 OK
 		}
-		
+
 		// POST Webhook event !
 		c.WebhookEvent(rsp, req)
 
@@ -594,7 +590,7 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 
 // Subscribe Webhook Callback URI to Facebook well-known Object(s).Fields...
 func (c *Client) SubscribeObjects(ctx context.Context, uri string) error {
-	
+
 	// https://developers.facebook.com/docs/graph-api/reference/app/subscriptions#publish
 
 	token, err := c.creds.Token()
@@ -621,7 +617,7 @@ func (c *Client) SubscribeObjects(ctx context.Context, uri string) error {
 			// // One or more of the set of valid fields in this object to subscribe to.
 			// "fields": {strings.Join([]string{
 			// 	// "standby",
-			// 	"messages", 
+			// 	"messages",
 			// 	"messaging_postbacks",
 			// 	// "messaging_handovers",
 			// 	// "user_action",
@@ -635,46 +631,46 @@ func (c *Client) SubscribeObjects(ctx context.Context, uri string) error {
 		}
 		// Object(s) Subscription(s)
 		subs = []webhooks.Subscription{
-		{
-			Object: "page",
-			// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events
-			Fields: []string{
-				// "standby",
-				"messages",
-				// "message_reads",
-				// "message_reactions",
-				// "messaging_referrals",
-				"messaging_postbacks",
-				// "messaging_handovers",
-				// "user_action",
+			{
+				Object: "page",
+				// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events
+				Fields: []string{
+					// "standby",
+					"messages",
+					// "message_reads",
+					// "message_reactions",
+					// "messaging_referrals",
+					"messaging_postbacks",
+					// "messaging_handovers",
+					// "user_action",
+				},
 			},
-		},
-		{
-			Object: "instagram",
-			Fields: []string{
-				// "standby",
-				"messages",
-				// "message_reactions", 
-				"messaging_postbacks",
-				// "messaging_handovers",
-				// "messaging_seen",
-			},
-		// },
-		// {
-		// 	Object: "permissions",
-		// 	Fields: []string{
-		// 		"connected",
-		// 		"pages_show_list",
-		// 		"pages_messaging",
-		// 		"pages_messaging_subscriptions",
-		// 		"pages_manage_metadata",
-		// 	},
-		}}
+			{
+				Object: "instagram",
+				Fields: []string{
+					// "standby",
+					"messages",
+					// "message_reactions",
+					"messaging_postbacks",
+					// "messaging_handovers",
+					// "messaging_seen",
+				},
+				// },
+				// {
+				// 	Object: "permissions",
+				// 	Fields: []string{
+				// 		"connected",
+				// 		"pages_show_list",
+				// 		"pages_messaging",
+				// 		"pages_messaging_subscriptions",
+				// 		"pages_manage_metadata",
+				// 	},
+			}}
 
-		res = struct{
-			graph.Success // Embedded (Anonymous)
-			Error *graph.Error `json:"error,omitempty"`
-		} {
+		res = struct {
+			graph.Success              // Embedded (Anonymous)
+			Error         *graph.Error `json:"error,omitempty"`
+		}{
 			// Alloc
 		}
 	)
@@ -689,12 +685,12 @@ func (c *Client) SubscribeObjects(ctx context.Context, uri string) error {
 		// SWITCH ON Webhook subscription !
 		req, err := http.NewRequestWithContext(
 			ctx, http.MethodPost,
-			"https://graph.facebook.com" + path.Join(
+			"https://graph.facebook.com"+path.Join(
 				"/", c.Version, c.Config.ClientID, "subscriptions",
 			),
 			strings.NewReader(form.Encode()),
 		)
-		
+
 		if err != nil {
 			return err
 		}
@@ -735,7 +731,7 @@ func (c *Client) Register(ctx context.Context, uri string) error {
 
 // Deregister webhook callback URI
 func (c *Client) Deregister(ctx context.Context) error {
-	
+
 	// https://developers.facebook.com/docs/graph-api/reference/app/subscriptions#delete
 
 	token, err := c.creds.Token()
@@ -754,7 +750,7 @@ func (c *Client) Deregister(ctx context.Context) error {
 		// // One or more of the set of valid fields in this object to unsubscribe from.
 		// "fields": {strings.Join([]string{
 		// 	"standby",
-		// 	"messages", 
+		// 	"messages",
 		// 	"messaging_postbacks",
 		// 	"messaging_handovers",
 		// 	// "user_action",
@@ -765,12 +761,12 @@ func (c *Client) Deregister(ctx context.Context) error {
 	// SWITCH ON Webhook subscription !
 	// https://developers.facebook.com/docs/graph-api/reference/app/subscriptions#delete
 	req, err := http.NewRequest(http.MethodDelete,
-		"https://graph.facebook.com" + path.Join(
+		"https://graph.facebook.com"+path.Join(
 			"/", c.Version, c.Config.ClientID, "subscriptions",
 		),
 		strings.NewReader(form.Encode()),
 	)
-	
+
 	if err != nil {
 		return err
 	}
@@ -784,11 +780,10 @@ func (c *Client) Deregister(ctx context.Context) error {
 	defer rsp.Body.Close()
 
 	var (
-
-		res = struct{
-			graph.Success // Embedded (Anonymous)
-			Error *graph.Error `json:"error,omitempty"`
-		} {
+		res = struct {
+			graph.Success              // Embedded (Anonymous)
+			Error         *graph.Error `json:"error,omitempty"`
+		}{
 			// Alloc
 		}
 	)
@@ -822,7 +817,6 @@ func (c *Client) Close() error {
 	return nil
 }
 
-
 func (c *Client) MessengerPages(rsp http.ResponseWriter, req *http.Request) {
 
 	// TODO: Authorization Required
@@ -852,12 +846,11 @@ func (c *Client) MessengerPages(rsp http.ResponseWriter, req *http.Request) {
 	// _ = enc.Encode(pages)
 
 	// JSON StartArray
-	_, _ = rsp.Write([]byte("[\n"+indent))
+	_, _ = rsp.Write([]byte("[\n" + indent))
 
 	// Result View
 	var (
-
-		n int
+		n    int
 		item = Page{
 			Page: &graph.Page{
 				// Envelope: Sanitized View
@@ -876,12 +869,12 @@ func (c *Client) MessengerPages(rsp http.ResponseWriter, req *http.Request) {
 			continue // DO NOT Show !
 		}
 
-		item.Page.ID          = page.ID
-		item.Page.Name        = page.Name
+		item.Page.ID = page.ID
+		item.Page.Name = page.Name
 		// item.Page.Picture     = page.Picture
 		// item.Page.AccessToken = page.GetAccessToken()
 
-		item.Accounts         = page.Accounts
+		item.Accounts = page.Accounts
 		item.SubscribedFields = page.SubscribedFields
 
 		_ = enc.Encode(item)
@@ -901,7 +894,7 @@ func (c *Client) SubscribePages(pageIds ...string) ([]*Page, error) {
 
 	// Do subscribe for page(s) webhook updates
 	err = c.subscribePages(pages)
-	
+
 	if err != nil {
 		return nil, err
 	}
@@ -928,8 +921,6 @@ func (c *Client) UnsubscribePages(pageIds ...string) ([]*Page, error) {
 	return pages, nil
 }
 
-
-
 // Fields returns set of normalized variant ?fields=a,b&fields=c spec
 // Example ?id=a,b&id=c&id=&id=c will result in [a,b,c]
 func Fields(list ...string) []string {
@@ -946,7 +937,8 @@ func Fields(list ...string) []string {
 		switch m := len(more); m {
 		case 0:
 			list = append(list[0:i], list[i+1:]...)
-			i--; continue
+			i--
+			continue
 		case 1:
 			list[i] = more[0]
 		default:
@@ -961,7 +953,7 @@ func Fields(list ...string) []string {
 			// push(ex field on it's place)
 			copy(list[i:i+m], more)
 			// iter(move cursor)
-			i += m-1 // -1 next iter
+			i += m - 1 // -1 next iter
 		}
 	}
 
@@ -973,13 +965,14 @@ func Unique(list []string) []string {
 
 	var e int // index duplicate
 	for i := 1; i < len(list); i++ {
-		for e = i-1; e >= 0 && list[i] != list[e]; e-- {
+		for e = i - 1; e >= 0 && list[i] != list[e]; e-- {
 			// lookup for duplicate; backwards
 		}
 		if e >= 0 {
 			// duplicate: found; drop !
 			list = append(list[:i], list[i+1:]...)
-			(i)--; continue
+			(i)--
+			continue
 		}
 	}
 

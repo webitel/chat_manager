@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/micro/go-micro/v2"
-	"github.com/micro/go-micro/v2/broker"
-	"github.com/micro/go-micro/v2/errors"
-	"github.com/micro/go-micro/v2/metadata"
+	micro "github.com/micro/micro/v3/service"
+	"github.com/micro/micro/v3/service/broker"
+	"github.com/micro/micro/v3/service/context/metadata"
+	"github.com/micro/micro/v3/service/errors"
 
 	// "github.com/webitel/chat_manager/api/proto/auth"
 	"github.com/webitel/chat_manager/api/proto/auth"
@@ -19,7 +19,6 @@ import (
 )
 
 const (
-
 	hdrDomainId      = `X-Webitel-Dc`
 	hdrDomainName    = `x-Webitel-Domain`
 	hdrAccessToken   = `X-Webitel-Access`
@@ -34,11 +33,10 @@ const (
 	h2pMicroService  = `micro-from-service`
 	h2pAuthorization = `authorization`
 
-	serviceEngine    = `engine`
-	serviceChatFlow  = `workflow`
-	serviceChatSrv   = `webitel.chat.server`
-	serviceChatBot   = `webitel.chat.bot`
-
+	serviceEngine   = `engine`
+	serviceChatFlow = `workflow`
+	serviceChatSrv  = `webitel.chat.server`
+	serviceChatBot  = `webitel.chat.bot`
 )
 
 // Authorization: <method> [<credentials>]
@@ -52,17 +50,16 @@ func networkCredentials(token string) (method, credentials string, err error) {
 
 // github.com/micro/go-micro/v2/metadata Authorization credentials
 func microMetadataAuthZ(md metadata.Metadata) *Authorization {
-	
+
 	if len(md) == 0 {
 		return nil // ErrNoAuthorization
 	}
 
 	var (
-
-		ok bool
+		ok    bool
 		authZ = new(Authorization)
 	)
-	
+
 	// X-[Micro-]From-Service: <name>
 	if authZ.Service, ok = md[h2pMicroService]; !ok {
 		if authZ.Service, ok = md[hdrMicroService]; !ok {
@@ -71,7 +68,7 @@ func microMetadataAuthZ(md metadata.Metadata) *Authorization {
 			}
 		}
 	}
-	
+
 	// X-Webitel-Access: <token>
 	if authZ.Token, ok = md[h2pAccessToken]; !ok {
 		authZ.Token, ok = md[hdrAccessToken]
@@ -103,11 +100,11 @@ func microContextAuthZ(ctx context.Context) (*Authorization, error) {
 	}
 
 	authN := microMetadataAuthZ(md)
-	
+
 	switch authN.Service {
 	case serviceChatFlow,
-		 serviceChatBot,
-		 serviceChatSrv: // NOTE: webitel.chat.bot passthru original context while searching for gateways URI
+		serviceChatBot,
+		serviceChatSrv: // NOTE: webitel.chat.bot passthru original context while searching for gateways URI
 
 		// return nil, nil
 	}
@@ -131,13 +128,14 @@ type ClientOption func(c *Client)
 
 // ClientService option connects given srv.Client()
 // to cluster's well-known Authorization service
-func ClientService(srv micro.Service) ClientOption {
+func ClientService(srv *micro.Service) ClientOption {
 	return func(ctl *Client) {
-		
-		ctl.Service   = auth.NewAuthService("go.webitel.app", srv.Client())
+
+		ctl.Service = auth.NewAuthService("go.webitel.app", srv.Client())
 		ctl.Customers = auth.NewCustomersService("go.webitel.app", srv.Client())
-		
-		sub, err := srv.Options().Broker.Subscribe(
+
+		// sub, err := srv.Options().Broker.Subscribe(
+		sub, err := broker.DefaultBroker.Subscribe(
 			"invalidate.#", ctl.invalidateCache,
 			// options ...
 		)
@@ -248,7 +246,7 @@ func (c *Client) VerifyToken(ctx context.Context, token string) (*auth.Userinfo,
 }
 
 func (c *Client) GetAuthorization(ctx context.Context) (*Authorization, error) {
-	
+
 	authN, err := microContextAuthZ(ctx)
 
 	if err != nil {
@@ -269,22 +267,20 @@ func (c *Client) GetAuthorization(ctx context.Context) (*Authorization, error) {
 	return authN, err
 }
 
-func (c *Client) invalidateCache(notice broker.Event) error {
+func (c *Client) invalidateCache(notice *broker.Message) error {
 
 	var (
-
-		topic = notice.Topic()
-		keys = strings.Split(topic, ".")
+		topic = notice.Header["Micro-Topic"] // notice.Topic()
+		keys  = strings.Split(topic, ".")
 		// "invalidate" == keys[0]
 		objclass = keys[1]
 		objectId = keys[2]
-
 	)
 
 	switch objclass {
 	case "customer":
 		c.cache.Purge()
-	
+
 	case "session":
 		for _, token := range c.cache.Keys() {
 			if tokenString, ok := token.(string); ok {

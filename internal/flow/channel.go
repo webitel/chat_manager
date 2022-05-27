@@ -11,25 +11,25 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/micro/go-micro/v2/client"
-	"github.com/micro/go-micro/v2/client/selector"
-	"github.com/micro/go-micro/v2/errors"
-	"github.com/micro/go-micro/v2/registry"
+	"github.com/micro/micro/v3/service/client"
+	"github.com/micro/micro/v3/service/errors"
+	"github.com/micro/micro/v3/util/selector"
+	"github.com/micro/micro/v3/util/selector/random"
 
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	bot "github.com/webitel/chat_manager/api/proto/workflow"
 	"github.com/webitel/chat_manager/app"
 	store "github.com/webitel/chat_manager/internal/repo/sqlx"
-	// strategy "github.com/webitel/chat_manager/internal/selector"
+	strategy "github.com/webitel/chat_manager/internal/selector"
 )
 
 // Channel [FROM] chat.srv [TO] workflow
 // CHAT communication channel; chat@bot
 type Channel struct {
 	// Client
-	Log   *zerolog.Logger
+	Log *zerolog.Logger
 	// Host that routine .this chat@workflow channel
-	Host string // preffered: "workflow" service-node-id
+	Host  string // preffered: "workflow" service-node-id
 	Agent bot.FlowChatServerService
 	Store store.CacheRepository
 	// Session
@@ -39,8 +39,8 @@ type Channel struct {
 	// User *chat.User // TODO: flow schema @bot info
 	ProfileID int64 // Disclose profile.schema.id
 	// DomainID int64 // Chat.DomainID
-	
-	Invite string // SESSION ID
+
+	Invite  string // SESSION ID
 	Pending string // .WaitMessage(token)
 
 	// Created int64
@@ -98,28 +98,27 @@ func (c *Channel) UserID() int64 {
 	return c.ProfileID
 }
 
-
 // lookup is client.Selector.Strategy to peek preffered @workflow node,
 // serving .this specific chat channel
-func (c *Channel) lookup(services []*registry.Service) selector.Next {
+/*func (c *Channel) lookup(services []*registry.Service) selector.Next {
 
 	perform := "LOOKUP"
 	// region: recover .this channel@workflow service node
 	if c.Host == "lookup" {
 		c.Host = "" // RESET
 	} else if c.Host == "" && c.ChatID() != "" {
-			
+
 		node, err := c.Store.ReadConversationNode(c.ID)
-	
+
 		if err != nil {
-			
+
 			c.Log.Error().Err(err).
 				Str("chat-id", c.ID).
 				Str("channel", "chatflow").
 				Msg("RECOVER Failed lookup store for chat@workflow channel host")
-			
+
 			c.Host = ""
-		
+
 		} else if node != "" {
 
 			c.Host = node
@@ -133,9 +132,9 @@ func (c *Channel) lookup(services []*registry.Service) selector.Next {
 			// 	Str("host", c.Host).
 			// 	Msg("RECOVERY")
 		}
-	
+
 	} // else if c.Host != "" {
-		
+
 	// 	// c.Log.Debug().
 	// 	// 	Int64("pid", c.UserID()). // channel: schema@bot.profile (external)
 	// 	// 	Int64("pdc", c.DomainID()). // channel: primary domain component id
@@ -145,16 +144,16 @@ func (c *Channel) lookup(services []*registry.Service) selector.Next {
 	// 	// 	Msg("LOOKUP")
 	// }
 	// endregion
-	
+
 	if c.Host == "" {
 		// START
 		return selector.Random(services)
 		// return strategy.PrefferedHost("10.9.8.111")(services)
 	}
-	
+
 	var peer *registry.Node
-	
-	lookup:
+
+lookup:
 	for _, service := range services {
 		for _, node := range service.Nodes {
 			if strings.HasSuffix(node.Id, c.Host) {
@@ -165,19 +164,19 @@ func (c *Channel) lookup(services []*registry.Service) selector.Next {
 	}
 
 	if peer == nil {
-		
+
 		c.Log.Warn().
-			Int64("pid", c.UserID()). // channel: schema@bot.profile (external)
+			Int64("pid", c.UserID()).   // channel: schema@bot.profile (external)
 			Int64("pdc", c.DomainID()). // channel: primary domain component id
 			Str("chat-id", c.ChatID()). // channel: chat@workflow.schema.bot (internal)
 			Str("channel", "chatflow").
-			Str("host", c.Host). // WANTED
+			Str("host", c.Host).   // WANTED
 			Str("peek", "random"). // SELECT
 			Str("error", "node: not found").
 			Msg(perform)
 
-			return selector.Random(services)
-			// return strategy.PrefferedHost("10.9.8.111")(services)
+		return selector.Random(services)
+		// return strategy.PrefferedHost("10.9.8.111")(services)
 	}
 
 	var event *zerolog.Event
@@ -189,40 +188,39 @@ func (c *Channel) lookup(services []*registry.Service) selector.Next {
 	}
 
 	event.
-		Int64("pid", c.UserID()). // channel: schema@bot.profile (external)
+		Int64("pid", c.UserID()).   // channel: schema@bot.profile (external)
 		Int64("pdc", c.DomainID()). // channel: primary domain component id
 		Str("chat-id", c.ChatID()). // channel: chat@workflow.schema.bot (internal)
 		Str("channel", "chatflow").
-		Str("host", c.Host). // WANTED
+		Str("host", c.Host).       // WANTED
 		Str("addr", peer.Address). // FOUND
 		Msg(perform)
-	
+
 	return func() (*registry.Node, error) {
 
 		return peer, nil
 	}
-}
+}*/
 
 // call implements client.CallWrapper to keep tracking channel @workflow service node
-func (c *Channel) call(next client.CallFunc) client.CallFunc {
-	return func(ctx context.Context, node *registry.Node, req client.Request, rsp interface{}, opts client.CallOptions) error {
-		
+func (c *Channel) callWrap(next client.CallFunc) client.CallFunc {
+	return func(ctx context.Context, addr string, req client.Request, rsp interface{}, opts client.CallOptions) error {
+
 		c.ID = c.ChatID() // resolve channel's chat-id ! early binding
 
 		// doRequest
-		err := next(ctx, node, req, rsp, opts)
-		// 
+		err := next(ctx, addr, req, rsp, opts)
+		//
 		if err != nil {
-			
+
 			if c.Host != "" {
 				c.Log.Warn().
-					Int64("pid", c.UserID()). // channel: schema@bot.profile (external)
+					Int64("pid", c.UserID()).   // channel: schema@bot.profile (external)
 					Int64("pdc", c.DomainID()). // channel: primary domain component id
 					Str("chat-id", c.ChatID()). // channel: chat@workflow.schema.bot (internal)
 					Str("channel", "chatflow").
-					Str("peer", c.Host). // WANTED
-					Str("host", node.Id). // REQUESTED
-					Str("addr", node.Address).
+					Str("seed", c.Host). // WANTED
+					Str("peer", addr).   // REQUESTED
 					Msg("LOST")
 			}
 			c.Host = ""
@@ -230,7 +228,7 @@ func (c *Channel) call(next client.CallFunc) client.CallFunc {
 			re := errors.FromError(err)
 			if re.Id == "go.micro.client" {
 				if strings.HasPrefix(re.Detail, "service ") {
-					if strings.HasSuffix(re.Detail, ": "+ selector.ErrNotFound.Error()) {
+					if strings.HasSuffix(re.Detail, ": "+selector.ErrNoneAvailable.Error()) {
 						// "{\"id\":\"go.micro.client\",\"code\":500,\"detail\":\"service workflow: not found\",\"status\":\"Internal Server Error\"}"
 					}
 				}
@@ -241,7 +239,7 @@ func (c *Channel) call(next client.CallFunc) client.CallFunc {
 
 		if c.Host == "" {
 			// NEW! Hosted!
-			c.Host = node.Id
+			c.Host = addr
 			re := c.Store.WriteConversationNode(c.ID, c.Host)
 			if err = re; err != nil {
 				// s.log.Error().Msg(err.Error())
@@ -249,16 +247,17 @@ func (c *Channel) call(next client.CallFunc) client.CallFunc {
 			}
 
 			c.Log.Info().
-				Int64("pid", c.UserID()). // channel: schema@bot.profile (external)
+				Int64("pid", c.UserID()).   // channel: schema@bot.profile (external)
 				Int64("pdc", c.DomainID()). // channel: primary domain component id
 				Str("chat-id", c.ChatID()). // channel: chat@workflow.schema.bot (internal)
 				Str("channel", "chatflow").
-				Str("host", c.Host).
-				Str("addr", node.Address).
+				Str("peer", c.Host). // == addr
 				Msg("HOSTED")
-		
-		} else if node.Id != c.Host {
+
+		} else if addr != c.Host {
 			// Hosted! But JUST Served elsewhere ...
+			var seed string             // WANTED
+			seed, c.Host = c.Host, addr // RESET
 			re := c.Store.WriteConversationNode(c.ID, c.Host)
 			if err = re; err != nil {
 				// s.log.Error().Msg(err.Error())
@@ -266,16 +265,15 @@ func (c *Channel) call(next client.CallFunc) client.CallFunc {
 			}
 
 			c.Log.Info().
-				Int64("pid", c.UserID()). // channel: schema@bot.profile (external)
+				Int64("pid", c.UserID()).   // channel: schema@bot.profile (external)
 				Int64("pdc", c.DomainID()). // channel: primary domain component id
 				Str("chat-id", c.ChatID()). // channel: chat@workflow.schema.bot (internal)
 				Str("channel", "chatflow").
-				Str("peer", c.Host). // WANTED
-				Str("host", node.Id). // SERVED
-				Str("addr", node.Address).
+				Str("seed", seed). // WANTED
+				Str("peer", addr). // SERVED
 				Msg("RE-HOST")
 
-			c.Host = node.Id
+			// c.Host = addr
 		}
 
 		return err
@@ -283,21 +281,147 @@ func (c *Channel) call(next client.CallFunc) client.CallFunc {
 }
 
 // CallOption specific for this kind of channel(s)
-func (c *Channel) sendOptions(opts *client.CallOptions) {
-	// apply .call options for .this channel ...
-	client.WithSelectOption(
-		selector.WithStrategy(c.lookup),
-	)(opts)
-	client.WithCallWrapper(c.call)(opts)
+func (c *Channel) callOpts(opts *client.CallOptions) {
+	// apply .call options within .this channel ...
+	for _, setup := range []client.CallOption{
+		client.WithSelector(chatFlowSelector{c}),
+		client.WithCallWrapper(c.callWrap),
+	} {
+		setup(opts)
+	}
+}
+
+//
+type chatFlowSelector struct {
+	*Channel
+}
+
+var _ selector.Selector = chatFlowSelector{nil}
+
+var randomize = random.NewSelector()
+
+// Select a route from the pool using the strategy
+func (c chatFlowSelector) Select(hosts []string, opts ...selector.SelectOption) (selector.Next, error) {
+	perform := "LOOKUP"
+	// region: recover .this channel@workflow service node
+	if c.Host == "lookup" {
+		c.Host = "" // RESET
+	} else if c.Host == "" && c.ChatID() != "" {
+
+		node, err := c.Store.ReadConversationNode(c.ID)
+
+		if err != nil {
+
+			c.Log.Error().Err(err).
+				Str("chat-id", c.ID).
+				Str("channel", "chatflow").
+				Msg("RECOVER Failed lookup store for chat@workflow channel host")
+
+			c.Host = ""
+
+		} else if node != "" {
+
+			c.Host = node
+			perform = "LOCATE"
+
+			// c.Log.Info().
+			// 	Int64("pid", c.UserID()). // channel: schema@bot.profile (external)
+			// 	Int64("pdc", c.DomainID()). // channel: primary domain component id
+			// 	Str("chat-id", c.ChatID()). // channel: chat@workflow.schema.bot (internal)
+			// 	Str("channel", "chatflow").
+			// 	Str("host", c.Host).
+			// 	Msg("RECOVERY")
+		}
+
+	} // else if c.Host != "" {
+
+	// 	// c.Log.Debug().
+	// 	// 	Int64("pid", c.UserID()). // channel: schema@bot.profile (external)
+	// 	// 	Int64("pdc", c.DomainID()). // channel: primary domain component id
+	// 	// 	Str("chat-id", c.ChatID()). // channel: chat@workflow.schema.bot (internal)
+	// 	// 	Str("channel", "chatflow").
+	// 	// 	Str("host", c.Host).
+	// 	// 	Msg("LOOKUP")
+	// }
+	// endregion
+
+	if c.Host == "" {
+		// START
+		// // return selector.Random(services)
+		// return randomize.Select(hosts, opts...)
+		return strategy.PrefferedHost("10.9.8.111")(hosts, opts...) // workflow
+	}
+
+	var peer string
+	for _, host := range hosts {
+		if host == c.Host {
+			peer = host
+			break
+		}
+	}
+
+	if peer == "" {
+
+		c.Log.Warn().
+			Int64("pid", c.UserID()).   // channel: schema@bot.profile (external)
+			Int64("pdc", c.DomainID()). // channel: primary domain component id
+			Str("chat-id", c.ChatID()). // channel: chat@workflow.schema.bot (internal)
+			Str("channel", "chatflow").
+			Str("host", c.Host).   // WANTED
+			Str("peek", "random"). // SELECT
+			Str("error", "node: not found").
+			Msg(perform)
+
+		return randomize.Select(hosts, opts...)
+		// return strategy.PrefferedHost("10.9.8.111")(services)
+	}
+
+	var event *zerolog.Event
+
+	if perform == "LOCATE" {
+		event = c.Log.Info()
+	} else {
+		event = c.Log.Trace()
+	}
+
+	event.
+		Int64("pid", c.UserID()).   // channel: schema@bot.profile (external)
+		Int64("pdc", c.DomainID()). // channel: primary domain component id
+		Str("chat-id", c.ChatID()). // channel: chat@workflow.schema.bot (internal)
+		Str("channel", "chatflow").
+		Str("peer", c.Host). // WANTED & FOUND
+		Msg(perform)
+
+	return func() string {
+		return peer
+	}, nil
+}
+
+// Record the error returned from a route to inform future selection
+func (c chatFlowSelector) Record(host string, err error) error {
+	if err != nil {
+		// TODO: Resolve error type & change node if needed !
+	}
+	return nil
+}
+
+// Reset the selector
+func (chatFlowSelector) Reset() error {
+	return nil
+}
+
+// String returns the name of the selector
+func (chatFlowSelector) String() string {
+	return "chatflow"
 }
 
 // Send @workflow.ConfirmationMessage() or restart @workflow.Start()
 func (c *Channel) Send(message *chat.Message) (err error) {
-	
+
 	pending := c.Pending // token
 	if pending == "" {
 		pending, err = c.Store.ReadConfirmation(c.ID)
-		
+
 		if err != nil {
 			c.Log.Error().Err(err).Str("chat-id", c.ID).Msg("Failed to get {chat.recvMessage.token} from store")
 			return err
@@ -305,18 +429,18 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 
 		c.Pending = pending
 	}
-	// Flow.WaitMessage() 
+	// Flow.WaitMessage()
 	if pending == "" {
 		// FIXME: NO confirmation found for chat - means that we are not in {waitMessage} block ?
 		c.Log.Warn().Str("chat-id", c.ID).Msg("CHAT Flow is NOT waiting for message(s); DO NOTHING MORE!")
 		return nil
 	}
-	
+
 	c.Log.Debug().
 		Str("conversation_id", c.ID).
 		Str("confirmation_id", string(pending)).
 		Msg("send confirmed messages")
-	
+
 		// messages := []*bot.Message{
 		// 	{
 		// 		Id:   message.GetId(),
@@ -334,20 +458,19 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 	}
 	// PERFORM
 	_, err = c.Agent.
-	ConfirmationMessage(
-		// canellation context
-		context.TODO(),
-		// request params
-		sendMessage,
-		// callOptions ...
-		c.sendOptions,
-	)
+		ConfirmationMessage(
+			// canellation context
+			context.TODO(),
+			// request params
+			sendMessage,
+			// callOptions ...
+			c.callOpts,
+		)
 
-	
 	if err != nil {
 
 		re := errors.FromError(err)
-		
+
 		switch re.Id {
 		// "Chat: grpc.chat.conversation.not_found, Conversation %!d(string=0d882ad8-523a-4ed1-b36c-8c3f046e218e) not found"
 		case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
@@ -358,17 +481,17 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 
 			_ = c.Store.DeleteConfirmation(c.ID)
 			_ = c.Store.DeleteConversationNode(c.ID)
-			
+
 			c.Log.Warn().
 				Int64("pid", c.UserID()). // recepient: schema@bot.profile (internal)
 				Int64("pdc", c.DomainID()).
 				Str("channel-id", c.ChatID()). // sender: originator user@bot.profile (external)
 				Str("cause", "grpc.chat.conversation.not_found").
 				Msg(">>> RE-START! <<<")
-			
+
 			// TODO: ensure this.(ID|ProfileID|DomainID)
 			err = c.Start(message)
-			
+
 			// if err != nil {
 			// 	c.Log.Error().Err(err).Str("channel-id", c.ID).Msg("RE-START Failed")
 			// } else {
@@ -381,12 +504,12 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 
 			c.Log.Error().
 				Int64("pdc", c.DomainID()).
-				Int64("pid", c.UserID()). // recepient: schema@bot.profile (internal)
+				Int64("pid", c.UserID()).      // recepient: schema@bot.profile (internal)
 				Str("channel-id", c.ChatID()). // sender: originator user@bot.profile (external)
 				Str("error", re.Detail).
 				Msg("SEND chat@bot") // TO: workflow
 		}
-		
+
 		return re // errors.New(re.Error.Message)
 	}
 
@@ -399,7 +522,7 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 
 // Start @workflow.Start(!) chat channel routine
 func (c *Channel) Start(message *chat.Message) error {
-	
+
 	c.Log.Debug().
 		Interface("metadata", c.Variables).
 		Str("conversation_id", c.ChatID()).
@@ -407,7 +530,7 @@ func (c *Channel) Start(message *chat.Message) error {
 		Int64("domain_id", c.DomainID()).
 		Interface("message", message).
 		Msg("START Conversation")
-	
+
 	// const commandStart = "start"
 	//messageText := commandStart
 
@@ -429,13 +552,13 @@ func (c *Channel) Start(message *chat.Message) error {
 	// endregion: TEST PURPOSE ONLY !
 
 	start := &bot.StartRequest{
-		
+
 		ConversationId: c.ChatID(),
 		DomainId:       c.DomainID(),
 		// FIXME: why flow_manager need to know about some external chat-bot profile identity ?
-		ProfileId:      c.UserID(),
-		SchemaId:       int32(schemaId),
-		Message:        message,
+		ProfileId: c.UserID(),
+		SchemaId:  int32(schemaId),
+		Message:   message,
 		// Message: &bot.Message{
 		// 	Id:   message.GetId(),
 		// 	Type: message.GetType(),
@@ -444,12 +567,11 @@ func (c *Channel) Start(message *chat.Message) error {
 		// 	},
 		// },
 
-		Variables:      c.Variables, // message.GetVariables(),
+		Variables: c.Variables, // message.GetVariables(),
 	}
 
-
 	// if message != nil {
-		
+
 	// 	if message.File != nil{
 	// 		start.Message.Value =
 	// 			&bot.Message_File_{
@@ -463,7 +585,7 @@ func (c *Channel) Start(message *chat.Message) error {
 	// 		if message.Text != "" {
 	// 			messageText = message.Text
 	// 		}
-			
+
 	// 		start.Message.Value = &bot.Message_Text{
 	// 			Text: messageText,
 	// 		}
@@ -472,12 +594,12 @@ func (c *Channel) Start(message *chat.Message) error {
 
 	// Request to start flow-routine for NEW-chat incoming message !
 	c.Host = "lookup" // NEW: selector.Random
-	
+
 	_, err := c.Agent.Start(
 		// channel context
 		context.TODO(), start,
 		// callOptions
-		c.sendOptions,
+		c.callOpts,
 	)
 
 	if err != nil {
@@ -490,13 +612,13 @@ func (c *Channel) Start(message *chat.Message) error {
 	}
 
 	// var re *errors.Error
-	
+
 	// if err != nil {
 	// 	re = errors.FromError(err)
 	// } else {
 	// 	re = chatFlowError(res.GetError())
 	// }
-	
+
 	// if re := res.GetError(); re != nil {
 
 	// 	c.Log.Error().
@@ -526,7 +648,7 @@ func (c *Channel) Start(message *chat.Message) error {
 }
 
 func (c *Channel) startUser(message *chat.Message, userToID int64) error {
-	
+
 	c.Log.Debug().
 		Interface("metadata", c.Variables).
 		Str("conversation_id", c.ChatID()).
@@ -534,18 +656,18 @@ func (c *Channel) startUser(message *chat.Message, userToID int64) error {
 		Int64("domain_id", c.DomainID()).
 		Interface("message", message).
 		Msg("START Conversation")
-	
+
 	// const commandStart = "start"
 	//messageText := commandStart
 
 	start := &bot.StartRequest{
-		
+
 		ConversationId: c.ChatID(),
 		DomainId:       c.DomainID(),
 		// FIXME: why flow_manager need to know about some external chat-bot profile identity ?
-		ProfileId:      c.UserID(),
-		Message:        message,
-		UserId:         userToID,
+		ProfileId: c.UserID(),
+		Message:   message,
+		UserId:    userToID,
 		// Message: &bot.Message{
 		// 	Id:   message.GetId(),
 		// 	Type: message.GetType(),
@@ -554,12 +676,11 @@ func (c *Channel) startUser(message *chat.Message, userToID int64) error {
 		// 	},
 		// },
 
-		Variables:      c.Variables, // message.GetVariables(),
+		Variables: c.Variables, // message.GetVariables(),
 	}
 
-
 	// if message != nil {
-		
+
 	// 	if message.File != nil{
 	// 		start.Message.Value =
 	// 			&bot.Message_File_{
@@ -573,7 +694,7 @@ func (c *Channel) startUser(message *chat.Message, userToID int64) error {
 	// 		if message.Text != "" {
 	// 			messageText = message.Text
 	// 		}
-			
+
 	// 		start.Message.Value = &bot.Message_Text{
 	// 			Text: messageText,
 	// 		}
@@ -582,12 +703,12 @@ func (c *Channel) startUser(message *chat.Message, userToID int64) error {
 
 	// Request to start flow-routine for NEW-chat incoming message !
 	c.Host = "lookup" // NEW: selector.Random
-	
+
 	_, err := c.Agent.Start(
 		// channel context
 		context.TODO(), start,
 		// callOptions
-		c.sendOptions,
+		c.callOpts,
 	)
 
 	if err != nil {
@@ -600,13 +721,13 @@ func (c *Channel) startUser(message *chat.Message, userToID int64) error {
 	}
 
 	// var re *errors.Error
-	
+
 	// if err != nil {
 	// 	re = errors.FromError(err)
 	// } else {
 	// 	re = chatFlowError(res.GetError())
 	// }
-	
+
 	// if re := res.GetError(); re != nil {
 
 	// 	c.Log.Error().
@@ -644,11 +765,10 @@ func (c *Channel) Close(cause string) error {
 		// request
 		&bot.BreakRequest{
 			ConversationId: c.ID,
-			Cause: cause,
+			Cause:          cause,
 		},
 		// callOptions ...
-		c.sendOptions,
-
+		c.callOpts,
 	)
 
 	// var re *errors.Error
@@ -669,7 +789,7 @@ func (c *Channel) Close(cause string) error {
 	} // else {
 	// 	re = chatFlowError(res.GetError())
 	// }
-	
+
 	// re := chatFlowError(res.GetError())
 
 	// if re != nil {
@@ -709,8 +829,7 @@ func (c *Channel) BreakBridge(cause BreakBridgeCause) error {
 			Cause:          cause.String(),
 		},
 		// callOptions
-		c.sendOptions,
-
+		c.callOpts,
 	)
 
 	if err != nil {
@@ -726,11 +845,11 @@ func (c *Channel) BreakBridge(cause BreakBridgeCause) error {
 
 			return re // Failure !
 		}
-	
+
 	} // else {
 	// 	re = chatFlowError(res.GetError())
 	// }
-	
+
 	// re := chatFlowError(res.GetError())
 
 	// if re != nil {
@@ -764,7 +883,7 @@ func (c *Channel) TransferToUser(originator *app.Channel, userToID int64) error 
 	if err != nil {
 		return err
 	}
-	
+
 	// Format: [;]date:from:to
 	// from: channel_id
 	// to: user_id
@@ -799,9 +918,9 @@ func (c *Channel) TransferToUser(originator *app.Channel, userToID int64) error 
 			// "flow": strconv.FormatInt(schemaToID, 10),
 			"xfer": xferNext,
 		},
-		CreatedAt:     date,
+		CreatedAt: date,
 		// originator.Chat.User
-		From:  &chat.Account{
+		From: &chat.Account{
 			Id:        user.ID,
 			Channel:   user.Channel,
 			Contact:   user.Contact,
@@ -818,7 +937,6 @@ func (c *Channel) TransferToUser(originator *app.Channel, userToID int64) error 
 		// c.Variables["flow"] = schemaThisID
 		return err
 	}
-
 
 	// _, err := c.Agent.TransferChatPlan(
 	// 	// cancellation context
@@ -869,7 +987,7 @@ func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) er
 	if err != nil {
 		return err
 	}
-	
+
 	// Format: [;]date:from:to
 	// from: channel_id
 	// to: schema_id
@@ -904,9 +1022,9 @@ func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) er
 			"flow": strconv.FormatInt(schemaToID, 10),
 			"xfer": xferNext,
 		},
-		CreatedAt:     date,
+		CreatedAt: date,
 		// originator.Chat.User
-		From:  &chat.Account{
+		From: &chat.Account{
 			Id:        user.ID,
 			Channel:   user.Channel,
 			Contact:   user.Contact,
@@ -922,7 +1040,6 @@ func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) er
 		c.Variables["flow"] = schemaThisID
 		return err
 	}
-
 
 	// _, err := c.Agent.TransferChatPlan(
 	// 	// cancellation context
@@ -965,22 +1082,20 @@ func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) er
 	return nil
 }
 
-
 const (
-
 	errnoSessionNotFound = "grpc.chat.conversation.not_found"
 )
 
 // func chatFlowError(err *chat.Error) *errors.Error {
-	
+
 // 	if err == nil || (err.Id == "" && err.Message == "") {
 // 		return nil
 // 	}
-	
+
 // 	switch err.GetId() {
 // 	// "Chat: grpc.chat.conversation.not_found, Conversation %!d(string=0d882ad8-523a-4ed1-b36c-8c3f046e218e) not found"
 // 	case errnoSessionNotFound: // Conversation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx not found
-		
+
 // 		code := http.StatusNotFound
 
 // 		return &errors.Error{

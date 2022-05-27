@@ -9,7 +9,7 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgtype"
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/rs/zerolog"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/bot"
@@ -19,8 +19,8 @@ import (
 )
 
 type pgsqlBotStore struct {
-	 log *zerolog.Logger
-	 dbo []*sql.DB // cluster
+	log *zerolog.Logger
+	dbo []*sql.DB // cluster
 }
 
 func (s *pgsqlBotStore) primary() *sql.DB {
@@ -48,7 +48,7 @@ var _ bot.Store = (*pgsqlBotStore)(nil)
 func NewBotStore(log *zerolog.Logger, primary *sql.DB, secondary ...*sql.DB) bot.Store {
 
 	dbo := make([]*sql.DB, len(secondary)+1)
-	
+
 	dbo[0] = primary
 	copy(dbo[1:], secondary)
 
@@ -58,11 +58,10 @@ func NewBotStore(log *zerolog.Logger, primary *sql.DB, secondary ...*sql.DB) bot
 	}
 }
 
-
 func (s *pgsqlBotStore) Create(ctx *app.CreateOptions, obj *bot.Bot) error {
 
 	stmtQ, params, err := createBotRequest(ctx, obj)
-	
+
 	if err != nil {
 		return err
 	}
@@ -102,7 +101,7 @@ func (s *pgsqlBotStore) Create(ctx *app.CreateOptions, obj *bot.Bot) error {
 
 	switch len(res) {
 	case 1:
-		obj.Id   = res[0].GetId()
+		obj.Id = res[0].GetId()
 		obj.Flow = res[0].GetFlow()
 		// err = mergeProto(obj, res[0], "id", "flow")
 	case 0:
@@ -125,9 +124,9 @@ func (s *pgsqlBotStore) Create(ctx *app.CreateOptions, obj *bot.Bot) error {
 }
 
 func (s *pgsqlBotStore) Search(ctx *app.SearchOptions) ([]*bot.Bot, error) {
-	
+
 	stmtQ, params, err := searchBotRequest(ctx)
-	
+
 	if err != nil {
 		return nil, err
 	}
@@ -160,9 +159,9 @@ func (s *pgsqlBotStore) Search(ctx *app.SearchOptions) ([]*bot.Bot, error) {
 }
 
 func (s *pgsqlBotStore) Update(req *app.UpdateOptions, set *bot.Bot) error {
-	
+
 	stmtQ, params, err := updateBotRequest(req, set)
-	
+
 	if err != nil {
 		return err
 	}
@@ -279,12 +278,10 @@ func (s *pgsqlBotStore) Delete(req *app.DeleteOptions) (int64, error) {
 	return count, nil
 }
 
-
 func (s *pgsqlBotStore) AnalyticsActiveBotsCount(ctx context.Context, pdc int64) (n int, err error) {
 
 	// $1 - [p]rimary [d]omain [c]omponent ID
-	const pgsqlTenantBotsCountQ =
-`WITH tenant AS (
+	const pgsqlTenantBotsCountQ = `WITH tenant AS (
   SELECT customer_id FROM directory.wbt_domain WHERE dc = $1
 )
 SELECT count(id)
@@ -321,13 +318,12 @@ SELECT count(id)
 	return // n, nil
 }
 
-
 func createBotRequest(req *app.CreateOptions, obj *bot.Bot) (stmtQ SelectStmt, params params, err error) {
 
 	deref := app.SearchOptions{
 		Context: req.Context,
-		Fields: req.Fields,
-		Size: 1,
+		Fields:  req.Fields,
+		Size:    1,
 	}
 
 	stmtQ, params, err = searchBotRequest(&deref)
@@ -337,13 +333,13 @@ func createBotRequest(req *app.CreateOptions, obj *bot.Bot) (stmtQ SelectStmt, p
 	}
 
 	stmtQ = stmtQ.
-	Prefix("WITH created AS ("+
-		"INSERT INTO chat.bot (dc, uri, name, flow_id, enabled, provider, metadata, created_at, created_by, updated_at, updated_by)" +
-		" VALUES (:dc, :uri, :name, :flow_id, :enabled, :provider, :metadata, :created_at, :created_by, :created_at, :created_by)" +
-		" RETURNING bot.*" +
-		")",
-	).
-	From("created bot")
+		Prefix("WITH created AS (" +
+			"INSERT INTO chat.bot (dc, uri, name, flow_id, enabled, provider, metadata, created_at, created_by, updated_at, updated_by)" +
+			" VALUES (:dc, :uri, :name, :flow_id, :enabled, :provider, :metadata, :created_at, :created_by, :created_at, :created_by)" +
+			" RETURNING bot.*" +
+			")",
+		).
+		From("created bot")
 
 	params["dc"] = obj.GetDc().GetId()
 	params.set("uri", obj.GetUri())
@@ -374,7 +370,6 @@ func searchBotRequest(req *app.SearchOptions) (stmtQ SelectStmt, params params, 
 	}
 
 	const (
-
 		joinDomains uint8 = (1 << iota)
 		joinFlows
 		joinCreator
@@ -382,7 +377,6 @@ func searchBotRequest(req *app.SearchOptions) (stmtQ SelectStmt, params params, 
 	)
 
 	var (
-
 		join uint8
 	)
 
@@ -478,14 +472,13 @@ func searchBotRequest(req *app.SearchOptions) (stmtQ SelectStmt, params params, 
 			err = errors.BadRequest(
 				"chat.bot.search.field.invalid",
 				"chatbot: invalid attribute .%s to select",
-				 att,
+				att,
 			)
 		}
 	}
 
 	// ------ FILTER(s) ------
 	var (
-
 		oid int64 // GET
 	)
 
@@ -540,14 +533,14 @@ func searchBotRequest(req *app.SearchOptions) (stmtQ SelectStmt, params params, 
 			case bool:
 				expr := "bot.enabled"
 				if !data {
-					expr = "NOT "+ expr
+					expr = "NOT " + expr
 				}
 				stmtQ = stmtQ.Where(expr)
 			default:
 				err = errors.BadRequest(
 					"chat.bot.search.enabled.invalid",
 					"chatbot: invalid filter=%s value=%T type",
-					 name, assert,
+					name, assert,
 				)
 			}
 		default:
@@ -589,7 +582,7 @@ func searchBotRequest(req *app.SearchOptions) (stmtQ SelectStmt, params params, 
 		case "flow":
 			joinFlow() // LEFT JOIN flow.acr_routing_scheme AS flow
 			att = "flow.name"
-		
+
 		// case "metadata":
 
 		case "created_by":
@@ -604,7 +597,7 @@ func searchBotRequest(req *app.SearchOptions) (stmtQ SelectStmt, params params, 
 			err = errors.BadRequest(
 				"chat.bot.search.sort.invalid",
 				"chatbot: invalid attribute .%s to sort",
-				 att,
+				att,
 			)
 			return // stmt, params, err(!)
 		}
@@ -616,13 +609,13 @@ func searchBotRequest(req *app.SearchOptions) (stmtQ SelectStmt, params params, 
 	if size := req.GetSize(); size > 0 {
 		// OFFSET (page-1)*size -- omit same-sized previous page(s) from result
 		if page := req.GetPage(); page > 1 {
-			stmtQ = stmtQ.Offset((uint64)((page-1)*(size)))
+			stmtQ = stmtQ.Offset((uint64)((page - 1) * (size)))
 		}
 		// LIMIT (size+1) -- to indicate whether there are more result entries
-		stmtQ = stmtQ.Limit((uint64)(size+1))
+		stmtQ = stmtQ.Limit((uint64)(size + 1))
 	}
 
-	return 
+	return
 }
 
 func searchBotResults(rows *sql.Rows, limit int) ([]*bot.Bot, error) {
@@ -636,9 +629,8 @@ func searchBotResults(rows *sql.Rows, limit int) ([]*bot.Bot, error) {
 
 	// Build convertion(s)
 	var (
-
-		obj *bot.Bot // target: scan result entry
-		row = make([]func()interface{}, len(cols)) // projection: index[column]obj.value
+		obj *bot.Bot                                // target: scan result entry
+		row = make([]func() interface{}, len(cols)) // projection: index[column]obj.value
 	)
 
 	for i, col := range cols {
@@ -695,13 +687,12 @@ func searchBotResults(rows *sql.Rows, limit int) ([]*bot.Bot, error) {
 			return nil, errors.InternalServerError(
 				"chat.bot.search.result.error",
 				"postgres: invalid column .%s name",
-				 col,
+				col,
 			)
 		}
 	}
 
 	var (
-
 		page []bot.Bot
 		list []*bot.Bot
 		vals = make([]interface{}, len(cols)) // scan values
@@ -788,7 +779,7 @@ func updateBotRequest(req *app.UpdateOptions, set *bot.Bot) (stmt SelectStmt, pa
 			err = errors.BadRequest(
 				"chat.bot.update.field.readonly",
 				"chatbot: update .%s; attribute is readonly",
-				 att,
+				att,
 			)
 			return // stmt, params, err
 		// EDITABLE
@@ -814,7 +805,7 @@ func updateBotRequest(req *app.UpdateOptions, set *bot.Bot) (stmt SelectStmt, pa
 			err = errors.BadRequest(
 				"chat.bot.update.fields.invalid",
 				"chatbot: update .%s; attribute is unknown",
-				 att,
+				att,
 			)
 			return // stmt, params, err
 		}
@@ -825,7 +816,7 @@ func updateBotRequest(req *app.UpdateOptions, set *bot.Bot) (stmt SelectStmt, pa
 	// FIXME: From given `set` object ?
 	// -OR- from context authorization ?
 	params.set("date", dbl.NullTimestamp(set.UpdatedAt)) // req.Timestamp())
-	params.set("user", set.GetUpdatedBy().GetId()) // req.Creds.GetUserId())
+	params.set("user", set.GetUpdatedBy().GetId())       // req.Creds.GetUserId())
 
 	update = update.Set("updated_at", dbl.Expr(":date"))
 	update = update.Set("updated_by", dbl.Expr(":user"))
@@ -857,15 +848,13 @@ func updateBotRequest(req *app.UpdateOptions, set *bot.Bot) (stmt SelectStmt, pa
 	stmt = stmt.Prefix(
 		"WITH updated AS (" +
 			updateBotQ +
-		" RETURNING bot.*" +
-		")",
+			" RETURNING bot.*" +
+			")",
 	).
-	From("updated bot")
+		From("updated bot")
 
 	return // stmt, params, nil
 }
-
-
 
 func schemaBotError(err error) error {
 	if err == nil {
@@ -880,7 +869,7 @@ func schemaBotError(err error) error {
 	default:
 		err = errors.InternalServerError(
 			"chat.bot.store.error",
-			 re.Error(),
+			re.Error(),
 		)
 	}
 
@@ -929,7 +918,7 @@ func ScanRefer(dst **bot.Refer) dbl.ScanFunc {
 		if src == nil {
 			return nil
 		}
-		
+
 		val := *(dst)
 		ref := func() *bot.Refer {
 			if val == nil {
@@ -937,7 +926,7 @@ func ScanRefer(dst **bot.Refer) dbl.ScanFunc {
 			}
 			return val
 		}
-		
+
 		switch data := src.(type) {
 		case int64:
 			ref().Id = data

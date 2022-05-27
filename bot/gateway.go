@@ -11,7 +11,7 @@ import (
 
 	"encoding/json"
 
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/rs/zerolog"
 
 	auth "github.com/webitel/chat_manager/api/proto/auth"
@@ -22,18 +22,18 @@ import (
 
 // Gateway service agent
 type Gateway struct {
-	 // identity
+	// identity
 	*Bot // *chat.Profile
-	 Log *zerolog.Logger
- 
-	 // communication
-	 Internal *Service // Local CHAT service client 
-	 External Provider // Remote CHAT service client Receiver|Sender
-	 // cache: memory
-	 *sync.RWMutex
-	 internal map[int64]*Channel // map[internal.user.id]
-	 external map[string]*Channel // map[provider.user.id]
-	 deleted bool // indicate whether we need to dispose this bot gateway after last channel closed
+	Log  *zerolog.Logger
+
+	// communication
+	Internal *Service // Local CHAT service client
+	External Provider // Remote CHAT service client Receiver|Sender
+	// cache: memory
+	*sync.RWMutex
+	internal map[int64]*Channel  // map[internal.user.id]
+	external map[string]*Channel // map[provider.user.id]
+	deleted  bool                // indicate whether we need to dispose this bot gateway after last channel closed
 }
 
 // DomainID that this gateway profile belongs to
@@ -45,7 +45,6 @@ func (c *Gateway) DomainID() int64 {
 func (c *Gateway) Register(ctx context.Context, force bool) error {
 
 	var (
-
 		bot = c.Bot
 		pid = bot.GetId()
 		uri = bot.GetUri()
@@ -74,7 +73,7 @@ func (c *Gateway) Register(ctx context.Context, force bool) error {
 	bot.Uri = uri
 
 	// region: pre-register for callback(s) within register process
-	srv.indexMx.Lock()      // +RW
+	srv.indexMx.Lock() // +RW
 	e := srv.profiles[pid]
 	// Register THIS runtime URI !
 	srv.profiles[pid] = c   // register: cache entry
@@ -123,7 +122,7 @@ func (c *Gateway) Register(ctx context.Context, force bool) error {
 
 // Deregister internal webhook callback handler from external service provider
 /*func (c *Gateway) Deregister(ctx context.Context) error {
-	
+
 	// linkURL := strings.TrimRight(c.Internal.URL, "/") +
 	// 	("/" + c.Profile.UrlId)
 
@@ -160,13 +159,12 @@ func (c *Gateway) Register(ctx context.Context, force bool) error {
 func (c *Gateway) Deregister(ctx context.Context) error {
 
 	var (
-
 		pid = c.Bot.Id
 		uri = c.Bot.Uri
 		srv = c.Internal
 	)
 
-	srv.indexMx.Lock()   // +RW
+	srv.indexMx.Lock() // +RW
 	// e, ok := srv.profiles[pid]
 	// if ok = (ok && e == c); ok {
 	oid, ok := srv.gateways[uri]
@@ -187,7 +185,6 @@ func (c *Gateway) Deregister(ctx context.Context) error {
 	link := strings.TrimRight(srv.URL, "/") + uri
 
 	var (
-
 		event *zerolog.Event
 		// PERFORM: DEREGISTER
 		err = c.External.Deregister(ctx)
@@ -209,14 +206,14 @@ func (c *Gateway) Deregister(ctx context.Context) error {
 // Remove .this gateway runtime link
 // from internal service provider agent
 func (c *Gateway) Remove() bool {
-	
+
 	var (
 		pid = c.Bot.Id
 		uri = c.Bot.Uri
 		srv = c.Internal
 	)
 
-	srv.indexMx.Lock()   // +RW
+	srv.indexMx.Lock() // +RW
 	e, ok := srv.profiles[pid]
 	if ok = (ok && e == c); ok {
 		delete(srv.profiles, pid) // register: cache entry
@@ -263,7 +260,7 @@ func (c *Gateway) Remove() bool {
 // 	c.Unlock() // -RW
 
 // 	// ok = (ok && 0 != chat.Closed)
-	
+
 // 	// if !ok && c.next != nil {
 // 	// 	return c.next.close(chat)
 // 	// }
@@ -301,8 +298,7 @@ func (c *Gateway) WebHook(reply http.ResponseWriter, notice *http.Request) {
 func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Account) (*Channel, error) {
 
 	var (
-
-		ok bool
+		ok      bool
 		channel *Channel
 	)
 
@@ -311,19 +307,19 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 	}
 
 	if !ok && contact.ID != 0 {
-	
-		c.RLock()   // +R
+
+		c.RLock() // +R
 		channel, ok = c.internal[contact.ID]
 		c.RUnlock() // -R
-	
+
 	}
-	
+
 	if !ok && chatID != "" {
-	
-		c.RLock()   // +R
+
+		c.RLock() // +R
 		channel, ok = c.external[chatID]
 		c.RUnlock() // -R
-	
+
 	}
 
 	if !ok && chatID != "" {
@@ -334,14 +330,14 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 		title := contact.DisplayName()
 		lookup := chat.CheckSessionRequest{
 			// gateway profile identity
-			ProfileId:  c.Bot.Id,
+			ProfileId: c.Bot.Id,
 			// external client contact
 			ExternalId: chatID,
 			Username:   title,
 		}
 		// passthru request cancellation context
 		chat, err := c.Internal.Client.CheckSession(ctx, &lookup)
-		
+
 		if err != nil {
 			c.Log.Error().Err(err).Msg("Failed to lookup chat channel")
 			return nil, err
@@ -353,31 +349,29 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 
 			channel = &Channel{
 				// RECOVER
-				Title:      title,          // contact.username,
-				ChatID:     chatID,         // provider.chat.id
+				Title:  title,  // contact.username,
+				ChatID: chatID, // provider.chat.id
 
-				Account:   *(contact),      // user.contact.id
-				ChannelID:  chat.ChannelId, // chat.channel.id
+				Account:   *(contact),     // user.contact.id
+				ChannelID: chat.ChannelId, // chat.channel.id
 
 				Gateway:    c, // .profile.id
 				Properties: chat.Properties,
 
 				Log: c.Log.With().
-	
 					Str("chat-id", chatID).
 					Str("username", contact.Username).
 
 					// Str("session-id", c.SessionID). // UNKNOWN
 					Str("channel-id", chat.ChannelId).
 					Int64("contact-id", chat.ClientId).
-
 					Logger(),
 			}
 
-			c.Lock()   // +RW
+			c.Lock() // +RW
 			c.external[channel.ChatID] = channel
 			c.internal[channel.Account.ID] = channel // [channel.ContactID] = channel
-			c.Unlock() // -RW
+			c.Unlock()                               // -RW
 
 			channel.Log.Info().Msg("RECOVER")
 
@@ -385,7 +379,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 
 			// created: client !
 			contact.ID = chat.ClientId
-			
+
 			// NO Channel FOUND !
 			// CHECK: Can we accept NEW one ?
 			if !c.Bot.GetEnabled() {
@@ -393,32 +387,30 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 				return nil, errors.New(
 					"chat.bot.channel.disabled",
 					"chat: bot is disabled",
-					 http.StatusBadGateway,
+					http.StatusBadGateway,
 				)
 			}
 
 			// NOT FOUND !
 			channel = &Channel{
 
-				ChannelID:  "", // NEW: chat.channelId == ""
-				
-				Account:  *(contact),
+				ChannelID: "", // NEW: chat.channelId == ""
+
+				Account: *(contact),
 				// ContactID:  contact.ID,  // user.contact.id
 				// Username:   contact.Username,
-				
-				Title:      title, // contact.Username,
-				ChatID:     chatID, // .provider.chat
 
-				Gateway:    c, // .profile.id
+				Title:  title,  // contact.Username,
+				ChatID: chatID, // .provider.chat
+
+				Gateway: c, // .profile.id
 
 				Log: c.Log.With().
-	
 					Str("chat-id", chatID).
 					Str("username", contact.Username).
 
 					// Str("session-id", c.SessionID). // UNKNOWN
 					Int64("contact-id", chat.ClientId).
-
 					Logger(),
 			}
 			// .IsNew() == true
@@ -438,7 +430,7 @@ func (c *Gateway) CallbackURL() string {
 	if err != nil {
 		panic(err)
 	}
-	
+
 	// Combine URL Path
 	bot := c.Bot
 	botURL.Path = path.Join(
@@ -459,7 +451,7 @@ func (c *Gateway) SetMetadata(ctx context.Context, set map[string]string) error 
 	}
 	for key, val := range set {
 		if key != "" && val != "" {
-			dst[key] = val   // RESET !
+			dst[key] = val // RESET !
 		} else {
 			delete(dst, key) // REMOVE !
 		}
@@ -475,8 +467,8 @@ func (c *Gateway) SetMetadata(ctx context.Context, set map[string]string) error 
 			// Bot SELF Authorization
 			if ctx.Authorization.Creds == nil {
 				ctx.Authorization.Creds = &auth.Userinfo{
-					Dc:                bot.Dc.GetId(),
-					Domain:            bot.Dc.GetName(),
+					Dc:     bot.Dc.GetId(),
+					Domain: bot.Dc.GetName(),
 					// Update RESETs Bot-entry's .Updated_* fields
 					// So we provide the latest values to NOT track bot's self updates !
 					UserId:            bot.UpdatedBy.GetId(),
@@ -534,11 +526,11 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 	sendMessage := notify.GetMessage()
 	sendUpdate := Update{
 		// attributes
-		ID:      sendMessage.GetId(),
+		ID: sendMessage.GetId(),
 		// ChatID:  chatID,
-		Chat:    recepient, // TO: !
+		Chat: recepient, // TO: !
 		// User:    nil, // &Account{} // UNKNOWN // TODO: reg.GetUser() as a sender
-		Title:   recepient.Title,
+		Title: recepient.Title,
 		// event arguments
 		//Event:   action,
 		Message: sendMessage,
@@ -558,32 +550,31 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 	}
 
 	// RECV closed
-	closed := sendMessage.Type == "closed" // TODO: !!!
+	isClosed := (sendMessage.Type == "closed") // TODO: !!!
 
 	if sendMessage.File != nil {
-		
+
 		// sendUpdate.Event = "file"
 
-	// } else if sendMessage.Buttons != nil{
+		// } else if sendMessage.Buttons != nil{
 
-	// 	sendUpdate.Event = "menu"
-
+		// 	sendUpdate.Event = "menu"
 
 	} else if sendMessage.Text != "" {
 
 		// // messageText := sendMessage.GetText()
 
 		// sendUpdate.Event = "text"
-		// // closed = closed || IsCommandClose(messageText) 
-		
-		if closed {
+		// // closed = closed || IsCommandClose(messageText)
+
+		if isClosed {
 			// // unify chat.closed reply text
 			// sendUpdate.Event = "closed"
 			// // messageText = "closed" // chat: closed
 			sendMessage.Text = "closed"
 		}
 
-		if !recepient.IsNew() && closed {
+		if !recepient.IsNew() && isClosed {
 			// NOTE: Closed by the webitel.chat.server !
 			if recepient.Closed == 0 {
 				recepient.Closed = time.Now().Unix() // SENT: COMMITTED !
@@ -593,7 +584,7 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 				// recepient.Closed = time.Now().Unix() // SENT: COMMITTED !
 				// REMOVE: runtime state !
 				_ = recepient.Close() // (messageText)
-			} ()
+			}()
 		}
 	}
 
@@ -605,7 +596,7 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 	err = gate.External.SendNotify(ctx, &sendUpdate)
 
 	var event *zerolog.Event
-	
+
 	if err == nil {
 		// FIXME: .GetChannel() does not provide full contact info on recover,
 		//                      just it's unique identifier ...  =(
@@ -618,11 +609,9 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 	}
 
 	event.
-		
 		Str("send", sendUpdate.Message.GetType()). // sendUpdate.Event).
 		Str("text", sendUpdate.Message.GetText()).
 		EmbedObject(ZerologJSON("file", sendUpdate.Message.GetFile())).
-		
 		Msg("<<<<< SEND <<<<<<")
 
 	if err != nil {
@@ -633,20 +622,21 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 }
 
 type zerologFunc func(event *zerolog.Event)
+
 func (fn zerologFunc) MarshalZerologObject(event *zerolog.Event) {
 	fn(event)
 }
 
 func ZerologJSON(key string, obj interface{}) zerolog.LogObjectMarshaler {
 	return zerologFunc(func(event *zerolog.Event) {
-		
+
 		if obj == nil {
 			event.Str(key, "")
 			return
 		}
-		
+
 		data, err := json.Marshal(obj)
-		
+
 		if err != nil {
 			event.Err(err)
 			return

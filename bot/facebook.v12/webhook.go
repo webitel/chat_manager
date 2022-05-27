@@ -11,7 +11,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
@@ -71,7 +71,7 @@ func (c *Client) WebhookVerification(rsp http.ResponseWriter, req *http.Request)
 
 	switch req.Form.Get("hub.mode") {
 	case "subscribe":
-		
+
 		hook := &c.webhook
 		// TESTS PURPOSE !!! Uncomment for production !
 		if req.Form.Get("hub.verify_token") == hook.Token {
@@ -88,7 +88,7 @@ func (c *Client) WebhookVerification(rsp http.ResponseWriter, req *http.Request)
 
 		http.Error(rsp,
 			"webhook: verify token is invalid or missing",
-			 http.StatusForbidden,
+			http.StatusForbidden,
 		)
 
 		c.Log.Error().
@@ -97,13 +97,13 @@ func (c *Client) WebhookVerification(rsp http.ResponseWriter, req *http.Request)
 			Msg("WEBHOOK: NOT VERIFIED")
 		return // 403 Forbidden
 
-	// default:
+		// default:
 		// fallthrough
 	}
 
 	http.Error(rsp,
 		"webhook: setup mode is invalid or missing",
-		 http.StatusBadRequest,
+		http.StatusBadRequest,
 	)
 
 	c.Log.Error().
@@ -117,7 +117,7 @@ func (c *Client) WebhookVerification(rsp http.ResponseWriter, req *http.Request)
 func (c *Client) WebhookEvent(rsp http.ResponseWriter, req *http.Request) {
 
 	// defer func() {
-		
+
 	// 	req.Body.Close()
 	// 	// (200) OK
 	// 	code := http.StatusOK
@@ -147,7 +147,7 @@ func (c *Client) WebhookEvent(rsp http.ResponseWriter, req *http.Request) {
 	)
 
 	err = json.NewDecoder(content).Decode(&event)
-	
+
 	if err != nil {
 		// TODO: FIXME: Broken model due to API version ?
 		http.Error(rsp, "Failed to decode webhook event", http.StatusBadRequest)
@@ -186,7 +186,6 @@ func (c *Client) WebhookEvent(rsp http.ResponseWriter, req *http.Request) {
 	// 4. https://developers.facebook.com/docs/messenger-platform/instagram/get-started#connected-tools-toggle
 	// case "instagram":
 
-
 	// case "user":
 	// case "permissions":
 	default:
@@ -198,7 +197,7 @@ func (c *Client) WebhookEvent(rsp http.ResponseWriter, req *http.Request) {
 }
 
 // func (c *Client) WebhookPermissions(batch []*webhooks.Entry) {
-// 	
+//
 // }
 
 func (c *Client) WebhookPage(batch []*messenger.Entry) {
@@ -225,7 +224,7 @@ func (c *Client) WebhookPage(batch []*messenger.Entry) {
 		// 	// Array of messages received in the standby channel.
 		// 	// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/standby
 		// 	for _, event := range entry.Standby {
-		// 		
+		//
 		// 	}
 		// }
 	}
@@ -254,7 +253,7 @@ func (c *Client) getExternalThread(chat *bot.Channel) (*Chat, error) {
 		err := errors.BadRequest(
 			"bot.messenger.chat.page.missing",
 			"messenger: missing .page= reference for .user=%s conversation",
-			 userPSID,
+			userPSID,
 		)
 		return nil, err
 	}
@@ -267,20 +266,21 @@ func (c *Client) getExternalThread(chat *bot.Channel) (*Chat, error) {
 		err := errors.NotFound(
 			"bot.messenger.chat.page.not_found",
 			"messenger: conversation .user=%s .page=%s not found",
-			 userPSID, pageASID,
+			userPSID, pageASID,
 		)
 		return nil, err
 	}
 
 	// GET Sender's Facebook User Profile
 	thread, err := c.getChat(page, userPSID)
-	
+
 	if err != nil {
 		// Failed locate chat channel !
-		re := errors.FromError(err); if re.Code == 0 {
+		re := errors.FromError(err)
+		if re.Code == 0 {
 			re.Id = "bot.messenger.chat.user.error"
 			re.Code = (int32)(http.StatusBadGateway)
-			re.Detail = "messenger: GET /"+userPSID+".(*graph.User); "+ re.Detail
+			re.Detail = "messenger: GET /" + userPSID + ".(*graph.User); " + re.Detail
 		}
 		// c.Log.Err(err).
 		// Str("psid", userPSID).
@@ -299,7 +299,6 @@ func (c *Client) getInternalThread(ctx context.Context, pageASID, userPSID strin
 	return c.GetChannel(ctx, userPSID, pageASID)
 }
 
-
 func (c *Client) GetChannel(ctx context.Context, userPSID, pageASID string) (*bot.Channel, error) {
 
 	// page := c.getPageAccount(pageASID, "messages")
@@ -311,7 +310,7 @@ func (c *Client) GetChannel(ctx context.Context, userPSID, pageASID string) (*bo
 		err := errors.BadRequest(
 			"bot.messenger.page.not_found",
 			"messenger: account page=%s not found",
-			 pageASID,
+			pageASID,
 		)
 		// c.Log.Warn().
 		// Str("error", "page: not found").
@@ -322,13 +321,14 @@ func (c *Client) GetChannel(ctx context.Context, userPSID, pageASID string) (*bo
 
 	// GET Sender Facebook User Profile
 	thread, err := c.getChat(page, userPSID)
-	
+
 	if err != nil {
 		// Failed locate chat channel !
-		re := errors.FromError(err); if re.Code == 0 {
+		re := errors.FromError(err)
+		if re.Code == 0 {
 			re.Id = "bot.messenger.chat.user.error"
 			re.Code = (int32)(http.StatusBadGateway)
-			re.Detail = "messenger: GET /"+userPSID+".(*graph.User); "+ re.Detail
+			re.Detail = "messenger: GET /" + userPSID + ".(*graph.User); " + re.Detail
 		}
 		// c.Log.Err(err).
 		// Str("psid", userPSID).
@@ -337,15 +337,15 @@ func (c *Client) GetChannel(ctx context.Context, userPSID, pageASID string) (*bo
 	}
 
 	sender := thread.User
-	contact := bot.Account {
-		ID:         0, // LOOKUP
-		FirstName:  sender.Name, // sender.FirstName,
+	contact := bot.Account{
+		ID:        0,           // LOOKUP
+		FirstName: sender.Name, // sender.FirstName,
 		// LastName:   sender.LastName,
 		// NOTE: This is the [P]age-[S]coped User [ID]
 		// For the same Facebook User, but different Pages
 		// this value differs
-		Channel:    "facebook", // "messenger",
-		Contact:    sender.ID,
+		Channel: "facebook", // "messenger",
+		Contact: sender.ID,
 	}
 
 	if pageASID == thread.Page.IGSID() {
@@ -360,7 +360,8 @@ func (c *Client) GetChannel(ctx context.Context, userPSID, pageASID string) (*bo
 
 	if err != nil {
 		// Failed locate chat channel !
-		re := errors.FromError(err); if re.Code == 0 {
+		re := errors.FromError(err)
+		if re.Code == 0 {
 			re.Code = (int32)(http.StatusBadGateway)
 		}
 		// http.Error(reply, re.Detail, (int)(re.Code))
@@ -375,7 +376,7 @@ func (c *Client) GetChannel(ctx context.Context, userPSID, pageASID string) (*bo
 		// }
 		// channel.Properties = props
 	}
-	
+
 	return channel, nil
 }
 
@@ -509,20 +510,20 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 				Name: name,
 				Size: 0, // Unknown !
 			}
-			
+
 		case "location":
 			// Applicable to attachment type: location
 			// - attach.Coordinates
 		case "fallback":
 			// Applicable to attachment type: fallback
-			// - attach.Title 
+			// - attach.Title
 		case "template":
 		default:
 			// UNKNOWN !
 		}
 	}
 
-	update := bot.Update {
+	update := bot.Update{
 		Title:   channel.Title,
 		Chat:    channel,
 		User:    &channel.Account,
@@ -536,7 +537,7 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 		update.Message = &messages[i]
 		// Forward Bot received Message !
 		err = c.Gateway.Read(ctx, &update)
-		
+
 		if err != nil {
 			log.Err(err).Msg("MESSENGER: FORWARD")
 			// http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
@@ -566,7 +567,7 @@ func (c *Client) WebhookPostback(event *messenger.Messaging) error {
 	}
 
 	chatID := userPSID
-	update := bot.Update {
+	update := bot.Update{
 		Title:   channel.Title,
 		Chat:    channel,
 		User:    &channel.Account,
@@ -603,7 +604,7 @@ func (c *Client) WebhookPostback(event *messenger.Messaging) error {
 
 	// Forward Bot received Message !
 	err = c.Gateway.Read(ctx, &update)
-	
+
 	if err != nil {
 		log.Error().Msg(err.Error())
 		// http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)

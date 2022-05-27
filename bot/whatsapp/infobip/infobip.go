@@ -16,8 +16,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
-	"github.com/micro/go-micro/v2/client"
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/client"
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/bot"
@@ -25,12 +25,12 @@ import (
 
 // Infobip App Client
 type App struct {
-	*bot.Gateway // internal
-	*http.Client // external
-	apiToken string // APIKey: Authorization [required]
-	baseURL string // BaseURL: https://*.api.infobip.com [required]
-	keyword string // Keyword: the first word that appears in the message before the blank space [optional]
-	number string // Number: Sender/Recipient Phone Number [optioonal]
+	*bot.Gateway        // internal
+	*http.Client        // external
+	apiToken     string // APIKey: Authorization [required]
+	baseURL      string // BaseURL: https://*.api.infobip.com [required]
+	keyword      string // Keyword: the first word that appears in the message before the blank space [optional]
+	number       string // Number: Sender/Recipient Phone Number [optioonal]
 }
 
 const (
@@ -38,10 +38,10 @@ const (
 )
 
 func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
-	
+
 	var (
-		ok bool
-		app = &App{Gateway: agent}
+		ok       bool
+		app      = &App{Gateway: agent}
 		metadata = agent.Bot.GetMetadata()
 	)
 
@@ -64,13 +64,13 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 	}
 	// baseURL.Scheme != ""
 	// baseURL.Host != ""
-	baseURL.User       = nil
-	baseURL.Opaque     = ""
-	baseURL.Path       = ""
-	baseURL.RawPath    = ""
+	baseURL.User = nil
+	baseURL.Opaque = ""
+	baseURL.Path = ""
+	baseURL.RawPath = ""
 	baseURL.ForceQuery = false
-	baseURL.RawQuery   = ""
-	baseURL.Fragment   = ""
+	baseURL.RawQuery = ""
+	baseURL.Fragment = ""
 	// baseURL.Path = strings.TrimRight(baseURL.Path, "/")
 	app.baseURL = baseURL.String()
 
@@ -90,7 +90,7 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 	// 		"infobipWA: bot API number required",
 	// 	)
 	// }
-	// TODO: Check Telephone Number is valid ? 
+	// TODO: Check Telephone Number is valid ?
 	// 10DLC (10 Digit Long Code)
 	for _, d := range app.number {
 		switch {
@@ -104,7 +104,7 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 		}
 	}
 	switch len(app.number) {
-	case 0:      // Undefined
+	case 0: // Undefined
 	case 10, 12: // 10DLC (10 Digit Long Code) +2 (Country Code)
 	default:
 		// return nil, errors.BadRequest(
@@ -137,7 +137,6 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 
 // Implementation
 var (
-
 	_ bot.Sender   = (*App)(nil)
 	_ bot.Receiver = (*App)(nil)
 	_ bot.Provider = (*App)(nil)
@@ -178,12 +177,12 @@ func coalesce(text ...string) string {
 func quickReplies(buttons []*chat.Buttons) []Button {
 
 	var (
-		n = 3
+		n       = 3
 		actions = make([]Button, 3)
 	)
 
 	n = 0
-	setup:
+setup:
 	for _, layout := range buttons {
 		for _, button := range layout.Button {
 			switch strings.ToLower(button.Type) {
@@ -265,10 +264,10 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", "App "+ c.apiToken)
+	req.Header.Set("Authorization", "App "+c.apiToken)
 	// req.Header.Set("Content-Type", "application/json; chatset=utf-8")
 	// req.Header.Set("Accept", "application/json")
-	
+
 	// HTTP Client
 	httpClient := http.DefaultClient // c.Client
 	// if client == nil {
@@ -319,11 +318,11 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 	if err != nil {
 		return nil, err
 	}
-	defer stream.Close()
+	// defer stream.Close()
 
 	var (
-		n int
-		buf = make([]byte, 4096) // Chunks Size
+		n    int
+		buf  = make([]byte, 4096) // Chunks Size
 		data = storage.UploadFileRequest_Chunk{
 			// Chunk: nil, // buf[:],
 		}
@@ -354,8 +353,8 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 		return nil, err
 	}
 
-	var res storage.UploadFileResponse
-	err = stream.RecvMsg(&res)
+	var res *storage.UploadFileResponse
+	res, err = stream.CloseAndRecv()
 	if err != nil {
 		return nil, err
 	}
@@ -380,8 +379,8 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 		res.FileUrl = fileURI
 	}
 
-	media.Id   = res.FileId
-	media.Url  = res.FileUrl
+	media.Id = res.FileId
+	media.Url = res.FileUrl
 	media.Size = res.Size
 
 	return media, nil
@@ -392,10 +391,9 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 
 	var (
-
 		channel = notify.Chat
 		message = notify.Message
-		binding map[string]string  //TODO
+		binding map[string]string //TODO
 	)
 
 	bind := func(key, value string) {
@@ -407,13 +405,13 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 
 	// Resolve Chat Conversation Thread !
 	chatID := channel.ChatID // [TO] Contact
-	fromID := c.number // [FROM] Sender (Default)
+	fromID := c.number       // [FROM] Sender (Default)
 	switch props := channel.Properties.(type) {
 	case map[string]string:
 		// WhatsApp Business Phone Number IDentification
 		fromID, _ = props[paramWhatsAppNumber]
 	}
-	
+
 	// Prepare Send API Request
 	sendRequest := SendRequest{
 		From: fromID,
@@ -426,10 +424,10 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 	switch sentMessage.Type { // notify.Event {
 	case "text":
 	case "file":
-	
+
 	// // case "edit":
 	// // case "send":
-	
+
 	// // case "read":
 	// // case "seen":
 
@@ -444,9 +442,9 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 	// case "closed":
 	default:
 		c.Gateway.Log.Warn().
-		Str("content", sentMessage.Type).
-		Str("error", "send: reaction not implemented").
-		Msg("INFOBIP: SEND")
+			Str("content", sentMessage.Type).
+			Str("error", "send: reaction not implemented").
+			Msg("INFOBIP: SEND")
 		return nil // IGNORE
 	}
 
@@ -461,7 +459,7 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 		if doc := sentMessage.File; doc != nil {
 			header := &InteractiveHeader{
 				// Type:     "DOCUMENT", // TEXT, IMAGE, VIDEO, DOCUMENT
-				Type: mediaType(doc.Mime),
+				Type:     mediaType(doc.Mime),
 				MediaURL: doc.Url,
 			}
 			message.Header = header
@@ -470,14 +468,14 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 		message.Body.Text = trimChars(sentMessage.Text, 1024)
 		if message.Body.Text == "" {
 			c.Gateway.Log.Error().
-			Str("error", "content: interactive.body.text required but missing").
-			Msg("INFOBIP: SEND")
+				Str("error", "content: interactive.body.text required but missing").
+				Msg("INFOBIP: SEND")
 			return nil
 		}
 		sendContent = message
 	} else if doc := sentMessage.File; doc != nil {
 		message := &SendMediaMessage{
-			MediaURL: doc.Url, // <= 2048
+			MediaURL:  doc.Url, // <= 2048
 			MediaType: doc.Mime,
 		}
 		switch mediaType(doc.Mime) {
@@ -492,7 +490,7 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 		sendContent = message
 	} else if text := sentMessage.Text; text != "" {
 		message := &SendTextMessage{
-			Text: trimChars(text, 4096),
+			Text:       trimChars(text, 4096),
 			PreviewURL: false,
 		}
 		sendContent = message
@@ -500,8 +498,8 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 
 	if sendContent == nil {
 		c.Gateway.Log.Warn().
-		Str("error", "send: no content").
-		Msg("INFOBIP: SEND")
+			Str("error", "send: no content").
+			Msg("INFOBIP: SEND")
 		return nil // IGNORE
 	}
 	sendRequest.Content = sendContent
@@ -516,7 +514,7 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 	}
 
 	req, err := http.NewRequest(http.MethodPost, // "POST",
-		c.baseURL + sendRequest.Content.endpoint(),
+		c.baseURL+sendRequest.Content.endpoint(),
 		buf, // strings.NewReader(jsonBody),
 	)
 
@@ -525,10 +523,10 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 		return err
 	}
 
-	req.Header.Set("Authorization", "App "+ c.apiToken)
+	req.Header.Set("Authorization", "App "+c.apiToken)
 	req.Header.Set("Content-Type", "application/json; chatset=utf-8")
 	req.Header.Set("Accept", "application/json")
-	
+
 	// HTTP Client
 	client := c.Client
 	// if client == nil {
@@ -614,10 +612,10 @@ const (
 // reply.WriteHeader(http.StatusOK)
 //
 func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
-	
+
 	switch r.Method {
 	// case http.MethodGet:
-		// Not Implemented (!)
+	// Not Implemented (!)
 	case http.MethodPost:
 		// Handle Updates below
 	default:
@@ -627,7 +625,7 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 		)
 		return // (405) Method Not Allowed
 	}
-	
+
 	// POST Webhook
 	defer r.Body.Close()
 	// https://www.infobip.com/docs/api#channels/whatsapp/receive-whatsapp-inbound-messages
@@ -643,15 +641,15 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 		// case *json.InvalidUTF8Error:
 		// }
 		c.Gateway.Log.Error().
-		Str("error", "decode: "+ err.Error()).
-		Msg("INFOBIP: UPDATE")
+			Str("error", "decode: "+err.Error()).
+			Msg("INFOBIP: UPDATE")
 		// REDUCE [RE]DELIVERIES
 		return // (200) OK
 	}
 
 	for _, recvUpdate := range req.Results {
 
-		sender := bot.Account {
+		sender := bot.Account{
 			// Contact internal IDentifier
 			ID: 0, // LOOKUP
 			// Number which sent the message.
@@ -666,10 +664,11 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 		channel, err := c.Gateway.GetChannel(
 			ctx, sender.Contact, &sender,
 		)
-		
+
 		if err != nil {
 			// Failed locate chat channel !
-			re := errors.FromError(err); if re.Code == 0 {
+			re := errors.FromError(err)
+			if re.Code == 0 {
 				re.Code = (int32)(http.StatusBadGateway)
 			}
 			http.Error(w, re.Detail, (int)(re.Code))
@@ -678,7 +677,7 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 
 		var (
 			recvMessage = recvUpdate.Message
-			sendUpdate = bot.Update{
+			sendUpdate  = bot.Update{
 				Title: channel.Title,
 				Chat:  channel,
 				User:  &sender,
@@ -728,11 +727,11 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 			sendMessage.Text = trimKeyword(recvMessage.Text)
 
 		case "IMAGE",
-			 "AUDIO",
-			 "VOICE",
-			 "VIDEO",
-			 "STICKER",
-			 "DOCUMENT":
+			"AUDIO",
+			"VOICE",
+			"VIDEO",
+			"STICKER",
+			"DOCUMENT":
 
 			sendMessage.Type = "file"
 			// Types: [DOCUMENT]
@@ -750,11 +749,11 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 
 			switch messageType {
 			case "IMAGE",
-				 "STICKER":
+				"STICKER":
 				// sendMessage.File.Mime = "image"
 				doc.Mime = "image"
 			case "AUDIO",
-				 "VOICE":
+				"VOICE":
 				// sendMessage.File.Mime = "audio"
 				doc.Mime = "audio"
 			case "VIDEO":
@@ -762,7 +761,7 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 				doc.Mime = "video"
 			default: // "DOCUMENT"
 				// Auto-detect on .SendMessage()
-				// doc.Mime = 
+				// doc.Mime =
 				doc.Name = recvMessage.Caption
 			}
 			_, err = c.forwardFile(doc, channel)
@@ -792,7 +791,7 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 			// recvMessage.CallbackTitle // buttonTitle
 			sendMessage.Type = "text"
 			sendMessage.Text = recvMessage.CallbackData
-		
+
 		// case "INTERACTIVE_LIST_REPLY":
 
 		case "CONTACT":
@@ -813,18 +812,18 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 		default:
 
 			c.Gateway.Log.Warn().
-			Str("to", recvUpdate.To).
-			Str("from", recvUpdate.From).
-			Str("type", strings.ToLower(recvMessage.Type)).
-			Str("error", "message type not supported").
-			Msg("INFOBIP: RECV")
+				Str("to", recvUpdate.To).
+				Str("from", recvUpdate.From).
+				Str("type", strings.ToLower(recvMessage.Type)).
+				Str("error", "message type not supported").
+				Msg("INFOBIP: RECV")
 
 			continue
 		}
 
 		sendUpdate.Message = sendMessage
 		err = c.Gateway.Read(ctx, &sendUpdate)
-			
+
 		if err != nil {
 			c.Gateway.Log.Err(err).Msg("INFOBIP: FORWARD")
 			http.Error(w,
@@ -855,8 +854,6 @@ func (c *App) Deregister(ctx context.Context) error {
 func (c *App) Close() error {
 	return nil
 }
-
-
 
 func init() {
 	// Register Infobip Application WhatsApp provider

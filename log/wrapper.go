@@ -4,15 +4,14 @@ import (
 	"time"
 
 	"context"
-	"strings"
 	"encoding/json"
+	"strings"
+
 	"github.com/rs/zerolog"
 
-	"github.com/micro/go-micro/v2/client"
-	"github.com/micro/go-micro/v2/server"
-	"github.com/micro/go-micro/v2/registry"
-	"github.com/micro/go-micro/v2/metadata"
-	
+	"github.com/micro/micro/v3/service/client"
+	"github.com/micro/micro/v3/service/context/metadata"
+	"github.com/micro/micro/v3/service/server"
 )
 
 func HandlerWrapper(log *zerolog.Logger) server.HandlerWrapper {
@@ -26,11 +25,12 @@ func HandlerWrapper(log *zerolog.Logger) server.HandlerWrapper {
 			// for key, value := range md {
 			// 	log.Str(key, value)
 			// }
-			for _, key := range []string {
+			for _, key := range []string{
 				"Remote",
 				"User-Agent",
 				"From-Service",
 				"Micro-From-Id",
+				"Micro-From-Host",
 				"Micro-From-Service",
 			} {
 				if v, ok := md[key]; ok {
@@ -44,12 +44,12 @@ func HandlerWrapper(log *zerolog.Logger) server.HandlerWrapper {
 			span := trace.Logger()
 
 			// span.Trace().Msg("<<<<< SERVE <<<<<<")
-			
+
 			// Serve Request
 			start := time.Now()
 			err := next(ctx, req, rsp)
 			spent := time.Since(start)
-			
+
 			var event *zerolog.Event
 
 			if err == nil {
@@ -68,7 +68,7 @@ func HandlerWrapper(log *zerolog.Logger) server.HandlerWrapper {
 }
 
 type serverRequest struct {
-	 server.Request
+	server.Request
 }
 
 func (m serverRequest) MarshalZerologObject(e *zerolog.Event) {
@@ -82,22 +82,22 @@ func (m serverRequest) MarshalZerologObject(e *zerolog.Event) {
 
 func CallWrapper(log *zerolog.Logger) client.CallWrapper {
 	return func(next client.CallFunc) client.CallFunc {
-		return func(ctx context.Context, node *registry.Node, req client.Request, rsp interface{}, opts client.CallOptions) error {
+		return func(ctx context.Context, addr string, req client.Request, rsp interface{}, opts client.CallOptions) error {
 
 			span := log.With().
-				Str("node", node.Id). // {service}-{node.id}
-				Str("addr", node.Address). // {host:port}
+				Str("peer", addr).             // {host:port}
+				Str("service", req.Service()). // {service}-{node.id}
 				Str("endpoint", req.Endpoint()).
 				EmbedObject(clientRequest{req}).
 				Logger()
 
 			// span.Trace().Msg(">>>>> CALL >>>>>>>")
-				
+
 			// Serve Request
 			start := time.Now()
-			err := next(ctx, node, req, rsp, opts)
+			err := next(ctx, addr, req, rsp, opts)
 			spent := time.Since(start)
-			
+
 			var event *zerolog.Event
 			if err == nil {
 				event = span.Trace()
@@ -115,7 +115,7 @@ func CallWrapper(log *zerolog.Logger) client.CallWrapper {
 }
 
 type clientRequest struct {
-	 client.Request
+	client.Request
 }
 
 func (c clientRequest) MarshalZerologObject(e *zerolog.Event) {

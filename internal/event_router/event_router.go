@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/micro/go-micro/v2/broker"
+	"github.com/micro/micro/v3/service/broker"
 	"github.com/rs/zerolog"
 
 	"github.com/webitel/chat_manager/app"
@@ -37,7 +37,7 @@ type Router interface {
 	SendInviteToWebitelUser(conversation *chat.Conversation, invite *store.Invite) error
 	SendDeclineInviteToWebitelUser(domainID *int64, conversationID *string, userID *int64, inviteID *string) error
 	SendUpdateChannel(channel *store.Channel, updated_at int64) error
-	// Override 
+	// Override
 	SendMessageToGateway(target *app.Channel, message *chat.Message) error
 }
 
@@ -131,27 +131,27 @@ func (e *eventRouter) RouteCloseConversationFromFlow(conversationID *string, cau
 	for _, item := range otherChannels {
 		switch item.Type {
 		case "webitel":
-		{
-			body, _ := json.Marshal(events.CloseConversationEvent{
-				BaseEvent: events.BaseEvent{
-					ConversationID: *conversationID, // channel.ConversationID,
-					Timestamp:      time.Now().Unix() * 1000,
-				},
-				FromChannelID: *conversationID, // channel.ID,
-				Cause:         cause,
-			})
-			err = e.sendEventToWebitelUser(nil, item, events.CloseConversationEventType, body)
-			if err != nil {
-				e.log.Warn().
-					Str("channel_id", item.ID).
-					Bool("internal", item.Internal).
-					Int64("user_id", item.UserID).
-					Str("conversation_id", item.ConversationID).
-					Str("type", item.Type).
-					Str("connection", item.Connection.String).
-					Msg("failed to send close conversation event to 'webitel' channel")
+			{
+				body, _ := json.Marshal(events.CloseConversationEvent{
+					BaseEvent: events.BaseEvent{
+						ConversationID: *conversationID, // channel.ConversationID,
+						Timestamp:      time.Now().Unix() * 1000,
+					},
+					FromChannelID: *conversationID, // channel.ID,
+					Cause:         cause,
+				})
+				err = e.sendEventToWebitelUser(nil, item, events.CloseConversationEventType, body)
+				if err != nil {
+					e.log.Warn().
+						Str("channel_id", item.ID).
+						Bool("internal", item.Internal).
+						Int64("user_id", item.UserID).
+						Str("conversation_id", item.ConversationID).
+						Str("type", item.Type).
+						Str("connection", item.Connection.String).
+						Msg("failed to send close conversation event to 'webitel' channel")
+				}
 			}
-		}
 		default: // "telegram", "infobip-whatsapp":
 
 			reqMessage := &chat.Message{
@@ -251,21 +251,21 @@ func (e *eventRouter) RouteInvite(conversationID *string, userID *int64) error {
 }
 
 func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, invite *store.Invite) error {
-	
+
 	// const precision = (int64)(time.Millisecond)
-	
+
 	mes := events.UserInvitationEvent{
 		BaseEvent: events.BaseEvent{
 			ConversationID: conversation.Id,
 			Timestamp:      app.DateTimestamp(invite.CreatedAt), // .UnixNano()/precision, // time.Now().Unix() * 1000,
 		},
-		InviteID:     invite.ID,
-		Title:        invite.Title.String,
-		TimeoutSec:   invite.TimeoutSec,
-		Variables:    invite.Variables,
+		InviteID:   invite.ID,
+		Title:      invite.Title.String,
+		TimeoutSec: invite.TimeoutSec,
+		Variables:  invite.Variables,
 		Conversation: events.Conversation{
-			ID:        conversation.Id,
-			Title:     conversation.Title,
+			ID:    conversation.Id,
+			Title: conversation.Title,
 			//DomainID:  conversation.DomainId,
 			CreatedAt: conversation.CreatedAt,
 			UpdatedAt: conversation.UpdatedAt,
@@ -290,12 +290,12 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 
 			dst := &page[e]
 
-			dst.Type      = src.Type
-			dst.Internal  = src.Internal
+			dst.Type = src.Type
+			dst.Internal = src.Internal
 			dst.ChannelID = src.ChannelId
 
-			dst.UserID    = src.UserId
-			dst.Username  = src.Username
+			dst.UserID = src.UserId
+			dst.Username = src.Username
 			// dst.Firstname = src.Firstname,
 			// dst.Lastname  = src.Lastname,
 
@@ -315,24 +315,24 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 		list := make([]*events.Message, 0, size)
 
 		// for e, src := range conversation.Messages {
-		for e := size-1; e >= 0; e-- {
-			
+		for e := size - 1; e >= 0; e-- {
+
 			src := conversation.Messages[e]
 			dst := &page[e]
 
-			dst.ID        = src.Id
+			dst.ID = src.Id
 			dst.ChannelID = src.ChannelId
 			dst.CreatedAt = src.CreatedAt
 			dst.UpdatedAt = src.UpdatedAt
-			dst.Type      = src.Type
-			dst.Text      = src.Text
-			
+			dst.Type = src.Type
+			dst.Text = src.Text
+
 			if doc := src.File; doc != nil {
 				dst.File = &events.File{
-					ID:     doc.Id,
-					Size:   doc.Size,
-					Type:   doc.Mime,
-					Name:   doc.Name,
+					ID:   doc.Id,
+					Size: doc.Size,
+					Type: doc.Mime,
+					Name: doc.Name,
 				}
 			}
 
@@ -352,11 +352,11 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 		},
 		Body: data,
 	}
-	
+
 	err := e.broker.Publish(fmt.Sprintf("event.%s.%d.%d",
 		events.UserInvitationEventType, invite.DomainID, invite.UserID,
-	),  notify)
-		
+	), notify)
+
 	if err != nil {
 		return err
 	}
@@ -365,7 +365,7 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 }
 
 func (e *eventRouter) SendDeclineInviteToWebitelUser(domainID *int64, conversationID *string, userID *int64, inviteID *string) error {
-	
+
 	data, err := json.Marshal(
 		events.DeclineInvitationEvent{
 			BaseEvent: events.BaseEvent{
@@ -421,7 +421,7 @@ func (e *eventRouter) SendUpdateChannel(channel *store.Channel, updated_at int64
 
 	err := e.broker.Publish(fmt.Sprintf("event.%s.%d.%d",
 		events.UpdateChannelEventType, channel.DomainID, channel.UserID,
-	),  send)
+	), send)
 
 	if err != nil {
 		return err
@@ -455,7 +455,7 @@ func (e *eventRouter) RouteJoinConversation(channel *store.Channel, conversation
 				event := events.JoinConversationEvent{
 					BaseEvent: events.BaseEvent{
 						ConversationID: *conversationID,
-						Timestamp:       time.Now().Unix() * 1000,
+						Timestamp:      time.Now().Unix() * 1000,
 					},
 					Member: events.Member{
 						ChannelID: channel.ID,
@@ -468,7 +468,7 @@ func (e *eventRouter) RouteJoinConversation(channel *store.Channel, conversation
 				}
 				data, _ = json.Marshal(event)
 			}
-			
+
 			if err := e.sendEventToWebitelUser(nil, item, events.JoinConversationEventType, data); err != nil {
 				e.log.Warn().Err(err).
 					Str("notify", "new_chat_member").
@@ -483,10 +483,10 @@ func (e *eventRouter) RouteJoinConversation(channel *store.Channel, conversation
 			// prepare message event once !
 			if notice == nil {
 				notice = &chat.Message{
-					Id:    0, // SERVICE MESSAGE !
+					Id:   0,        // SERVICE MESSAGE !
 					Type: "joined", // "event/joined",
 					NewChatMembers: []*chat.Account{
-						&chat.Account{
+						{
 							Id:        channel.UserID,
 							Channel:   "user",
 							Contact:   "",
@@ -530,7 +530,7 @@ func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversatio
 	err := e.sendEventToWebitelUser(
 		nil, channel, events.LeaveConversationEventType, internalM,
 	)
-	
+
 	if err != nil {
 		e.log.Warn().Err(err).
 			Str("notify", "left_chat_member").
@@ -548,13 +548,12 @@ func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversatio
 	if err != nil {
 		return err
 	}
-	
+
 	if len(members) == 0 {
 		return nil
 	}
 
 	var (
-
 		externalM *chat.Message // TO: @gateway (webitel.chat.bot)
 	)
 
@@ -565,7 +564,7 @@ func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversatio
 			err = e.sendEventToWebitelUser(nil, member,
 				events.LeaveConversationEventType, internalM,
 			)
-			
+
 			if err != nil {
 				e.log.Warn().Err(err).
 					Str("notify", "left_chat_member").
@@ -576,12 +575,12 @@ func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversatio
 					Msg("FAILED To NOTIFY Channel")
 			}
 
-		default:// TO: webitel.chat.bot (gateway)
+		default: // TO: webitel.chat.bot (gateway)
 			// TODO: notify message.left_chat_member
 			// prepare message event once !
 			if externalM == nil {
 				externalM = &chat.Message{
-					Id:    0, // SERVICE MESSAGE !
+					Id:   0,      // SERVICE MESSAGE !
 					Type: "left", // "event/left_chat_member",
 					LeftChatMember: &chat.Account{
 						Id:        channel.UserID,
@@ -613,9 +612,9 @@ func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversatio
 }
 
 func (e *eventRouter) RouteMessage(sender *store.Channel, message *chat.Message) (bool, error) {
-	
+
 	members, err := e.repo.GetChannels(context.TODO(), nil, &sender.ConversationID, nil, nil, nil) //&channel.ID)
-	
+
 	if err != nil {
 		return false, err
 	}
@@ -628,7 +627,6 @@ func (e *eventRouter) RouteMessage(sender *store.Channel, message *chat.Message)
 	}
 
 	var (
-
 		data []byte
 		flag = false
 	)
@@ -637,53 +635,53 @@ func (e *eventRouter) RouteMessage(sender *store.Channel, message *chat.Message)
 
 		switch member.Type {
 		case "webitel":
-		{
-			// NOTE: Encode update event data once (!)
-			// due to NO target member channel reference is needed ...
-			if len(data) == 0 {
+			{
+				// NOTE: Encode update event data once (!)
+				// due to NO target member channel reference is needed ...
+				if len(data) == 0 {
 
-				timestamp := message.UpdatedAt
-				if timestamp == 0 {
-					timestamp = message.CreatedAt
+					timestamp := message.UpdatedAt
 					if timestamp == 0 {
-						// time.Now().UnixNano()/(int64)(time.Millisecond) // epochtime: milliseconds
-						timestamp = app.DateTimestamp(
-							app.CurrentTime(),
-						)
+						timestamp = message.CreatedAt
+						if timestamp == 0 {
+							// time.Now().UnixNano()/(int64)(time.Millisecond) // epochtime: milliseconds
+							timestamp = app.DateTimestamp(
+								app.CurrentTime(),
+							)
+						}
 					}
-				}
 
-				notify := events.MessageEvent{
-					BaseEvent: events.BaseEvent{
-						ConversationID: sender.ConversationID,
-						Timestamp:      timestamp, // time.Now().Unix() * 1000,
-					},
-					Message: events.Message{
-						ChannelID: sender.ID,
-						ID:        message.GetId(),
-						Type:      message.GetType(),
-						Text:      message.GetText(),
+					notify := events.MessageEvent{
+						BaseEvent: events.BaseEvent{
+							ConversationID: sender.ConversationID,
+							Timestamp:      timestamp, // time.Now().Unix() * 1000,
+						},
+						Message: events.Message{
+							ChannelID: sender.ID,
+							ID:        message.GetId(),
+							Type:      message.GetType(),
+							Text:      message.GetText(),
 
-						CreatedAt: message.CreatedAt, // time.Now().Unix() * 1000,
-						UpdatedAt: message.UpdatedAt, // time.Now().Unix() * 1000,
-					},
-				}
-
-				if doc := message.File; doc != nil {
-					notify.File = &events.File{
-						ID:   doc.Id,
-						Size: doc.Size,
-						Type: doc.Mime,
-						Name: doc.Name,
+							CreatedAt: message.CreatedAt, // time.Now().Unix() * 1000,
+							UpdatedAt: message.UpdatedAt, // time.Now().Unix() * 1000,
+						},
 					}
+
+					if doc := message.File; doc != nil {
+						notify.File = &events.File{
+							ID:   doc.Id,
+							Size: doc.Size,
+							Type: doc.Mime,
+							Name: doc.Name,
+						}
+					}
+
+					data, _ = json.Marshal(notify)
 				}
 
-				data, _ = json.Marshal(notify)
+				flag = true
+				err = e.sendEventToWebitelUser(sender, member, events.MessageEventType, data)
 			}
-			
-			flag = true
-			err = e.sendEventToWebitelUser(sender, member, events.MessageEventType, data)
-		}
 
 		default: // "telegram", "infobip-whatsapp"
 
@@ -712,9 +710,9 @@ func (e *eventRouter) RouteMessage(sender *store.Channel, message *chat.Message)
 // conversationID unifies [chat@bot] channel identification
 // so, conversationID - unique chat channel sender ID (routine@workflow)
 func (e *eventRouter) RouteMessageFromFlow(conversationID *string, message *chat.Message) error {
-	
+
 	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil)
-	
+
 	if err != nil {
 		return err
 	}
@@ -728,53 +726,53 @@ func (e *eventRouter) RouteMessageFromFlow(conversationID *string, message *chat
 		var err error
 		switch item.Type {
 		case "webitel":
-		{
-			// e.sendEventToWebitelUser(channel, item, reqMessage)
-			// NOTE: Encode update event data once (!)
-			// due to NO target item channel reference is needed ...
-			if len(data) == 0 {
+			{
+				// e.sendEventToWebitelUser(channel, item, reqMessage)
+				// NOTE: Encode update event data once (!)
+				// due to NO target item channel reference is needed ...
+				if len(data) == 0 {
 
-				timestamp := message.UpdatedAt
-				if timestamp == 0 {
-					timestamp = message.CreatedAt
+					timestamp := message.UpdatedAt
 					if timestamp == 0 {
-						// time.Now().UnixNano()/(int64)(time.Millisecond) // epochtime: milliseconds
-						timestamp = app.DateTimestamp(
-							app.CurrentTime(),
-						)
+						timestamp = message.CreatedAt
+						if timestamp == 0 {
+							// time.Now().UnixNano()/(int64)(time.Millisecond) // epochtime: milliseconds
+							timestamp = app.DateTimestamp(
+								app.CurrentTime(),
+							)
+						}
 					}
-				}
 
-				notify := events.MessageEvent{
-					BaseEvent: events.BaseEvent{
-						ConversationID: *conversationID, // sender.ConversationID,
-						Timestamp:       timestamp, // time.Now().Unix() * 1000,
-					},
-					Message: events.Message{
-						ChannelID: *conversationID, // sender.ID,
-						ID:        message.GetId(),
-						Type:      message.GetType(),
-						Text:      message.GetText(),
+					notify := events.MessageEvent{
+						BaseEvent: events.BaseEvent{
+							ConversationID: *conversationID, // sender.ConversationID,
+							Timestamp:      timestamp,       // time.Now().Unix() * 1000,
+						},
+						Message: events.Message{
+							ChannelID: *conversationID, // sender.ID,
+							ID:        message.GetId(),
+							Type:      message.GetType(),
+							Text:      message.GetText(),
 
-						CreatedAt: message.CreatedAt, // time.Now().Unix() * 1000,
-						UpdatedAt: message.UpdatedAt, // time.Now().Unix() * 1000,
-					},
-				}
-
-				if doc := message.File; doc != nil {
-					notify.File = &events.File{
-						ID:   doc.Id,
-						Size: doc.Size,
-						Type: doc.Mime,
-						Name: doc.Name,
+							CreatedAt: message.CreatedAt, // time.Now().Unix() * 1000,
+							UpdatedAt: message.UpdatedAt, // time.Now().Unix() * 1000,
+						},
 					}
+
+					if doc := message.File; doc != nil {
+						notify.File = &events.File{
+							ID:   doc.Id,
+							Size: doc.Size,
+							Type: doc.Mime,
+							Name: doc.Name,
+						}
+					}
+
+					data, _ = json.Marshal(notify)
 				}
 
-				data, _ = json.Marshal(notify)
+				err = e.sendEventToWebitelUser(nil, item, events.MessageEventType, data)
 			}
-
-			err = e.sendEventToWebitelUser(nil, item, events.MessageEventType, data)
-		}
 		default: // "telegram", "infobip-whatsapp"
 
 			err = e.sendMessageToBotUser(nil, item, message)
@@ -841,7 +839,7 @@ func (c *eventRouter) SendMessage(chatRoom *app.Session, notify *chat.Message) (
 	)
 
 	for _, member := range chatRoom.Members {
-		
+
 		if member.IsClosed() {
 			continue // omit send TO channel: closed !
 		}
@@ -881,7 +879,7 @@ func (c *eventRouter) SendMessage(chatRoom *app.Session, notify *chat.Message) (
 
 		if err != nil {
 			// FIXME: just log failed attempt ?
-		} 
+		}
 	}
 
 	return sent, err

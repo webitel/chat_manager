@@ -4,40 +4,37 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/micro/cli/v2"
-	"github.com/micro/go-micro/v2/config/cmd"
+	"github.com/urfave/cli/v2"
 )
 
 var (
-
-	GitTag    string // semver(branch)
-	GitBranch string // branch
+	GitTag    string // semver
 	GitCommit string // patch
 	BuildDate string // time
 
 	// name        = "chat"
-	version     = "0.0.1"
-	description = "Webitel Micro Chat Service(s)"
+	version     = "v3"
+	description = "Micro Chat Service(s)"
 )
 
 // Build Version string
 func Version() string {
 
-	fullVersion := version
+	goVer := version
 
 	if GitTag != "" {
-		fullVersion += "@"+ GitTag
-	}
-
-	if GitCommit != "" {
-		fullVersion += fmt.Sprintf("-%s", GitCommit)
+		goVer = GitTag
 	}
 
 	if BuildDate != "" {
-		fullVersion += fmt.Sprintf("-%s", BuildDate)
+		goVer += "-" + BuildDate
 	}
 
-	return fullVersion
+	if GitCommit != "" {
+		goVer += "-" + GitCommit
+	}
+
+	return goVer
 }
 
 // ShowVersion prints buld version string to output and exit
@@ -47,14 +44,14 @@ func ShowVersion(ctx *cli.Context) error {
 	return nil
 }
 
-// Register Version Command
-func init() {
-	
-	cmdVer := cli.Command{
-		Name:   "version",
-		Action: ShowVersion,
-	}
-	
-	
-	cmd.App().Commands = append(cmd.App().Commands, &cmdVer)
-}
+// // Register Version Command
+// func init() {
+
+// 	cmdVer := cli.Command{
+// 		Name:   "version",
+// 		Usage:  "Print the version and exit",
+// 		Action: ShowVersion,
+// 	}
+
+// 	cmd.Register(&cmdVer)
+// }

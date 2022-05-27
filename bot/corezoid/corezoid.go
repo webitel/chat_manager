@@ -17,7 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	// "github.com/golang/protobuf/proto"
-	errs "github.com/micro/go-micro/v2/errors"
+	errs "github.com/micro/micro/v3/service/errors"
 
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/bot"
@@ -33,25 +33,24 @@ func init() {
 
 // chat request: command/message
 type corezoidRequest struct {
+	ChatID  string `json:"id,omitempty"`      // [required] chat.channel.user.id
+	Channel string `json:"channel,omitempty"` // [required] underlaying provider name e.g.: telegram, viber, messanger (facebook), skype, slack
 
-	ChatID    string    `json:"id,omitempty"`          // [required] chat.channel.user.id
-	Channel   string    `json:"channel,omitempty"`     // [required] underlaying provider name e.g.: telegram, viber, messanger (facebook), skype, slack
+	Date  time.Time `json:"-"`                // [internal] received local timestamp
+	Event string    `json:"action,omitempty"` // [required] command request !
+	Test  bool      `json:"test,omitempty"`   // [optional] bot development indicatior ! TOBE: removed in production !
 
-	Date      time.Time `json:"-"`                     // [internal] received local timestamp
-	Event     string    `json:"action,omitempty"`      // [required] command request !
-	Test      bool      `json:"test,omitempty"`        // [optional] bot development indicatior ! TOBE: removed in production !
-
-	From      string    `json:"client_name,omitempty"` // [required] chat.username; remote::display
-	Text      string    `json:"text,omitempty"`        // [optional] message text
+	From string `json:"client_name,omitempty"` // [required] chat.username; remote::display
+	Text string `json:"text,omitempty"`        // [optional] message text
 	// {action:"purpose"} arguments
-	ReplyWith string    `json:"replyTo,omitempty"`     // [optional] reply with back-channel type e.g.: chat (this), email etc.
+	ReplyWith string `json:"replyTo,omitempty"` // [optional] reply with back-channel type e.g.: chat (this), email etc.
 }
 
 // GetTitle extracts end-user's contact name, chat title
 func (m *corezoidRequest) GetTitle() string {
 	// crop trailing CHAT channel type suffix
-	title := strings.TrimSuffix(m.From," ("+ m.Channel +")")
-	title  = strings.TrimSpace(title)
+	title := strings.TrimSuffix(m.From, " ("+m.Channel+")")
+	title = strings.TrimSpace(title)
 	// if title == "" {
 	// 	title = "noname"
 	// }
@@ -72,30 +71,30 @@ func (m *corezoidRequest) GetContact() *bot.Account {
 
 // chat response: reply/event/message
 type corezoidReply struct {
-	 // outcome: response
-	 Date      time.Time `json:"-"`                         // [internal] sent local timestamp
-	 // {action:"chat"} => oneof {replyAction:(startChat|closeChat|answerToChat)} else ignore
-	 Type      string    `json:"replyAction,omitempty"`     // [optional] update event type; oneof (startChat|closeChat|answerToChat)
-	 FromID    int64     `json:"-"`                         // [optional] other side end-user's unique identifier
-	 From      string    `json:"operator,omitempty"`        // [required] chat.username; local::display
-	 Text      string    `json:"answer,omitempty"`          // [required] message text payload
+	// outcome: response
+	Date time.Time `json:"-"` // [internal] sent local timestamp
+	// {action:"chat"} => oneof {replyAction:(startChat|closeChat|answerToChat)} else ignore
+	Type   string `json:"replyAction,omitempty"` // [optional] update event type; oneof (startChat|closeChat|answerToChat)
+	FromID int64  `json:"-"`                     // [optional] other side end-user's unique identifier
+	From   string `json:"operator,omitempty"`    // [required] chat.username; local::display
+	Text   string `json:"answer,omitempty"`      // [required] message text payload
 }
 
 // channel runtime state
 type corezoidChatV1 struct {
 	//  // ChannelID (internal: Webitel)
 	//  ChannelID string
-	 // Request message; latest
-	 corezoidRequest // json:",embedded"
-	 // corresponding reply message
-	 corezoidReply // json:",embedded"
+	// Request message; latest
+	corezoidRequest // json:",embedded"
+	// corresponding reply message
+	corezoidReply // json:",embedded"
 }
 
 // Corezoid Chat-Bot gateway runtime driver
 type CorezoidBot struct {
 	// URL to communicate with a back-channel service provider (proxy)
-	URL string
-	botName string // default: chat@bot operator's display name, if agent not connected yet
+	URL         string
+	botName     string // default: chat@bot operator's display name, if agent not connected yet
 	accessToken string // validate all incoming requests for precense X-Access-Token
 	// Client HTTP to communicate with member, remote
 	Client *http.Client
@@ -127,7 +126,7 @@ func NewCorezoidBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 
 		return nil, errs.BadRequest(
 			"chat.gateway.corezoid.host_url.invalid",
-			"corezoid:host: "+ err.Error(),
+			"corezoid:host: "+err.Error(),
 		)
 	}
 	// RESET: normalized !
@@ -137,20 +136,19 @@ func NewCorezoidBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 
 	// region: HTTP client/proxy
 	var (
-
 		client *http.Client
-		proxy = profile["http_proxy"]
+		proxy  = profile["http_proxy"]
 	)
 
 	if proxy != "" {
-		
+
 		proxyURL, err := url.Parse(proxy)
 
 		if err != nil {
 
 			return nil, errs.BadRequest(
 				"chat.gateway.corezoid.proxy_url.invalid",
-				"corezoid: proxy: "+ err.Error(),
+				"corezoid: proxy: "+err.Error(),
 			)
 		}
 
@@ -186,7 +184,7 @@ func NewCorezoidBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 		}
 		transport = &bot.TransportDump{
 			Transport: transport,
-			WithBody: true,
+			WithBody:  true,
 		}
 		if client == nil {
 			client = &http.Client{
@@ -205,10 +203,9 @@ func NewCorezoidBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 		botName:     "АТБ", // "bot", // default: (!)
 		accessToken: authZ,
 		// NOTE: net/http.DefaultClient used if <nil> pointer
-		Client:      client,
-		Gateway:     agent,
-
-	},  nil
+		Client:  client,
+		Gateway: agent,
+	}, nil
 }
 
 func (_ *CorezoidBot) Close() error {
@@ -246,16 +243,16 @@ func corezoidChannelState(channel *bot.Channel, start *corezoidChatV1) (state *c
 			state = &corezoidChatV1{
 				corezoidRequest: corezoidRequest{
 					ChatID:    channel.ChatID,
-					Channel:   hint["channel"], // notify.User.Channel
+					Channel:   hint["channel"],   // notify.User.Channel
 					Date:      app.CurrentTime(), // RECOVERED(!)
 					Event:     hint["action"],
 					Test:      develop,
 					From:      hint["client_name"],
-					Text:      hint["text"], // /start
+					Text:      hint["text"],    // /start
 					ReplyWith: hint["replyTo"], // optional: action related attribute
 				},
 				corezoidReply: corezoidReply{
-					From:      hint["operator"],
+					From: hint["operator"],
 				},
 			}
 			// RECOVER last interlocutor info !
@@ -263,26 +260,26 @@ func corezoidChannelState(channel *bot.Channel, start *corezoidChatV1) (state *c
 			reply.FromID, reply.From = decodeInterlocutorInfo(reply.From)
 			// // RECOVERED !
 			// channel.Properties = state
-		
+
 		default: // (channel.Properties != nil ) !!!
 
 			return nil, errors.Errorf(
 				"corezoid: restore %T channel from %T state invalid",
-				 state, hint,
+				state, hint,
 			)
-		
-		// 	if channel.Properties != nil {
-		// 		// FIXME: inform recepient that error occures ?
-				// return nil, errs.InternalServerError(
-				// 	"chat.gateway.corezoid.channel.recover.error",
-				// 	"corezoid: channel %T restore %T state invalid",
-				// 	 chat, hint,
-				// )
-		// 	}
+
+			// 	if channel.Properties != nil {
+			// 		// FIXME: inform recepient that error occures ?
+			// return nil, errs.InternalServerError(
+			// 	"chat.gateway.corezoid.channel.recover.error",
+			// 	"corezoid: channel %T restore %T state invalid",
+			// 	 chat, hint,
+			// )
+			// 	}
 		}
 	}
 	// endregion
-	
+
 	// region: merge latest with current states
 	if start != nil {
 		if state != nil {
@@ -321,20 +318,20 @@ func corezoidChannelState(channel *bot.Channel, start *corezoidChatV1) (state *c
 		// FIXME: No either last `state` restored nor `start` chat request !
 		return nil, errors.Errorf(
 			"corezoid: chat channel ID=%s state is missing",
-			 channel.ChatID,
+			channel.ChatID,
 		)
 	}
 
 	// RESTORE: Normalize end-user contact info !
 	switch channel.Title {
-	case "","noname":
+	case "", "noname":
 		// fill contact info
 		contact := &channel.Account
-		
-		contact.Contact   = state.ChatID
-		contact.Channel   = state.Channel
+
+		contact.Contact = state.ChatID
+		contact.Channel = state.Channel
 		contact.FirstName = state.corezoidRequest.GetTitle()
-		
+
 		channel.Title = contact.DisplayName()
 	}
 
@@ -358,17 +355,16 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		}
 	}
 	// endregion
-	
-	var (
 
-		update corezoidRequest // command/message
+	var (
+		update    corezoidRequest     // command/message
 		localtime = app.CurrentTime() // timestamp
 	)
 
 	if err := json.NewDecoder(notice.Body).Decode(&update); err != nil {
 		log.Error().Err(err).Msg("Failed to decode update request")
 		err = errors.Wrap(err, "Failed to decode update request")
-		http.Error(reply, err.Error(), http.StatusBadRequest) // 400 
+		http.Error(reply, err.Error(), http.StatusBadRequest) // 400
 		return
 	}
 
@@ -391,14 +387,12 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// endregion
 
 	c.Gateway.Log.Debug().
-
 		Str("chat-id", update.ChatID).
 		Str("channel", update.Channel).
-		Str("action",  update.Event).
-		Str("title",   contact.DisplayName()).
-		Str("text",    update.Text).
-
-	Msg("RECV Update")
+		Str("action", update.Event).
+		Str("title", contact.DisplayName()).
+		Str("text", update.Text).
+		Msg("RECV Update")
 
 	// region: bind internal channel
 	chatID := update.ChatID
@@ -409,7 +403,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	if err != nil {
 
 		c.Gateway.Log.Error().
-			Str("error", "lookup: "+ err.Error()).
+			Str("error", "lookup: "+err.Error()).
 			Msg("CHANNEL")
 
 		http.Error(reply,
@@ -444,17 +438,17 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// region: init chat-flow-routine /start message environment variables
 	text := strings.TrimSpace(update.Text)
 	sendMessage := &chat.Message{
-		Id:    0,     // NEW(!)
+		Id:   0,      // NEW(!)
 		Type: "text", // DEFAULT
-		Text:  text,
+		Text: text,
 	}
 	// FIXME: When consumer sent us any file document (except photo and video)
 	//        we receive such broken message with blank text inside ! Deal with it !
 	if text == "" {
 		// NOTE: We've got here, when consumer sent us any file document, except photo or video !
 		const notice = "Unfortunately, the transfer of third-party files" +
-						" is prohibited for security reasons, except images and video"
-		
+			" is prohibited for security reasons, except images and video"
+
 		// FIXME: Ignore such update(s) ?
 		// sendMessage.Type = "file"
 		// sendMessage.File = &chat.File{
@@ -467,18 +461,18 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		// }
 		sendMessage.Type = "text"
 		sendMessage.Text = notice
-		
+
 		defer func() {
 			// Also NOTIFY sender about restriction !
 			_ = c.SendNotify(
 				context.Background(), &bot.Update{
-					ID:    0, // NOTICE
+					ID:    0,       // NOTICE
 					Chat:  channel, // target
 					User:  contact, // sender
 					Title: channel.Title,
 					// Event: "text",
 					Message: &chat.Message{
-						
+
 						Id:   0,
 						Type: "text",
 						Text: notice,
@@ -488,7 +482,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 						// Contact: nil,
 						CreatedAt: app.DateTimestamp(localtime),
 						// UpdatedAt:        0,
-						
+
 						// ReplyToMessageId: 0, // !!!
 						// ReplyToVariables: nil,
 						// ForwardFromChatId:    "",
@@ -502,8 +496,8 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 				},
 			)
 
-		} ()
-		
+		}()
+
 		// Ignore CHAT channel creation for broken /start message !
 		if channel.IsNew() {
 			// Release the request ...
@@ -517,14 +511,14 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// region: receive file ...
 	// NOTE: Messages with third-party link(s) are NOT delivered ! That's good !
 	link := text
-	if eol := strings.IndexFunc(text,unicode.IsSpace); eol > 6 { // http[s]://
-		link = strings.TrimSpace(text[:eol]) // optional: trim right witespace(s)
+	if eol := strings.IndexFunc(text, unicode.IsSpace); eol > 6 { // http[s]://
+		link = strings.TrimSpace(text[:eol])   // optional: trim right witespace(s)
 		text = strings.TrimSpace(text[eol+1:]) // optional: trim left witespace(s)
 	}
 	// if link != "" { // NOTE: never ! We DO NOT allow empty text message(s) }
 
 	href, _ := url.ParseRequestURI(link)
-	
+
 	ok := href != nil
 
 	ok = ok && href.Host != ""
@@ -538,7 +532,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		sendMessage.File = &chat.File{
 			Url: href.String(), // link,
 		}
-		// 
+		//
 		if strings.HasPrefix(text, link) {
 			text = "" // hide file's hyperlink text
 		}
@@ -548,20 +542,20 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// else { // TODO: nothing; We already assign message 'text' by default ! }
 	// endregion
 
-	props := map[string]string {
+	props := map[string]string{
 		"chat-id":     update.ChatID,
 		"channel":     update.Channel,
 		"action":      update.Event,
 		"client_name": update.From,
 		// "replyTo":  update.ReplyWith,
-		"text":        update.Text,
-		"test":        strconv.FormatBool(update.Test),
+		"text": update.Text,
+		"test": strconv.FormatBool(update.Test),
 	}
 
 	// REACTION !
 	switch update.Event {
 	// incoming chat message (!)
-	case "chat","startChat":
+	case "chat", "startChat":
 
 		// Expected !
 
@@ -578,7 +572,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		// DO: .CloseConversation(!)
 		// cause := commandCloseRecvDisposiotion
 		err = channel.Close() // (cause) // default: /close request
-		
+
 		if err != nil {
 			// RESPOND (SEND): err: ${detail}
 			http.Error(reply, errors.Wrap(err, "/close").Error(), http.StatusInternalServerError)
@@ -587,7 +581,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 		return // HTTP 200 OK
 
-	case "Предложение","Жалоба":
+	case "Предложение", "Жалоба":
 
 		// 1. "Дать ответ для отправки в telegram"
 		// 2. "Отправить письмо на email ${box@domain.mx}"
@@ -597,7 +591,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	default:
 		// UNKNOWN !
 		c.Gateway.Log.Warn().
-			Str("error", update.Event +": reaction not implemented").
+			Str("error", update.Event+": reaction not implemented").
 			Msg("IGNORE")
 
 		return // HTTP 200 OK // to avoid redeliver !
@@ -607,21 +601,21 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		sendMessage.Variables = props
 	} // else { // BIND message properties ! }
 
-	recvUpdate := bot.Update {
-	
-		ID:      0, // NEW
+	recvUpdate := bot.Update{
+
+		ID: 0, // NEW
 		// ChatID: update.ChatID,
-		Chat:    channel, // SENDER (!)
+		Chat: channel, // SENDER (!)
 		// Contact: update.Channel,
-		User:    contact,
-		Title:   channel.Title,
-		
+		User:  contact,
+		Title: channel.Title,
+
 		// Event:   sendMessage.Type, // "text" or "file" !
 		Message: sendMessage,
 		// // not applicable yet !
 		// Edited:           0,
 		// EditedMessageID:  0,
-		
+
 		// // JoinMembersCount: 0,
 		// // KickMembersCount: 0,
 	}
@@ -630,7 +624,7 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	err = c.Gateway.Read(notice.Context(), &recvUpdate)
 
 	if err != nil {
-		
+
 		http.Error(reply,
 			errors.Wrap(err, "Failed to deliver CHAT update").Error(),
 			http.StatusInternalServerError,
@@ -648,7 +642,6 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 
 	var (
-
 		localtime = app.CurrentTime()
 		recepient = notify.Chat // recepient
 
@@ -662,7 +655,7 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 	if err != nil {
 
 		re := errs.FromError(err)
-		
+
 		if re.Id == "" {
 			code := http.StatusInternalServerError
 			re.Id = "chat.corezoid.channel.restore.error"
@@ -682,10 +675,10 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 
 	// region: event specific reaction !
 	switch update.Type { // notify.Event {
-	case "text","file": // default
+	case "text", "file": // default
 		// reaction:
 		switch chat.corezoidRequest.Event {
-		case "chat","startChat": // chatting
+		case "chat", "startChat": // chatting
 
 			// replyAction = startChat|closeChat|answerToChat|operatorNotFound
 			reply.Type = "answerToChat"
@@ -699,16 +692,16 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 					// Action notification !
 					switch s[1:] {
 					case "operatorNotFound":
-						
+
 						reply.Type = "operatorNotFound" // {"replyAction": "operatorNotFound"}
-						reply.From = "" // cleanup operator's name to display
+						reply.From = ""                 // cleanup operator's name to display
 						// update.Text = "" // cleanup text to be send !
 						// if (reply.Date.Sub(chat.corezoidRequest.Date)/time.Second) < 5 {}
 						// FIXME: Send notification text template ...
 						update.Text = "Sorry, but we could not find any available agent for you.\nPlease try again in a few minutes"
 						// FIXME: Does we need to send {"replyAction": "closeChat"} after that ?
-						
-					// default:
+
+						// default:
 						// // Command is unknown ! Send as a regular text !
 						// reply.Text = txt
 					}
@@ -719,21 +712,21 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		// case "closeChat": // Requested ?
 		// 	reply.Type = "closeChat"
 		// 	reply.Text = defined below !
-			
-		case "Предложение","Жалоба":
+
+		case "Предложение", "Жалоба":
 
 			// reply.Text = defined below !
 
 		default:
 			// panic(errors.Errorf("corezoid: send %q within %q state invalid", notify.Event, chat.corezoidRequest.Event))
-			recepient.Log.Warn().Str("notice", 
-				update.Type + ": reaction to " +
-				chat.corezoidRequest.Event + " not implemented",
+			recepient.Log.Warn().Str("notice",
+				update.Type+": reaction to "+
+					chat.corezoidRequest.Event+" not implemented",
 			).Msg("IGNORE")
 
 			return nil // HTTP 200 OK
 		}
-	
+
 	// case "file":
 	// case "send":
 	// case "edit":
@@ -746,7 +739,7 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 			// Ignore agent(s) sequential connection !
 			// Might be supervisor's help or something like that ...
 			return nil // +OK
-		
+
 		} // else ( reply.FromID == 0 )
 
 		// NOTIFY: That NEW agent connected !
@@ -756,8 +749,8 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		// CACHE Update CHAT title for recepient !
 		reply.FromID = newChatMember.GetId()
 		// {"operator": "$givenName"}
-		reply.From   = newChatMember.GetFirstName()
-		reply.From   = strings.TrimSpace(reply.From)
+		reply.From = newChatMember.GetFirstName()
+		reply.From = strings.TrimSpace(reply.From)
 		// Extract the first word from user's display name; must be the given name
 		if gn := strings.IndexFunc(reply.From, unicode.IsSpace); gn > 0 {
 			reply.From = reply.From[0:gn]
@@ -773,15 +766,15 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		}
 
 		// FIXME: Send notification text template ...
-		update.Text = reply.From +" joined the conversation"
+		update.Text = reply.From + " joined the conversation"
 
-	case "left":   // ACK: ChatService.LeaveConversation()
+	case "left": // ACK: ChatService.LeaveConversation()
 
 		leftChatMember := update.LeftChatMember
 		if reply.FromID == leftChatMember.GetId() {
 			// CACHE Cleanup interlocuter info !
 			reply.FromID = 0
-			reply.From   = "" // TODO: set default ! FIXME: "bot" ?
+			reply.From = "" // TODO: set default ! FIXME: "bot" ?
 			// STORE Unbind channel properties !
 			update.Variables = map[string]string{
 				"operator": "",
@@ -798,29 +791,29 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		// SEND: typical text notification !
 		switch chat.corezoidRequest.Event {
 		// FIXME: Should we send "closeChat" [ACK]nowledge ?
-		case "startChat","chat","closeChat":
+		case "startChat", "chat", "closeChat":
 			// replyAction = startChat|closeChat|answerToChat
 			reply.Type = "closeChat"
 			// reply.Text = defined below !
-			
+
 			reply.FromID = 0
 			reply.From = ""
-		
+
 		default:
-			
+
 			recepient.Log.Warn().Str("notice",
-				update.Type + ": reaction to " +
-				chat.corezoidRequest.Event + " intentionally disabled",
+				update.Type+": reaction to "+
+					chat.corezoidRequest.Event+" intentionally disabled",
 			).Msg("IGNORE")
 
 			return nil
 		}
-	
+
 	default:
 
 		recepient.Log.Warn().Str("notice",
-			update.Type + ": reaction to " +
-			chat.corezoidRequest.Event + " not implemented",
+			update.Type+": reaction to "+
+				chat.corezoidRequest.Event+" not implemented",
 		).Msg("IGNORE")
 
 		return nil
@@ -829,7 +822,7 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 
 	// region: format message text ...
 	reply.Date = localtime // set reply timestamp
-	reply.Text = "" // cleanup latest reply text !
+	reply.Text = ""        // cleanup latest reply text !
 	// File ?
 	if doc := update.GetFile(); doc != nil {
 		reply.Text = doc.Url // FIXME: URL is blank ?
@@ -866,7 +859,7 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 	}
 	// DO: SEND !
 	res, err := client.Do(corezoidReq)
-	
+
 	if err != nil {
 		return err
 	}
@@ -893,7 +886,7 @@ func encodeInterlocutorInfo(oid int64, name string) (contact string) {
 		if len(contact) != 0 {
 			contact += " "
 		}
-		contact += "<"+ strconv.FormatInt(oid, 10) +">"
+		contact += "<" + strconv.FormatInt(oid, 10) + ">"
 	}
 	return // contact
 }

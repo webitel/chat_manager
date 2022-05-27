@@ -18,7 +18,7 @@ import (
 )
 
 // OpenDB returns valid postgres DSN database connection pool
-func OpenDB(dataSource string) (*sqlx.DB, error) { 
+func OpenDB(dataSource string) (*sqlx.DB, error) {
 
 	config, err := pgx.ParseConfig(dataSource)
 	if err != nil {
@@ -28,7 +28,7 @@ func OpenDB(dataSource string) (*sqlx.DB, error) {
 	config.Logger = (*pgxLogger)(&log.Default)
 	// dataSource = stdlib.RegisterConnConfig(config)
 	// db, _ := sql.Open("pgx", dataSource)
-	
+
 	dbo := stdlib.OpenDB(*(config), stdlib.OptionAfterConnect(
 		func(ctx context.Context, dc *pgx.Conn) error {
 			// SET search_path = 'chat';
@@ -36,11 +36,17 @@ func OpenDB(dataSource string) (*sqlx.DB, error) {
 		},
 	))
 
+	err = dbo.Ping()
+	if err != nil {
+		return nil, err
+	}
+
 	const pgxDriverName = "pgx"
 	return sqlx.NewDb(dbo, pgxDriverName), nil
 }
 
 type pgxLogger zerolog.Logger
+
 func (c *pgxLogger) log() *zerolog.Logger {
 	return (*zerolog.Logger)(c)
 }
@@ -48,12 +54,12 @@ func (c *pgxLogger) log() *zerolog.Logger {
 func (c pgxLogger) Log(ctx context.Context, rate pgx.LogLevel, text string, data map[string]interface{}) {
 
 	var e *zerolog.Event
-	
+
 	switch rate {
 	// case pgx.LogLevelTrace:
 	// 	e = logger.Trace()
 	case pgx.LogLevelDebug,
-		 pgx.LogLevelInfo:
+		pgx.LogLevelInfo:
 		e = c.log().Debug()
 	case pgx.LogLevelWarn:
 		e = c.log().Warn()
@@ -68,7 +74,7 @@ func (c pgxLogger) Log(ctx context.Context, rate pgx.LogLevel, text string, data
 	if !e.Enabled() {
 		return
 	}
-	
+
 	e.EmbedObject(pgxLogdata(data)).Msg(text)
 }
 
@@ -102,4 +108,3 @@ func (ctx pgxLogdata) MarshalZerologObject(e *zerolog.Event) {
 		}
 	}
 }
-

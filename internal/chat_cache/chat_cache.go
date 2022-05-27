@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/micro/go-micro/v2/store"
+	"github.com/micro/micro/v3/service/store"
 )
 
 const (

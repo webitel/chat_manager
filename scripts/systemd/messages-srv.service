@@ -1,0 +1,18 @@
+[Unit]
+Description=Messages Chat Service
+After=network.target consul.service rabbitmq-server.service postgresql.service
+
+[Service]
+Type=simple
+Restart=always
+TimeoutStartSec=0
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=CHAT
+EnvironmentFile=/etc/default/webitel
+Environment=LOG_LEVEL=trace
+ExecStart=/usr/local/bin/messages app
+
+[Install]
+WantedBy=default.target
+

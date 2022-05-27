@@ -1,7 +1,7 @@
 package flow
 
 import (
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/internal/contact"
 
 	"strconv"
@@ -18,9 +18,6 @@ import (
 	flow "github.com/webitel/chat_manager/api/proto/workflow"
 	"github.com/webitel/chat_manager/app"
 	store "github.com/webitel/chat_manager/internal/repo/sqlx"
-	// "github.com/micro/go-micro/v2/client"
-	// "github.com/micro/go-micro/v2/client/selector"
-	// "github.com/micro/go-micro/v2/registry"
 )
 
 type BreakBridgeCause string
@@ -28,8 +25,8 @@ type BreakBridgeCause string
 const (
 	DeclineInvitationCause = BreakBridgeCause("DECLINE_INVITATION")
 	LeaveConversationCause = BreakBridgeCause("LEAVE_CONVERSATION")
-	TransferCause = BreakBridgeCause("TRANSFER")
-	TimeoutCause = BreakBridgeCause("TIMEOUT")
+	TransferCause          = BreakBridgeCause("TRANSFER")
+	TimeoutCause           = BreakBridgeCause("TIMEOUT")
 )
 
 func (c BreakBridgeCause) String() string {
@@ -52,8 +49,8 @@ type Client interface {
 
 // Agent "workflow" (internal: chat@bot) channel service provider
 type Agent struct {
-	Log *zerolog.Logger
-	Store store.CacheRepository
+	Log    *zerolog.Logger
+	Store  store.CacheRepository
 	Client flow.FlowChatServerService
 	// cache: memory
 	sync.RWMutex // REFLOCK
@@ -68,38 +65,38 @@ func NewClient(
 	client flow.FlowChatServerService,
 
 ) *Agent {
-	
+
 	return &Agent{
-		Log: log,
-		Store: store,
-		Client: client,
+		Log:     log,
+		Store:   store,
+		Client:  client,
 		channel: make(map[string]*Channel),
 	}
 }
 
 func (c *Agent) GetChannel(conversationID string) (*Channel, error) {
 
-	c.RLock()   // +R
+	c.RLock() // +R
 	channel, ok := c.channel[conversationID]
 	c.RUnlock() // -R
 
 	if ok && channel.ID == conversationID {
-		return channel, nil // CACHE: FOUND ! 
+		return channel, nil // CACHE: FOUND !
 	}
 
 	// if !ok {
 
 	// 	srv, err := c.Store.ReadConversationNode(conversationID)
-			
+
 	// 	if err != nil {
-			
+
 	// 		c.Log.Error().Err(err).
 	// 		Str("chat-id", conversationID).
 	// 		Str("channel", "workflow").
 	// 		Msg("Looking for channel host")
 
 	// 		return nil, err
-		
+
 	// 	}
 
 	// 	node = srv
@@ -111,8 +108,8 @@ func (c *Agent) GetChannel(conversationID string) (*Channel, error) {
 		Store: c.Store,
 		Agent: c.Client,
 
-		Host:  "", // NEW
-		ID: conversationID,
+		Host: "", // NEW
+		ID:   conversationID,
 		// User: &chat.User{
 		// 	UserId:     0, // flow.schema.id
 		// 	Type:       "workflow",
@@ -161,7 +158,7 @@ func (c *Agent) GetChannel(conversationID string) (*Channel, error) {
 	}
 
 	if !ok {
-		c.Lock()   // +RW
+		c.Lock() // +RW
 		c.channel[conversationID] = channel
 		c.Unlock() // -RW
 	}
@@ -170,8 +167,8 @@ func (c *Agent) GetChannel(conversationID string) (*Channel, error) {
 }
 
 func (c *Agent) delChannel(conversationID string) (ok bool) {
-	
-	c.Lock()   // +RW
+
+	c.Lock() // +RW
 	if _, ok = c.channel[conversationID]; ok {
 		delete(c.channel, conversationID)
 	}
@@ -181,7 +178,7 @@ func (c *Agent) delChannel(conversationID string) (ok bool) {
 }
 
 /*func (c *Agent) SendMessage(conversationID string, message *chat.Message) error {
-	
+
 	channel, err := c.GetChannel(conversationID)
 	if err != nil {
 		return err
@@ -268,7 +265,7 @@ func (c *Agent) delChannel(conversationID string) (ok bool) {
 }*/
 
 func (c *Agent) SendMessage(sender *store.Channel, message *chat.Message) error {
-	
+
 	channel, err := c.GetChannel(sender.ConversationID)
 	if err != nil {
 		return err
@@ -304,7 +301,7 @@ func (c *Agent) SendMessage(sender *store.Channel, message *chat.Message) error 
 }
 
 func (c *Agent) SendMessageV1(target *app.Channel, message *chat.Message) error {
-	
+
 	// channel, err := c.GetChannel(sender.ConversationID)
 	channel, err := c.GetChannel(target.Chat.ID) // NOTE: target.Chat.ID == target.Chat.Invite
 	if err != nil {
@@ -326,7 +323,7 @@ func (c *Agent) SendMessageV1(target *app.Channel, message *chat.Message) error 
 		}
 		// preset: resolved !
 		channel.ProfileID = schemaProfileID
-		channel.Host      = serviceNode
+		channel.Host = serviceNode
 	}
 	// endregion
 
@@ -344,7 +341,7 @@ func (c *Agent) SendMessageV1(target *app.Channel, message *chat.Message) error 
 
 // Init chat => flow chat-channel communication state
 func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
-	
+
 	// now := time.Now()
 	// date := now.UTC().Unix()
 
@@ -358,14 +355,14 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 		return err
 	}
 
-	channel := &Channel {
-		
+	channel := &Channel{
+
 		Log:   c.Log,
 		Host:  "", // PEEK
 		Agent: c.Client,
 		Store: c.Store,
 		// ChannelID: reflects .start channel member.id
-		ID: sender.ConversationID,
+		ID:   sender.ConversationID,
 		Chat: *(sender),
 		// User: &chat.User{
 		// 	UserId:     0, // profile.schema.id
@@ -373,13 +370,13 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 		// 	Connection: "",
 		// 	Internal:   true,
 		// },
-		
+
 		// DomainID: sender.DomainID,
 		ProfileID: botGatewayID,
 
 		Invite:  "", // .Invite(!) token
 		Pending: "", // .WaitMessage(!) token
-		
+
 		// Created: date,
 		// Updated: date,
 		// Started: 0,
@@ -400,7 +397,7 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 		return err
 	}
 
-	c.Lock()   // +RW
+	c.Lock() // +RW
 	c.channel[channel.ID] = channel
 	c.Unlock() // -RW
 
@@ -408,15 +405,15 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 }
 
 /*func (c *Agent) Init(conversationID string, profileID, domainID int64, message *chat.Message) error {
-	
+
 	c.Log.Debug().
 		Str("conversation_id", conversationID).
 		Int64("profile_id", profileID).
 		Int64("domain_id", domainID).
 		Msg("init conversation")
-	
+
 	// *start := &bot.StartRequest{
-		
+
 		DomainId:       domainID,
 		// FIXME: why flow_manager need to know about some external chat-bot profile identity ?
 		ProfileId:      profileID,
@@ -434,10 +431,10 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 	}
 
 	if message != nil {
-		
+
 		switch e := message.GetValue().(type) {
 		case *chat.Message_Text: // TEXT
-			
+
 			messageText := e.Text
 			if messageText == "" {
 				messageText = "start" // default!
@@ -465,7 +462,7 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 	date := now.UTC().Unix()
 
 	channel := &Channel {
-		
+
 		Log:   c.Log,
 		Host:  "", // PEEK
 		Agent: c.Client,
@@ -478,13 +475,13 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 			Connection: "",
 			Internal:   true,
 		},
-		
+
 		DomainID: domainID,
-		ProfileID: profileID, 
+		ProfileID: profileID,
 
 		Invite:  "", // .Invite(!) token
 		Pending: "", // .WaitMessage(!) token
-		
+
 		Created: date,
 		Updated: date,
 		Started: 0,
@@ -510,12 +507,12 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 	// 		s.initCallWrapper(conversationID),
 	// 	),
 	// )
-	
+
 	// if err != nil {
-		
+
 	// 	s.log.Error().Err(err).
 	// 		Msg("Failed to start chat-flow routine")
-		
+
 	// 	return err
 
 	// } else if re := res.GetError(); re != nil {
@@ -539,9 +536,9 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 
 	// / ; err != nil || res.Error != nil { // WTF: (0_o) (?)
 	// 	if err == nil && res.Error != nil {
-	// 		err = 
+	// 		err =
 	// 	}
-		
+
 	// 	if res != nil { // GUESS: it will never be empty !
 	// 		s.log.Error().Msg(res.Error.Message)
 	// 	} else {
@@ -554,9 +551,9 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 }*/
 
 func (c *Agent) CloseConversation(conversationID, cause string) error {
-	
+
 	channel, err := c.GetChannel(conversationID)
-	
+
 	if err != nil {
 		return err
 	}
@@ -571,7 +568,7 @@ func (c *Agent) CloseConversation(conversationID, cause string) error {
 	// delete(c.channel, channel.ID)
 	// c.Unlock() // -RW
 	c.delChannel(channel.ID)
-	
+
 	return nil
 
 	// nodeID, err := s.chatCache.ReadConversationNode(conversationID)
@@ -600,22 +597,21 @@ func (c *Agent) CloseConversation(conversationID, cause string) error {
 }
 
 func (c *Agent) BreakBridge(conversationID string, cause BreakBridgeCause) error {
-	
+
 	channel, err := c.GetChannel(conversationID)
-	
+
 	if err != nil {
 		return err
 	}
 
 	err = channel.BreakBridge(cause)
-	
+
 	if err != nil {
 		// NOTE: ignore "grpc.chat.conversation.not_found" !
 		return err
 	}
-	
-	return nil
 
+	return nil
 
 	// nodeID, err := s.chatCache.ReadConversationNode(conversationID)
 	// if err != nil {
@@ -663,7 +659,7 @@ func (c *Agent) BreakBridge(conversationID string, cause BreakBridgeCause) error
 func (c *Agent) TransferTo(conversationID string, originator *app.Channel, schemaToID, userToID int64) error {
 
 	channel, err := c.GetChannel(conversationID)
-	
+
 	if err != nil {
 		return err
 	}
@@ -683,6 +679,6 @@ func (c *Agent) TransferTo(conversationID string, originator *app.Channel, schem
 		// NOTE: ignore "grpc.chat.conversation.not_found" !
 		return err
 	}
-	
+
 	return nil
 }

@@ -15,7 +15,7 @@ import (
 
 	"encoding/json"
 
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/bot"
 
@@ -51,9 +51,9 @@ func NewTelegramBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 	profile := config.GetMetadata()
 
 	token, ok := profile["token"]
-	
+
 	if !ok {
-		
+
 		return nil, errors.BadRequest(
 			"chat.bot.telegram.token.required",
 			"telegram: bot API token required",
@@ -61,9 +61,8 @@ func NewTelegramBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 	}
 
 	var (
-		
-		err error
-		botAPI *telegram.BotAPI
+		err        error
+		botAPI     *telegram.BotAPI
 		httpClient *http.Client
 	)
 
@@ -78,7 +77,7 @@ func NewTelegramBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 		}
 		transport = &bot.TransportDump{
 			Transport: transport,
-			WithBody: true,
+			WithBody:  true,
 		}
 		if httpClient == nil {
 			httpClient = &http.Client{
@@ -108,14 +107,14 @@ func NewTelegramBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 
 		return nil, errors.New(
 			"chat.bot.telegram.setup.error",
-			"telegram: "+ err.Error(),
-			 http.StatusBadGateway,
+			"telegram: "+err.Error(),
+			http.StatusBadGateway,
 		)
 	}
 
 	return &TelegramBot{
 		Gateway: agent,
-		BotAPI: botAPI,
+		BotAPI:  botAPI,
 	}, nil
 }
 
@@ -125,7 +124,7 @@ func (c *TelegramBot) Register(ctx context.Context, callbackURL string) error {
 	// // webhookInfo := tgbotapi.NewWebhookWithCert(fmt.Sprintf("%s/telegram/%v", cfg.TgWebhook, profile.Id), cfg.CertPath)
 	// linkURL := strings.TrimRight(c.Gateway.Internal.URL, "/") +
 	// 	("/" + c.Gateway.Profile.UrlId)
-	
+
 	webhook, err := telegram.NewWebhook(callbackURL)
 	if err != nil {
 		c.Gateway.Log.Error().Err(err).Msg("Failed to .Register webhook")
@@ -134,7 +133,7 @@ func (c *TelegramBot) Register(ctx context.Context, callbackURL string) error {
 
 	_, err = c.BotAPI.Request(webhook)
 	// _, err := c.BotAPI.SetWebhook(webhook)
-	
+
 	if err != nil {
 		c.Gateway.Log.Error().Err(err).Msg("Failed to .Register webhook")
 		return err
@@ -152,7 +151,7 @@ func (c *TelegramBot) Deregister(ctx context.Context) error {
 
 	res, err := c.BotAPI.Request(req)
 	// res, err := c.BotAPI.RemoveWebhook()
-	
+
 	if err != nil {
 		// err.(telegram.Error)
 		return err
@@ -161,8 +160,8 @@ func (c *TelegramBot) Deregister(ctx context.Context) error {
 	if !res.Ok {
 		return errors.New(
 			"chat.bot.telegram.deregister.error",
-			"telegram: "+ res.Description,
-			 (int32)(res.ErrorCode), // FIXME: 502 Bad Gateway ?
+			"telegram: "+res.Description,
+			(int32)(res.ErrorCode), // FIXME: 502 Bad Gateway ?
 		)
 	}
 
@@ -196,7 +195,6 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 	// externalID, err := strconv.ParseInt(send.ExternalUserId, 10, 64)
 
 	var (
-
 		channel = notify.Chat // recepient
 		// localtime = time.Now()
 		message = notify.Message
@@ -230,16 +228,14 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 	}
 
 	var (
-		
-		chatAction string
+		chatAction  string
 		sentMessage telegram.Message
-		sendUpdate telegram.Chattable
-
+		sendUpdate  telegram.Chattable
 	)
 	// TODO: resolution for various notify content !
 	switch message.Type { // notify.Event {
 	case "text": // default
-	
+
 		messageText := message.GetText()
 		sendMessage := telegram.NewMessage(chatID, messageText)
 		// Inline: Next to this specific message ONLY !
@@ -256,7 +252,7 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 				if keyboardMenu != nil {
 					c.Log.Warn().
 						Str("error", "reply_markup: single message supports one of (Inline|Reply)Keyboard(Markup|Remove) only").
-						Str("hint",  "spread different types of keyboard buttons into separate messages").
+						Str("hint", "spread different types of keyboard buttons into separate messages").
 						Msg("TELEGRAM: SEND")
 				}
 			} else if keyboardMenu != nil {
@@ -308,7 +304,7 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		// // AND flow_manager NEVER provide .Inline buttons, ONLY .Buttons ...  =(
 		// // 	sendMessage.ReplyMarkup = newInlineKeyboard(message.Inline)
 		// // }
-		
+
 		sendUpdate = sendMessage
 		// if props != nil {
 		// 	title := props["interlocutor"]
@@ -318,7 +314,7 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		// 	}
 		// }
 	//	update = telegram.NewMessage(chatID, text)
-	
+
 	case "file":
 
 		doc := message.GetFile()
@@ -336,28 +332,28 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		switch mediaType(doc.Mime) {
 		case "image":
 			sendPhoto := telegram.NewPhoto(
-				chatID, sendFile{doc.Url,doc.Name},
+				chatID, sendFile{doc.Url, doc.Name},
 			)
 			sendPhoto.Caption = notify.Message.GetText()
 			sendUpdate = sendPhoto
 			chatAction = "upload_photo"
 		case "audio":
 			sendAudio := telegram.NewAudio(
-				chatID, sendFile{doc.Url,doc.Name},
+				chatID, sendFile{doc.Url, doc.Name},
 			)
 			sendAudio.Caption = notify.Message.GetText()
 			sendUpdate = sendAudio
 			chatAction = "upload_voice"
 		case "video":
 			sendVideo := telegram.NewVideo(
-				chatID, sendFile{doc.Url,doc.Name},
+				chatID, sendFile{doc.Url, doc.Name},
 			)
 			sendVideo.Caption = notify.Message.GetText()
 			sendUpdate = sendVideo
 			chatAction = "upload_video"
 		default:
 			sendDocument := telegram.NewDocument(
-				chatID, sendFile{doc.Url,doc.Name},
+				chatID, sendFile{doc.Url, doc.Name},
 			)
 			sendDocument.Caption = notify.Message.GetText()
 			sendUpdate = sendDocument
@@ -371,7 +367,7 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 
 	// case "edit":
 	// case "send":
-	
+
 	// case "read":
 	// case "seen":
 
@@ -382,20 +378,20 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		personFirstName := joinChatMember.FirstName
 
 		sendMessage := telegram.NewMessage(chatID,
-			"👤 " + personFirstName,
+			"👤 "+personFirstName,
 		)
 		// https://core.telegram.org/bots/api#messageentity
 		utf16EmojiLen := utf16Length("👤 ")
 		utf16AgentLen := utf16Length(personFirstName)
 		sendMessage.Entities = append(
-			sendMessage.Entities, 
+			sendMessage.Entities,
 			telegram.MessageEntity{
-				Type:  "bold",
+				Type:   "bold",
 				Length: utf16AgentLen,
 				Offset: utf16EmojiLen,
 			},
 			telegram.MessageEntity{
-				Type:  "underline",
+				Type:   "underline",
 				Length: utf16AgentLen,
 				Offset: utf16EmojiLen,
 			},
@@ -417,7 +413,7 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		// 	)
 		// 	props["interlocutor"] = interlocutor // CACHE
 		// 	bind("interlocutor", interlocutor)   // STORE
-			
+
 		// }
 		// // if props["joined"] == "" {
 		// // 	// STORE changes
@@ -432,26 +428,26 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 
 		// return nil // +OK; IGNORE!
 
-	case "left":   // ACK: ChatService.LeaveConversation()
+	case "left": // ACK: ChatService.LeaveConversation()
 
 		leftChatMember := message.LeftChatMember
 		personFirstName := leftChatMember.FirstName
 
 		sendMessage := telegram.NewMessage(chatID,
-			"👤 " + personFirstName,
+			"👤 "+personFirstName,
 		)
 		// https://core.telegram.org/bots/api#messageentity
 		utf16EmojiLen := utf16Length("👤 ")
 		utf16AgentLen := utf16Length(personFirstName)
 		sendMessage.Entities = append(
-			sendMessage.Entities, 
+			sendMessage.Entities,
 			telegram.MessageEntity{
-				Type:  "bold",
+				Type:   "bold",
 				Length: utf16AgentLen,
 				Offset: utf16EmojiLen,
 			},
 			telegram.MessageEntity{
-				Type:  "strikethrough",
+				Type:   "strikethrough",
 				Length: utf16AgentLen,
 				Offset: utf16EmojiLen,
 			},
@@ -497,14 +493,14 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 	// case "invite":
 	case "closed":
 		// SEND: notify message text
-		messageText := "❌ "+ message.GetText()
+		messageText := "❌ " + message.GetText()
 		// NOTE: sendMessage.Type = 'close'
 		sendMessage := telegram.NewMessage(chatID, messageText)
 		// Force clear persistent keyboard
 		sendMessage.ReplyMarkup = telegram.NewRemoveKeyboard(true)
 
 		sendUpdate = sendMessage
-	
+
 	default:
 
 	}
@@ -524,7 +520,7 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 			),
 		)
 	}
-	
+
 	sentMessage, err = c.BotAPI.Send(sendUpdate)
 
 	if err != nil {
@@ -540,7 +536,7 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 				// Date: Fri, 11 Dec 2020 11:13:29 GMT
 				// Server: nginx/1.16.1
 				// Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
-				// 
+				//
 				// {"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}
 				ErrBlockedByUser = "Forbidden: bot was blocked by the user"
 				// HTTP/1.1 429 Too Many Requests
@@ -553,7 +549,7 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 				// Retry-After: 1
 				// Server: nginx/1.16.1
 				// Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
-				// 
+				//
 				// {"ok":false,"error_code":429,"description":"Too Many Requests: retry after 1","parameters":{"retry_after":1}}
 				ErrTooManyRequests = "Too Many Requests: " // retry after 1
 			)
@@ -588,7 +584,7 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 }
 
 /*func getBytes(url string) ([]byte, error) {
-	
+
 	response, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -605,6 +601,7 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 type readCloser struct {
 	rc io.ReadCloser
 }
+
 func (c readCloser) Close() error {
 	return c.rc.Close()
 }
@@ -647,12 +644,9 @@ func (src sendFile) SendData() string {
 	panic("sendFile must be uploaded")
 }
 
-
-
 func newKeyboardMarkup(buttons []*chat.Buttons) (quickReplies [][]telegram.InlineKeyboardButton, keyboardMenu interface{}) {
 
 	var (
-
 		buttonsRemove bool
 		buttonsMarkup [][]telegram.KeyboardButton
 		repliesMarkup [][]telegram.InlineKeyboardButton
@@ -671,20 +665,26 @@ func newKeyboardMarkup(buttons []*chat.Buttons) (quickReplies [][]telegram.Inlin
 				buttonsRemove = true
 			// keyboard_button (persistent menu)
 			case "phone", "contact":
-				if buttonsRemove { break }
+				if buttonsRemove {
+					break
+				}
 				buttonsLayout = append(buttonsLayout,
 					telegram.NewKeyboardButtonContact(button.Text),
 				)
 			case "email", "mail":
-				if buttonsRemove { break }
+				if buttonsRemove {
+					break
+				}
 				// NOT Supported !
 			// keyboard_button (persistent menu)
 			case "location":
-				if buttonsRemove { break }
+				if buttonsRemove {
+					break
+				}
 				buttonsLayout = append(buttonsLayout,
 					telegram.NewKeyboardButtonLocation(button.Text),
 				)
-			// inline_keyboard: quick_reply 
+			// inline_keyboard: quick_reply
 			case "url":
 				repliesLayout = append(repliesLayout,
 					telegram.NewInlineKeyboardButtonURL(
@@ -698,15 +698,19 @@ func newKeyboardMarkup(buttons []*chat.Buttons) (quickReplies [][]telegram.Inlin
 					),
 				)
 			case "postback":
-				if buttonsRemove { break }
+				if buttonsRemove {
+					break
+				}
 				// NOTE: In this (Telegram) implementation .code attribute cannot be involved,
 				// so you must be vigilant in handling localized menu button labels as postback messages !
 				buttonsLayout = append(buttonsLayout,
 					telegram.NewKeyboardButton(button.Text),
 				)
 			default:
-			// case "reply", "postback":
-				if buttonsRemove { break }
+				// case "reply", "postback":
+				if buttonsRemove {
+					break
+				}
 				buttonsLayout = append(buttonsLayout,
 					telegram.NewKeyboardButton(button.Text),
 				)
@@ -756,7 +760,7 @@ func newReplyKeyboard(buttons []*chat.Buttons) interface{} { // telegram.ReplyKe
 					telegram.NewKeyboardButtonLocation(button.Text),
 				)
 			default:
-			// case "reply", "postback":
+				// case "reply", "postback":
 				layout = append(layout,
 					telegram.NewKeyboardButton(button.Text),
 				)
@@ -792,7 +796,7 @@ func newReplyKeyboard(buttons []*chat.Buttons) interface{} { // telegram.ReplyKe
 	}
 
 	keyboard := telegram.NewInlineKeyboardMarkup(rows...)
-	
+
 	return keyboard
 }*/
 
@@ -830,7 +834,6 @@ func newReplyKeyboard(buttons []*chat.Buttons) interface{} { // telegram.ReplyKe
 
 	return telegram.NewInlineKeyboardMarkup(keyboard...)
 }*/
-
 
 type File telegram.File
 
@@ -900,7 +903,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 	if err != nil {
 		http.Error(reply, "Failed to decode telegram .Update event", http.StatusBadRequest)
-		c.Log.Error().Str("error", "telegram.Update: "+ err.Error()).Msg("TELEGRAM: UPDATE")
+		c.Log.Error().Str("error", "telegram.Update: "+err.Error()).Msg("TELEGRAM: UPDATE")
 		return // 400 Bad Request
 	}
 
@@ -930,16 +933,16 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 		inlineKeyboardRemove := telegram.NewEditMessageReplyMarkup(
 			recvMessage.Chat.ID, recvMessage.MessageID,
-				telegram.InlineKeyboardMarkup {
-					InlineKeyboard: [][]telegram.InlineKeyboardButton{},
+			telegram.InlineKeyboardMarkup{
+				InlineKeyboard: [][]telegram.InlineKeyboardButton{},
 			},
 		)
-		
+
 		if _, err = c.BotAPI.Send(inlineKeyboardRemove); err != nil {
-			c.Log.Warn().Str("error", "InlineKeyboardRemove: "+ err.Error()).Msg("TELEGRAM: INLINE")
+			c.Log.Warn().Str("error", "InlineKeyboardRemove: "+err.Error()).Msg("TELEGRAM: INLINE")
 		}
 	}
-	
+
 	if recvMessage == nil {
 		// NOTE: this is NOT either NEW nor EDIT message update; skip processing ...
 		// Quick Release Request !
@@ -947,22 +950,14 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		reply.WriteHeader(code)
 
 		c.Gateway.Log.Warn().
-
 			Int("code", code).
 			Str("status", http.StatusText(code)).
 			Str("notice", "Update event is NOT either NEW nor EDIT Message").
-
 			Msg("TELEGRAM: IGNORE")
 
 		return
 	}
-	
-	
-	
-	
-	
-	
-	
+
 	// var recvMessage *telegram.Message
 
 	// if recvUpdate.Message != nil {
@@ -979,7 +974,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// 		// Str("last_name",  message.From.LastName)
 
 	// 	Msg("IGNORE Update; NOT A Text Message")
-			
+
 	// 	return // 200 IGNORE
 
 	// } else if recvUpdate.CallbackQuery != nil {
@@ -988,7 +983,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// }
 
 	// // if recvMessage != recvUpdate.Message {
-		
+
 	// // 	c.Gateway.Log.Warn().
 
 	// // 		Int(  "telegram-id", recvMessage.From.ID).
@@ -998,7 +993,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// // 		// Str("last_name",  message.From.LastName)
 
 	// // 	Msg("IGNORE Update; NOT A Text Message")
-		
+
 	// // 	return // 200 IGNORE
 	// // }
 
@@ -1009,15 +1004,15 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// region: contact
 	contact := &bot.Account{
 
-		ID:        0, // LOOKUP
+		ID: 0, // LOOKUP
 
-		Channel:   "telegram",
-		Contact:   strconv.FormatInt(senderUser.ID, 10),
+		Channel: "telegram",
+		Contact: strconv.FormatInt(senderUser.ID, 10),
 
 		FirstName: senderUser.FirstName,
 		LastName:  senderUser.LastName,
 
-		Username:  senderUser.UserName,
+		Username: senderUser.UserName,
 	}
 
 	// username := recvMessage.From.FirstName
@@ -1038,8 +1033,9 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 	if err != nil {
 		// Failed locate chat channel !
-		re := errors.FromError(err); if re.Code == 0 {
-			re.Code = (int32)(http.StatusBadGateway) 
+		re := errors.FromError(err)
+		if re.Code == 0 {
+			re.Code = (int32)(http.StatusBadGateway)
 			// HTTP 503 Bad Gateway
 		}
 		// FIXME: Reply with 200 OK to NOT receive this message again ?!.
@@ -1058,13 +1054,13 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// contact.ID = channel.ContactID
 
 	// endregion
-	sendUpdate := bot.Update {
-		
+	sendUpdate := bot.Update{
+
 		// ChatID: strconv.FormatInt(recvMessage.Chat.ID, 10),
-		
-		User:    contact,
-		Chat:    channel,
-		Title:   channel.Title,
+
+		User:  contact,
+		Chat:  channel,
+		Title: channel.Title,
 
 		Message: new(chat.Message),
 	}
@@ -1113,7 +1109,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		}
 		// Prepare internal message content
 		sendMessage.Type = "file"
-		sendMessage.File = &chat.File {
+		sendMessage.File = &chat.File{
 			Url:  href, // source URL to download from ...
 			Mime: animation.MimeType,
 			Name: animation.FileName,
@@ -1142,7 +1138,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		}
 		// Prepare internal message content
 		sendMessage.Type = "file"
-		sendMessage.File = &chat.File {
+		sendMessage.File = &chat.File{
 			Url:  href, // source URL to download from ...
 			Size: (int64)(document.FileSize),
 			Mime: document.MimeType,
@@ -1160,7 +1156,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		// Message is a photo, available sizes of the photo
 		// Lookup for suitable file size for bot to download ...
 		// Peek the biggest, last one ...
-		i := len(photo)-1 // From biggest to smallest ...
+		i := len(photo) - 1 // From biggest to smallest ...
 		for ; i >= 0 && photo[i].FileSize > fileSizeMax; i-- {
 			// omit files that are too large,
 			// which will result in a download error
@@ -1188,9 +1184,9 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 		// Prepare internal message content
 		sendMessage.Type = "file"
-		sendMessage.File = &chat.File {
+		sendMessage.File = &chat.File{
 			Url:  image.Link(c.BotAPI.Token), // source URL to download from ...
-			Mime: "", // autodetect on chat's service .SendMessage()
+			Mime: "",                         // autodetect on chat's service .SendMessage()
 			// mime.TypeByExtension(path.Ext(image.FileName()))
 			// "image/jpg",
 			Name: image.FileName(),
@@ -1219,7 +1215,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		}
 		// Prepare internal message content
 		sendMessage.Type = "file"
-		sendMessage.File = &chat.File {
+		sendMessage.File = &chat.File{
 			Url:  href, // source URL to download from ...
 			Size: (int64)(audio.FileSize),
 			Mime: audio.MimeType,
@@ -1229,7 +1225,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		sendMessage.Text = coalesce(
 			recvMessage.Caption, audio.Title, // "Audio",
 		)
-	
+
 	} else if voice := recvMessage.Voice; voice != nil {
 
 		file, err := c.GetFile(voice.FileID)
@@ -1251,7 +1247,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		}
 		// Prepare internal message content
 		sendMessage.Type = "file"
-		sendMessage.File = &chat.File {
+		sendMessage.File = &chat.File{
 			Url:  file.Link(c.BotAPI.Token), // source URL to download from ...
 			Mime: voice.MimeType,
 			Name: file.FileName(),
@@ -1282,7 +1278,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		}
 		// Prepare internal message content
 		sendMessage.Type = "file"
-		sendMessage.File = &chat.File {
+		sendMessage.File = &chat.File{
 			Url:  href, // source to download
 			Mime: video.MimeType,
 			Name: video.FileName,
@@ -1314,9 +1310,9 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 		// Prepare internal message content
 		sendMessage.Type = "file"
-		sendMessage.File = &chat.File {
+		sendMessage.File = &chat.File{
 			Url:  file.Link(c.BotAPI.Token), // source URL to download from ...
-			Mime: "", // autodetect // "video/mp4", // videoNote.MimeType,
+			Mime: "",                        // autodetect // "video/mp4", // videoNote.MimeType,
 			Name: file.FileName(),
 			Size: (int64)(videoNote.FileSize),
 		}
@@ -1331,7 +1327,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		sendMessage.Type = "text"
 		sendMessage.Text = fmt.Sprintf(
 			"https://www.google.com/maps/place/%f,%f",
-			 location.Latitude, location.Longitude,
+			location.Latitude, location.Longitude,
 		)
 
 	} else if sticker := recvMessage.Sticker; sticker != nil {
@@ -1357,10 +1353,10 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		}
 		// Prepare internal message content
 		sendMessage.Type = "file"
-		sendMessage.File = &chat.File {
+		sendMessage.File = &chat.File{
 			Url:  thumb.Link(c.BotAPI.Token), // source to download
-			Mime: "", // autodetect // "image/jpeg", // sticker.MimeType,
-			Name: thumb.FileName(), // sticker.SetName, // sticker.FileName,
+			Mime: "",                         // autodetect // "image/jpeg", // sticker.MimeType,
+			Name: thumb.FileName(),           // sticker.SetName, // sticker.FileName,
 			Size: (int64)(sticker.FileSize),
 		}
 		// FIXME !
@@ -1375,7 +1371,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 		sendMessage.Type = "contact"
 		// sendMessage.Text = contact.PhoneNumber
-		sendMessage.Contact = &chat.Account {
+		sendMessage.Contact = &chat.Account{
 			Id:        0, // int64(contact.UserID),
 			Channel:   "phone",
 			Contact:   contact.PhoneNumber,
@@ -1389,13 +1385,13 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 		if contactName != "" {
 			// SIP -like AOR ...
-			contactName = "<"+ contactName +">"
+			contactName = "<" + contactName + ">"
 		}
 
 		contactText := strings.TrimSpace(strings.Join(
 			[]string{contactName, contact.PhoneNumber}, " ",
 		))
-		// Contact: [<.FirstName[ .LastName]> ].PhoneNumber 
+		// Contact: [<.FirstName[ .LastName]> ].PhoneNumber
 		sendMessage.Text = contactText
 
 	} else if recvMessage.Text != "" {
@@ -1411,17 +1407,17 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		channel.Log.Warn().
 			Str("notice", "message: is NOT a text, photo, audio, video or document").
 			Msg("TELEGRAM: UPDATE")
-		
+
 		return
 	}
 	// EDITED ?
-	if (recvMessage == recvUpdate.EditedMessage) {
+	if recvMessage == recvUpdate.EditedMessage {
 		var (
 			timestamp = time.Second       //      seconds = 1e9
 			precision = app.TimePrecision // milliseconds = 1e6
 		)
-		sendMessage.UpdatedAt = 
-			(int64)(recvMessage.EditDate)*(int64)(timestamp/precision)
+		sendMessage.UpdatedAt =
+			(int64)(recvMessage.EditDate) * (int64)(timestamp/precision)
 	}
 
 	// TODO: ForwardFromMessageID | ReplyToMessageID !
@@ -1431,8 +1427,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		sendMessage.ForwardFromVariables = map[string]string{
 			// FIXME: guess, this can by any telegram-user-related chat,
 			//        so we may fail to find corresponding internal message for given binding map
-			strconv.FormatInt(recvMessage.ForwardFromChat.ID, 10):
-				strconv.Itoa(recvMessage.ForwardFromMessageID),
+			strconv.FormatInt(recvMessage.ForwardFromChat.ID, 10): strconv.Itoa(recvMessage.ForwardFromMessageID),
 			// "chat_id":    strconv.FormatInt(recvMessage.ForwardFromChat.ID, 10),
 			// "message_id": strconv.Itoa(recvMessage.ForwardFromMessageID),
 		}

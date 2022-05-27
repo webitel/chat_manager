@@ -1,36 +1,33 @@
 package wrapper
 
 import (
-
 	"context"
 
-	"github.com/micro/go-micro/v2/server"
-	"github.com/micro/go-micro/v2/client"
-	"github.com/micro/go-micro/v2/registry"
-	"github.com/micro/go-micro/v2/metadata"
-	"github.com/micro/go-micro/v2/util/wrapper"
+	"github.com/micro/micro/v3/service/client"
+	"github.com/micro/micro/v3/service/context/metadata"
+	"github.com/micro/micro/v3/service/server"
 )
 
-func CallFromServiceId(sid string) client.CallWrapper {
-	
+/*func CallFromServiceId(sid string) client.CallWrapper {
+
 	if sid == "" {
 		sid = server.DefaultId
 	}
 	headers := metadata.Metadata{
-		wrapper.HeaderPrefix + "From-Id": sid,
+		HeaderPrefix + "From-Id": sid,
 	}
-	
+
 	return func(next client.CallFunc) client.CallFunc {
-		return func(ctx context.Context, node *registry.Node, req client.Request, rsp interface{}, opts client.CallOptions) error {
+		return func(ctx context.Context, addr string, req client.Request, rsp interface{}, opts client.CallOptions) error {
 			// add headers
 			metadata.MergeContext(ctx, headers, false)
 			// continue call
-			return next(ctx, node, req, rsp, opts)
+			return next(ctx, addr, req, rsp, opts)
 		}
 	}
-}
+}*/
 
-type fromServiceIdWrapper struct {
+type serviceClient struct {
 	client.Client
 
 	// headers to inject
@@ -41,35 +38,39 @@ var (
 	HeaderPrefix = "Micro-"
 )
 
-func (f *fromServiceIdWrapper) setHeaders(ctx context.Context) context.Context {
+func (f *serviceClient) setHeaders(ctx context.Context) context.Context {
 	// don't overwrite keys
 	return metadata.MergeContext(ctx, f.headers, false)
 }
 
-func (f *fromServiceIdWrapper) Call(ctx context.Context, req client.Request, rsp interface{}, opts ...client.CallOption) error {
+func (f *serviceClient) Call(ctx context.Context, req client.Request, rsp interface{}, opts ...client.CallOption) error {
 	ctx = f.setHeaders(ctx)
 	return f.Client.Call(ctx, req, rsp, opts...)
 }
 
-func (f *fromServiceIdWrapper) Stream(ctx context.Context, req client.Request, opts ...client.CallOption) (client.Stream, error) {
+func (f *serviceClient) Stream(ctx context.Context, req client.Request, opts ...client.CallOption) (client.Stream, error) {
 	ctx = f.setHeaders(ctx)
 	return f.Client.Stream(ctx, req, opts...)
 }
 
-func (f *fromServiceIdWrapper) Publish(ctx context.Context, p client.Message, opts ...client.PublishOption) error {
+func (f *serviceClient) Publish(ctx context.Context, p client.Message, opts ...client.PublishOption) error {
 	ctx = f.setHeaders(ctx)
 	return f.Client.Publish(ctx, p, opts...)
 }
 
 // FromServiceId wraps a client to inject service and auth metadata
-func FromServiceId(sid string, c client.Client) client.Client {
-	if sid == "" {
-		sid = server.DefaultId
+func FromService(name, id string, c client.Client) client.Client {
+	if name == "" {
+		panic("wrapper.FromService: service name is missing")
 	}
-	return &fromServiceIdWrapper{
+	if id == "" {
+		id = server.DefaultId
+	}
+	return &serviceClient{
 		c,
 		metadata.Metadata{
-			wrapper.HeaderPrefix + "From-Id": sid,
+			HeaderPrefix + "From-Id":      id,
+			HeaderPrefix + "From-Service": name,
 		},
 	}
 }

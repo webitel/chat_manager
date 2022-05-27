@@ -17,7 +17,8 @@ import (
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	store "github.com/webitel/chat_manager/internal/repo/sqlx"
 
-	"github.com/micro/go-micro/v2/broker"
+	"github.com/micro/micro/v3/service/broker"
+	"github.com/webitel/chat_manager/service/broker/rabbitmq"
 	// "github.com/micro/go-micro/v2/client"
 	// selector "github.com/micro/go-micro/v2/client/selector"
 	// strategy "github.com/webitel/chat_manager/internal/selector"
@@ -37,8 +38,10 @@ func (c *eventRouter) sendEventToWebitelUser(from *store.Channel, to *store.Chan
 			},
 			Body: data,
 		},
+		rabbitmq.ContentType("text/json"),
+		rabbitmq.ContentEncoding("charset=utf-8"),
 	)
-	
+
 	if err != nil {
 		return err
 	}
@@ -47,7 +50,7 @@ func (c *eventRouter) sendEventToWebitelUser(from *store.Channel, to *store.Chan
 }
 
 func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channel, message *chat.Message) error {
-	
+
 	// // profile[@svhost]
 	// profileID, serviceHost, err := ContactProfileNode(to.Connection.String)
 
@@ -57,7 +60,7 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 	// }
 
 	// var callOpts []client.CallOption
-	
+
 	// if serviceHost != "" {
 	// 	callOpts = append(callOpts, client.WithSelectOption(
 	// 		selector.WithStrategy(strategy.PrefferedNode(
@@ -99,7 +102,7 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 
 		context.TODO(), &sendMessage,
 		// callOptions ...
-		recepient.sendOptions,
+		recepient.callOpts,
 	)
 
 	if err != nil {
@@ -126,7 +129,7 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 
 						Msg("FAILED To bind channel properties")
 				}
-			
+
 			} else {
 
 				if sendBinding == nil {
@@ -151,10 +154,8 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 		err := c.repo.UpdateChannelHost(context.TODO(), recepient.ID, respondNode)
 		if err != nil {
 			c.log.Error().Err(err).
-
 				Str("chat-id", client.ExternalID.String).
 				Str("channel-id", client.ExternalID.String).
-
 				Msg("RELOCATE")
 			// panic(err)
 		}
@@ -164,7 +165,7 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 }
 
 func (c *eventRouter) SendMessageToGateway(target *app.Channel, message *chat.Message) error {
-	
+
 	// profile[@svhost]
 	profileID, serviceHost, err := contact.ContactObjectNode(target.Contact)
 
@@ -178,7 +179,7 @@ func (c *eventRouter) SendMessageToGateway(target *app.Channel, message *chat.Me
 	}
 
 	// var callOpts []client.CallOption
-	
+
 	// if serviceHost != "" {
 	// 	callOpts = append(callOpts, client.WithSelectOption(
 	// 		selector.WithStrategy(strategy.PrefferedNode(
@@ -200,8 +201,6 @@ func (c *eventRouter) SendMessageToGateway(target *app.Channel, message *chat.Me
 	// 	return fmt.Errorf("client not found. id: %v", to.UserID)
 	// }
 
-
-
 	sendMessage := gate.SendMessageRequest{
 		ExternalUserId: target.User.Contact,
 		ProfileId:      profileID,
@@ -215,7 +214,7 @@ func (c *eventRouter) SendMessageToGateway(target *app.Channel, message *chat.Me
 	// return nil
 
 	recepient := channel{
-		trace:    c.log,
+		trace: c.log,
 		// simple transform to store.Channel
 		Channel: &store.Channel{
 			ID:             target.Chat.ID,
@@ -237,7 +236,7 @@ func (c *eventRouter) SendMessageToGateway(target *app.Channel, message *chat.Me
 			// 	Valid: false,
 			// },
 			// UpdatedAt:  time.Time{},
-			DomainID:   target.DomainID,
+			DomainID: target.DomainID,
 			// FlowBridge: false,
 			// Name:       target.User.DisplayName(),
 			// ClosedCause: sql.NullString{
@@ -261,7 +260,7 @@ func (c *eventRouter) SendMessageToGateway(target *app.Channel, message *chat.Me
 
 		context.TODO(), &sendMessage,
 		// callOptions ...
-		recepient.sendOptions,
+		recepient.callOpts,
 	)
 
 	if err != nil {
@@ -283,25 +282,23 @@ func (c *eventRouter) SendMessageToGateway(target *app.Channel, message *chat.Me
 				); err != nil {
 
 					c.log.Error().Err(err).
-
 						Str("chat-id", target.User.Contact). // client.ExternalID.String).
-						Str("channel-id", target.Chat.ID). // client.ExternalID.String).
+						Str("channel-id", target.Chat.ID).   // client.ExternalID.String).
 
 						Msg("FAILED To bind channel properties")
 				}
-			
+
 			} else {
 
 				if sendBinding == nil {
 					sendBinding = sentBinding
 				} else {
 					for key, newValue := range sentBinding {
-						if oldValue, ok := sendBinding[key];
-							ok && newValue != oldValue {
+						if oldValue, ok := sendBinding[key]; ok && newValue != oldValue {
 							// FIXME: key(s) must be unique within recepients ? What if not ?
 						}
 						// reset|override (!)
-						sendBinding[key] = newValue 
+						sendBinding[key] = newValue
 					}
 				}
 				// TODO: update chat.message set valiables = :sendBindings where id = :message.Id;
@@ -316,9 +313,8 @@ func (c *eventRouter) SendMessageToGateway(target *app.Channel, message *chat.Me
 		err := c.repo.UpdateChannelHost(context.TODO(), recepient.ID, respondNode)
 		if err != nil {
 			c.log.Error().Err(err).
-
 				Str("chat-id", target.User.Contact). // client.ExternalID.String).
-				Str("channel-id", target.Chat.ID). // client.ExternalID.String).
+				Str("channel-id", target.Chat.ID).   // client.ExternalID.String).
 
 				Msg("RELOCATE")
 			// panic(err)

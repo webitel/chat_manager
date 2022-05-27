@@ -3,13 +3,12 @@ package bot
 import (
 	"context"
 
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/app"
 )
 
 // Store Bot profiles
 type Store interface {
-
 	Create(ctx *app.CreateOptions, obj *Bot) error
 	Search(ctx *app.SearchOptions) ([]*Bot, error)
 	Update(ctx *app.UpdateOptions, obj *Bot) error
@@ -21,7 +20,7 @@ type Store interface {
 
 // LocateBot fetches single result entry or returns an error
 func (srv *Service) LocateBot(req *app.SearchOptions) (*Bot, error) {
-	
+
 	// Force
 	req.Size = 1
 	// Normalize FIELDS request

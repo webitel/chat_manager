@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/micro/go-micro/v2/client"
-	errs "github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/client"
+	errs "github.com/micro/micro/v3/service/errors"
 	"github.com/pkg/errors"
 
 	"github.com/gorilla/websocket"
@@ -34,20 +34,20 @@ import (
 // webChat room with external client
 // posibly with multiple peer connections
 type webChat struct {
-	 // Chat Service (internal) connection
-	 Bot *WebChatBot
-	 // Chat Channel (external) definition
+	// Chat Service (internal) connection
+	Bot *WebChatBot
+	// Chat Channel (external) definition
 	*bot.Channel
-	 // This chat opened connections (different tabs)
-	 conn []*websocket.Conn
-	 closed bool
-	 // Buffered channel for sync write operations.
-	 send chan func() // [sync] write(!)
-	 wbuf bytes.Buffer // codec write buffer: size = Bot.options.WriteBufferSize
-	 // Chat history: messages
-	 msgi map[int64]int // index[msg.id]
-	 msgs []*chat.Message // ordinal
-	 
+	// This chat opened connections (different tabs)
+	conn   []*websocket.Conn
+	closed bool
+	// Buffered channel for sync write operations.
+	send chan func()  // [sync] write(!)
+	wbuf bytes.Buffer // codec write buffer: size = Bot.options.WriteBufferSize
+	// Chat history: messages
+	msgi map[int64]int   // index[msg.id]
+	msgs []*chat.Message // ordinal
+
 }
 
 // save given *chat.Message m to this *webChat c local history store
@@ -56,7 +56,7 @@ func (c *webChat) pushMessage(m *chat.Message) {
 		// NOTE: This is the service message !
 		return
 	}
-	
+
 	if i, ok := c.msgi[m.Id]; ok {
 		c.msgs[i] = m
 		return // edited
@@ -67,49 +67,51 @@ func (c *webChat) pushMessage(m *chat.Message) {
 }
 
 type originPattern interface {
-	 match(origin string) bool
+	match(origin string) bool
 }
 
 type originAny bool
+
 func (pttn originAny) match(origin string) bool {
 	return origin != "" && (bool)(pttn)
 }
 
 type originString string
+
 func (pttn originString) match(origin string) bool {
 	return (string)(pttn) == (origin)
 }
 
 type originWildcard [2]string
+
 func (pttn originWildcard) match(origin string) bool {
 	prefix, suffix := pttn[0], pttn[1]
-	return len(origin) >= len(prefix)+len(suffix) && 
+	return len(origin) >= len(prefix)+len(suffix) &&
 		strings.HasPrefix(origin, prefix) &&
 		strings.HasSuffix(origin, suffix)
 }
 
 // WebChatBot gateway provider
 type WebChatBot struct {
-	
 	*bot.Gateway
 	// Websocket configuration options
-	 Websocket websocket.Upgrader
-	 // ReadTimeout duration allowed to wait for
-	 // incoming message from peer connection.
-	 // Also used to send periodical PINGs
-	 // to keep-alive peer connection.
-	 ReadTimeout time.Duration
-	 // WriteTimeout duration allowed to write
-	 // a single frame/message to the peer connection
-	 WriteTimeout time.Duration
-	 // MessageSizeMax allowed from/for peer connection.
-	 // JSON-encoded single frame/message MAX size.
-	 MessageMaxSize int64
-	 // MediaMaxSize allows the maximum file size to upload.
-	 MediaMaxSize int64
-	 // Unexported: runtime chat(s) store
+	Websocket websocket.Upgrader
+	// ReadTimeout duration allowed to wait for
+	// incoming message from peer connection.
+	// Also used to send periodical PINGs
+	// to keep-alive peer connection.
+	ReadTimeout time.Duration
+	// WriteTimeout duration allowed to write
+	// a single frame/message to the peer connection
+	WriteTimeout time.Duration
+	// MessageSizeMax allowed from/for peer connection.
+	// JSON-encoded single frame/message MAX size.
+	MessageMaxSize int64
+	// MediaMaxSize allows the maximum file size to upload.
+	MediaMaxSize int64
+	// Unexported: runtime chat(s) store
 	*sync.RWMutex
-	 chat map[string]*webChat
+	chat map[string]*webChat
 }
 
 // NewWebChatBot initialize new agent.Profile service provider
@@ -120,27 +122,27 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 		Gateway: agent,
 		// Setup: defaults ...
 		Websocket: websocket.Upgrader{
-			HandshakeTimeout:  10 * time.Second,
-			ReadBufferSize:    4096,
-			WriteBufferSize:   4096,
-			WriteBufferPool:   &sync.Pool{
+			HandshakeTimeout: 10 * time.Second,
+			ReadBufferSize:   4096,
+			WriteBufferSize:  4096,
+			WriteBufferPool: &sync.Pool{
 				New: func() interface{} {
 					return nil
 				},
 			},
 			Subprotocols:      nil,
 			EnableCompression: false,
-			CheckOrigin:       func(req *http.Request) bool {
+			CheckOrigin: func(req *http.Request) bool {
 				return true // Default: NO check at all (!)
 			},
-			Error:             func(rsp http.ResponseWriter, req *http.Request, code int, err error) {
+			Error: func(rsp http.ResponseWriter, req *http.Request, code int, err error) {
 				// panic("not implemented")
 				if err == nil {
 					err = fmt.Errorf(http.StatusText(code))
 				}
 				rsp.Header().Set("Sec-Websocket-Version", "13")
-				http.Error(rsp, err.Error()/*http.StatusText(code)*/, code) // err.Error(), code)
-				
+				http.Error(rsp, err.Error() /*http.StatusText(code)*/, code) // err.Error(), code)
+
 				if err == nil {
 					agent.Log.Error().
 						Str("peer", webChatRemoteIP(req)).
@@ -152,10 +154,10 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 				}
 			},
 		},
-		ReadTimeout: time.Second * 30,  // 30s (PING)
-		WriteTimeout: time.Second * 10, // 10s
-		MessageMaxSize: (4 << 10),      // 4096 (bytes)
-		MediaMaxSize: (10 << 20),       // 10 Mb.
+		ReadTimeout:    time.Second * 30, // 30s (PING)
+		WriteTimeout:   time.Second * 10, // 10s
+		MessageMaxSize: (4 << 10),        // 4096 (bytes)
+		MediaMaxSize:   (10 << 20),       // 10 Mb.
 		// // runtime chat store
 		// chat: make(map[string]*webChat, 4096), // (slots)
 	}
@@ -181,7 +183,7 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 			}
 			// SET
 			opts.HandshakeTimeout = tout
-			
+
 		} else {
 			// FIXME: assume no timeout
 		}
@@ -194,7 +196,7 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 		}
 		if size > 0 {
 			const (
-				sizeMin = 1 << 10 // 1K
+				sizeMin = 1 << 10      // 1K
 				sizeMax = sizeMin << 3 // 8K
 			)
 			// Check: MIN
@@ -209,7 +211,7 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 			bot.MessageMaxSize = int64(size)
 			opts.ReadBufferSize = size
 			opts.WriteBufferSize = size
-			
+
 		} else {
 			// FIXME: assume no PING
 		}
@@ -235,7 +237,7 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 			// }
 			// SET
 			bot.MediaMaxSize = int64(size)
-			
+
 		} else {
 			// FIXME: default ! 10 Mb.
 		}
@@ -261,7 +263,7 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 			}
 			// SET
 			bot.WriteTimeout = tout
-			
+
 		} else {
 			// FIXME: assume no PING
 		}
@@ -287,7 +289,7 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 			}
 			// SET
 			bot.ReadTimeout = tout
-			
+
 		} else {
 			// FIXME: assume no PING
 		}
@@ -360,6 +362,7 @@ func (*WebChatBot) String() string {
 func (*WebChatBot) Register(ctx context.Context, uri string) error {
 	return nil
 }
+
 // Deregister webhook callback URI
 func (*WebChatBot) Deregister(ctx context.Context) error {
 	return nil
@@ -372,14 +375,13 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 	// panic("not mplemented")
 
 	var (
-
 		channel = notify.Chat // recepient
 		message = notify.Message
 	)
 
 	closed := message.Type == "closed"
 
-	c.RLock()   // +R
+	c.RLock() // +R
 	room := c.chat[channel.ChatID]
 	c.RUnlock() // -R
 
@@ -404,7 +406,7 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 			// // c.Unlock() // -RW
 			// close(room.send)
 			room.send <- func() {
-				for i := len(room.conn)-1; i >= 0; i-- {
+				for i := len(room.conn) - 1; i >= 0; i-- {
 					conn := room.conn[i]
 					_ = conn.SetWriteDeadline(
 						time.Now().Add(c.WriteTimeout),
@@ -430,7 +432,7 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 				room.conn = room.conn[:0]
 				room.closed = true
 			}
-		} ()
+		}()
 
 	default:
 	}
@@ -448,13 +450,12 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 }
 
 var (
-
-	hdrHost           = http.CanonicalHeaderKey("Host")
-	hdrOrigin         = http.CanonicalHeaderKey("Origin")
-	hdrSetCookie      = http.CanonicalHeaderKey("Set-Cookie")
+	hdrHost      = http.CanonicalHeaderKey("Host")
+	hdrOrigin    = http.CanonicalHeaderKey("Origin")
+	hdrSetCookie = http.CanonicalHeaderKey("Set-Cookie")
 
 	hdrForwardedProto = http.CanonicalHeaderKey("X-Forwarded-Proto") // $scheme;
-	hdrForwardedFor   = http.CanonicalHeaderKey("X-Forwarded-For") // $proxy_add_x_forwarded_for;
+	hdrForwardedFor   = http.CanonicalHeaderKey("X-Forwarded-For")   // $proxy_add_x_forwarded_for;
 	hdrRealIP         = http.CanonicalHeaderKey("X-Real-IP")
 )
 
@@ -504,7 +505,7 @@ func webChatDeviceID(req *http.Request) (id string, ok bool) {
 	if err != nil && err != http.ErrNoCookie {
 		// Cookie parse error !
 		// c.Log.Err(err)
-	
+
 	} else if cookie != nil {
 		// GET device unique chat IDentifier
 		deviceID = cookie.Value
@@ -572,10 +573,10 @@ func respondJson(rsp http.ResponseWriter, res interface{}, code int) {
 	rsp.Header().Set("Pragma", "no-cache")
 	rsp.Header().Set("Content-Type", "application/json; chatset=utf-8")
 	rsp.WriteHeader(code)
-	
+
 	enc := json.NewEncoder(rsp)
 	enc.SetEscapeHTML(false)
-	
+
 	_ = enc.Encode(res)
 }
 
@@ -590,16 +591,16 @@ type limitedReader struct {
 }
 
 var errMediaTooLarge = &errs.Error{
-	Id: "chat.web.media.too_large",
+	Id:     "chat.web.media.too_large",
 	Detail: "webchat: media file too large",
-	Code: http.StatusRequestEntityTooLarge, // 413
+	Code:   http.StatusRequestEntityTooLarge, // 413
 	Status: "Media File Too Large",
 }
 
 func (c *limitedReader) Read(b []byte) (n int, err error) {
 	if c.N >= 0 {
 		if int64(len(b)) > c.N+1 {
-			b = b[0:c.N+1]
+			b = b[0 : c.N+1]
 		}
 		n, err = c.R.Read(b)
 		c.N -= int64(n)
@@ -650,11 +651,11 @@ func (c *WebChatBot) uploadMediaFile(sender *bot.Channel, media *chat.File, cont
 	if err != nil {
 		return nil, err
 	}
-	defer stream.Close()
+	// defer stream.Close()
 
 	var (
-		n int
-		buf = make([]byte, 4096) // Chunks Size
+		n    int
+		buf  = make([]byte, 4096) // Chunks Size
 		data = storage.UploadFileRequest_Chunk{
 			// Chunk: nil, // buf[:],
 		}
@@ -688,8 +689,8 @@ func (c *WebChatBot) uploadMediaFile(sender *bot.Channel, media *chat.File, cont
 		return nil, err
 	}
 
-	var res storage.UploadFileResponse
-	err = stream.RecvMsg(&res)
+	var res *storage.UploadFileResponse
+	res, err = stream.CloseAndRecv() // RecvMsg(&res)
 	if err != nil {
 		return nil, err
 	}
@@ -714,8 +715,8 @@ func (c *WebChatBot) uploadMediaFile(sender *bot.Channel, media *chat.File, cont
 		res.FileUrl = fileURI
 	}
 
-	media.Id   = res.FileId
-	media.Url  = res.FileUrl
+	media.Id = res.FileId
+	media.Url = res.FileUrl
 	media.Size = res.Size
 
 	return media, nil
@@ -737,7 +738,7 @@ func (c *WebChatBot) uploadMultiMedia(rsp http.ResponseWriter, req *http.Request
 
 	deviceID := cookie.Value
 	// TODO: Find active room with User's (Device) cID
-	c.RWMutex.RLock()   // +R
+	c.RWMutex.RLock() // +R
 	room, _ := c.chat[deviceID]
 	c.RWMutex.RUnlock() // -R
 
@@ -751,7 +752,7 @@ func (c *WebChatBot) uploadMultiMedia(rsp http.ResponseWriter, req *http.Request
 		))
 		return // 401 Unauthorized (!)
 	}
-	
+
 	sender := room.Channel
 
 	// TODO: RESTRICT MEDIA SIZE !
@@ -769,7 +770,7 @@ func (c *WebChatBot) uploadMultiMedia(rsp http.ResponseWriter, req *http.Request
 		respondError(rsp, errs.BadRequest(
 			"chat.web.media.type.invalid",
 			"webchat: media type is invalid; %s",
-			 err,
+			err,
 		))
 		return // (400) Bad Request (!)
 	}
@@ -784,7 +785,7 @@ func (c *WebChatBot) uploadMultiMedia(rsp http.ResponseWriter, req *http.Request
 		for {
 
 			part, err = content.NextPart()
-			
+
 			if err == io.EOF {
 				err = nil
 				break // There are NO more parts !
@@ -809,7 +810,7 @@ func (c *WebChatBot) uploadMultiMedia(rsp http.ResponseWriter, req *http.Request
 				Size: 0,
 			}
 
-			file.R = part // Content
+			file.R = part         // Content
 			file.N = mediaMaxSize // Size Limit (!)
 
 			media, err = c.uploadMediaFile(
@@ -884,7 +885,7 @@ func (c *WebChatBot) uploadMultiMedia(rsp http.ResponseWriter, req *http.Request
 
 // Receiver
 // WebHook callback http.Handler
-// 
+//
 // // bot := BotProvider(agent *Gateway)
 // ...
 // recv := Update{/* decode from notice.Body */}
@@ -896,7 +897,7 @@ func (c *WebChatBot) uploadMultiMedia(rsp http.ResponseWriter, req *http.Request
 // }
 //
 // reply.WriteHeader(http.StatusOK)
-// 
+//
 func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 
 	// CORS: Methods
@@ -966,7 +967,7 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 
 	} else {
 
-		c.RWMutex.RLock()   // +R
+		c.RWMutex.RLock() // +R
 		room = c.chat[deviceID]
 		c.RWMutex.RUnlock() // -R
 
@@ -986,12 +987,13 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 		channel, err := c.Gateway.GetChannel(
 			context.TODO(), deviceID, endUser,
 		)
-	
+
 		if err != nil {
 			// MAY: bot is disabled !
 			c.Gateway.Log.Err(err).Msg("Failed to .GetChannel()")
 			// Failed locate chat channel !
-			re := errs.FromError(err); if re.Code == 0 {
+			re := errs.FromError(err)
+			if re.Code == 0 {
 				re.Code = (int32)(http.StatusBadGateway)
 			}
 			// conn.Write(!)
@@ -1003,9 +1005,9 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 
 			Bot:     c,
 			Channel: channel,
-			
+
 			send: make(chan func(), 1), // buffered
-			
+
 			msgi: make(map[int64]int, 32),
 			msgs: make([]*chat.Message, 0, 32),
 		}
@@ -1026,18 +1028,18 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 		cookiePath = strings.TrimRight(cookiePath, "/") + req.URL.Path
 		// Set-Cookie:
 		cookie := &http.Cookie{
-			Name:       "cid",
-			Value:      deviceID, // unique client + device identifier
-			Path:       cookiePath, // req.URL.Path, // "/"+ c.Profile.UrlId, // TODO: prefix from NGINX proxy location
+			Name:  "cid",
+			Value: deviceID,   // unique client + device identifier
+			Path:  cookiePath, // req.URL.Path, // "/"+ c.Profile.UrlId, // TODO: prefix from NGINX proxy location
 			// Domain:     domain, // req.Header.Get("Host"),
-			Expires:    cookieNeverExp, // 2147483648 (2^31)
+			Expires: cookieNeverExp, // 2147483648 (2^31)
 			// RawExpires: "",
-			MaxAge:     0,
-			Secure:     httpIsSecure(req), // req.URL.Schema == "https"
-			HttpOnly:   true,
+			MaxAge:   0,
+			Secure:   httpIsSecure(req), // req.URL.Schema == "https"
+			HttpOnly: true,
 			// Cross-origin ([site]: example.com <-> [chat]: webitel.com) Set-Cookie
 			// NOTE: https://developer.mozilla.org/de/docs/Web/HTTP/Headers/Set-Cookie/SameSite#none
-			SameSite:   http.SameSiteNoneMode, // http.SameSiteLaxMode,
+			SameSite: http.SameSiteNoneMode, // http.SameSiteLaxMode,
 			// Raw:        "",
 			// Unparsed:   nil,
 		}
@@ -1072,10 +1074,10 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 
 // ChatInfo state message
 type webChatInfo struct {
-	Id   string          `json:"id"`
-	User *bot.Account    `json:"user"`
+	Id   string       `json:"id"`
+	User *bot.Account `json:"user"`
 	// Options
-	MediaMaxSize int64   `json:"media_max_size,omitempty"`
+	MediaMaxSize int64 `json:"media_max_size,omitempty"`
 	// History
 	Msgs []*chat.Message `json:"msgs,omitempty"`
 }
@@ -1088,9 +1090,9 @@ func (c *WebChatBot) join(client *webChat, conn *websocket.Conn) {
 	client.send <- func() {
 		// build
 		chatInfo := webChatInfo{
-			Id:   client.ChannelID,
-			User: &client.Account,
-			Msgs: client.msgs,
+			Id:           client.ChannelID,
+			User:         &client.Account,
+			Msgs:         client.msgs,
 			MediaMaxSize: c.mediaMaxSizeLimit(),
 		}
 		jsonb, ok := client.encodeJSON(chatInfo) // json.Marshal(chatInfo)
@@ -1115,7 +1117,7 @@ func (c *WebChatBot) join(client *webChat, conn *websocket.Conn) {
 	// 	return nil
 	// })
 	// JOIN (!)
-	c.RWMutex.Lock()   // +RW
+	c.RWMutex.Lock() // +RW
 	room, ok := c.chat[chatID]
 	if ok && room == client {
 		// // TODO: duplicate this chat connection
@@ -1133,20 +1135,20 @@ func (c *WebChatBot) join(client *webChat, conn *websocket.Conn) {
 		// secondary = false
 		client.Log.Info().Msg("JOIN")
 	}
-	
+
 	// STARTUP (!)
 	if primary { // primary
 		// TODO: show chatInfo
 		if client.Channel.IsNew() {
 			// /start
-			commandStart := bot.Update {
-			
+			commandStart := bot.Update{
+
 				// ChatID: strconv.FormatInt(recvMessage.Chat.ID, 10),
-				
-				User:   &client.Account,
-				Chat:    client.Channel,
-				Title:   client.Channel.Title,
-		
+
+				User:  &client.Account,
+				Chat:  client.Channel,
+				Title: client.Channel.Title,
+
 				Message: &chat.Message{
 					Type: "text",
 					Text: "/start",
@@ -1171,7 +1173,6 @@ func (c *WebChatBot) join(client *webChat, conn *websocket.Conn) {
 	} else { // secondary ...
 
 	}
-
 
 	go client.readPump(conn)
 }
@@ -1225,7 +1226,7 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 			// FIXME: Expect to be closed !
 			// How to check it's NOT but full ?
 		}
-		
+
 		// c.RWMutex.Unlock() // -RW
 		_ = conn.Close() // Undelaying TCP
 		// if err := conn.Close(); err != nil {
@@ -1258,7 +1259,7 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 
 		// typeOf, data, err := conn.ReadMessage()
 		_, data, err := conn.ReadMessage()
-		
+
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(
 				err, websocket.CloseGoingAway,
@@ -1269,9 +1270,9 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 					Str("ws", conn.RemoteAddr().String()).
 					Msg("READ.Unexpected(!)")
 			} else {
-			// 	c.Log.Warn().Err(err).
-			// 		Str("ws", conn.RemoteAddr().String()).
-			// 		Msg("READ.Expected(+)")
+				// 	c.Log.Warn().Err(err).
+				// 		Str("ws", conn.RemoteAddr().String()).
+				// 		Msg("READ.Expected(+)")
 				// _ = conn.WriteMessage(
 				// 	websocket.CloseMessage, // []byte{},
 				// 	websocket.FormatCloseMessage(
@@ -1284,7 +1285,6 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 		}
 		// validate request
 		var (
-			
 			msg *chat.Message
 			req webChatRequest
 			res webChatResponse
@@ -1317,10 +1317,10 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 			err = c.Bot.Read(
 				context.TODO(),
 				&bot.Update{
-					ID:      0,
-					Chat:    c.Channel,
-					User:    &c.Account,
-					Title:   "",
+					ID:    0,
+					Chat:  c.Channel,
+					User:  &c.Account,
+					Title: "",
 					// Event:   msg.GetType(), // "text"
 					Message: msg,
 				},
@@ -1362,7 +1362,7 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 
 			// encoded notify message
 			var noteData []byte
-			for i := len(c.conn)-1; i >= 0; i-- {
+			for i := len(c.conn) - 1; i >= 0; i-- {
 				peer := c.conn[i]
 				if peer == conn {
 					// c.sendFrame(conn, websocket.TextMessage, resultData)
@@ -1392,9 +1392,9 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 func (c *webChat) writePump() {
 	// Send PINGs to peer with this period.
 	// Must be less than c.Bot.ReadTimeout.
-	pingInterval := (c.Bot.ReadTimeout * 9) / 10;
+	pingInterval := (c.Bot.ReadTimeout * 9) / 10
 	pingTracker := time.NewTicker(pingInterval)
-	
+
 	defer func() {
 		pingTracker.Stop()
 		// // c.Conn.Close()
@@ -1402,28 +1402,28 @@ func (c *webChat) writePump() {
 		// 	conn.Close()
 		// }
 		// if len(c.conn) == 0 {
-			c.Bot.RWMutex.Lock()   // +RW
-			found := (c == c.Bot.chat[c.ChatID])
-			if found {
-				delete(c.Bot.chat, c.ChatID)
-			}
-			c.Bot.RWMutex.Unlock() // -RW
-			// Ensure service closed this chat !
-			if c.Channel.Closed == 0 {
-				_ = c.Channel.Close()
-			}
-			if found {
-				c.Log.Warn().Msg("[WS] <<< STOP >>>")
-			}
+		c.Bot.RWMutex.Lock() // +RW
+		found := (c == c.Bot.chat[c.ChatID])
+		if found {
+			delete(c.Bot.chat, c.ChatID)
+		}
+		c.Bot.RWMutex.Unlock() // -RW
+		// Ensure service closed this chat !
+		if c.Channel.Closed == 0 {
+			_ = c.Channel.Close()
+		}
+		if found {
+			c.Log.Warn().Msg("[WS] <<< STOP >>>")
+		}
 		// }
 		// c.Log.Warn().Msg("[WS] >>> Shutdown <<<")
-	} ()
+	}()
 
 	c.Log.Info().Msg("[WS] >>> START <<<")
 
 	for {
 		select {
-		case send, ok := <- c.send:
+		case send, ok := <-c.send:
 			if !ok {
 				// NOTE: (send == nil)
 				for i := 0; i < len(c.conn); i++ {
@@ -1455,10 +1455,10 @@ func (c *webChat) writePump() {
 			}
 			// sync
 			send()
-		
+
 		case <-pingTracker.C:
 
-			for i := len(c.conn)-1; i >= 0; i-- {
+			for i := len(c.conn) - 1; i >= 0; i-- {
 				conn := c.conn[i]
 				_ = conn.SetWriteDeadline(time.Now().Add(c.Bot.WriteTimeout))
 				err := conn.WriteMessage(websocket.PingMessage, nil)
@@ -1493,7 +1493,7 @@ func (c *webChat) writePump() {
 
 // sendFrame writes given frame message data to single conn
 func (c *webChat) sendFrame(conn *websocket.Conn, typeof int, data []byte) (err error) {
-	
+
 	defer func() {
 		if err != nil {
 			for i := 0; i < len(c.conn); i++ {
@@ -1504,10 +1504,10 @@ func (c *webChat) sendFrame(conn *websocket.Conn, typeof int, data []byte) (err 
 			}
 			conn.Close() // FIXME: will catch on .readPump(?)
 		}
-	} ()
+	}()
 
 	err = conn.SetWriteDeadline(time.Now().Add(c.Bot.WriteTimeout))
-	
+
 	if err != nil {
 		c.Log.Err(err).
 			Str("ws", conn.RemoteAddr().String()).
@@ -1554,9 +1554,9 @@ func (c *webChat) sendFrame(conn *websocket.Conn, typeof int, data []byte) (err 
 	}
 
 	c.Log.Debug().
-			Str("ws", conn.RemoteAddr().String()).
-			Str("data", string(data)).
-			Msg("WS.Write(!)")
+		Str("ws", conn.RemoteAddr().String()).
+		Str("data", string(data)).
+		Msg("WS.Write(!)")
 
 	return // nil
 }
@@ -1565,10 +1565,10 @@ func (c *webChat) sendFrame(conn *websocket.Conn, typeof int, data []byte) (err 
 // using prepared buffer for writing
 // [MUST]: Be SYNC; Protect call with c.Bot.send <- func() { /*ONLY!*/ }
 func (c *webChat) encodeJSON(m interface{}) (data []byte, ok bool) {
-	
+
 	buf := &c.wbuf
 	buf.Reset()
-	
+
 	enc := json.NewEncoder(buf)
 	err := enc.Encode(m)
 
@@ -1576,7 +1576,7 @@ func (c *webChat) encodeJSON(m interface{}) (data []byte, ok bool) {
 	if err == nil {
 		return buf.Bytes(), true
 	}
-	
+
 	// Marshal: -ERR
 	res := webChatResponse{}
 
@@ -1586,12 +1586,12 @@ func (c *webChat) encodeJSON(m interface{}) (data []byte, ok bool) {
 	case *webChatResponse:
 		res.Id = obj.Id
 	}
-	
+
 	res.Error = err.Error()
-	
+
 	buf.Reset()
 	_ = enc.Encode(res)
-	
+
 	return buf.Bytes(), false
 }
 
@@ -1599,12 +1599,12 @@ func (c *webChat) encodeJSON(m interface{}) (data []byte, ok bool) {
 // [MUST]: Be SYNC; Protect call with c.Bot.send <- func() { /*ONLY!*/ }
 func (c *webChat) broadcast(m interface{}) {
 	// err := chat.Conn.WriteJSON(update)
-	
+
 	// Encode JSON once for all recepients ...
 	// jsonb, _ := json.Marshal(e)
 	jsonb, _ := c.encodeJSON(m)
 
-	for i := len(c.conn)-1; i >= 0; i-- {
+	for i := len(c.conn) - 1; i >= 0; i-- {
 		_ = c.sendFrame(c.conn[i], websocket.TextMessage, jsonb)
 		// if err != nil {
 		// 	// NOTE: removes c.conn[i], but we are moving backwards !

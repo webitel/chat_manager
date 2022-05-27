@@ -11,9 +11,9 @@ import (
 
 import (
 	context "context"
-	api "github.com/micro/go-micro/v2/api"
-	client "github.com/micro/go-micro/v2/client"
-	server "github.com/micro/go-micro/v2/server"
+	api "github.com/micro/micro/v3/service/api"
+	client "github.com/micro/micro/v3/service/client"
+	server "github.com/micro/micro/v3/service/server"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -71,7 +71,7 @@ type FileService_UploadFileService interface {
 	Context() context.Context
 	SendMsg(interface{}) error
 	RecvMsg(interface{}) error
-	Close() error
+	CloseAndRecv() (*UploadFileResponse, error)
 	Send(*UploadFileRequest) error
 }
 
@@ -79,8 +79,13 @@ type fileServiceUploadFile struct {
 	stream client.Stream
 }
 
-func (x *fileServiceUploadFile) Close() error {
-	return x.stream.Close()
+func (x *fileServiceUploadFile) CloseAndRecv() (*UploadFileResponse, error) {
+	if err := x.stream.Close(); err != nil {
+		return nil, err
+	}
+	r := new(UploadFileResponse)
+	err := x.RecvMsg(r)
+	return r, err
 }
 
 func (x *fileServiceUploadFile) Context() context.Context {
@@ -140,7 +145,7 @@ type FileService_UploadFileStream interface {
 	Context() context.Context
 	SendMsg(interface{}) error
 	RecvMsg(interface{}) error
-	Close() error
+	SendAndClose(*UploadFileResponse) error
 	Recv() (*UploadFileRequest, error)
 }
 
@@ -148,7 +153,10 @@ type fileServiceUploadFileStream struct {
 	stream server.Stream
 }
 
-func (x *fileServiceUploadFileStream) Close() error {
+func (x *fileServiceUploadFileStream) SendAndClose(in *UploadFileResponse) error {
+	if err := x.SendMsg(in); err != nil {
+		return err
+	}
 	return x.stream.Close()
 }
 

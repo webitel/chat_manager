@@ -1,8 +1,2 @@
-bin
-.vscode
-.idea
-vendor
-.env
 go.sum
-*.crt
-*.key
+**/_*

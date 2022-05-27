@@ -1,9 +1,9 @@
-package main
+package chat
 
 import (
 	"fmt"
 	"time"
-	
+
 	"context"
 
 	// "database/sql"
@@ -13,11 +13,12 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/stdlib"
 
+	log "github.com/micro/micro/v3/service/logger"
 	"github.com/rs/zerolog"
 )
 
 // OpenDB returns valid postgres DSN database connection pool
-func OpenDB(dataSource string) (*sqlx.DB, error) { 
+func OpenDB(dataSource string) (*sqlx.DB, error) {
 
 	config, err := pgx.ParseConfig(dataSource)
 	if err != nil {
@@ -25,18 +26,34 @@ func OpenDB(dataSource string) (*sqlx.DB, error) {
 	}
 
 	config.Logger = pgxLogger(0)
+	config.LogLevel = pgx.LogLevelTrace
 	// dataSource = stdlib.RegisterConnConfig(config)
 	// db, _ := sql.Open("pgx", dataSource)
-	
-	dbo := stdlib.OpenDB(*(config), stdlib.OptionAfterConnect(
-		func(ctx context.Context, dc *pgx.Conn) error {
-			// SET search_path = 'chat';
-			return nil
-		},
-	))
 
-	const pgxDriverName = "pgx"
-	return sqlx.NewDb(dbo, pgxDriverName), nil
+	const driverName = "pgx"
+	dbo := stdlib.OpenDB(*(config),
+		stdlib.OptionBeforeConnect(
+			func(ctx context.Context, dsn *pgx.ConnConfig) error {
+				log.Infof("Database [%s] Connect %s", driverName, dsn.ConnString())
+				return nil
+			},
+		),
+		stdlib.OptionAfterConnect(
+			func(ctx context.Context, conn *pgx.Conn) error {
+				// TODO: SET search_path = 'chat';
+				// res, err := conn.Exec(ctx, "SET search_path = 'chat';")
+				// return res.Close()
+				return nil
+			},
+		),
+	)
+
+	err = dbo.Ping()
+	if err != nil {
+		return nil, err
+	}
+
+	return sqlx.NewDb(dbo, driverName), nil
 }
 
 type pgxLogger int
@@ -44,12 +61,12 @@ type pgxLogger int
 func (pgxLogger) Log(ctx context.Context, rate pgx.LogLevel, text string, data map[string]interface{}) {
 
 	var e *zerolog.Event
-	
+
 	switch rate {
 	// case pgx.LogLevelTrace:
 	// 	e = logger.Trace()
 	case pgx.LogLevelDebug,
-		 pgx.LogLevelInfo:
+		pgx.LogLevelInfo:
 		e = logger.Debug()
 	case pgx.LogLevelWarn:
 		e = logger.Warn()
@@ -64,7 +81,7 @@ func (pgxLogger) Log(ctx context.Context, rate pgx.LogLevel, text string, data m
 	if !e.Enabled() {
 		return
 	}
-	
+
 	e.EmbedObject(pgxLogdata(data)).Msg(text)
 }
 
@@ -98,4 +115,3 @@ func (ctx pgxLogdata) MarshalZerologObject(e *zerolog.Event) {
 		}
 	}
 }
-

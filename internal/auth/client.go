@@ -6,20 +6,19 @@ import (
 
 	pbauth "github.com/webitel/chat_manager/api/proto/auth"
 
-	"github.com/micro/go-micro/v2/errors"
-	"github.com/micro/go-micro/v2/metadata"
+	"github.com/micro/micro/v3/service/context/metadata"
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/rs/zerolog"
 )
 
 const (
-
 	hdrFromMicroService = `Micro-From-Service`
 	hdrFromService      = `From-Service`
 
-	serviceChatSrv      = `webitel.chat.server`
-	serviceChatGate     = `webitel.chat.bot`
-	serviceChatFlow     = `workflow`
-	serviceEngine       = `engine`
+	serviceChatSrv  = `webitel.chat.server`
+	serviceChatGate = `webitel.chat.bot`
+	serviceChatFlow = `workflow`
+	serviceEngine   = `engine`
 
 	h2pDomainId      = `x-webitel-dc`
 	h2pDomainName    = `x-webitel-domain`
@@ -78,8 +77,8 @@ func (c *client) MicroAuthentication(rpc *context.Context) (*User, error) {
 	microFromService, _ := md[hdrFromMicroService]
 	switch microFromService {
 	case serviceChatFlow,
-		 serviceChatGate,
-		 serviceChatSrv: // NOTE: webitel.chat.bot passthru original context while searching for gateways URI
+		serviceChatGate,
+		serviceChatSrv: // NOTE: webitel.chat.bot passthru original context while searching for gateways URI
 
 		return nil, nil
 	}

@@ -4,25 +4,25 @@ import (
 	"sync"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/errors"
 	graph "github.com/webitel/chat_manager/bot/facebook.v12/graph/v12.0"
 	internal "github.com/webitel/chat_manager/bot/facebook.v12/internal"
 	protowire "google.golang.org/protobuf/proto"
 )
 
 type PageToken struct {
-	 // Facebook User who granted access to Page (AccessToken)
+	// Facebook User who granted access to Page (AccessToken)
 	*graph.User
-	 // AccessToken is an opaque <PAGE_ACCESS_TOKEN> string
-	 // TODO: Hide `json:"-"` on production !!!!!!!!!!!!
-	 AccessToken string `json:"-"` // access_token"`
-	 // ---------------------------------
-	 // AccessToken introspection details
-	 // ---------------------------------
-	 // IssuedAt unix timestamp (seconds)
-	 IssuedAt int64 `json:"issued,omitempty"`
-	 // ExpiresAt unix timestamp (seconds); If <Zero> - means Never !
-	 ExpiresAt int64 `json:"expires,omitempty"`
+	// AccessToken is an opaque <PAGE_ACCESS_TOKEN> string
+	// TODO: Hide `json:"-"` on production !!!!!!!!!!!!
+	AccessToken string `json:"-"` // access_token"`
+	// ---------------------------------
+	// AccessToken introspection details
+	// ---------------------------------
+	// IssuedAt unix timestamp (seconds)
+	IssuedAt int64 `json:"issued,omitempty"`
+	// ExpiresAt unix timestamp (seconds); If <Zero> - means Never !
+	ExpiresAt int64 `json:"expires,omitempty"`
 }
 
 func (e *PageToken) Equal(t *PageToken) bool {
@@ -38,16 +38,16 @@ func (e *PageToken) Equal(t *PageToken) bool {
 
 // Page represents Messenger's Page Account subscription
 type Page struct {
-	 // The Facebook Messanger Page engaged account(s)
+	// The Facebook Messanger Page engaged account(s)
 	*graph.Page
-	 // Accounts represents SET of PAGE_ACCESS_TOKEN and it's .User GRANTOR
-	 Accounts []*PageToken `json:"accounts"`
-	 // Webhook fields to which the app has subscribed on the Page
-	 //
-	 // GET /{.Page.ID}/subscribed_apps?fields=subscribed_fields.as(fields)
-	 // Applications that have real time update subscriptions for this Page.
-	 // Note that we will only return information about the current app
-	 SubscribedFields []string `json:"subscribed_fields,omitempty"`
+	// Accounts represents SET of PAGE_ACCESS_TOKEN and it's .User GRANTOR
+	Accounts []*PageToken `json:"accounts"`
+	// Webhook fields to which the app has subscribed on the Page
+	//
+	// GET /{.Page.ID}/subscribed_apps?fields=subscribed_fields.as(fields)
+	// Applications that have real time update subscriptions for this Page.
+	// Note that we will only return information about the current app
+	SubscribedFields []string `json:"subscribed_fields,omitempty"`
 }
 
 // ASID represents an [A]pp-[S]coped Facebook Page [ID]entifier
@@ -77,8 +77,8 @@ func (p *Page) Authorize(token *PageToken) {
 
 	var (
 		accounts = p.Accounts
-		n = len(accounts)
-		i int // index of duplicate
+		n        = len(accounts)
+		i        int // index of duplicate
 	)
 	for i = 0; i < n && !accounts[i].Equal(token); i++ {
 		// Lookup for given token match !..
@@ -88,7 +88,7 @@ func (p *Page) Authorize(token *PageToken) {
 		// ADD !
 		accounts = append(accounts, nil)
 		copy(accounts[1:], accounts[0:n])
-		
+
 	} else { // i < n
 		// SET !
 		if i != 0 {
@@ -104,12 +104,12 @@ func (p *Page) Authorize(token *PageToken) {
 
 // Deathorize Page's p .Accounts for specified .User PSID
 // If psid is an empty string - deauthorize Messenger Page at ALL !
-// 
+//
 // if page.Deauthorize("") {
 // 	// NOTE: page.IsAuthorized() == false
 // }
 func (p *Page) Deauthorize(psid string) []*PageToken {
-	
+
 	if psid == "" {
 		// ALL !
 		removed := p.Accounts
@@ -120,11 +120,10 @@ func (p *Page) Deauthorize(psid string) []*PageToken {
 	}
 
 	var (
-
 		accounts = p.Accounts
-		removed []*PageToken
-		n = len(accounts)
-		i int
+		removed  []*PageToken
+		n        = len(accounts)
+		i        int
 	)
 
 	for i = 0; i < n && accounts[i].User.ID != psid; i++ {
@@ -157,25 +156,21 @@ func (p *Page) IsAuthorized() bool {
 	return p.AccessToken != ""
 }
 
-
-
-
 // The Messenger Pages state
 type messengerPages struct {
-	 mx sync.RWMutex
-	 // Pages indexes
-	 // [ASID]:  page.id
-	 // [IGSID]: page.instagram.id
-	 pages map[string]*Page
+	mx sync.RWMutex
+	// Pages indexes
+	// [ASID]:  page.id
+	// [IGSID]: page.instagram.id
+	pages map[string]*Page
 }
 
 // Un/Install Facebook .User's Messenger .Pages accounts
 func (c *messengerPages) setPages(accounts *UserAccounts) []*Page {
 
 	var (
-
-		page *Page // [RE]NEW!
-		results = make([]*Page, 0, len(accounts.Pages))
+		page     *Page // [RE]NEW!
+		results  = make([]*Page, 0, len(accounts.Pages))
 		progress = append(([]*Page)(nil), accounts.Pages...)
 	)
 
@@ -266,7 +261,7 @@ func (c *messengerPages) setPages(accounts *UserAccounts) []*Page {
 	return results
 }
 
-// ALL/Requested or nothing 
+// ALL/Requested or nothing
 func (c *messengerPages) getPages(pageIds ...string) ([]*Page, error) {
 
 	c.mx.RLock()         // +R
@@ -299,7 +294,7 @@ func (c *messengerPages) getPages(pageIds ...string) ([]*Page, error) {
 		// EXACT
 		for _, asid := range pageIds {
 			if page, ok := c.pages[asid]; ok {
-				i := len(pages)-1
+				i := len(pages) - 1
 				for ; i >= 0 && pages[i] != page; i-- {
 					// Lookup for duplicate index
 				}
@@ -312,7 +307,7 @@ func (c *messengerPages) getPages(pageIds ...string) ([]*Page, error) {
 				return nil, errors.NotFound(
 					"bot.messenger.page.not_found",
 					"messenger: page=%s not found",
-					 asid,
+					asid,
 				)
 			}
 		}
@@ -349,8 +344,6 @@ func (c *messengerPages) delPage(id string) *Page {
 	return nil
 }
 
-
-
 func (c *messengerPages) backup() []byte {
 	// TODO: encode internal c.Pages accounts to secure data set
 	var dataset internal.Messenger
@@ -364,10 +357,10 @@ func (c *messengerPages) backup() []byte {
 			continue
 		}
 		page := &internal.Page{
-			Id:       def.ID,
-			Name:     def.Name,
+			Id:   def.ID,
+			Name: def.Name,
 			// Picture:  def.Picture.Data.URL,
-			Accounts: make([]*internal.Page_Account, 0, len(def.Accounts)),
+			Accounts:         make([]*internal.Page_Account, 0, len(def.Accounts)),
 			SubscribedFields: def.SubscribedFields,
 		}
 		// page.ID
@@ -386,11 +379,10 @@ func (c *messengerPages) backup() []byte {
 			// account.SubscribedFields
 			page.Accounts = append(
 				page.Accounts, &internal.Page_Account{
-					Psid:             account.User.ID,
-					Name:             account.User.Name,
+					Psid: account.User.ID,
+					Name: account.User.Name,
 					// Picture:          account.User.Picture.Data.URL,
-					AccessToken:      account.AccessToken,
-					
+					AccessToken: account.AccessToken,
 				},
 			)
 		}
@@ -414,13 +406,13 @@ func (c *messengerPages) restore(data []byte) error {
 	}
 
 	var (
-		users = make(map[string]*graph.User)
+		users   = make(map[string]*graph.User)
 		getUser = func(psid string) *graph.User {
 			user := users[psid]
 			if user != nil {
 				return user
 			}
-			lookup:
+		lookup:
 			for _, page := range c.pages {
 				for _, grant := range page.Accounts {
 					if grant.User.ID == psid {
@@ -474,9 +466,9 @@ func (c *messengerPages) restore(data []byte) error {
 		}
 		if IGUser := bak.Instagram; IGUser != nil {
 			page.Instagram = &graph.InstagramUser{
-				ID:             IGUser.Id,
-				Name:           IGUser.Name,
-				Username:       IGUser.Username,
+				ID:       IGUser.Id,
+				Name:     IGUser.Name,
+				Username: IGUser.Username,
 				// PictureURL:     IGUser.Picture,
 				// FollowersCount: 0,
 				// Website:        "",
@@ -490,7 +482,7 @@ func (c *messengerPages) restore(data []byte) error {
 		}
 		page.Accounts = accounts
 		// NOTE: Latest (0) must be ACTIVATED !
-		for i := len(bak.Accounts)-1; i >= 0; i-- {
+		for i := len(bak.Accounts) - 1; i >= 0; i-- {
 			token := bak.Accounts[i]
 			user := getUser(token.Psid)
 			if user == nil {

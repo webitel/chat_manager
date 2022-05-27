@@ -6,14 +6,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/api/proto/bot"
 )
 
-
 type (
-	
-	Bot = bot.Bot
+	Bot   = bot.Bot
 	Refer = bot.Refer
 )
 
@@ -54,24 +52,24 @@ func Validate(e *Bot) error {
 	if err != nil {
 		return errors.BadRequest(
 			"chat.bot.uri.invalid",
-			"chatbot: "+ err.Error(),
+			"chatbot: "+err.Error(),
 		)
 	}
 
-	for _, check := range []struct{
-		name string
+	for _, check := range []struct {
+		name  string
 		valid bool
 		error string
-	} {
+	}{
 		{"relative", (!botURI.IsAbs() && botURI.Host == ""), "expect relative URI, not absolute"},
 		{"hostport", (botURI.User == nil), "relative URI must not include :authority component"},
-		{"query",    (!botURI.ForceQuery && botURI.RawQuery == ""), "relative URI must not include ?query component"},
+		{"query", (!botURI.ForceQuery && botURI.RawQuery == ""), "relative URI must not include ?query component"},
 		{"fragment", (botURI.Fragment == ""), "relative URI must not include #fragment component"},
 	} {
 		if !check.valid {
 			return errors.BadRequest(
 				"chat.bot.uri.invalid",
-				"chatbot: "+ check.error,
+				"chatbot: "+check.error,
 			)
 		}
 	}
@@ -85,7 +83,6 @@ func Validate(e *Bot) error {
 		)
 	}
 
-	
 	if provider := e.GetProvider(); provider == "" {
 		return errors.BadRequest(
 			"chat.bot.provider.required",
@@ -107,46 +104,42 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 
 	// Model validation(s) !
 	err := Validate(add)
-	
+
 	if err != nil {
 		return nil, err
 	}
 
 	log := srv.Log.With().
-
-		Int64("pid",   add.GetId()).
-		Int64("pdc",   add.GetDc().GetId()).
-		Int64("bot",   add.GetFlow().GetId()).
-		
-		Str("uri",     add.GetUri()).
-		
-		Str("title",   add.GetName()).
+		Int64("pid", add.GetId()).
+		Int64("pdc", add.GetDc().GetId()).
+		Int64("bot", add.GetFlow().GetId()).
+		Str("uri", add.GetUri()).
+		Str("title", add.GetName()).
 		Str("channel", add.GetProvider()).
-
 		Logger()
 
 	// Find provider implementation by code name
 	setup := GetProvider(add.GetProvider())
 
 	if setup == nil {
-		
+
 		log.Warn().Msg("PROVIDER: NOT SUPPORTED")
 		// Client Request Error !
 		return nil, errors.BadRequest(
 			"chat.bot.provider.invalid",
 			"chatbot: invalid %s provider; not implemented",
-			 add.Provider,
+			add.Provider,
 		)
 	}
 
-	srv.indexMx.Lock()   // -RW
+	srv.indexMx.Lock() // -RW
 	run, ok := srv.profiles[add.GetId()]
 	srv.indexMx.Unlock() // +RW
 
 	// CHECK: Provider specific options are well formed !
 	agent := &Gateway{
 
-		Log:     &log,
+		Log:      &log,
 		Bot:      add,
 		Internal: srv,
 		// // CACHE Store
@@ -157,16 +150,16 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 
 	var state Provider
 	if ok && run != nil {
-		run.Lock()   // +RW
-		agent.RWMutex  = run.RWMutex
+		run.Lock() // +RW
+		agent.RWMutex = run.RWMutex
 		agent.internal = run.internal
 		agent.external = run.external
 		run.Unlock() // -RW
 		state = run.External
 	} else {
 		// // CACHE Store
-		agent.RWMutex  = new(sync.RWMutex)
-		agent.internal = make(map[int64]*Channel) // map[internal.user.id]
+		agent.RWMutex = new(sync.RWMutex)
+		agent.internal = make(map[int64]*Channel)  // map[internal.user.id]
 		agent.external = make(map[string]*Channel) // map[provider.user.id]
 	}
 
@@ -174,21 +167,21 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 	agent.External, err = setup(agent, state)
 
 	if err != nil {
-		
+
 		agent.External = nil // NULL -ify
 		re := errors.FromError(err)
-		
+
 		if re.Code == 0 {
 			// NOTE: is NOT err.(*errors.Error)
 			code := http.StatusBadRequest // FIXME: 400 ?
-			re.Id = "chat.bot."+ add.Provider +".setup.error"
+			re.Id = "chat.bot." + add.Provider + ".setup.error"
 			// re.Detail = err.Error()
 			re.Code = (int32)(code)
 			re.Status = http.StatusText(code)
 		}
 
 		log.Error().Str("error", re.Detail).Msg("SETUP")
-		
+
 		return nil, re
 	}
 
@@ -197,7 +190,7 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 	// }
 
 	// err = agent.Register(ctx, force)
-	
+
 	// if err != nil {
 
 	// 	re := errors.FromError(err)

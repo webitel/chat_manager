@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"path"
 
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/bot/facebook.v12/messenger"
 )
 
@@ -19,16 +19,16 @@ func (c *Client) Send(from *Page, send *messenger.SendRequest) (mid string, err 
 		// Failed to encode SendAPI request body
 		return "", err
 	}
-	
+
 	// POST /me/messages?access_token=PAGE_ACCESS_TOKEN"
 	// HOST graph.facebook.com
-	// 
+	//
 	// NOTE: A page access token with pages_messaging permission is required to interact with this endpoint.
 
 	req, err := http.NewRequest(http.MethodPost,
-		"https://graph.facebook.com" + path.Join("/", c.Version, "me/messages") +
-			"?" + c.requestForm(nil, from.AccessToken).Encode(),
-		 body,
+		"https://graph.facebook.com"+path.Join("/", c.Version, "me/messages")+
+			"?"+c.requestForm(nil, from.AccessToken).Encode(),
+		body,
 	)
 
 	if err != nil {
@@ -56,7 +56,7 @@ func (c *Client) Send(from *Page, send *messenger.SendRequest) (mid string, err 
 		// SendAPI Call Error !
 		return res.MessageID, res.Error
 	}
-	
+
 	return res.MessageID, nil
 }
 
@@ -69,10 +69,10 @@ func (c *Client) SendText(senderPageId, recepientUserId, messageText string) (mi
 		return "", errors.NotFound(
 			"bot.messenger.page.not_found",
 			"messenger: page=%s not found",
-			 senderPageId,
+			senderPageId,
 		)
 	}
-	
+
 	send := messenger.SendRequest{
 		// https://developers.facebook.com/docs/messenger-platform/send-messages/#messaging_types
 		Type: "RESPONSE",

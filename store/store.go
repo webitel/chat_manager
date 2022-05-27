@@ -4,19 +4,18 @@ import (
 	"context"
 	"sync"
 
-	"github.com/micro/cli/v2"
+	"github.com/urfave/cli/v2"
 )
 
-type Driver interface{
-	 Open(ctx context.Context) error
+type Driver interface {
+	Open(ctx context.Context) error
 }
 
 type Connector func(cli *cli.Context) (Driver, error)
 
 var (
-
 	driverMx sync.RWMutex
-	drivers map[string]Connector
+	drivers  map[string]Connector
 )
 
 func Register(name string, ctor Connector) {
@@ -33,7 +32,7 @@ func Register(name string, ctor Connector) {
 	defer driverMx.Unlock()
 
 	if _, ok := drivers[name]; ok { // && c != ctor {
-		panic("store: register duplicate "+ name +" connector")
+		panic("store: register duplicate " + name + " connector")
 	}
 
 	drivers[name] = ctor

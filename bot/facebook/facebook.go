@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/rs/zerolog/log"
 
 	chat "github.com/webitel/chat_manager/api/proto/chat"
@@ -32,9 +32,9 @@ type facebookBot struct {
 
 // facebookReqBody struct used for sending text messages to messenger
 type facebookReqBody struct {
-	Message       messageContent  `json:"message"`
-	Recipient     recipient       `json:"recipient"`
-	MessagingType string          `json:"messaging_type,omitempty"`
+	Message       messageContent `json:"message"`
+	Recipient     recipient      `json:"recipient"`
+	MessagingType string         `json:"messaging_type,omitempty"`
 }
 
 type recipient struct {
@@ -42,9 +42,9 @@ type recipient struct {
 }
 
 type userProfile struct {
-	FirstName    string    `json:"first_name"`
-	LastName     string    `json:"last_name"`
-	ID           string    `json:"id"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	ID        string `json:"id"`
 }
 
 type messageContent struct {
@@ -68,11 +68,11 @@ type attachment struct {
 }
 
 type payload struct {
-	TemplateType string   `json:"template_type,omitempty"`
-	Text         string   `json:"text,omitempty"`
+	TemplateType string    `json:"template_type,omitempty"`
+	Text         string    `json:"text,omitempty"`
 	Buttons      []buttons `json:"buttons,omitempty"`
-	URL          string   `json:"url,omitempty"`
-	IsReusable   *bool    `json:"is_reusable,omitempty"`
+	URL          string    `json:"url,omitempty"`
+	IsReusable   *bool     `json:"is_reusable,omitempty"`
 }
 
 type buttons struct {
@@ -107,9 +107,9 @@ type messaging struct {
 
 // received response from Facebook
 type ResponseFb struct {
-	RecipientId  string   `json:"recipient_id"`
-	MessageId    string   `json:"message_id"`
-	Error  		 *ErrorFb `json:"error"`
+	RecipientId string   `json:"recipient_id"`
+	MessageId   string   `json:"message_id"`
+	Error       *ErrorFb `json:"error"`
 }
 
 type ErrorFb struct {
@@ -176,11 +176,11 @@ func NewFacebookBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 
 	url += accessToken
 
-	return &facebookBot {
+	return &facebookBot{
 		accessToken: accessToken,
 		verifyToken: verifyToken,
 		url:         url,
-		Gateway: 	 agent,
+		Gateway:     agent,
 		clients:     make(map[int64]*userProfile),
 	}, nil
 }
@@ -207,7 +207,7 @@ func (b *facebookBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 
 		message = notify.Message
 
-		binding map[string]string  //TODO
+		binding map[string]string //TODO
 	)
 
 	bind := func(key, value string) {
@@ -222,39 +222,38 @@ func (b *facebookBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		return err
 	}
 
-	reqBody := facebookReqBody {
+	reqBody := facebookReqBody{
 		MessagingType: "RESPONSE",
-		Recipient: recipient {
+		Recipient: recipient{
 			ID: chatID,
 		},
 	}
 
 	switch message.Type {
-		
-		case "text":
 
-			if message.Buttons != nil {
-				
-				reqBody.Message.Text = message.Text
-				newReplyKeyboardFb(message.GetButtons(), &reqBody.Message);
+	case "text":
 
-			} else if message.Inline != nil {
+		if message.Buttons != nil {
 
-				newInlineboardFb(message.GetInline(), &reqBody.Message, message.Text);
+			reqBody.Message.Text = message.Text
+			newReplyKeyboardFb(message.GetButtons(), &reqBody.Message)
 
-			} else {
+		} else if message.Inline != nil {
 
-				reqBody.Message.Text = message.Text
-			}
+			newInlineboardFb(message.GetInline(), &reqBody.Message, message.Text)
 
-		case "file":
-			newFileMessageFb(message.GetFile(), &reqBody.Message)
+		} else {
 
-		case "closed":
-			reqBody.Message.Text = message.GetText()
+			reqBody.Message.Text = message.Text
+		}
 
-			
-		default:
+	case "file":
+		newFileMessageFb(message.GetFile(), &reqBody.Message)
+
+	case "closed":
+		reqBody.Message.Text = message.GetText()
+
+	default:
 
 	}
 
@@ -271,7 +270,7 @@ func (b *facebookBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 	}
 
 	facebookReq.Header.Set("Content-Type", "application/json")
-	
+
 	// DO: SEND !
 	facebookRes, err := http.DefaultClient.Do(facebookReq)
 	if err != nil {
@@ -280,11 +279,11 @@ func (b *facebookBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 
 	response := new(ResponseFb)
 
-	if err = json.NewDecoder(facebookRes.Body).Decode(response); err != nil{
+	if err = json.NewDecoder(facebookRes.Body).Decode(response); err != nil {
 		log.Error().Err(err).Msg("Failed to decode response")
 		return err
 	}
-	
+
 	if facebookRes.StatusCode == 200 {
 
 		bind(channel.ChatID, response.MessageId)
@@ -294,19 +293,19 @@ func (b *facebookBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 			message.Variables = binding
 		}
 
-	}else {
+	} else {
 
 		log.Error().
 			Int("StatusCode", facebookRes.StatusCode).
 			Str("Error.Message", response.Error.Message).
-		Msg("SendMessage facebook Response")
+			Msg("SendMessage facebook Response")
 
 		if facebookRes.StatusCode == 400 {
 
 			if response.Error.Code == 551 && response.Error.ErrorSubcode == 1545041 { // client turned off messages
 				b.userUnsubscribed(notify.Chat.ChatID)
 			}
-		} 
+		}
 	}
 
 	return nil
@@ -314,10 +313,10 @@ func (b *facebookBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 
 func (b *facebookBot) userUnsubscribed(userID string) {
 
-	contact := &bot.Account {
-		ID:        0,
-		Channel:   "facebook",
-		Contact:   userID,
+	contact := &bot.Account{
+		ID:      0,
+		Channel: "facebook",
+		Contact: userID,
 	}
 
 	channel, err := b.Gateway.GetChannel(
@@ -339,13 +338,13 @@ func (b *facebookBot) userUnsubscribed(userID string) {
 	// DO: .CloseConversation(!)
 	// cause := commandCloseRecvDisposiotion
 	_ = channel.Close() // (cause) // default: /close request
-	
+
 	return
-	
+
 }
 
 func (b *facebookBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
-	
+
 	if b.verifyWebhook(reply, notice) {
 		return
 	}
@@ -363,102 +362,73 @@ func (b *facebookBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		for _, msg := range entry.Messaging {
 
 			switch {
-				case msg.Message != nil:
+			case msg.Message != nil:
 
-					chatID := fmt.Sprint(msg.Sender.ID)
+				chatID := fmt.Sprint(msg.Sender.ID)
 
-					b.RLock()   // +R
-					client, ok := b.clients[msg.Sender.ID]
-					b.RUnlock() // -R
-					
-					if !ok {
-						client, _ = b.getProfileInfo(chatID)
-						
-						b.Lock()   // +RW
-						b.clients[msg.Sender.ID] = client
-						b.Unlock() // -RW
+				b.RLock() // +R
+				client, ok := b.clients[msg.Sender.ID]
+				b.RUnlock() // -R
+
+				if !ok {
+					client, _ = b.getProfileInfo(chatID)
+
+					b.Lock() // +RW
+					b.clients[msg.Sender.ID] = client
+					b.Unlock() // -RW
+				}
+
+				contact := &bot.Account{
+					FirstName: client.FirstName,
+					LastName:  client.LastName,
+					ID:        0, // LOOKUP
+					Channel:   "facebook",
+					Contact:   fmt.Sprint(chatID),
+				}
+				// endregion
+
+				// region: channel
+				channel, err := b.Gateway.GetChannel(
+					notice.Context(), chatID, contact,
+				)
+				if err != nil {
+					// Failed locate chat channel !
+					re := errors.FromError(err)
+					if re.Code == 0 {
+						re.Code = (int32)(http.StatusBadGateway)
 					}
+					http.Error(reply, re.Detail, (int)(re.Code))
+					return // 503 Bad Gateway
+				}
 
-					contact := &bot.Account {
-						FirstName:  client.FirstName,
-						LastName:   client.LastName,
-						ID:         0, // LOOKUP
-						Channel:    "facebook",
-						Contact:    fmt.Sprint(chatID),
-					}
-					// endregion
-					
-					// region: channel
-					channel, err := b.Gateway.GetChannel(
-						notice.Context(), chatID, contact,
+				sendUpdate := bot.Update{
+					Title:   channel.Title,
+					Chat:    channel,
+					User:    contact,
+					Message: new(chat.Message),
+				}
+
+				sendMessage := sendUpdate.Message
+
+				if msg.Message.Attachments != nil {
+
+					var (
+						text string
 					)
-					if err != nil {
-						// Failed locate chat channel !
-						re := errors.FromError(err); if re.Code == 0 {
-							re.Code = (int32)(http.StatusBadGateway)
-						}
-						http.Error(reply, re.Detail, (int)(re.Code))
-						return // 503 Bad Gateway
-					}
-		
-					sendUpdate := bot.Update {
-						Title:   channel.Title,
-						Chat:    channel,
-						User:    contact,
-						Message: new(chat.Message),
-					}
 
-					sendMessage := sendUpdate.Message
+					switch len(msg.Message.Attachments) {
+					case 1:
 
-					if msg.Message.Attachments != nil {
-						
-						var (
-							text string
-						)
+						text = msg.Message.Text
 
-						switch len(msg.Message.Attachments){
-							case 1:
+					default:
 
-								text = msg.Message.Text
+						text = ""
 
-							default:
+						if msg.Message.Text != "" {
 
-								text = ""
-
-								if msg.Message.Text != "" {
-
-									sendMessage.Type = "text"
-									sendMessage.Text = msg.Message.Text
-
-									sendMessage.Variables = map[string]string{
-										chatID: msg.Message.Mid,
-									}
-									
-									err = b.Gateway.Read(notice.Context(), &sendUpdate)
-									if err != nil {
-										log.Error().Msg(err.Error())
-										//http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
-										//return // 502 Bad Gateway
-									}
-								}
-						}
-
-						for _, item := range msg.Message.Attachments {
-	
-							url, err := url.Parse(item.Payload.URL)
-							if err != nil {
-								log.Error().Msg(err.Error())
-								continue
-							}
-
-							path := filepath.Base(url.Path)
-
-							sendMessage.Text = text
-							sendMessage.Type = "file"
-							sendMessage.File = &chat.File {
-								Name:     path,
-								Url:      item.Payload.URL,
-							}
+							sendMessage.Type = "text"
+							sendMessage.Text = msg.Message.Text
 
 							sendMessage.Variables = map[string]string{
 								chatID: msg.Message.Mid,
@@ -471,29 +441,59 @@ func (b *facebookBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 								//return // 502 Bad Gateway
 							}
 						}
-					
-					}else if msg.Message.Text != "" {
-						
-						sendMessage.Type = "text"
-						sendMessage.Text = msg.Message.Text
+					}
+
+					for _, item := range msg.Message.Attachments {
+
+						url, err := url.Parse(item.Payload.URL)
+						if err != nil {
+							log.Error().Msg(err.Error())
+							continue
+						}
+
+						path := filepath.Base(url.Path)
+
+						sendMessage.Text = text
+						sendMessage.Type = "file"
+						sendMessage.File = &chat.File{
+							Name: path,
+							Url:  item.Payload.URL,
+						}
 
 						sendMessage.Variables = map[string]string{
 							chatID: msg.Message.Mid,
 						}
-						
+
 						err = b.Gateway.Read(notice.Context(), &sendUpdate)
 						if err != nil {
 							log.Error().Msg(err.Error())
 							//http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
 							//return // 502 Bad Gateway
 						}
-
 					}
 
-				 case msg.Delivery != nil:
+				} else if msg.Message.Text != "" {
 
-				 case msg.Postback != nil:
-				
+					sendMessage.Type = "text"
+					sendMessage.Text = msg.Message.Text
+
+					sendMessage.Variables = map[string]string{
+						chatID: msg.Message.Mid,
+					}
+
+					err = b.Gateway.Read(notice.Context(), &sendUpdate)
+					if err != nil {
+						log.Error().Msg(err.Error())
+						//http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
+						//return // 502 Bad Gateway
+					}
+
+				}
+
+			case msg.Delivery != nil:
+
+			case msg.Postback != nil:
+
 			}
 		}
 	}
@@ -509,28 +509,27 @@ func newInlineboardFb(data []*chat.Buttons, msg *messageContent, text string) {
 			if button.Type == "url" {
 				rows = append(rows, newfbKeyboardButtonURL(button.Text, button.Url))
 
-			}else if button.Type =="call" {
+			} else if button.Type == "call" {
 				rows = append(rows, newfbKeyboardButtonCall(button.Text, button.Code))
-	
-			}else if button.Type =="postback" {
+
+			} else if button.Type == "postback" {
 				rows = append(rows, newfbKeyboardButtonData(button.Text, button.Code))
 			}
 		}
 	}
 
 	if len(rows) > 0 {
-		msg.Attachment = &attachment {
+		msg.Attachment = &attachment{
 			Type: "template",
-			Payload: payload {
+			Payload: payload{
 				TemplateType: "button",
 				Buttons:      rows,
 			},
 		}
-	}else {
+	} else {
 		msg.Text = text
 	}
 
-	
 }
 
 func newReplyKeyboardFb(b []*chat.Buttons, msg *messageContent) {
@@ -546,16 +545,16 @@ func newReplyKeyboardFb(b []*chat.Buttons, msg *messageContent) {
 		}
 	}
 
-	msg.QuickReplies= quick
+	msg.QuickReplies = quick
 }
 
 func (b *facebookBot) getProfileInfo(psid string) (*userProfile, error) {
 	var profile userProfile
-	
+
 	url := fmt.Sprintf("https://graph.facebook.com/%s?fields=first_name,last_name,profile_pic&access_token=%v", psid, b.accessToken)
 	res, err := http.Get(url)
 
-	if err!=nil {
+	if err != nil {
 		log.Error().Err(err).Msg("Get profile info")
 		return &profile, err
 	}
@@ -568,62 +567,62 @@ func (b *facebookBot) getProfileInfo(psid string) (*userProfile, error) {
 	return &profile, err
 }
 
-func newfbKeyboardButtonURL(text string, url string)buttons {
-	return buttons {
-		Type: 	"web_url",
-		URL:   	url,
-		Title:	text,
+func newfbKeyboardButtonURL(text string, url string) buttons {
+	return buttons{
+		Type:  "web_url",
+		URL:   url,
+		Title: text,
 	}
 }
 
-func newfbKeyboardButtonData(text string, code string)buttons {
-	return buttons {
-		Type: 		"postback",
-		Title: 		text,
-		Payload: 	code,
+func newfbKeyboardButtonData(text string, code string) buttons {
+	return buttons{
+		Type:    "postback",
+		Title:   text,
+		Payload: code,
 	}
 }
 
-func newfbKeyboardButtonCall(text string, code string)buttons {
-	return buttons {
-		Type: 		"phone_number",
-		Title: 		text,
-		Payload: 	code, //number
+func newfbKeyboardButtonCall(text string, code string) buttons {
+	return buttons{
+		Type:    "phone_number",
+		Title:   text,
+		Payload: code, //number
 	}
 }
 
-func newfbKeyboardButtonReply(text string)quickReplies {
-	return quickReplies {
-		ContentType:  "text",
-		Title: 		  text,
-		Payload:      text,
+func newfbKeyboardButtonReply(text string) quickReplies {
+	return quickReplies{
+		ContentType: "text",
+		Title:       text,
+		Payload:     text,
 	}
 }
 
 func newFileMessageFb(f *chat.File, msg *messageContent) {
 	var attachmentType string
-	
+
 	switch {
-		case strings.HasPrefix(f.Mime, "image"):
-			attachmentType = "image"
+	case strings.HasPrefix(f.Mime, "image"):
+		attachmentType = "image"
 
-		case strings.HasPrefix(f.Mime, "video"):
-			attachmentType = "video"
+	case strings.HasPrefix(f.Mime, "video"):
+		attachmentType = "video"
 
-		case strings.HasPrefix(f.Mime, "audio"):
-			attachmentType = "audio"
+	case strings.HasPrefix(f.Mime, "audio"):
+		attachmentType = "audio"
 
-		default:
-			attachmentType = "file"
+	default:
+		attachmentType = "file"
 	}
 
-	msg.Attachment =  &attachment {
+	msg.Attachment = &attachment{
 		Type: attachmentType,
-		Payload: payload {
+		Payload: payload{
 			URL: f.Url,
 		},
 	}
-	
+
 }
 
 func (b *facebookBot) verifyWebhook(w http.ResponseWriter, r *http.Request) bool {

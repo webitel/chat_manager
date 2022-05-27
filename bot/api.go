@@ -8,9 +8,10 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/micro/go-micro/v2/errors"
+	// "github.com/golang/protobuf/proto"
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/webitel/chat_manager/api/proto/bot"
 	"github.com/webitel/chat_manager/app"
@@ -24,7 +25,7 @@ const objclassBots = "chat_bots"
 
 // Search returns list of bots, posibly filtered out with search conditions
 func (srv *Service) SearchBot(ctx context.Context, req *bot.SearchBotRequest, rsp *bot.SearchBotResponse) error {
-	
+
 	authN, err := app.GetContext(ctx,
 		app.AuthorizationRequire(srv.Auth.GetAuthorization),
 	)
@@ -81,9 +82,9 @@ func (srv *Service) SearchBot(ctx context.Context, req *bot.SearchBotRequest, rs
 	search := app.SearchOptions{
 		// Operation Context
 		Context: *(authN),
-	
-		ID:   req.GetId(),
-		Term: req.GetQ(),
+
+		ID:     req.GetId(),
+		Term:   req.GetQ(),
 		Filter: map[string]interface{}{
 			// "": nil,
 		},
@@ -103,11 +104,10 @@ func (srv *Service) SearchBot(ctx context.Context, req *bot.SearchBotRequest, rs
 	}
 	// Prepare results page
 	var (
-
-		size = len(list)
+		size  = len(list)
 		limit = search.GetSize()
 	)
-	
+
 	// normalized
 	rsp.Page = int32(search.GetPage())
 	rsp.Next = 0 < limit && limit < size // returned MORE than LIMIT requested
@@ -119,7 +119,7 @@ func (srv *Service) SearchBot(ctx context.Context, req *bot.SearchBotRequest, rs
 	rsp.Items = list[0:size]
 
 	return nil
-	
+
 	panic("not implemented") // TODO: Implement
 }
 
@@ -128,7 +128,6 @@ func (srv *Service) SelectBot(ctx context.Context, req *bot.SelectBotRequest, rs
 
 	// Quick Validation(!)
 	var (
-
 		oid = req.GetId()
 		uri = req.GetUri()
 	)
@@ -171,12 +170,12 @@ func (srv *Service) SelectBot(ctx context.Context, req *bot.SelectBotRequest, rs
 	lookup := app.SearchOptions{
 		// Operational context
 		Context: *(authN),
-		
+
 		Fields: fields,
 		Access: 0, // READ
 
-		Size:   1,
-		Page:   1,
+		Size: 1,
+		Page: 1,
 	}
 
 	if oid != 0 {
@@ -220,7 +219,7 @@ func (srv *Service) SelectBot(ctx context.Context, req *bot.SelectBotRequest, rs
 		return errors.NotFound(
 			"chat.bot.select.not_found",
 			"chatbot: lookup query %s; not found",
-			 expr,
+			expr,
 		)
 	}
 
@@ -228,13 +227,12 @@ func (srv *Service) SelectBot(ctx context.Context, req *bot.SelectBotRequest, rs
 	app.MergeProto(rsp, obj, lookup.Fields...)
 
 	return nil
-	
+
 	// panic("not implemented") // TODO: Implement
 }
 
 // Create new bot profile
 func (srv *Service) CreateBot(ctx context.Context, add *bot.Bot, obj *bot.Bot) error {
-
 
 	// // region: Validation
 	// err := Validate(add)
@@ -248,9 +246,9 @@ func (srv *Service) CreateBot(ctx context.Context, add *bot.Bot, obj *bot.Bot) e
 	// 	Int64("pid", add.Id).
 	// 	Int64("pdc", add.GetDc().GetId()).
 	// 	Int64("bot", add.Flow.Id).
-		
+
 	// 	Str("uri", add.Uri).
-		
+
 	// 	Str("title", add.Name).
 	// 	Str("channel", add.Provider).
 
@@ -260,7 +258,7 @@ func (srv *Service) CreateBot(ctx context.Context, add *bot.Bot, obj *bot.Bot) e
 	// setup := GetProvider(add.GetProvider())
 
 	// if setup == nil {
-		
+
 	// 	log.Warn().Msg("NOT SUPPORTED")
 	// 	// Client Request Error !
 	// 	return errors.BadRequest(
@@ -283,7 +281,7 @@ func (srv *Service) CreateBot(ctx context.Context, add *bot.Bot, obj *bot.Bot) e
 		return err
 	}
 	// endregion: Authentication
-	
+
 	// region: Authorization
 	scope := authN.HasObjclass(objclassBots)
 	if scope == nil {
@@ -355,8 +353,8 @@ func (srv *Service) CreateBot(ctx context.Context, add *bot.Bot, obj *bot.Bot) e
 		Context: *(authN),
 		Fields: []string{
 			// "dc",         // normal: source .Creds
-			"id",            // assigned from store !
-			"flow",          // need display name !
+			"id",   // assigned from store !
+			"flow", // need display name !
 			// "created_by", // normal: source .Creds
 			// "updated_by", // normal: source .Creds
 		},
@@ -394,7 +392,7 @@ func (srv *Service) CreateBot(ctx context.Context, add *bot.Bot, obj *bot.Bot) e
 	// REGISTER ChatBot WebHook Callback URI (!)
 	force := true // [RE-]REGISTER on provider side (?)
 	err = agent.Register(ctx, force)
-	
+
 	if err != nil {
 
 		re := errors.FromError(err)
@@ -402,7 +400,7 @@ func (srv *Service) CreateBot(ctx context.Context, add *bot.Bot, obj *bot.Bot) e
 		if re.Code == 0 {
 			// NOTE: is NOT err.(*errors.Error)
 			code := http.StatusBadGateway
-			re.Id = "chat.bot."+ add.Provider +".register.error"
+			re.Id = "chat.bot." + add.Provider + ".register.error"
 			// re.Detail = err.Error()
 			re.Code = (int32)(code)
 			re.Status = http.StatusText(code)
@@ -451,7 +449,7 @@ func (srv *Service) constraintChatBotsLimit(req *app.Context, delta int) error {
 		return errors.New(
 			"bot.register.product.not_found",
 			"bots: CHAT product required but missing",
-			 http.StatusPreconditionFailed,
+			http.StatusPreconditionFailed,
 		)
 	}
 
@@ -463,11 +461,11 @@ func (srv *Service) constraintChatBotsLimit(req *app.Context, delta int) error {
 		return err
 	}
 
-	if (int)(limitMax) < (n+delta) {
+	if (int)(limitMax) < (n + delta) {
 		return errors.New(
 			"bot.register.limit.exhausted",
-			"bots: gateway registration is limited; maximum number of active: "+ strconv.FormatInt((int64)(limitMax), 10),
-			 http.StatusPreconditionFailed,
+			"bots: gateway registration is limited; maximum number of active: "+strconv.FormatInt((int64)(limitMax), 10),
+			http.StatusPreconditionFailed,
 		)
 	}
 
@@ -478,7 +476,6 @@ func (srv *Service) constraintChatBotsLimit(req *app.Context, delta int) error {
 func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rsp *bot.Bot) error {
 
 	var (
-
 		dst = req.GetBot() // NEW Source
 		oid = dst.GetId()
 	)
@@ -513,11 +510,11 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 		case "id", "dc", "uri", "provider",
 			"created_at", "created_by",
 			"updated_at", "updated_by":
-			// FIXME: 
+			// FIXME:
 			return errors.BadRequest(
 				"chat.bot.update.field.readonly",
 				"chatbot: update .%s; attribute is readonly",
-				 att,
+				att,
 			)
 		// EDITABLE
 		case "name", "enabled", "flow", "metadata":
@@ -526,7 +523,7 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 			return errors.BadRequest(
 				"chat.bot.update.field.invalid",
 				"chatbot: update .%s; attribute is unknown",
-				 att,
+				att,
 			)
 		}
 	}
@@ -572,16 +569,15 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 
 	// Fetch source !
 	var (
-
-		src *bot.Bot // OLD Source
+		src    *bot.Bot // OLD Source
 		lookup = app.SearchOptions{
-			
+
 			Context: *(authN),
-			
+
 			Fields: []string{"+"}, // ALL
 			Access: mode,          // WRITE
-			
-			ID: []int64{oid},
+
+			ID:   []int64{oid},
 			Size: 1,
 		}
 	)
@@ -596,7 +592,7 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 		return errors.NotFound(
 			"chat.bot.locate.not_found",
 			"chatbot: update .id=%d; not found",
-			 oid,
+			oid,
 		)
 	}
 
@@ -606,19 +602,19 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 	app.MergeProto(res, dst, fields...)
 
 	// DO: REGISTER ?
-	if (res.Enabled && !src.Enabled) {
+	if res.Enabled && !src.Enabled {
 		err = srv.constraintChatBotsLimit(authN, +1)
 		if err != nil {
 			// ERR: chat: gateway registration is limited to a maximum of active at a time
 			return err
 		}
 	}
-	
+
 	// // TODO: Validate result object !
 	// err = Validate(res)
 	// TODO: check provider specific .metadata options !!!!!!!!!!!!!!!!!!!!!!!
 	gate, err := srv.setup(res)
-	
+
 	if err != nil {
 		return err // 400
 	}
@@ -626,12 +622,12 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 	// Save changes to persistent store ...
 	modify := app.UpdateOptions{
 		Context: *(authN),
-		Fields:    fields, // partial
+		Fields:  fields, // partial
 	}
 	// Track operation details
 	res.UpdatedAt = authN.Timestamp()
 	res.UpdatedBy = &bot.Refer{
-		Id: authN.Creds.GetUserId(),
+		Id:   authN.Creds.GetUserId(),
 		Name: authN.Creds.GetName(),
 	}
 	// Perform UPDATE
@@ -706,116 +702,116 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 	// 	return err
 	// }
 
-/*
-	// DO: Apply changes to running bot !
-	var post []func() error
-	// dst - NEW source
-	// src - OLD source
-	// res - NEW source
-	for _, att := range fields {
-		switch att {
-		// EDITABLE
-		case "uri":
-			thisURI := src.GetUri()
-			nextURI := dst.GetUri()
-			if thisURI != nextURI {
-				// FIXME: URI changed !
-				if !res.GetEnabled() {
-					break
-				}
-				// APPLY: URI changed !
-				post = append(post, func() error {
-
-					srv.indexMx.Lock()   // +RW
-					defer srv.indexMx.Unlock() // -RW
-
-					pid, ok := srv.gateways[nextURI]
-					if ok && pid != oid {
-						return errors.Conflict(
-							"chat.bot.uri.conflict",
-							"chatbot: service URI reserved",
-						)
+	/*
+		// DO: Apply changes to running bot !
+		var post []func() error
+		// dst - NEW source
+		// src - OLD source
+		// res - NEW source
+		for _, att := range fields {
+			switch att {
+			// EDITABLE
+			case "uri":
+				thisURI := src.GetUri()
+				nextURI := dst.GetUri()
+				if thisURI != nextURI {
+					// FIXME: URI changed !
+					if !res.GetEnabled() {
+						break
 					}
-
-					pid, ok = srv.gateways[thisURI]
-					if ok && pid == oid {
-						delete(srv.gateways, thisURI)
-						srv.gateways[nextURI] = oid
-					}
-
-					return nil
-				})
-			}
-		// case "name":
-		case "enabled":
-			enable := res.GetEnabled()      // WANT !
-			if src.GetEnabled() != enable { // TOGGLE !
-				if !enable {                // SWITCH: OFF !
+					// APPLY: URI changed !
 					post = append(post, func() error {
 
-						var (
-							ok bool
-							bot *Gateway
-						)
+						srv.indexMx.Lock()   // +RW
+						defer srv.indexMx.Unlock() // -RW
+
+						pid, ok := srv.gateways[nextURI]
+						if ok && pid != oid {
+							return errors.Conflict(
+								"chat.bot.uri.conflict",
+								"chatbot: service URI reserved",
+							)
+						}
+
+						pid, ok = srv.gateways[thisURI]
+						if ok && pid == oid {
+							delete(srv.gateways, thisURI)
+							srv.gateways[nextURI] = oid
+						}
+
+						return nil
+					})
+				}
+			// case "name":
+			case "enabled":
+				enable := res.GetEnabled()      // WANT !
+				if src.GetEnabled() != enable { // TOGGLE !
+					if !enable {                // SWITCH: OFF !
+						post = append(post, func() error {
+
+							var (
+								ok bool
+								bot *Gateway
+							)
+
+							srv.indexMx.Lock()   // +RW
+							if bot, ok = srv.profiles[oid]; ok {
+								delete(srv.gateways, src.GetUri())
+								delete(srv.profiles, oid)
+							}
+							srv.indexMx.Unlock() // -RW
+							// NOTE: we need to DEREGISTER the linked webhook URI
+							// from provider to NOT receive NO MORE new updates !..
+							if !ok {
+								bot = gate
+							}
+
+							defer bot.External.Close()
+							return bot.Deregister(ctx)
+						})
+					} else {                    // SWITCH: ON !
+						// // FIXME: leave as is; will init on first callback ?
+						// post = append(post, func() error {
+						// 	return gate.Register(ctx, true)
+						// })
+					}
+				} else if enable {              // UPGRADE: RUNNING !
+					// FIXME: upgrade running bot changes ?
+					post = append(post, func() error {
 
 						srv.indexMx.Lock()   // +RW
-						if bot, ok = srv.profiles[oid]; ok {
-							delete(srv.gateways, src.GetUri())
-							delete(srv.profiles, oid)
-						}
-						srv.indexMx.Unlock() // -RW
-						// NOTE: we need to DEREGISTER the linked webhook URI
-						// from provider to NOT receive NO MORE new updates !..
-						if !ok {
-							bot = gate
-						}
+						defer srv.indexMx.Unlock() // -RW
 
-						defer bot.External.Close()
-						return bot.Deregister(ctx)
+						run, ok := srv.profiles[oid]
+						if ok {
+
+							// TODO: NewProviderBot(runtime.(interface{}), gate.(*Gateway))
+						}
 					})
-				} else {                    // SWITCH: ON !
-					// // FIXME: leave as is; will init on first callback ?
-					// post = append(post, func() error {
-					// 	return gate.Register(ctx, true)
-					// })
 				}
-			} else if enable {              // UPGRADE: RUNNING !
-				// FIXME: upgrade running bot changes ?
-				post = append(post, func() error {
-					
-					srv.indexMx.Lock()   // +RW
-					defer srv.indexMx.Unlock() // -RW
+			// case "flow":
+				// FIXME: engine service responsibility
+			case "metadata":
+				if src.GetEnabled() && !bytes.Equal(
+					metadataHash(src.GetMetadata()), // OLD
+					metadataHash(res.GetMetadata()), // NEW
+				) {
+					// METADATA changes !
+					post = append(post, func() error {
+						// TODO: resync bot's running sessions
+						srv.indexMx.Lock()   // +RW
+						defer srv.indexMx.Unlock() // -RW
 
-					run, ok := srv.profiles[oid]
-					if ok {
-						
-						// TODO: NewProviderBot(runtime.(interface{}), gate.(*Gateway))
-					}
-				})
-			}
-		// case "flow":
-			// FIXME: engine service responsibility
-		case "metadata":
-			if src.GetEnabled() && !bytes.Equal(
-				metadataHash(src.GetMetadata()), // OLD
-				metadataHash(res.GetMetadata()), // NEW
-			) {
-				// METADATA changes !
-				post = append(post, func() error {
-					// TODO: resync bot's running sessions
-					srv.indexMx.Lock()   // +RW
-					defer srv.indexMx.Unlock() // -RW
+						run, ok := srv.profiles[oid]
+						if ok {
 
-					run, ok := srv.profiles[oid]
-					if ok {
-						
-						// TODO: NewProviderBot(runtime.(interface{}), gate.(*Gateway))
-					}
-				})
+							// TODO: NewProviderBot(runtime.(interface{}), gate.(*Gateway))
+						}
+					})
+				}
 			}
 		}
-	}
-*/
+	*/
 
 	// Show RESULT !
 	// *(rsp) = *(obj)
@@ -828,9 +824,8 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 
 // Delete bot(s) selection
 func (srv *Service) DeleteBot(ctx context.Context, req *bot.SearchBotRequest, rsp *bot.SearchBotResponse) error {
-	
-	var (
 
+	var (
 		ids = req.GetId()
 	)
 
@@ -879,13 +874,13 @@ func (srv *Service) DeleteBot(ctx context.Context, req *bot.SearchBotRequest, rs
 	// TODO: select ALL by ids
 	search := app.SearchOptions{
 		Context: *(authN),
-		Fields:  []string{
+		Fields: []string{
 			"id", "uri",
 			"enabled",
 		},
-		Access:  mode, // DELETE
-		Size:    len(ids),
-		ID:      ids, // Find ALL to be deleted
+		Access: mode, // DELETE
+		Size:   len(ids),
+		ID:     ids, // Find ALL to be deleted
 	}
 
 	// PERFORM SELECT !
@@ -900,7 +895,7 @@ func (srv *Service) DeleteBot(ctx context.Context, req *bot.SearchBotRequest, rs
 	var (
 		no []int64 // index: records ID(s) NOT FOUND !
 	)
-	next:
+next:
 	for _, id := range ids {
 		for _, obj := range list {
 			if obj.GetId() == id {
@@ -917,13 +912,13 @@ func (srv *Service) DeleteBot(ctx context.Context, req *bot.SearchBotRequest, rs
 		return errors.BadRequest(
 			"chat.bot.delete.not_found",
 			"chatbot: lookup id=%v; not found",
-			 no,
+			no,
 		)
 	}
 
 	delete := app.DeleteOptions{
 		Context: *(authN),
-		ID:        ids,
+		ID:      ids,
 	}
 
 	// PERFORM DELETE !
@@ -940,7 +935,7 @@ func (srv *Service) DeleteBot(ctx context.Context, req *bot.SearchBotRequest, rs
 	for _, pid := range ids {
 		run, ok := srv.profiles[pid]
 		if ok && run != nil {
-			run.Lock()   // +RW
+			run.Lock() // +RW
 			run.Enabled = false
 			run.deleted = true
 			if len(run.external) == 0 {
@@ -953,24 +948,23 @@ func (srv *Service) DeleteBot(ctx context.Context, req *bot.SearchBotRequest, rs
 	// srv.indexMx.Unlock() // -RW
 
 	return nil
-	
+
 	// panic("not implemented") // TODO: Implement
 }
 
-
-
-
 // SendMessage to external chat end-user (contact) side
 func (srv *Service) SendMessage(ctx context.Context, req *bot.SendMessageRequest, rsp *bot.SendMessageResponse) error {
-	
-	pid := req.GetProfileId(); if pid == 0 {
+
+	pid := req.GetProfileId()
+	if pid == 0 {
 		return errors.BadRequest(
 			"chat.bot.send.profile_id.required",
 			"gateway: send.profile_id required but missing",
 		)
 	}
 
-	msg := req.GetMessage(); if msg == nil {
+	msg := req.GetMessage()
+	if msg == nil {
 		return errors.BadRequest(
 			"chat.bot.send.message.required",
 			"gateway: send.message required but missing",
@@ -988,16 +982,16 @@ func (srv *Service) SendMessage(ctx context.Context, req *bot.SendMessageRequest
 
 	// perform
 	err = c.Send(ctx, req)
-	
+
 	if err != nil {
-		
+
 		// srv.Log.Error().Err(err).
-	
+
 		// 	Int64("pid", gate.Profile.Id).
 		// 	Str("type", msg.GetType()).
 		// 	Str("chat-id", req.GetExternalUserId()).
 		// 	Str("text", msg.GetText()).
-		
+
 		// Msg("Failed to send message")
 		return err
 	}
@@ -1012,32 +1006,32 @@ func (srv *Service) SendMessage(ctx context.Context, req *bot.SendMessageRequest
 	}
 	// +OK
 	return nil
-	
+
 	// if closing {
-		
+
 	// 	srv.Log.Warn().
-	
+
 	// 		Int64("pid", gate.Profile.Id).
 	// 		Str("type", msg.GetType()).
 	// 		Str("chat-id", req.GetExternalUserId()).
 	// 		Str("text", msg.GetText()).
-		
+
 	// 	Msg("SENT Close")
-	
+
 	// } else {
 
 	// 	srv.Log.Debug().
-		
+
 	// 		Int64("pid", gate.Profile.Id).
 	// 		Str("type", msg.GetType()).
 	// 		Str("chat-id", req.GetExternalUserId()).
 	// 		Str("text", msg.GetText()).
-		
+
 	// 	Msg("SENT")
 	// }
 
 	// return err
-	
+
 	// panic("not implemented") // TODO: Implement
 }
 
@@ -1091,9 +1085,9 @@ func (srv *Service) AddProfile(ctx context.Context, req *bot.AddProfileRequest, 
 		Int64("pid", add.Id).
 		Int64("pdc", add.DomainId).
 		Int64("bot", add.SchemaId).
-		
+
 		Str("uri", "/" + add.UrlId).
-		
+
 		Str("title", add.Name).
 		Str("channel", add.Type).
 
@@ -1103,9 +1097,9 @@ func (srv *Service) AddProfile(ctx context.Context, req *bot.AddProfileRequest, 
 	start := GetProvider(add.Type)
 
 	if start == nil {
-		
+
 		log.Warn().Msg("NOT SUPPORTED")
-		
+
 		return errors.New(
 			"chat.gateway.provider.not_supported",
 			"gateway: provider "+ add.Type +" not supported",
@@ -1144,14 +1138,14 @@ func (srv *Service) AddProfile(ctx context.Context, req *bot.AddProfileRequest, 
 	}
 
 	var err error
-	
+
 	agent.External, err = start(agent)
 
 	if err != nil {
-		
+
 		agent.External = nil
 		re := errors.FromError(err)
-		
+
 		if re.Code == 0 {
 			// NOTE: is NOT err.(*errors.Error)
 			code := http.StatusInternalServerError
@@ -1162,13 +1156,13 @@ func (srv *Service) AddProfile(ctx context.Context, req *bot.AddProfileRequest, 
 		}
 
 		log.Error().Str("error", re.Detail).Msg("STARTUP")
-		
+
 		return re
 	}
 
 	force := true // REGISTER WebHook(!)
 	err = agent.Register(ctx, force)
-	
+
 	if err != nil {
 
 		re := errors.FromError(err)
@@ -1198,12 +1192,12 @@ func (srv *Service) AddProfile(ctx context.Context, req *bot.AddProfileRequest, 
 
 // DeleteProfile deregister profile gateway
 func (srv *Service) DeleteProfile(ctx context.Context, req *bot.DeleteProfileRequest, res *bot.DeleteProfileResponse) error {
-	
+
 	pid := req.GetId()
 	uri := req.GetUrlId()
-	
+
 	gate, err := srv.Gateway(ctx, pid, uri)
-	
+
 	if err != nil {
 		return err
 	}
@@ -1229,7 +1223,6 @@ func (srv *Service) DeleteProfile(ctx context.Context, req *bot.DeleteProfileReq
 
 	return nil
 }*/
-
 
 // func (srv *Service) register() error {}
 

@@ -3,32 +3,31 @@ package bot
 import (
 	"context"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
 
-	"github.com/micro/go-micro/v2/client"
-	"github.com/micro/go-micro/v2/client/selector"
-	"github.com/micro/go-micro/v2/registry"
+	"github.com/micro/micro/v3/service/client"
+	"github.com/micro/micro/v3/service/server"
+	"github.com/micro/micro/v3/util/selector"
 
+	"github.com/micro/micro/v3/service/context/metadata"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
-	// strategy "github.com/webitel/chat_manager/internal/selector"
+	strategy "github.com/webitel/chat_manager/internal/selector"
 )
 
 type Channel struct {
-
 	Host string // webitel.chat.server node-id serving .this channel
 
-	Title   string // chat channel title
-	ChatID  string // chat.external.id (provider:chat.id) .ExternalID  .AuthUserID
+	Title   string  // chat channel title
+	ChatID  string  // chat.external.id (provider:chat.id) .ExternalID  .AuthUserID
 	Account Account // chat.external.user.contact
 
-	ChannelID string  // chat.channel.id  .ID
-	SessionID string  // chat.session.id  .ConverationID
+	ChannelID string // chat.channel.id  .ID
+	SessionID string // chat.session.id  .ConverationID
 	// Contact  *Account // chat.channel.user
 	Properties interface{} // driver channel bindings
-	
+
 	// Title  string // chat channel title
 	// ChatID string // chat.external.id (provider:chat.id) .ExternalID  .AuthUserID
 	// Username string // chat channel username
@@ -37,7 +36,7 @@ type Channel struct {
 	// Closed indicates that .this channel was previously closed at timestamp
 	Closed int64
 
-	Log zerolog.Logger
+	Log     zerolog.Logger
 	Gateway *Gateway
 }
 
@@ -66,19 +65,15 @@ func (c *Channel) BotID() int64 {
 // 	return c.ContactID
 // }
 
-
-
 func (c *Channel) Provider() string {
 	return c.Gateway.External.String()
 }
-
-
 
 // func (c *Channel) Close(cause string) (err error) {
 func (c *Channel) Close() (err error) {
 
 	bot := c.Gateway
-	bot.Lock()   // +RW
+	bot.Lock() // +RW
 	e, ok := bot.external[c.ChatID]
 	if ok = (ok && e == c); ok && c.Closed != 0 {
 		delete(bot.external, c.ChatID)
@@ -145,13 +140,13 @@ func (c *Channel) Close() (err error) {
 		// // }
 		// // cause := "" // ACK: "Conversation closed" expected !
 		// if cause == "" {
-			cause := commandCloseRecvDisposiotion // FROM: external, end-user request !
+		cause := commandCloseRecvDisposiotion // FROM: external, end-user request !
 		// }
 		// // switch cause {
 		// // case "": // default: "Conversation closed"
 		// // 	// cause = commandCloseSendDisposiotion
 		// // case commandCloseRecvDisposiotion:
-		// // 	cause = "closed" // 
+		// // 	cause = "closed" //
 		// // }
 
 		c.Log.Warn().Str("cause", cause).Msg(">>>>> CLOSING >>>>>")
@@ -165,13 +160,13 @@ func (c *Channel) Close() (err error) {
 		// PERFORM: close request !
 		_, err = c.Gateway.Internal.Client.CloseConversation(
 			// cancellation // request // callOptions
-			context.TODO(), &close, c.sendOptions,
+			context.TODO(), &close, c.callOpts,
 		)
 
 		if err != nil {
 			// FORCE: destroy runtime link
 			bot := c.Gateway
-			bot.Lock()   // +RW
+			bot.Lock() // +RW
 			e, ok := bot.external[c.ChatID]
 			if ok = (ok && e == c); ok {
 				delete(bot.external, c.ChatID)
@@ -266,18 +261,17 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 		DomainId: c.DomainID(),
 		Username: c.Title, // title, // used: as channel title
 		User: &chat.User{
-			UserId:     c.Account.ID, // c.ContactID,
+			UserId:     c.Account.ID,      // c.ContactID,
 			Type:       c.Account.Channel, // c.Provider(),
-			Connection: providerID, // contact: profile.ID
+			Connection: providerID,        // contact: profile.ID
 			Internal:   false,
 		},
-		Message: message, // start
+		Message:    message, // start
 		Properties: metadata,
 	}
 
 	agent := c.Gateway
 	span := agent.Log.With().
-	
 		Str("chat-id", c.ChatID).
 		Str("username", c.Title). // title).
 
@@ -288,30 +282,29 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 		c.Host = "lookup"
 	}
 	chat, err := c.Gateway.Internal.Client.
-		StartConversation(ctx, &start, c.sendOptions)
-	
+		StartConversation(ctx, &start, c.callOpts)
+
 	if err != nil {
 		span.Error().Err(err).Msg(">>>>> START <<<<<")
 		return err
 	}
 
-	c.Closed    = 0 // RE- NEW!
+	c.Closed = 0 // RE- NEW!
 	// c.Username  = title
 	c.ChannelID = chat.ChannelId
 	c.SessionID = chat.ConversationId
 
 	span = span.With().
-	
 		Str("session-id", c.SessionID).
 		Str("channel-id", c.ChannelID).
-		Str("host",       c.Host). // webitel.chat.server
+		Str("host", c.Host). // webitel.chat.server
 
 		Logger()
 
 	c.Log = span
 
 	// channel := &Channel{
-		
+
 	// 	ChatID:     externalID,
 	// 	Title:      username,
 
@@ -324,10 +317,10 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 	// 	Gateway:    c,
 	// }
 
-	c.Gateway.Lock()   // +RW
+	c.Gateway.Lock() // +RW
 	c.Gateway.external[c.ChatID] = c
 	c.Gateway.internal[c.Account.ID] = c // [c.ContactID] = c
-	c.Gateway.Unlock() // -RW
+	c.Gateway.Unlock()                   // -RW
 
 	c.Log.Info().Msg(">>>>> START <<<<<")
 
@@ -350,7 +343,11 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 	// // }
 	// // endregion
 
-	if c.IsNew() {
+	if c.IsNew() { // || c.Closed != 0 {
+
+		if c.Closed != 0 {
+			c.Log.Warn().Msg("RESTART")
+		}
 
 		if close { // command: /close ?
 			c.Log.Warn().Str("command", commandCloseRecvDisposiotion).
@@ -371,16 +368,16 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 		ctx, // operation cancellation context
 		&chat.SendMessageRequest{
 
-			AuthUserId:     c.Account.ID, // senderFromID
+			AuthUserId: c.Account.ID, // senderFromID
 
-			ChannelId:      c.ChannelID,  // senderChatID
-			ConversationId: c.SessionID,  // targetChatID
+			ChannelId:      c.ChannelID, // senderChatID
+			ConversationId: c.SessionID, // targetChatID
 
-			Message:        message,      // message
+			Message: message, // message
 			// EDIT(?) 0 != message.UpdatedAt
 		},
 		// callOptions ...
-		c.sendOptions,
+		c.callOpts,
 	)
 
 	var event *zerolog.Event
@@ -397,58 +394,109 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 		event = c.Log.Error().Err(err)
 	}
 
-	event.Str("text", messageText).Msg(">>>>> RECV >>>>>>")
+	event.Str("text", messageText).Msg("<<<<< RECV <<<<<")
 
 	return err
 }
 
+// call implements client.CallWrapper to keep tracking channel @workflow service node
+func (c *Channel) callWrap(next client.CallFunc) client.CallFunc {
+	return func(ctx context.Context, addr string, req client.Request, rsp interface{}, opts client.CallOptions) error {
+		// Micro-From-Host: Origin
+		ctx = metadata.MergeContext(ctx, metadata.Metadata{"Micro-From-Host": server.DefaultServer.Options().Address}, false)
+		// PERFORM client.Call(!)
+		err := next(ctx, addr, req, rsp, opts)
+		//
+		if err != nil {
+			if c.Host != "" {
+				c.Log.Warn().
+					Str("seed", c.Host). // WANTED
+					Str("peer", addr).   // REQUESTED
+					Msg("LOST")
+			}
+			c.Host = ""
+			return err
+		}
 
+		if c.Host == "" {
+			// NEW! Hosted!
+			c.Host = addr
 
-// lookup is client.Selector.Strategy to peek preffered @workflow node,
-// serving .this specific chat channel
-func (c *Channel) peer(services []*registry.Service) selector.Next {
+			c.Log.Info().
+				Str("peer", c.Host).
+				Msg("HOSTED")
 
+		} else if addr != c.Host {
+			// Hosted! But JUST Served elsewhere ...
+			c.Log.Info().
+				Str("seed", c.Host). // WANTED
+				Str("peer", addr).   // SERVED
+				Msg("RE-HOST")
+
+			c.Host = addr
+		}
+
+		return err
+	}
+}
+
+// CallOption specific for this kind of channel(s)
+func (c *Channel) callOpts(opts *client.CallOptions) {
+	// apply .call options for .this channel ...
+	for _, setup := range []client.CallOption{
+		client.WithSelector(channelLookup{c}),
+		client.WithCallWrapper(c.callWrap),
+	} {
+		setup(opts)
+	}
+}
+
+type channelLookup struct {
+	*Channel
+}
+
+var _ selector.Selector = channelLookup{nil}
+
+// Select a route from the pool using the strategy
+func (c channelLookup) Select(hosts []string, opts ...selector.SelectOption) (selector.Next, error) {
 	perform := "LOOKUP"
 	// region: recover .this channel@workflow service node
 	if c.Host == "lookup" {
 		c.Host = "" // RESET
 	} else if c.Host != "" {
-		
+
 		// c.Log.Debug().
 		// 	Str("peer", c.Host).
 		// 	Msg("LOOKUP")
 	}
 	// endregion
 
-	selectNode := selector.Random
-	// selectNode = strategy.PrefferedHost("localhost")
-	
+	// Lookup: [webitel.chat.server]
+	lookup := strategy.RoundRobin.Select
+	// lookup := strategy.PrefferedHost("127.0.0.1")
+
 	if c.Host == "" {
 		// START
-		return selectNode(services)
+		return lookup(hosts, opts...)
 	}
-	
-	var peer *registry.Node
-	
-	lookup:
-	for _, service := range services {
-		for _, node := range service.Nodes {
-			if strings.HasSuffix(node.Id, c.Host) {
-				peer = node
-				break lookup
-			}
+
+	var peer string
+	for _, host := range hosts {
+		if host == c.Host {
+			peer = host
+			break
 		}
 	}
 
-	if peer == nil {
-		
+	if peer == "" {
+
 		c.Log.Warn().
-			Str("peer", c.Host). // WANTED
-			Str("peek", "random"). // SELECT
+			Str("seed", c.Host).   // WANTED
+			Str("peer", "random"). // SELECT
 			Str("error", "host: service unavailable").
 			Msg(perform)
 
-		return selectNode(services)
+		return lookup(hosts, opts...)
 	}
 
 	var event *zerolog.Event
@@ -459,65 +507,29 @@ func (c *Channel) peer(services []*registry.Service) selector.Next {
 	}
 
 	event.
-		Str("host", c.Host). // WANTED
-		Str("addr", peer.Address). // FOUND
+		Str("seed", c.Host). // WANTED
+		Str("peer", peer).   // FOUND
 		Msg(perform)
-	
-	return func() (*registry.Node, error) {
 
-		return peer, nil
-	}
+	return func() string {
+		return peer
+	}, nil
 }
 
-// call implements client.CallWrapper to keep tracking channel @workflow service node
-func (c *Channel) call(next client.CallFunc) client.CallFunc {
-	return func(ctx context.Context, node *registry.Node, req client.Request, rsp interface{}, opts client.CallOptions) error {
+// Record the error returned from a route to inform future selection
+func (c channelLookup) Record(host string, err error) error {
+	if err != nil {
 
-		// PERFORM client.Call(!)
-		err := next(ctx, node, req, rsp, opts)
-		// 
-		if err != nil {
-			if c.Host != "" {
-				c.Log.Warn().
-					Str("peer", c.Host). // WANTED
-					Str("host", node.Id). // REQUESTED
-					Str("addr", node.Address).
-					Msg("LOST")
-			}
-			c.Host = ""
-			return err
-		}
-
-		if c.Host == "" {
-			// NEW! Hosted!
-			c.Host = node.Id
-
-			c.Log.Info().
-				Str("host", c.Host).
-				Str("addr", node.Address).
-				Msg("HOSTED")
-		
-		} else if node.Id != c.Host {
-			// Hosted! But JUST Served elsewhere ...
-			c.Log.Info().
-				Str("peer", c.Host). // WANTED
-				Str("host", node.Id). // SERVED
-				Str("addr", node.Address).
-				Msg("RE-HOST")
-
-			c.Host = node.Id
-		}
-
-		return err
 	}
+	return nil
 }
 
-// CallOption specific for this kind of channel(s)
-func (c *Channel) sendOptions(opts *client.CallOptions) {
-	// apply .call options for .this channel ...
-	client.WithSelectOption(
-		selector.WithStrategy(c.peer),
-	)(opts)
+// Reset the selector
+func (c channelLookup) Reset() error {
+	return nil
+}
 
-	client.WithCallWrapper(c.call)(opts)
+// String returns the name of the selector
+func (c channelLookup) String() string {
+	return "webitel.chat.srv"
 }

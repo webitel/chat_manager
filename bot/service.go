@@ -11,7 +11,7 @@ import (
 
 	"net/http/pprof"
 
-	"github.com/micro/go-micro/v2/errors"
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/rs/zerolog"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/app"
@@ -23,24 +23,23 @@ type Service struct {
 	// cmd/bot.Service
 	// Options
 	// Public site URL to connect to .this service
-	URL      string
+	URL string
 
 	// Address to listen HTTP callbacks (webhook) requests
-	Addr     string
+	Addr string
 
-	Log      zerolog.Logger
-	Auth     *auth.Client
-	Client   chat.ChatService
-	exit     chan chan error
+	Log    zerolog.Logger
+	Auth   *auth.Client
+	Client chat.ChatService
+	exit   chan chan error
 
 	// persistent store
-	store    Store
+	store Store
 	// local cache store
 	indexMx  sync.RWMutex
-	gateways map[string]int64 // map[URI]profile.id
+	gateways map[string]int64   // map[URI]profile.id
 	profiles map[int64]*Gateway // map[profile.id]gateway
 }
-
 
 func NewService(
 	store Store,
@@ -50,9 +49,9 @@ func NewService(
 ) *Service {
 
 	return &Service{
-		
-		store: store,
-		Log: *(logger),
+
+		store:  store,
+		Log:    *(logger),
 		Client: client, // chat.NewChatService("webitel.chat.server"),
 
 		exit: make(chan chan error),
@@ -92,7 +91,7 @@ func (srv *Service) Start() error {
 	// 	if !strings.HasPrefix(profile.UrlId, "chat/") {
 	// 		continue
 	// 	}
-		
+
 	// 	register.Profile = profile
 	// 	_ = srv.AddProfile(context.TODO(), &register, &response)
 	// }
@@ -112,12 +111,12 @@ func (srv *Service) Start() error {
 	if srv.URL == "" {
 		hostURL = &url.URL{
 			Scheme: "http",
-			Host: srv.Addr,
+			Host:   srv.Addr,
 		}
 		if secure != nil {
 			hostURL.Scheme += "s"
 		}
-		
+
 	} else {
 		hostURL, err = url.ParseRequestURI(srv.URL)
 		if err != nil {
@@ -145,7 +144,7 @@ func (srv *Service) Start() error {
 	// handler := rmux
 
 	go func() {
-		
+
 		if err := http.Serve(ln, handler); err != nil {
 			// if err != http.ErrServerClosed {
 			// 	if log := b.log.Error(); log.Enabled() {
@@ -156,13 +155,13 @@ func (srv *Service) Start() error {
 		}
 
 		if log := srv.Log.Warn(); log.Enabled() {
-			
+
 			log.Err(err).
 				Str("addr", ln.Addr().String()).
 				Msg("Server [http] Shutted down")
 		}
 
-	} ()
+	}()
 
 	go func() {
 		ch := <-srv.exit
@@ -217,7 +216,7 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 	// 	}
 	// 	uri = link.String() // renormalized !
 	// }
-	
+
 	if pid == 0 {
 
 		if uri == "" {
@@ -235,9 +234,9 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 
 	if pid != 0 {
 		// lookup: running ?
-		srv.indexMx.RLock()   // +R
+		srv.indexMx.RLock()           // +R
 		gate, ok := srv.profiles[pid] // runtime
-		srv.indexMx.RUnlock() // -R
+		srv.indexMx.RUnlock()         // -R
 
 		if ok && gate != nil {
 			// CACHE: FOUND !
@@ -280,10 +279,10 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 		// Access: 0,
 		Fields: []string{"+"},
 		// Order:  nil,
-		Size:   1,
+		Size: 1,
 		// Page:   0,
 	}
-	
+
 	if pid != 0 {
 		lookup.ID = []int64{pid}
 	}
@@ -293,7 +292,6 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 	}
 
 	res, err := srv.LocateBot(&lookup)
-
 
 	// res, err := srv.Client.GetProfileByID(
 	// 	// bind to this request cancellation context
@@ -316,16 +314,16 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 	}
 
 	profile := res // res.GetItem()
-	
+
 	if profile.GetId() == 0 {
 		// NOT FOUND !
 		srv.Log.Warn().Int64("pid", pid).Str("uri", uri).
 			Msg("PROFILE: NOT FOUND")
-		
+
 		return nil, errors.NotFound(
 			"chat.gateway.profile.not_found",
 			"gateway: profile {id=%d, uri=%s} not found",
-			 pid, uri,
+			pid, uri,
 		)
 	}
 
@@ -334,11 +332,11 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 		srv.Log.Warn().Int64("pid", pid).
 			Str("error", "mismatch profile.id requested").
 			Msg("PROFILE: NOT FOUND")
-		
+
 		return nil, errors.NotFound(
 			"chat.bot.profile.not_found",
 			"gateway: profile {id=%d, uri=%s} not found",
-			 pid, uri,
+			pid, uri,
 		)
 	}
 
@@ -358,11 +356,11 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 		srv.Log.Warn().Str("uri", uri).
 			Str("error", "mismatch profile.uri requested").
 			Msg("PROFILE: NOT FOUND")
-		
+
 		return nil, errors.NotFound(
 			"chat.bot.profile.not_found",
 			"gateway: profile {id=%d, uri=%s} not found",
-			 pid, uri,
+			pid, uri,
 		)
 	}
 
@@ -373,7 +371,7 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 	// 		Str("uri", profile.GetUri()).
 	// 		Str("error", "chat: bot is disabled").
 	// 		Msg("PROFILE: DISABLED")
-		
+
 	// 	return nil, errors.NotFound(
 	// 		"chat.bot.channel.disabled",
 	// 		"chat: bot is disabled",
@@ -416,9 +414,9 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 	// endregion
 
 	// region: ensure running
-	srv.indexMx.RLock()   // +R
+	srv.indexMx.RLock()           // +R
 	gate, ok := srv.profiles[pid] // runtime
-	srv.indexMx.RUnlock() // -R
+	srv.indexMx.RUnlock()         // -R
 
 	if !ok || gate == nil {
 		return nil, fmt.Errorf("Failed startup bot's profile; something went wrong")
@@ -427,6 +425,7 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 
 	return gate, nil
 }
+
 /*func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gateway, error) {
 
 	// if uri != "" {
@@ -447,7 +446,7 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 	// 	}
 	// 	uri = link.String() // renormalized !
 	// }
-	
+
 	if pid == 0 {
 
 		if uri == "" {
@@ -497,12 +496,12 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 	}
 
 	profile := res.GetItem()
-	
+
 	if profile == nil || profile.Id == 0 {
 		// NOT FOUND !
 		srv.Log.Warn().Int64("pid", pid).Str("uri", uri).
 			Msg("PROFILE: NOT FOUND")
-		
+
 		return nil, errors.NotFound(
 			"chat.gateway.profile.not_found",
 			"gateway: profile {id=%d, uri=%s} not found",
@@ -515,7 +514,7 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 		srv.Log.Warn().Int64("pid", pid).
 			Str("error", "mismatch profile.id requested").
 			Msg("PROFILE: NOT FOUND")
-		
+
 		return nil, errors.NotFound(
 			"chat.bot.profile.not_found",
 			"gateway: profile {id=%d, uri=%s} not found",
@@ -539,7 +538,7 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 		srv.Log.Warn().Str("uri", uri).
 			Str("error", "mismatch profile.uri requested").
 			Msg("PROFILE: NOT FOUND")
-		
+
 		return nil, errors.NotFound(
 			"chat.bot.profile.not_found",
 			"gateway: profile {id=%d, uri=%s} not found",
@@ -582,7 +581,6 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 }*/
 
 var (
-
 	hdrOrigin = http.CanonicalHeaderKey("Origin")
 )
 
@@ -643,7 +641,6 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	// // Inspect known URIs index
 	// srv.indexMx.RLock()   // +R
 	// pid, ok := srv.gateways[uri]
@@ -694,7 +691,7 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 		)
 	// 		return
 	// 	}
-		
+
 	// 	// SETUP
 	// 	gate, err := srv.setup(bot)
 
@@ -716,7 +713,7 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 		http.Error(w, err.Error(), http.StatusBadGateway)
 	// 		return
 	// 	}
-		
+
 	// 	// // FIXME: omit profile.Register(!) operation
 	// 	// err = srv.AddProfile(
 	// 	// 	r.Context(),
@@ -749,7 +746,6 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// bot still has active channels, need to be gracefully closed !
 		// So pass thru this request. We will deal with NEW channel later ...
 
-
 		// // ERROR: BOT is disabled !
 		// http.Error(w,
 		// 	"chat: bot is disabled", // 503
@@ -781,7 +777,7 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 
 		res, err := srv.Client.GetProfileByID(
-			
+
 			r.Context(),
 			&chat.GetProfileByIDRequest{
 				Uri: uri,
