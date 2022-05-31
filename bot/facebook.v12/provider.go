@@ -509,7 +509,7 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 
 			c.PromptSetup(
 				rsp, req,
-				messengerInstagramScope, "fb", // "facebook"
+				messengerFacebookScope, "fb", // "facebook"
 				oauth2.SetAuthURLParam(
 					"display", "popup",
 				),
