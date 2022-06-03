@@ -116,7 +116,6 @@ type SendAttachment struct {
 	// - Template Payload
 	// - File Attachment Payload
 	Payload interface{} `json:"payload,omitempty"`
-
 }
 
 // https://developers.facebook.com/docs/messenger-platform/reference/templates#payload
@@ -134,6 +133,43 @@ type TemplateAttachment struct {
 
 	// The button template allows you to send a structured message that includes text and buttons.
 	*ButtonTemplate
+	*GenericTemplate
+}
+
+// The generic template allows you to send a structured message that includes an image, text and buttons.
+// https://developers.facebook.com/docs/messenger-platform/reference/templates/generic#payload
+type GenericTemplate struct {
+	// TemplateType: "generic"
+
+	// Optional. The aspect ratio used to render images specified by element.image_url.
+	// Must be horizontal (1.91:1) or square (1:1). Defaults to horizontal.
+	ImageAspectRatio string `json:"image_aspect_ratio,omitempty"`
+
+	// An array of element objects that describe instances of the generic template to be sent.
+	// Specifying multiple elements will send a horizontally scrollable carousel of templates.
+	// A maximum of 10 elements is supported.
+	Elements []*GenericElement `json:"elements,omitempty"`
+}
+
+// The generic template supports a maximum of 10 elements per message.
+// At least one property must be set in addition to title.
+type GenericElement struct {
+	// The title to display in the template. 80 character limit.
+	Title string `json:"title"`
+
+	// Optional. The subtitle to display in the template. 80 character limit.
+	Subtitle string `json:"subtitle,omitempty"`
+
+	// Optional. The URL of the image to display in the template.
+	ImageURL string `json:"image_url,omitempty"`
+
+	// Optional. The default action executed when the template is tapped.
+	// Accepts the same properties as URL button, except title.
+	DefaultAction *Button `json:"default_action,omitempty"`
+
+	// Optional. An array of buttons to append to the template.
+	// A maximum of 3 buttons per element is supported.
+	Buttons []*Button `json:"buttons,omitempty"`
 }
 
 // The button template allows you to send a structured message that includes text and buttons.
@@ -162,7 +198,7 @@ type Button struct {
 	URL string `json:"url,omitempty"`
 	// Call Button; https://developers.facebook.com/docs/messenger-platform/reference/buttons/call#properties
 	// Login Button; https://developers.facebook.com/docs/messenger-platform/reference/buttons/login#properties
-	// . . . 
+	// . . .
 }
 
 // https://developers.facebook.com/docs/messenger-platform/reference/attachment-upload-api#payload
@@ -173,5 +209,4 @@ type FileAttachment struct {
 
 	// Optional. Set to true to make the saved asset sendable to other message recipients. Defaults to false.
 	IsReusable bool `json:"is_reusable,omitempty"`
-
 }

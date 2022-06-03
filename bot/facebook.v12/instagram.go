@@ -21,12 +21,12 @@ func (c *Client) getInstagramPages(token *oauth2.Token) (*UserAccounts, error) {
 
 	form := c.requestForm(url.Values{
 		"fields": {"name,accounts{name,access_token,instagram_business_account.as(instagram){username}}"}, // ,profile_picture_url}}"},
-		}, token.AccessToken,
+	}, token.AccessToken,
 	)
 
 	req, err := http.NewRequest(http.MethodGet,
-		"https://graph.facebook.com" + path.Join("/", c.Version, "me") +
-			"?" + form.Encode(), nil,
+		"https://graph.facebook.com"+path.Join("/", c.Version, "me")+
+			"?"+form.Encode(), nil,
 	)
 
 	if err != nil {
@@ -40,12 +40,11 @@ func (c *Client) getInstagramPages(token *oauth2.Token) (*UserAccounts, error) {
 	defer rsp.Body.Close()
 
 	var (
-		
 		pages []*Page
 		resMe = struct {
 			graph.User
 			Accounts graph.Result `json:"accounts"`
-		} {
+		}{
 			Accounts: graph.Result{
 				Data: &pages,
 			},
@@ -63,9 +62,21 @@ func (c *Client) getInstagramPages(token *oauth2.Token) (*UserAccounts, error) {
 		// GraphAPI request error
 		return nil, resMe.Accounts.Error
 	}
+	// Remove page(s) that does not have .Instagram account assigned !
+	for i := 0; i < len(pages); i++ {
+		if pages[i].IGSID() == "" {
+			if i+1 < len(pages) {
+				pages = append(pages[0:i], pages[i+1:]...)
+			} else {
+				pages = pages[0:i]
+			}
+			i--
+			continue
+		}
+	}
 
-	res := &UserAccounts {
-		User: &resMe.User,
+	res := &UserAccounts{
+		User:  &resMe.User,
 		Pages: pages,
 		// Pages: make(map[string]*messengerPage, len(pages)),
 	}
@@ -104,9 +115,8 @@ func (c *Client) SetupInstagramPages(rsp http.ResponseWriter, req *http.Request)
 
 	// Save Bot's NEW internal state
 	var (
-
 		dataset string
-		agent = c.Gateway
+		agent   = c.Gateway
 	)
 
 	if data := c.instagram.backup(); len(data) != 0 {
@@ -134,6 +144,44 @@ func (c *Client) SetupInstagramPages(rsp http.ResponseWriter, req *http.Request)
 
 func (c *Client) addInstagramPages(accounts *UserAccounts) {
 	_ = c.instagram.setPages(accounts)
+}
+
+func (c *Client) SubscribeInstagramPages(pageIds ...string) ([]*Page, error) {
+
+	// Find ALL requested page(s)...
+	pages, err := c.instagram.getPages(pageIds...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Do subscribe for page(s) webhook updates
+	err = c.subscribePages(pages)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return pages, nil
+}
+
+func (c *Client) UnsubscribeInstagramPages(pageIds ...string) ([]*Page, error) {
+
+	// Find ALL requested page(s)...
+	pages, err := c.instagram.getPages(pageIds...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Do subscribe for page(s) webhook updates
+	err = c.unsubscribePages(pages)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return pages, nil
 }
 
 func (c *Client) GetInstagramPages(rsp http.ResponseWriter, req *http.Request) {
@@ -169,8 +217,7 @@ func (c *Client) GetInstagramPages(rsp http.ResponseWriter, req *http.Request) {
 
 	// Result View
 	var (
-
-		n int
+		n    int
 		item = Page{
 			Page: &graph.Page{
 				// Envelope: Sanitized View
@@ -186,19 +233,19 @@ func (c *Client) GetInstagramPages(rsp http.ResponseWriter, req *http.Request) {
 
 		// JSON ArrayItem
 		if n == 0 {
-			indent = "\n"+indent
+			indent = "\n" + indent
 		} else if n == 1 {
 			indent = ", "
 		}
 		_, _ = rsp.Write([]byte(indent))
 
-		item.Page.ID          = page.ID
-		item.Page.Name        = page.Name
-		item.Page.Instagram   = page.Instagram
+		item.Page.ID = page.ID
+		item.Page.Name = page.Name
+		item.Page.Instagram = page.Instagram
 		// item.Page.Picture     = page.Picture
 		// item.Page.AccessToken = page.GetAccessToken()
 
-		item.Accounts         = page.Accounts
+		item.Accounts = page.Accounts
 		item.SubscribedFields = page.SubscribedFields
 
 		_ = enc.Encode(item)
@@ -207,8 +254,6 @@ func (c *Client) GetInstagramPages(rsp http.ResponseWriter, req *http.Request) {
 	// JSON EndArray
 	_, _ = rsp.Write([]byte("]"))
 }
-
-
 
 func (c *Client) WebhookInstagram(batch []*messenger.Entry) {
 
@@ -234,7 +279,7 @@ func (c *Client) WebhookInstagram(batch []*messenger.Entry) {
 		// 	// Array of messages received in the standby channel.
 		// 	// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/standby
 		// 	for _, event := range entry.Standby {
-		// 		
+		//
 		// 	}
 		// }
 	}

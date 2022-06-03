@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/bot"
@@ -186,6 +187,48 @@ func (c *Client) String() string {
 	return providerType
 }
 
+func scanTextPlain(s string, max int) string {
+	var (
+		d, c int
+		rs   []byte
+		n    = max
+	)
+	for i, r := range s {
+
+		// switch {
+		// case unicode.IsPrint(r):
+		// case unicode.IsDigit(r):
+		// case unicode.IsLetter(r):
+		// case unicode.IsNumber(r):
+		// case unicode.IsPunct(r):
+		// case unicode.IsSpace(r):
+		// default:
+		// }
+		if !unicode.IsSymbol(r) && unicode.IsPrint(r) && (n < max || !unicode.IsSpace(r)) {
+			if n--; n < 0 {
+				if d != 0 {
+					rs = rs[0 : i-d]
+				} else {
+					s = s[0 : i+utf8.RuneLen(r)]
+				}
+				break // limit exceeded
+			}
+			continue
+		}
+		// remove invalid character
+		if rs == nil {
+			rs = []byte(s)
+		}
+		c = utf8.RuneLen(r)
+		rs = append(rs[0:i-d], rs[i-d+c:]...)
+		d += c
+	}
+	if rs != nil {
+		s = string(rs)
+	}
+	return strings.TrimRightFunc(s, unicode.IsSpace)
+}
+
 // channel := notify.Chat
 // contact := notify.User
 func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
@@ -266,8 +309,9 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 			// newInlineboardFb(message.GetInline(), &reqBody.Message, message.Text);
 			// See https://developers.facebook.com/docs/messenger-platform/reference/buttons/quick-replies#quick_reply
 			var (
-				buttons []*messenger.Button
-				replies []*messenger.QuickReply
+				buttons   []*messenger.Button
+				replies   []*messenger.QuickReply
+				instagram = (chat.Page.IGSID() != "")
 			)
 			for _, row := range menu {
 				for _, src := range row.Button {
@@ -278,10 +322,16 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 					// Url     string
 					switch strings.ToLower(src.Type) {
 					case "email", "mail": // https://developers.facebook.com/docs/messenger-platform/send-messages/quick-replies#email
+						if instagram {
+							continue
+						} // NOT Supported !
 						replies = append(replies, &messenger.QuickReply{
 							Type: "user_email",
 						})
 					case "phone", "contact": // https://developers.facebook.com/docs/messenger-platform/send-messages/quick-replies#phone
+						if instagram {
+							continue
+						} // NOT Supported !
 						replies = append(replies, &messenger.QuickReply{
 							Type: "user_phone_number",
 						})
@@ -303,26 +353,29 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 						// Buttons !
 						buttons = append(buttons, &messenger.Button{
 							Type:    "postback",
-							Title:   coalesce(src.Caption, src.Text),
-							Payload: coalesce(src.Code, src.Text),
+							Title:   scanTextPlain(coalesce(src.Caption, src.Text), 21),
+							Payload: scanTextPlain(coalesce(src.Code, src.Text), 1000),
 						})
 					case "url": // https://developers.facebook.com/docs/messenger-platform/send-messages/buttons#button-format
 						buttons = append(buttons, &messenger.Button{
 							Type:  "web_url",
-							Title: coalesce(src.Caption, src.Text),
+							Title: scanTextPlain(coalesce(src.Caption, src.Text), 21),
 							URL:   src.GetUrl(),
 						})
 					default: // https://developers.facebook.com/docs/messenger-platform/send-messages/quick-replies#text
 						// case "reply", "text":
+						// [Instagram] See: https://developers.facebook.com/docs/messenger-platform/instagram/features/quick-replies
+						// A maximum of 13 quick replies are supported and each quick reply allows up to 20 characters before being truncated.
+						// Quick replies only support plain text.
 						replies = append(replies, &messenger.QuickReply{
 							Type: "text",
 							// Required if content_type is 'text'.
 							// The text to display on the quick reply button.
 							// 20 character limit.
-							Title: coalesce(src.Caption, src.Text),
+							Title: scanTextPlain(coalesce(src.Caption, src.Text), 21),
 							// Required if content_type is 'text'.
 							// 1000 character limit.
-							Payload: coalesce(src.Code, src.Text),
+							Payload: scanTextPlain(coalesce(src.Code, src.Text), 1000),
 							// Required if title is an empty string. Image should be a minimum of 24px x 24px.
 							ImageURL: src.Url,
 						})
@@ -330,21 +383,43 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 				}
 			}
 			// (#100) Only one of the text, attachment, and dynamic_text fields can be specified
-			if len(replies) != 0 {
+			if len(replies) != 0 { // A maximum of 13 quick replies are supported
 				sendMessage.QuickReplies = replies
 			}
+
 			if len(buttons) != 0 {
-				// (#100) Only one of the text, attachment, and dynamic_text fields can be specified
-				sendMessage.Text = "" // NULLify !
-				sendMessage.Attachment = &messenger.SendAttachment{
-					Type: "template",
-					Payload: &messenger.TemplateAttachment{
-						TemplateType: "button",
-						ButtonTemplate: &messenger.ButtonTemplate{
-							Text:    coalesce(message.Text, "Де текст ?"),
-							Buttons: buttons,
+				if !instagram {
+					// Facebook(!)
+					// (#100) Only one of the text, attachment, and dynamic_text fields can be specified
+					sendMessage.Text = "" // NULLify !
+					sendMessage.Attachment = &messenger.SendAttachment{
+						Type: "template",
+						Payload: &messenger.TemplateAttachment{
+							TemplateType: "button",
+							ButtonTemplate: &messenger.ButtonTemplate{
+								Text:    coalesce(message.Text, "Де текст ?"),
+								Buttons: buttons,
+							},
 						},
-					},
+					}
+				} else {
+					// Instagram(!)
+					sendMessage.Text = "" // NULLify !
+					sendMessage.QuickReplies = nil
+					sendMessage.Attachment = &messenger.SendAttachment{
+						Type: "template",
+						Payload: &messenger.TemplateAttachment{
+							TemplateType: "generic",
+							GenericTemplate: &messenger.GenericTemplate{
+								Elements: []*messenger.GenericElement{
+									{
+										Title:   coalesce(message.Text, "Де текст ?"),
+										Buttons: buttons,
+									},
+								},
+							},
+						},
+					}
 				}
 			}
 		}
@@ -493,6 +568,45 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 				)
 				return // (302) Found
 
+			case "remove",
+				"subscribe",
+				"unsubscribe":
+
+				var (
+					err error
+					res []*Page
+					ids = Fields(query["id"]...)
+				)
+
+				if op == "remove" {
+					// DELETE /{PAGE-ID}/subscribed_apps
+					// delete(c.pages, id)
+					// res, err = c.RemovePages(ids...)
+				} else if op == "subscribe" {
+					// POST /{PAGE-ID}/subscribed_apps
+					res, err = c.SubscribeInstagramPages(ids...)
+				} else if op == "unsubscribe" {
+					// DELETE /{PAGE-ID}/subscribed_apps
+					res, err = c.UnsubscribeInstagramPages(ids...)
+				}
+
+				if err != nil {
+					http.Error(rsp, err.Error(), http.StatusBadRequest)
+					return // Error
+				}
+
+				header := rsp.Header()
+				header.Set("Pragma", "no-cache")
+				header.Set("Cache-Control", "no-cache")
+				header.Set("Content-Type", "application/json; charset=utf-8")
+				rsp.WriteHeader(http.StatusOK)
+
+				enc := json.NewEncoder(rsp)
+				enc.SetIndent("", "  ")
+				_ = enc.Encode(res)
+
+				return // (200) OK
+
 			// case "remove":
 			case "search", "":
 
@@ -504,7 +618,7 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			return // (400) Bad Request
 		}
 
-		switch qop := query.Get("pages"); qop {
+		switch op := query.Get("pages"); op {
 		case "setup":
 
 			c.PromptSetup(
@@ -526,14 +640,14 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 				ids = Fields(query["id"]...)
 			)
 
-			if qop == "remove" {
+			if op == "remove" {
 				// DELETE /{PAGE-ID}/subscribed_apps
 				// delete(c.pages, id)
 				res, err = c.RemovePages(ids...)
-			} else if qop == "subscribe" {
+			} else if op == "subscribe" {
 				// POST /{PAGE-ID}/subscribed_apps
 				res, err = c.SubscribePages(ids...)
-			} else if qop == "unsubscribe" {
+			} else if op == "unsubscribe" {
 				// DELETE /{PAGE-ID}/subscribed_apps
 				res, err = c.UnsubscribePages(ids...)
 			}

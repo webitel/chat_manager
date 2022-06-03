@@ -1,6 +1,7 @@
 package facebook
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -14,13 +15,12 @@ import (
 )
 
 var (
-
 	messengerFacebookScope = []string{
 		// "public_profile",
 		// // https://developers.facebook.com/docs/permissions/reference/pages_show_list
-		// "pages_show_list",    // GET /{user}/accounts
+		// "pages_show_list", // GET /{user}/accounts
 		// https://developers.facebook.com/docs/permissions/reference/pages_messaging
-		"pages_messaging",       // POST /{page}/messages (SendAPI)
+		"pages_messaging", // POST /{page}/messages (SendAPI)
 		// // https://developers.facebook.com/docs/permissions/reference/pages_read_engagement
 		// "pages_read_engagement", // GET /{user}/accounts
 		// https://developers.facebook.com/docs/permissions/reference/pages_manage_metadata
@@ -31,7 +31,7 @@ var (
 	messengerInstagramScope = []string{
 		// "public_profile",
 		// https://developers.facebook.com/docs/permissions/reference/pages_messaging
-		"instagram_basic",       // POST /{page}/messages (SendAPI)
+		"instagram_basic", // POST /{page}/messages (SendAPI)
 		"instagram_manage_messages",
 		// https://developers.facebook.com/docs/permissions/reference/pages_manage_metadata
 		"pages_manage_metadata", // GET|POST|DELETE /{page}/subscribed_apps
@@ -61,9 +61,8 @@ func (c *Client) SetupMessengerPages(rsp http.ResponseWriter, req *http.Request)
 
 	// Save Bot's NEW internal state
 	var (
-
 		dataset string
-		agent = c.Gateway
+		agent   = c.Gateway
 	)
 
 	if data := c.pages.backup(); len(data) != 0 {
@@ -85,7 +84,7 @@ func (c *Client) SetupMessengerPages(rsp http.ResponseWriter, req *http.Request)
 	}
 
 	// // GET /me?field=,accounts&access_token=USER_ACCESS_TOKEN
-	// // 
+	// //
 
 	// // // GET /debug_token
 	// // debugToken, err := c.introspect(userToken.AccessToken)
@@ -113,32 +112,32 @@ func (c *Client) SetupMessengerPages(rsp http.ResponseWriter, req *http.Request)
 	// if err != nil {
 	// 	re = errors.FromError(err)
 	// }
-	
+
 	// _ = completeOAuthHTML.Execute(rsp, re)
 
-// 	_, _ = rsp.Write([]byte(
-// `<!DOCTYPE html>
-// <html lang="en">
-// <head>
-//   <meta charset="UTF-8">
-//   <title>Title</title>
-//   <script>
-//     window.opener.postMessage('success');
-//     // window.close();
-//   </script>
-// </head>
-// <body>
+	// 	_, _ = rsp.Write([]byte(
+	// `<!DOCTYPE html>
+	// <html lang="en">
+	// <head>
+	//   <meta charset="UTF-8">
+	//   <title>Title</title>
+	//   <script>
+	//     window.opener.postMessage('success');
+	//     // window.close();
+	//   </script>
+	// </head>
+	// <body>
 
-// </body>
-// </html>`))
+	// </body>
+	// </html>`))
 
 }
 
 // UserAccounts represents set of the
 // Facebook User's Messenger Pages GRANTED
 type UserAccounts struct {
-	 User *graph.User
-	 Pages []*Page
+	User  *graph.User
+	Pages []*Page
 }
 
 // POST /?batch=[
@@ -153,7 +152,6 @@ func (c *Client) getSubscribedFields(token *oauth2.Token, pages []*Page) error {
 	}
 
 	var (
-
 		form = url.Values{
 			"fields": {"subscribed_fields.as(fields)"},
 		}
@@ -175,15 +173,18 @@ func (c *Client) getSubscribedFields(token *oauth2.Token, pages []*Page) error {
 		) + "?" + form.Encode()
 	}
 
-	jsonb, err := json.Marshal(batch)
-	
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	err := enc.Encode(batch)
+
 	if err != nil {
 		return err
 	}
 
 	form = url.Values{
 		"include_headers": {"false"},
-		"batch": {string(jsonb)},
+		"batch":           {buf.String()},
 	}
 	// TODO: USER_ACCESS_TOKEN
 	accessToken := token.AccessToken
@@ -191,7 +192,7 @@ func (c *Client) getSubscribedFields(token *oauth2.Token, pages []*Page) error {
 
 	// TODO: Increase Call Context Timeout * n
 	req, err := http.NewRequest(http.MethodPost,
-		"https://graph.facebook.com" + path.Join("/", c.Version),
+		"https://graph.facebook.com"+path.Join("/", c.Version),
 		strings.NewReader(form.Encode()),
 	)
 
@@ -200,7 +201,7 @@ func (c *Client) getSubscribedFields(token *oauth2.Token, pages []*Page) error {
 	}
 
 	rsp, err := c.Client.Do(req)
-	
+
 	if err != nil {
 		return err
 	}
@@ -214,20 +215,19 @@ func (c *Client) getSubscribedFields(token *oauth2.Token, pages []*Page) error {
 	}
 	// BATCH Request(s) order !
 	var (
-		
-		apps = make([]*struct{
+		apps = make([]*struct {
 			// ID string `json:"id"` // MUST: Application ID == c.Config.ClientId
 			SubscribedFields []string `json:"fields,omitempty"`
 		}, 0, 1)
-		re = graph.Result {
+		re = graph.Result{
 			Data: &apps,
 		}
 	)
 	for i, page := range pages {
-		
+
 		apps = apps[:0]
 		re.Error = nil
-		
+
 		err = json.NewDecoder(
 			strings.NewReader(res[i].Body),
 		).Decode(&re)
@@ -271,12 +271,12 @@ func (c *Client) getMessengerPages(token *oauth2.Token) (*UserAccounts, error) {
 
 	form := c.requestForm(url.Values{
 		"fields": {"name,accounts{name,access_token}"},
-		}, token.AccessToken,
+	}, token.AccessToken,
 	)
 
 	req, err := http.NewRequest(http.MethodGet,
-		"https://graph.facebook.com" + path.Join("/", c.Version, "me") +
-			"?" + form.Encode(), nil,
+		"https://graph.facebook.com"+path.Join("/", c.Version, "me")+
+			"?"+form.Encode(), nil,
 	)
 
 	if err != nil {
@@ -290,12 +290,11 @@ func (c *Client) getMessengerPages(token *oauth2.Token) (*UserAccounts, error) {
 	defer rsp.Body.Close()
 
 	var (
-		
 		pages []*Page
 		resMe = struct {
 			graph.User
 			Accounts graph.Result `json:"accounts"`
-		} {
+		}{
 			Accounts: graph.Result{
 				Data: &pages,
 			},
@@ -314,8 +313,8 @@ func (c *Client) getMessengerPages(token *oauth2.Token) (*UserAccounts, error) {
 		return nil, resMe.Accounts.Error
 	}
 
-	res := &UserAccounts {
-		User: &resMe.User,
+	res := &UserAccounts{
+		User:  &resMe.User,
 		Pages: pages,
 		// Pages: make(map[string]*messengerPage, len(pages)),
 	}
@@ -346,7 +345,6 @@ func (c *Client) subscribePages(pages []*Page) error {
 	}
 
 	var (
-
 		subscribedPageFields = []string{
 			// "standby",
 			"messages",
@@ -362,7 +360,7 @@ func (c *Client) subscribePages(pages []*Page) error {
 				strings.Join(subscribedPageFields, ","),
 			},
 		}
-		// 
+		//
 		batch = make([]graph.BatchRequest, n)
 	)
 
@@ -378,15 +376,18 @@ func (c *Client) subscribePages(pages []*Page) error {
 		req.Body = form.Encode()
 	}
 
-	bytes, err := json.Marshal(batch)
-	
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	err := enc.Encode(batch)
+
 	if err != nil {
 		return err
 	}
 
 	form = url.Values{
 		"include_headers": {"false"},
-		"batch": {string(bytes)},
+		"batch":           {buf.String()},
 	}
 	// TODO: USER_ACCESS_TOKEN
 	accessToken := pages[0].AccessToken
@@ -394,7 +395,7 @@ func (c *Client) subscribePages(pages []*Page) error {
 
 	// TODO: Increase Call Context Timeout * n
 	req, err := http.NewRequest(http.MethodPost,
-		"https://graph.facebook.com" + path.Join("/", c.Version),
+		"https://graph.facebook.com"+path.Join("/", c.Version),
 		strings.NewReader(form.Encode()),
 	)
 
@@ -403,7 +404,7 @@ func (c *Client) subscribePages(pages []*Page) error {
 	}
 
 	rsp, err := c.Client.Do(req)
-	
+
 	if err != nil {
 		return err
 	}
@@ -416,11 +417,10 @@ func (c *Client) subscribePages(pages []*Page) error {
 		return err
 	}
 	var (
-
-		res = struct{
-			graph.Success // Embedded (Anonymous)
-			Error *graph.Error `json:"error,omitempty"`
-		} {
+		res = struct {
+			graph.Success              // Embedded (Anonymous)
+			Error         *graph.Error `json:"error,omitempty"`
+		}{
 			// Alloc
 		}
 
@@ -442,13 +442,13 @@ func (c *Client) subscribePages(pages []*Page) error {
 		if err == nil && !res.Ok {
 			err = fmt.Errorf("subscribe: page=%s not confirmed", page.ID)
 		}
-		
+
 		if err != nil {
 			c.Log.Err(err).
-			Str("page-id", page.ID).
-			Str("page", page.Name).
-			Int("code", ret[i].Code).
-			Msg("SUBSCRIBE: PAGE")
+				Str("page-id", page.ID).
+				Str("page", page.Name).
+				Int("code", ret[i].Code).
+				Msg("SUBSCRIBE: PAGE")
 			continue
 		}
 		// SUCCESS !
@@ -459,10 +459,9 @@ func (c *Client) subscribePages(pages []*Page) error {
 	if save {
 		// Save Bot's NEW internal state
 		var (
-
-			data string
+			data  string
 			agent = c.Gateway
-			enc = base64.RawURLEncoding
+			enc   = base64.RawURLEncoding
 		)
 
 		if bak := c.pages.backup(); len(bak) != 0 {
@@ -482,7 +481,7 @@ func (c *Client) subscribePages(pages []*Page) error {
 // Uninstall Facebook App for all page(s) specified
 // Other words, unsubscribe Facebook App from the Page's webhook updates
 // https://developers.facebook.com/docs/graph-api/reference/page/subscribed_apps/#Deleting
-// 
+//
 // [TODO]: We need to wait for page's ALL active chat(s) to close, before doing this ...
 func (c *Client) unsubscribePages(pages []*Page) error {
 
@@ -492,8 +491,7 @@ func (c *Client) unsubscribePages(pages []*Page) error {
 	}
 
 	var (
-
-		form url.Values
+		form  url.Values
 		batch = make([]graph.BatchRequest, n)
 	)
 
@@ -509,15 +507,18 @@ func (c *Client) unsubscribePages(pages []*Page) error {
 
 	}
 
-	bytes, err := json.Marshal(batch)
-	
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	err := enc.Encode(batch)
+
 	if err != nil {
 		return err
 	}
 
 	form = url.Values{
 		"include_headers": {"false"},
-		"batch": {string(bytes)},
+		"batch":           {buf.String()},
 	}
 	// TODO: USER_ACCESS_TOKEN
 	accessToken := pages[0].AccessToken
@@ -526,7 +527,7 @@ func (c *Client) unsubscribePages(pages []*Page) error {
 	// TODO: Increase Call Context Timeout * n
 
 	req, err := http.NewRequest(http.MethodPost,
-		"https://graph.facebook.com" + path.Join("/", c.Version),
+		"https://graph.facebook.com"+path.Join("/", c.Version),
 		strings.NewReader(form.Encode()),
 	)
 
@@ -535,7 +536,7 @@ func (c *Client) unsubscribePages(pages []*Page) error {
 	}
 
 	rsp, err := c.Client.Do(req)
-	
+
 	if err != nil {
 		return err
 	}
@@ -549,13 +550,12 @@ func (c *Client) unsubscribePages(pages []*Page) error {
 	}
 	// BATCH Request(s) order !
 	var (
-
-		res = struct{
+		res = struct {
 			// Embedded (Anonymous)
-			Success bool `json:"success,omitempty"`
-			MessagingSuccess bool `json:"messaging_success,omitempty"`
-			Error *graph.Error `json:"error,omitempty"`
-		} {
+			Success          bool         `json:"success,omitempty"`
+			MessagingSuccess bool         `json:"messaging_success,omitempty"`
+			Error            *graph.Error `json:"error,omitempty"`
+		}{
 			// Alloc
 		}
 
@@ -585,7 +585,7 @@ func (c *Client) unsubscribePages(pages []*Page) error {
 				// 	}
 				// }
 				idempotent := strings.HasPrefix(res.Error.Message,
-					"(#100) App is not installed: "+ c.Config.ClientID,
+					"(#100) App is not installed: "+c.Config.ClientID,
 				)
 				if idempotent {
 					// Already Unsubscribed ! OK
@@ -610,10 +610,10 @@ func (c *Client) unsubscribePages(pages []*Page) error {
 		// }
 		if err != nil {
 			c.Log.Err(err).
-			Str("page", page.Name).
-			Str("page-id", page.ID).
-			Int("code", ret[i].Code).
-			Msg("UNSUBSCRIBE: PAGE")
+				Str("page", page.Name).
+				Str("page-id", page.ID).
+				Int("code", ret[i].Code).
+				Msg("UNSUBSCRIBE: PAGE")
 
 			continue
 		}
@@ -625,10 +625,9 @@ func (c *Client) unsubscribePages(pages []*Page) error {
 	if save {
 		// Save Bot's NEW internal state
 		var (
-
-			data string
+			data  string
 			agent = c.Gateway
-			enc = base64.RawURLEncoding
+			enc   = base64.RawURLEncoding
 		)
 
 		if bak := c.pages.backup(); len(bak) != 0 {
