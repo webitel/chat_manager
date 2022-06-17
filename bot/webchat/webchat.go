@@ -1077,7 +1077,8 @@ type webChatInfo struct {
 	Id   string       `json:"id"`
 	User *bot.Account `json:"user"`
 	// Options
-	MediaMaxSize int64 `json:"media_max_size,omitempty"`
+	SendTimeout  int32 `json:"send_timeout,omitempty"`   // seconds
+	MediaMaxSize int64 `json:"media_max_size,omitempty"` // bytes
 	// History
 	Msgs []*chat.Message `json:"msgs,omitempty"`
 }
@@ -1090,9 +1091,11 @@ func (c *WebChatBot) join(client *webChat, conn *websocket.Conn) {
 	client.send <- func() {
 		// build
 		chatInfo := webChatInfo{
-			Id:           client.ChannelID,
-			User:         &client.Account,
-			Msgs:         client.msgs,
+			Id:   client.ChannelID,
+			User: &client.Account,
+			Msgs: client.msgs,
+			// Options
+			SendTimeout:  int32(c.WriteTimeout.Seconds()),
 			MediaMaxSize: c.mediaMaxSizeLimit(),
 		}
 		jsonb, ok := client.encodeJSON(chatInfo) // json.Marshal(chatInfo)
