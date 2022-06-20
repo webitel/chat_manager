@@ -45,6 +45,7 @@ type Client interface {
 	TransferTo(conversationID string, originator *app.Channel, schemaToID, userToID int64) error
 
 	SendMessageV1(target *app.Channel, message *chat.Message) error
+	WaitMessage(conversationId, confirmationId string) error
 }
 
 // Agent "workflow" (internal: chat@bot) channel service provider
@@ -175,6 +176,23 @@ func (c *Agent) delChannel(conversationID string) (ok bool) {
 	c.Unlock() // -RW
 
 	return ok
+}
+
+// WaitMessage setup confirmationId token for the next conversationId message delivery
+func (c *Agent) WaitMessage(conversationId, confirmationId string) error {
+	// Fast setup
+	sub, err := c.GetChannel(conversationId)
+	if err != nil {
+		return err
+	}
+	sub.setPending(confirmationId, "*")
+	// sub.Pending = confirmationId
+	// Perisist changes
+	err = c.Store.WriteConfirmation(conversationId, confirmationId)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 /*func (c *Agent) SendMessage(conversationID string, message *chat.Message) error {
@@ -375,7 +393,7 @@ func (c *Agent) Init(sender *store.Channel, message *chat.Message) error {
 		ProfileID: botGatewayID,
 
 		Invite:  "", // .Invite(!) token
-		Pending: "", // .WaitMessage(!) token
+		pending: "", // .WaitMessage(!) token
 
 		// Created: date,
 		// Updated: date,

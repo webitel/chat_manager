@@ -1495,10 +1495,16 @@ func (s *chatService) WaitMessage(ctx context.Context, req *pb.WaitMessageReques
 	// 	res.TimeoutSec = int64(timeout)
 	// 	return nil
 	// }
-	if err := s.repo.WriteConfirmation(req.GetConversationId(), req.GetConfirmationId()); err != nil {
+	err := s.flowClient.WaitMessage(req.GetConversationId(), req.GetConfirmationId())
+	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
 	}
+
+	// if err := s.repo.WriteConfirmation(req.GetConversationId(), req.GetConfirmationId()); err != nil {
+	// 	s.log.Error().Msg(err.Error())
+	// 	return err
+	// }
 	res.TimeoutSec = int64(timeout)
 	return nil
 }

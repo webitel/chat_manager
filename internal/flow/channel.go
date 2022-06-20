@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	// "net/http"
@@ -39,9 +40,10 @@ type Channel struct {
 	// User *chat.User // TODO: flow schema @bot info
 	ProfileID int64 // Disclose profile.schema.id
 	// DomainID int64 // Chat.DomainID
+	Invite string // SESSION ID
 
-	Invite  string // SESSION ID
-	Pending string // .WaitMessage(token)
+	mx      sync.Mutex
+	pending string // .WaitMessage(token)
 
 	// Created int64
 	// Updated int64
@@ -415,10 +417,31 @@ func (chatFlowSelector) String() string {
 	return "chatflow"
 }
 
+func (c *Channel) getPending() string {
+	c.mx.Lock()
+	defer c.mx.Unlock()
+	return c.pending
+}
+
+func (c *Channel) setPending(nextToken, lastToken string) bool {
+	c.mx.Lock()
+	defer c.mx.Unlock()
+	if lastToken != "*" && c.pending != lastToken {
+		return false
+	}
+	c.pending = nextToken
+	return true
+}
+
+func (c *Channel) delPending(usedToken string) {
+	c.setPending("", usedToken)
+}
+
 // Send @workflow.ConfirmationMessage() or restart @workflow.Start()
 func (c *Channel) Send(message *chat.Message) (err error) {
 
-	pending := c.Pending // token
+	// pending := c.Pending // token
+	pending := c.getPending()
 	if pending == "" {
 		pending, err = c.Store.ReadConfirmation(c.ID)
 
@@ -427,7 +450,8 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 			return err
 		}
 
-		c.Pending = pending
+		// c.Pending = pending
+		// c.setPending(pending, "")
 	}
 	// Flow.WaitMessage()
 	if pending == "" {
@@ -477,7 +501,8 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 			// FIXME: RE-start chat@bot routine (?)
 			// RESET
 			c.Host = ""
-			c.Pending = ""
+			// c.Pending = ""
+			c.setPending("", "*") // c.delPending("*")
 
 			_ = c.Store.DeleteConfirmation(c.ID)
 			_ = c.Store.DeleteConversationNode(c.ID)
@@ -514,7 +539,8 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 	}
 
 	// USED(!) remove ...
-	c.Pending = ""
+	// c.Pending = ""
+	c.delPending(pending)
 	_ = c.Store.DeleteConfirmation(c.ChatID())
 
 	return nil
