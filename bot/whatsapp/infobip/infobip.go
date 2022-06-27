@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
@@ -247,12 +248,12 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 		}
 	}
 
-	// DETECT: MIME Content-Type by URL filename extension
-	if media.Mime == "" {
-		media.Mime = mime.TypeByExtension(
-			path.Ext(media.Name),
-		)
-	}
+	// // DETECT: MIME Content-Type by URL filename extension
+	// if media.Mime == "" {
+	// 	media.Mime = mime.TypeByExtension(
+	// 		path.Ext(media.Name),
+	// 	)
+	// }
 
 	// ctx := context.Background()
 	req, err := http.NewRequest(
@@ -282,6 +283,35 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 	}
 
 	defer rsp.Body.Close()
+	// Content-Type
+	if mediaType := rsp.Header.Get("Content-Type"); mediaType != "" {
+		if mediaType, _, re := mime.ParseMediaType(mediaType); re == nil {
+			media.Mime = mediaType
+		}
+	}
+	// Content-Length
+	media.Size = rsp.ContentLength
+	// Content-Disposition
+	if disposition := rsp.Header.Get("Content-Disposition"); disposition != "" {
+		if _, params, err := mime.ParseMediaType(disposition); err == nil {
+			if filename := params["filename"]; filename != "" {
+				// RFC 7578, Section 4.2 requires that if a filename is provided, the
+				// directory path information must not be used.
+				switch filename = filepath.Base(filename); filename {
+				case ".", string(filepath.Separator):
+					// invalid
+				default:
+					media.Name = filename
+				}
+			}
+		}
+	}
+	// Resolve filename extension if omitted; AUDIO !
+	if ext := filepath.Ext(media.Name); ext == "" {
+		if ext, _ := mime.ExtensionsByType(media.Mime); len(ext) != 0 {
+			media.Name += ext[0]
+		}
+	}
 
 	// serviceName := "storage"
 	grpcClient := client.DefaultClient
@@ -741,9 +771,9 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 			// }
 			doc := &chat.File{
 				Id:   0,
-				Url:  recvMessage.URL,
 				Mime: "",
-				Name: "",
+				Name: sendMessage.Text, // .Caption (parsed above)
+				Url:  recvMessage.URL,
 				Size: 0,
 			}
 
@@ -760,15 +790,15 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 				// sendMessage.File.Mime = "video"
 				doc.Mime = "video"
 			default: // "DOCUMENT"
-				// Auto-detect on .SendMessage()
-				// doc.Mime =
-				doc.Name = recvMessage.Caption
+				// Auto-detect while download
 			}
 			_, err = c.forwardFile(doc, channel)
 			if err != nil {
 				c.Gateway.Log.Err(err).Msg("INFOBIP: MEDIA")
 			}
 			sendMessage.File = doc
+			// Normalize filename
+			sendMessage.Text = doc.Name
 
 		// case "CONTACT":
 		case "LOCATION":
