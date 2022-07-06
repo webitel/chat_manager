@@ -528,7 +528,7 @@ func (repo *sqlxRepository) BindChannel(ctx context.Context, channelID string, v
 	}
 
 	var (
-		expr   = "COALESCE(vars,'{}')" // "props"
+		expr   = "COALESCE(props,'{}')"
 		params = make([]interface{}, 0, 3)
 	)
 
