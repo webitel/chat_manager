@@ -2784,6 +2784,7 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 	chatFromID = chat.ID
 
 	originator := chat.Channel
+	conversation := chat.GetMember(chatFlowID)
 
 	/*var userToID int64 = 72
 	if userToID != 0 {
@@ -2862,6 +2863,8 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 	err = c.flowClient.TransferTo(
 		chatFlowID, originator,
 		schemaToID, userToID,
+		// merge channel.variables latest state
+		conversation.Variables,
 	)
 
 	if err != nil {
