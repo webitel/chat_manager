@@ -42,7 +42,7 @@ type Client interface {
 	CloseConversation(conversationID, cause string) error
 	// BreakBridge(sender *store.Channel, cause BreakBridgeCause) error
 	// CloseConversation(sender *store.Channel) error
-	TransferTo(conversationID string, originator *app.Channel, schemaToID, userToID int64) error
+	TransferTo(conversationID string, originator *app.Channel, schemaToID, userToID int64, setVars map[string]string) error
 
 	SendMessageV1(target *app.Channel, message *chat.Message) error
 	WaitMessage(conversationId, confirmationId string) error
@@ -674,12 +674,31 @@ func (c *Agent) BreakBridge(conversationID string, cause BreakBridgeCause) error
 	}
 }*/
 
-func (c *Agent) TransferTo(conversationID string, originator *app.Channel, schemaToID, userToID int64) error {
+func (c *Agent) TransferTo(conversationID string, originator *app.Channel, schemaToID, userToID int64, setVars map[string]string) error {
 
 	channel, err := c.GetChannel(conversationID)
 
 	if err != nil {
 		return err
+	}
+
+	// merge channel.variables latest state
+	if setVars != nil {
+		delete(setVars, "")
+		if n := len(setVars); n != 0 {
+			chatVars := channel.Variables
+			if chatVars == nil {
+				chatVars = make(map[string]string, n)
+			}
+			for key, val := range setVars {
+				// switch key {
+				// case "xfer", "flow", "chat", "user", "from": // system; DO NOT reassign !
+				// default:
+				// }
+				chatVars[key] = val
+			}
+			channel.Variables = chatVars
+		}
 	}
 
 	if schemaToID != 0 {
