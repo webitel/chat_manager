@@ -929,7 +929,9 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 	responseHeader.Set("Access-Control-Allow-Credentials", "true")
 	responseHeader.Set("Access-Control-Allow-Methods", "OPTIONS, GET, POST")
 	responseHeader.Set("Access-Control-Allow-Headers", "Authorization, X-Webitel-Access, Cookie, Content-Type, "+
-		"Connection, Upgrade, Sec-Websocket-Version, Sec-Websocket-Extensions, Sec-Websocket-Key, Sec-Websocket-Protocol")
+		"Connection, Upgrade, Sec-Websocket-Version, Sec-Websocket-Extensions, Sec-Websocket-Key, Sec-Websocket-Protocol, "+
+		"X-XSRF-Token", // Axios frontend
+	)
 	responseHeader.Set("Access-Control-Allow-Origin", origin)
 
 	// POST /media?filename=

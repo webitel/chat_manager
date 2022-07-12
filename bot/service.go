@@ -596,7 +596,8 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		header.Set("Access-Control-Allow-Credentials", "true")
 		header.Set("Access-Control-Allow-Methods", "OPTIONS, GET, POST")
 		header.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Webitel-Access, Cookie, "+
-			"Connection, Upgrade, Sec-Websocket-Version, Sec-Websocket-Extensions, Sec-Websocket-Key, Sec-Websocket-Protocol",
+			"Connection, Upgrade, Sec-Websocket-Version, Sec-Websocket-Extensions, Sec-Websocket-Key, Sec-Websocket-Protocol, "+
+			"X-XSRF-Token", // Axios frontend
 		)
 		origin := r.Header.Get(hdrOrigin)
 		if origin == "" {
