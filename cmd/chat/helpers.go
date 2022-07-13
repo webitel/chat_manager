@@ -154,11 +154,12 @@ func transformConversationFromRepoModel(c *pg.Conversation) *pb.Conversation {
 
 			dst := &page[e]
 
-			dst.Type = src.Type
-			dst.Internal = src.Internal
 			dst.ChannelId = src.ID
+			dst.Type = src.Type
 			dst.UserId = src.UserID
 			dst.Username = src.Name
+			dst.Internal = src.Internal
+			dst.ExternalId = src.ChatID
 
 			list[e] = dst
 		}

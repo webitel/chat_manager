@@ -296,6 +296,7 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 
 			dst.UserID = src.UserId
 			dst.Username = src.Username
+			dst.ExternalId = src.ExternalId
 			// dst.Firstname = src.Firstname,
 			// dst.Lastname  = src.Lastname,
 

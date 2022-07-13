@@ -92,9 +92,9 @@ func (repo *sqlxRepository) CreateConversation(ctx context.Context, session *Con
 
 // TODO: CloseConversation(ctx context.Context, id string, at time.Time) error {}
 func (repo *sqlxRepository) CloseConversation(ctx context.Context, id string) error {
-	
+
 	at := time.Now()
-	
+
 	// with cancellation context
 	_, err := repo.db.ExecContext(ctx,
 		// query statement
@@ -129,13 +129,13 @@ func (repo *sqlxRepository) GetConversations(
 	// conversations := make([]*Conversation, 0, size)
 	var (
 		fieldsStr = // "c.*, m.*, ch.*"
-			"c.id, c.title, c.created_at, c.closed_at, c.updated_at, c.domain_id" +
+		"c.id, c.title, c.created_at, c.closed_at, c.updated_at, c.domain_id" +
 			", m.messages" +
 			", ch.members"
-		
-		whereStr  = ""
-		sortStr   = "order by c.created_at desc"
-		limitStr  = ""
+
+		whereStr = ""
+		sortStr  = "order by c.created_at desc"
+		limitStr = ""
 	)
 	if size == 0 {
 		size = 15
@@ -207,19 +207,21 @@ func (repo *sqlxRepository) GetConversations(
 						select
 							   ch.id,
 							   ch.type,
-							   ch.user_id,
 							   ch.name,
+							   ch.user_id,
 							   ch.internal,
+								 coalesce(cn.external_id, ch.user_id::text) external_id,
 							   ch.created_at,
 							   ch.updated_at
 						from chat.channel ch
+						left join chat.client cn on not ch.internal and cn.id = ch.user_id
 						where ch.conversation_id = c.id
 					) ss
 				) ch on true
 			%s
 			%s
 		%s;`,
-		fieldsStr, ""/*messageLimitStr*/, whereStr, sortStr, limitStr,
+		fieldsStr, "" /*messageLimitStr*/, whereStr, sortStr, limitStr,
 	))
 	// rows, err := repo.db.QueryxContext(ctx, query, queryArgs...)
 	rows, err := repo.db.QueryContext(ctx, query, queryArgs...)
@@ -248,7 +250,7 @@ func (repo *sqlxRepository) GetConversations(
 		if list[size-1] == nil {
 			// NOTE: page .next exists !
 			// FIXME: v0 compatible
-			list = list[0:size-1]
+			list = list[0 : size-1]
 		}
 	}
 
@@ -278,7 +280,7 @@ func (repo *sqlxRepository) GetConversations(
 	}
 	messages = ConversationMessages{}
 	err = repo.db.GetContext(ctx, &messages, `
-		SELECT 
+		SELECT
 			   m.id,
 			   m.text,
 			   m.type,
@@ -350,7 +352,7 @@ func NewSession(dcx sqlx.ExtContext, ctx context.Context, session *Conversation)
 /*func ConversationRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, err error) {
 
 	param := func(args ...interface{}) (sql string) {
-		
+
 		if params == nil {
 			params = make([]interface{}, 0, len(args))
 		}
@@ -369,11 +371,11 @@ func NewSession(dcx sqlx.ExtContext, ctx context.Context, session *Conversation)
 		// }
 		return sql
 	}
-	
+
 	stmt = psql.Select().
 	From("chat.conversation AS c").
 	Columns(
-		
+
 		"m.id",
 		"coalesce(m.channel_id,m.conversation_id) AS channel_id", // senderChatID
 		"m.conversation_id", // targetChatID
@@ -408,7 +410,7 @@ func NewSession(dcx sqlx.ExtContext, ctx context.Context, session *Conversation)
 
 	// 	// }
 	// 	id, err := uuid.Parse(s)
-		
+
 	// 	if err != nil {
 	// 		return nil, err // uuid.Must(!)
 	// 	} else {
@@ -439,7 +441,7 @@ func NewSession(dcx sqlx.ExtContext, ctx context.Context, session *Conversation)
 			_ = v.Set(q)
 
 			stmt = stmt.Where("m.id = ANY("+param(&v)+")")
-			
+
 		default:
 			// err = errors.InternalServerError(
 			// 	"chat.channel.search.id.filter",
@@ -510,7 +512,7 @@ func NewSession(dcx sqlx.ExtContext, ctx context.Context, session *Conversation)
 		return SelectStmt{}, nil, err
 	}
 	// endregion
-	
+
 	// region: sort order
 	sort := req.Sort
 	if len(sort) == 0 {
@@ -540,10 +542,10 @@ func NewSession(dcx sqlx.ExtContext, ctx context.Context, session *Conversation)
 		stmt = stmt.OrderBy(ref + order)
 	}
 	// endregion
-	
+
 	// region: limit/offset
 	size, page := req.GetSize(), req.GetPage()
-	
+
 	if size > 0 {
 		// OFFSET (page-1)*size -- omit same-sized previous page(s) from result
 		if page > 1 {
@@ -557,7 +559,6 @@ func NewSession(dcx sqlx.ExtContext, ctx context.Context, session *Conversation)
 	return stmt, params, nil
 }*/
 
- 
 /*
 func scanChatMembers(dst *[]*ConversationMember) ScanFunc {
 	return func(src interface{}) error {
@@ -567,7 +568,7 @@ func scanChatMembers(dst *[]*ConversationMember) ScanFunc {
 
 func scanChatMessages(dst *[]*Message) ScanFunc {
 	return func(src interface{}) error {
-		
+
 	}
 }*/
 
@@ -577,7 +578,7 @@ func scanChatMessages(dst *[]*Message) ScanFunc {
 // which indicates that .`next` result page exist !
 func ConversationList(rows *sql.Rows, limit int) ([]*Conversation, error) {
 
-	// 
+	//
 	if limit < 0 {
 		limit = 0
 	}
@@ -589,26 +590,34 @@ func ConversationList(rows *sql.Rows, limit int) ([]*Conversation, error) {
 	}
 	// alloc projection map
 	var (
-
-		obj *Conversation // cursor: target for current tuple
+		obj  *Conversation                           // cursor: target for current tuple
 		plan = make([]func() interface{}, len(cols)) // , len(cols))
 	)
 
 	for c, col := range cols {
 		switch col {
-		
-		case "id":         plan[c] = func() interface{} { return &obj.ID }    // NOTNULL (!)
-		case "title":      plan[c] = func() interface{} { return &obj.Title } // NULL: *sql.NullString
 
-		case "created_at": plan[c] = func() interface{} { return ScanDatetime(&obj.CreatedAt) } // NOTNULL (!)
-		case "updated_at": plan[c] = func() interface{} { return ScanDatetime(&obj.UpdatedAt) } // NULL: **time.Time
-		case "closed_at":  plan[c] = func() interface{} { return &obj.ClosedAt }                // NULL: *sql.NullTime
+		case "id":
+			plan[c] = func() interface{} { return &obj.ID } // NOTNULL (!)
+		case "title":
+			plan[c] = func() interface{} { return &obj.Title } // NULL: *sql.NullString
 
-		case "domain_id":  plan[c] = func() interface{} { return ScanInteger(&obj.DomainID) }   // NOTNULL: (!)
-		case "props":      plan[c] = func() interface{} { return &obj.Variables } // NULL: *pg.Metadata
+		case "created_at":
+			plan[c] = func() interface{} { return ScanDatetime(&obj.CreatedAt) } // NOTNULL (!)
+		case "updated_at":
+			plan[c] = func() interface{} { return ScanDatetime(&obj.UpdatedAt) } // NULL: **time.Time
+		case "closed_at":
+			plan[c] = func() interface{} { return &obj.ClosedAt } // NULL: *sql.NullTime
 
-		case "members":    plan[c] = func() interface{} { return ScanJSON(&obj.Members) }   // NOTNULL: (!)
-		case "messages":   plan[c] = func() interface{} { return ScanJSON(&obj.Messages) }   // NOTNULL: (!)
+		case "domain_id":
+			plan[c] = func() interface{} { return ScanInteger(&obj.DomainID) } // NOTNULL: (!)
+		case "props":
+			plan[c] = func() interface{} { return &obj.Variables } // NULL: *pg.Metadata
+
+		case "members":
+			plan[c] = func() interface{} { return ScanJSON(&obj.Members) } // NOTNULL: (!)
+		case "messages":
+			plan[c] = func() interface{} { return ScanJSON(&obj.Messages) } // NOTNULL: (!)
 
 		default:
 
@@ -617,11 +626,9 @@ func ConversationList(rows *sql.Rows, limit int) ([]*Conversation, error) {
 		}
 	}
 
-
 	dst := make([]interface{}, len(cols)) // , len(cols))
 
 	var (
-
 		page []Conversation  // mempage
 		list []*Conversation // results
 	)
@@ -634,7 +641,7 @@ func ConversationList(rows *sql.Rows, limit int) ([]*Conversation, error) {
 	}
 
 	// var (
-		
+
 	// 	err error
 	// 	row *Message
 	// )
@@ -663,7 +670,7 @@ func ConversationList(rows *sql.Rows, limit int) ([]*Conversation, error) {
 		}
 
 		err = rows.Scan(dst...)
-		
+
 		if err != nil {
 			break
 		}
@@ -723,7 +730,7 @@ func schemaConversationError(err error) error {
 	if err != nil {
 		return nil, err // 500
 	}
-	
+
 	// region: bind context transaction
 	// // dc := session
 	// tx, err := session.BeginTxx(ctx, nil) // +R
@@ -757,8 +764,7 @@ func schemaConversationError(err error) error {
 // postgres: chat.session.close(!)
 // $1 - conversation_id
 // $2 - local timestamp
-const psqlSessionCloseQ =
-`WITH c0 AS (
+const psqlSessionCloseQ = `WITH c0 AS (
   UPDATE chat.invite
      SET closed_at=$2
    WHERE conversation_id=$1
@@ -789,8 +795,7 @@ UPDATE chat.channel
 // $5  - session.updated_at
 // $6  - session.closed_at // FIXME: NULL ?
 // $7  - session.Variables
-const psqlSessionNewQ =
-`INSERT INTO chat.conversation (
+const psqlSessionNewQ = `INSERT INTO chat.conversation (
   id, domain_id, title, created_at, updated_at, closed_at, props
 ) VALUES (
   $1, $2, $3, $4, $5, $6, $7

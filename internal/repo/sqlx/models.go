@@ -34,11 +34,11 @@ type Channel struct {
 	UpdatedAt      time.Time      `db:"updated_at" json:"updated_at,omitempty"`
 	DomainID       int64          `db:"domain_id" json:"domain_id"`
 	// FlowID         int64          `db:"-" json:"flow_id"`
-	FlowBridge     bool           `db:"flow_bridge" json:"flow_bridge"`
-	Name           string         `db:"name" json:"name"`
-	ClosedCause    sql.NullString `db:"closed_cause" json:"closed_cause,omitempty"`
-	JoinedAt       sql.NullTime   `db:"joined_at" json:"joined_at,omitempty"`
-	Variables      Metadata       `db:"props" json:"props,omitempty"`
+	FlowBridge  bool           `db:"flow_bridge" json:"flow_bridge"`
+	Name        string         `db:"name" json:"name"`
+	ClosedCause sql.NullString `db:"closed_cause" json:"closed_cause,omitempty"`
+	JoinedAt    sql.NullTime   `db:"joined_at" json:"joined_at,omitempty"`
+	Variables   Metadata       `db:"props" json:"props,omitempty"`
 }
 
 func (m *Channel) Contact() string {
@@ -62,7 +62,7 @@ func (m *Channel) ScanContact(src interface{}) error {
 	if src == nil {
 		return nil // NULL
 	}
-	
+
 	dst := &m.Connection
 	err := dst.Scan(src)
 
@@ -78,9 +78,9 @@ func (m *Channel) ScanContact(src interface{}) error {
 	// normalize
 	m.Connection.String, m.ServiceHost.String =
 		contact.ContactServiceNode(m.Connection.String)
-	
+
 	m.Connection.Valid = m.Connection.String != ""
-	
+
 	return nil
 }
 
@@ -125,31 +125,47 @@ func (m *Channel) Scan(row *sql.Rows) error {
 	}
 	for _, att := range cols {
 		switch att {
-		
-		case "id":              target(&m.ID)
-		case "type":            target(&m.Type)
-		case "name":            target(&m.Name)
 
-		case "user_id":         target(&m.UserID)
-		case "domain_id":       target(&m.DomainID)
-		case "conversation_id": target(&m.ConversationID)
+		case "id":
+			target(&m.ID)
+		case "type":
+			target(&m.Type)
+		case "name":
+			target(&m.Name)
 
-		case "connection":      target(&m.Connection)
+		case "user_id":
+			target(&m.UserID)
+		case "domain_id":
+			target(&m.DomainID)
+		case "conversation_id":
+			target(&m.ConversationID)
+
+		case "connection":
+			target(&m.Connection)
 		// case "connection":      target(ScanFunc(m.ScanContact))
-		case "hostname","host": target(&m.ServiceHost)
+		case "hostname", "host":
+			target(&m.ServiceHost)
 		//case "hostname","host": target(ScanFunc(m.ScanHostname))
-		case "internal":        target(&m.Internal)
+		case "internal":
+			target(&m.Internal)
 
-		case "created_at":      target(&m.CreatedAt)
-		case "updated_at":      target(&m.UpdatedAt)
-		
-		case "joined_at":       target(&m.JoinedAt)
-		case "closed_at":       target(&m.ClosedAt)
-		case "closed_cause":    target(&m.ClosedCause)
+		case "created_at":
+			target(&m.CreatedAt)
+		case "updated_at":
+			target(&m.UpdatedAt)
 
-		case "flow_bridge":     target(&m.FlowBridge)
+		case "joined_at":
+			target(&m.JoinedAt)
+		case "closed_at":
+			target(&m.ClosedAt)
+		case "closed_cause":
+			target(&m.ClosedCause)
 
-		case "props":           target(&m.Variables)
+		case "flow_bridge":
+			target(&m.FlowBridge)
+
+		case "props":
+			target(&m.Variables)
 
 		default:
 
@@ -184,21 +200,22 @@ type Conversation struct {
 	DomainID      int64          `db:"domain_id" json:"domain_id"`
 	Members       ConversationMembers
 	Messages      []*Message // ConversationMessages
-	MembersBytes  []byte         `db:"members" json:"members"`
-	MessagesBytes []byte         `db:"messages" json:"messages"`
-	Variables     Metadata       `db:"vars" json:"variables"`
+	MembersBytes  []byte     `db:"members" json:"members"`
+	MessagesBytes []byte     `db:"messages" json:"messages"`
+	Variables     Metadata   `db:"vars" json:"variables"`
 }
 
 type ConversationMembers []*ConversationMember
 
 type ConversationMember struct {
-	ID        string    `db:"id" json:"id"`
-	Type      string    `db:"type" json:"type"`
-	UserID    int64     `db:"user_id" json:"user_id"`
+	ID        string    `db:"id" json:"id"`                   // channel.id
+	Type      string    `db:"type" json:"type"`               // channel.type
+	Name      string    `db:"name" json:"name"`               // user.name
+	UserID    int64     `db:"user_id" json:"user_id"`         // user.id
+	ChatID    string    `db:"external_id" json:"external_id"` // chat.id
+	Internal  bool      `db:"internal" json:"internal"`       // (channel.type == webitel) ?
 	CreatedAt time.Time `db:"created_at" json:"created_at,omitempty"`
-	Internal  bool      `db:"internal" json:"internal"`
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at,omitempty"`
-	Name      string    `db:"name" json:"name"`
 }
 
 func (c *ConversationMembers) Scan(src interface{}) error {
@@ -229,16 +246,16 @@ func (c *ConversationMessages) Value() (driver.Value, error) {
 }
 
 type Invite struct {
-	ID               string            `db:"id" json:"id"`
-	ConversationID   string            `db:"conversation_id" json:"conversation_id"`
-	UserID           int64             `db:"user_id" json:"user_id"`
-	Title            sql.NullString    `db:"title" json:"title,omitempty"`
-	TimeoutSec       int64             `db:"timeout_sec" json:"timeout_sec"`
-	InviterChannelID sql.NullString    `db:"inviter_channel_id" json:"inviter_channel_id,omitempty"`
-	ClosedAt         sql.NullTime      `db:"closed_at" json:"closed_at,omitempty"`
-	CreatedAt        time.Time         `db:"created_at" json:"created_at,omitempty"`
-	DomainID         int64             `db:"domain_id" json:"domain_id"`
-	Variables        Metadata          `db:"props" json:"props"`
+	ID               string         `db:"id" json:"id"`
+	ConversationID   string         `db:"conversation_id" json:"conversation_id"`
+	UserID           int64          `db:"user_id" json:"user_id"`
+	Title            sql.NullString `db:"title" json:"title,omitempty"`
+	TimeoutSec       int64          `db:"timeout_sec" json:"timeout_sec"`
+	InviterChannelID sql.NullString `db:"inviter_channel_id" json:"inviter_channel_id,omitempty"`
+	ClosedAt         sql.NullTime   `db:"closed_at" json:"closed_at,omitempty"`
+	CreatedAt        time.Time      `db:"created_at" json:"created_at,omitempty"`
+	DomainID         int64          `db:"domain_id" json:"domain_id"`
+	Variables        Metadata       `db:"props" json:"props"`
 }
 
 type Document struct {
@@ -249,26 +266,25 @@ type Document struct {
 }
 
 type Message struct {
-
-	ID                   int64          `db:"id" json:"id"`
+	ID int64 `db:"id" json:"id"`
 	// ChannelID            sql.NullString `db:"channel_id" json:"channel_id,omitempty"`
-	ChannelID            string         `db:"channel_id" json:"channel_id,omitempty"`
+	ChannelID string `db:"channel_id" json:"channel_id,omitempty"`
 	//UserID         sql.NullInt64  `db:"user_id" json:"user_id,omitempty"`
 	//UserType       sql.NullString `db:"user_type" json:"user_type,omitempty"`
-	ConversationID       string         `db:"conversation_id" json:"conversation_id"`
+	ConversationID string `db:"conversation_id" json:"conversation_id"`
 
-	CreatedAt            time.Time      `db:"created_at" json:"created_at,omitempty"`
-	UpdatedAt            time.Time      `db:"updated_at" json:"updated_at,omitempty"`
-	
-	Type                 string         `db:"type" json:"type"`
+	CreatedAt time.Time `db:"created_at" json:"created_at,omitempty"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at,omitempty"`
+
+	Type string `db:"type" json:"type"`
 	// Text                 sql.NullString `db:"text" json:"text,omitempty"`
-	Text                 string         `db:"text" json:"text,omitempty"`
-	File                 *Document      `db:"-"    json:"file,omitempty"`
-	ReplyToMessageID     int64          `db:"-"    json:"reply_to_message_id,omitempty"`
-	ForwardFromMessageID int64          `db:"-"    json:"forward_from_message_id,omitempty"`
+	Text                 string    `db:"text" json:"text,omitempty"`
+	File                 *Document `db:"-"    json:"file,omitempty"`
+	ReplyToMessageID     int64     `db:"-"    json:"reply_to_message_id,omitempty"`
+	ForwardFromMessageID int64     `db:"-"    json:"forward_from_message_id,omitempty"`
 	// TODO: Variables map[string]string
 	// Variables            types.JSONText `db:"variables" json:"variables,omitempty"`
-	Variables            Metadata       `db:"variables" json:"variables,omitempty"`
+	Variables Metadata `db:"variables" json:"variables,omitempty"`
 }
 
 type Profile struct {

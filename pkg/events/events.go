@@ -48,13 +48,13 @@ type InviteConversationEvent struct {
 
 type UserInvitationEvent struct {
 	BaseEvent
-	Title        string `json:"title"`
-	InviteID     string `json:"invite_id"`
-	TimeoutSec   int64  `json:"timeout_sec"`
+	Title        string            `json:"title"`
+	InviteID     string            `json:"invite_id"`
+	TimeoutSec   int64             `json:"timeout_sec"`
 	Variables    map[string]string `json:"variables"`
-	Conversation Conversation `json:"conversation"`
-	Members      []*Member  `json:"members"`
-	Messages     []*Message `json:"messages"`
+	Conversation Conversation      `json:"conversation"`
+	Members      []*Member         `json:"members"`
+	Messages     []*Message        `json:"messages"`
 }
 
 type DeclineInvitationEvent struct {
@@ -80,46 +80,45 @@ type Conversation struct {
 }
 
 type Member struct {
-	ChannelID string `json:"id"`
-	UserID    int64  `json:"user_id"`
-	Username  string `json:"name"`
-	Type      string `json:"type"`
-	Internal  bool   `json:"internal"`
-	UpdatedAt int64  `json:"updated_at,omitempty"`
+	ChannelID  string `json:"id"`
+	Type       string `json:"type"`
+	Username   string `json:"name"`
+	UserID     int64  `json:"user_id"`
+	Internal   bool   `json:"internal"`
+	ExternalId string `json:"external_id"`
+	UpdatedAt  int64  `json:"updated_at,omitempty"`
 	// Firstname string `json:"firstname,omitempty"`
 	// Lastname  string `json:"lastname,omitempty"`
 }
 
 type Message struct {
-
-	ID        int64  `json:"id"` // Unique Message.ID; TODO: within chat session !
+	ID        int64  `json:"id"`                   // Unique Message.ID; TODO: within chat session !
 	ChannelID string `json:"channel_id,omitempty"` // FROM: channel.ID ! sender !
 
-	CreatedAt int64  `json:"created_at,omitempty"`
-	UpdatedAt int64  `json:"updated_at,omitempty"` // EDITED !
+	CreatedAt int64 `json:"created_at,omitempty"`
+	UpdatedAt int64 `json:"updated_at,omitempty"` // EDITED !
 
-	Type      string `json:"type"`                 // "text" or "file"
-	Text      string `json:"text,omitempty"`
-	File      *File  `json:"file,omitempty"`
+	Type string `json:"type"` // "text" or "file"
+	Text string `json:"text,omitempty"`
+	File *File  `json:"file,omitempty"`
 
-	Contact	  *Contact `json:"contact,omitempty"`
+	Contact *Contact `json:"contact,omitempty"`
 
 	ReplyToMessageID int64 `json:"reply_to_message_id,omitempty"`
-	MessageForwarded // embedded
+	MessageForwarded       // embedded
 }
 
 // MessageForwarded event arguments
 type MessageForwarded struct {
 	//  ForwardFrom *User          `json:"forward_from,omitempty"`
 	//  ForwardFromChat *Chat      `json:"forward_from_chat,omitempty"`
-	 ForwardFromChatID string   `json:"forward_from_chat_id,omitempty"`
-	 ForwardFromMessageID int64 `json:"forward_from_message_id,omitempty"`
-	 ForwardSenderName string   `json:"forward_sender_name,omitempty"`
-	 ForwardDate int64          `json:"forward_date,omitempty"`
+	ForwardFromChatID    string `json:"forward_from_chat_id,omitempty"`
+	ForwardFromMessageID int64  `json:"forward_from_message_id,omitempty"`
+	ForwardSenderName    string `json:"forward_sender_name,omitempty"`
+	ForwardDate          int64  `json:"forward_date,omitempty"`
 }
 
 type File struct {
-
 	ID   int64  `json:"id"`
 	Size int64  `json:"size"`
 	Type string `json:"mime"`
@@ -127,8 +126,8 @@ type File struct {
 }
 
 type Contact struct {
-	ID          int64  `json:"id"`
-	FirstName   string `json:"firstName"`
-	LastName    string `json:"lastName"`
-	Phone       string `json:"phone"`
+	ID        int64  `json:"id"`
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+	Phone     string `json:"phone"`
 }
