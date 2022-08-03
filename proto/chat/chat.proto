@@ -208,6 +208,7 @@ message LeaveConversationRequest {
   string channel_id = 1;
   string conversation_id = 2;
   int64 auth_user_id = 3;
+  string cause = 4; // optional: reason
 }
 
 message LeaveConversationResponse {
@@ -236,6 +237,7 @@ message DeclineInvitationRequest {
   string invite_id = 1;
   int64 auth_user_id = 2;
   string conversation_id = 3;
+  string cause = 4; // optional: reason
 }
 
 message DeclineInvitationResponse {

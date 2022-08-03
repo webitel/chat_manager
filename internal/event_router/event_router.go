@@ -31,11 +31,11 @@ type Router interface {
 	RouteDeclineInvite(userID *int64, conversationID *string) error
 	RouteInvite(conversationID *string, userID *int64) error
 	RouteJoinConversation(channel *store.Channel, conversationID *string) error
-	RouteLeaveConversation(channel *store.Channel, conversationID *string) error
+	RouteLeaveConversation(channel *store.Channel, conversationID *string, cause string) error
 	RouteMessage(channel *store.Channel, message *chat.Message) (bool, error)
 	RouteMessageFromFlow(conversationID *string, message *chat.Message) error
 	SendInviteToWebitelUser(conversation *chat.Conversation, invite *store.Invite) error
-	SendDeclineInviteToWebitelUser(domainID *int64, conversationID *string, userID *int64, inviteID *string) error
+	SendDeclineInviteToWebitelUser(domainID *int64, conversationID *string, userID *int64, inviteID *string, cause string) error
 	SendUpdateChannel(channel *store.Channel, updated_at int64) error
 	// Override
 	SendMessageToGateway(target *app.Channel, message *chat.Message) error
@@ -365,7 +365,7 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 	return nil
 }
 
-func (e *eventRouter) SendDeclineInviteToWebitelUser(domainID *int64, conversationID *string, userID *int64, inviteID *string) error {
+func (e *eventRouter) SendDeclineInviteToWebitelUser(domainID *int64, conversationID *string, userID *int64, inviteID *string, cause string) error {
 
 	data, err := json.Marshal(
 		events.DeclineInvitationEvent{
@@ -375,6 +375,7 @@ func (e *eventRouter) SendDeclineInviteToWebitelUser(domainID *int64, conversati
 			},
 			InviteID: *inviteID,
 			UserID:   *userID,
+			Cause:    cause,
 		},
 	)
 
@@ -516,7 +517,7 @@ func (e *eventRouter) RouteJoinConversation(channel *store.Channel, conversation
 	return nil
 }
 
-func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversationID *string) error {
+func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversationID *string, cause string) error {
 	// TO: @broker  (engine, callcenter, etc.)
 	internalM, _ := json.Marshal(
 		events.LeaveConversationEvent{
@@ -525,6 +526,7 @@ func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversatio
 				Timestamp:      time.Now().Unix() * 1000,
 			},
 			LeavedChannelID: channel.ID,
+			Cause:           cause,
 		},
 	)
 

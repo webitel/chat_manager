@@ -39,6 +39,7 @@ type LeaveConversationEvent struct {
 	BaseEvent
 	//LeavedUserID    int64  `json:"leaved_user_id"`
 	LeavedChannelID string `json:"leaved_channel_id"`
+	Cause           string `json:"cause,omitempty"`
 }
 
 type InviteConversationEvent struct {
@@ -61,6 +62,7 @@ type DeclineInvitationEvent struct {
 	BaseEvent
 	UserID   int64  `json:"user_id"`
 	InviteID string `json:"invite_id"`
+	Cause    string `json:"cause,omitempty"`
 }
 
 type UpdateChannelEvent struct {

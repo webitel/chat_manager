@@ -951,7 +951,8 @@ func (s *chatService) JoinConversation(
 func (s *chatService) leaveChat(
 	ctx context.Context,
 	req *pb.LeaveConversationRequest,
-	cause flow.BreakBridgeCause,
+	breakBridge flow.BreakBridgeCause,
+	leftCause string,
 ) error {
 
 	var (
@@ -1018,15 +1019,22 @@ func (s *chatService) leaveChat(
 	await := make(chan error, 2)
 	for _, async := range []func(){
 		func() {
+			// omitted ? populate breakBridge cause
+			if leftCause == "" {
+				if breakBridge != flow.LeaveConversationCause {
+					leftCause = string(breakBridge)
+				}
+			}
+
 			// NOTIFY: All related CHAT member(s) !
 			await <- s.eventRouter.RouteLeaveConversation(
-				closed, &sender.ConversationID,
+				closed, &sender.ConversationID, leftCause,
 			)
 			// },
 			// func() {
 			// FIXME: why ?
 			await <- s.flowClient.BreakBridge(
-				sender.ConversationID, cause,
+				sender.ConversationID, breakBridge,
 			)
 		},
 	} {
@@ -1079,7 +1087,9 @@ func (s *chatService) LeaveConversation(
 	res *pb.LeaveConversationResponse,
 ) error {
 
-	return s.leaveChat(ctx, req, flow.LeaveConversationCause)
+	return s.leaveChat(ctx, req,
+		flow.LeaveConversationCause, req.GetCause(),
+	)
 }
 
 func (s *chatService) InviteToConversation(
@@ -1283,7 +1293,8 @@ func (s *chatService) InviteToConversation(
 			}
 			// NOTIFY: timed out !
 			err = s.eventRouter.SendDeclineInviteToWebitelUser(
-				&domainID, &invite.ConversationID, &invite.UserID, &invite.ID,
+				&domainID, &invite.ConversationID, &invite.UserID,
+				&invite.ID, string(flow.TimeoutCause),
 			)
 
 			if err != nil {
@@ -1376,7 +1387,8 @@ func (s *chatService) DeclineInvitation(
 		func() {
 			// NOTIFY: Invited User session(s) !
 			await <- s.eventRouter.SendDeclineInviteToWebitelUser(
-				&invite.DomainID, &invite.ConversationID, &invite.UserID, &invite.ID,
+				&invite.DomainID, &invite.ConversationID, &invite.UserID,
+				&invite.ID, req.GetCause(), // optional: custom
 			)
 		},
 	} {
@@ -2846,7 +2858,7 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 				ConversationId: chatFlowID,
 				AuthUserId:     originator.User.ID,
 				ChannelId:      chatFromID,
-			}, flow.TransferCause, // &leave,
+			}, flow.TransferCause, "", // "TRANSFER"
 		)
 
 	case "chatflow":
