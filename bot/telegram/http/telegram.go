@@ -18,6 +18,8 @@ import (
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/bot"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	// gate "github.com/webitel/chat_manager/api/proto/bot"
 	telegram "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -1448,6 +1450,9 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		// "chat_id":    chatID,
 		// "message_id": strconv.Itoa(recvMessage.MessageID),
 	}
+	if channel.IsNew() { // && contact.Username != "" {
+		sendMessage.Variables["username"] = contact.Username
+	}
 
 	err = c.Gateway.Read(notice.Context(), &sendUpdate)
 
@@ -1463,6 +1468,60 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// return // HTTP/1.1 200 OK
 }
 
-// func receiveMessage(e *telegram.Message) {}
+// Broadcast given `req.Message` message [to] provided `req.Peer(s)`
+func (c *TelegramBot) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
 
-// func receiveEditedMessage(e *telegram.Message) {}
+	var (
+		n              = len(req.GetPeer())
+		broadcastError = func(peerId int, err error) {
+
+			res := rsp.GetFailure()
+			if res == nil {
+				res = make([]*chat.BroadcastPeer, 0, n)
+			}
+
+			var re *status.Status
+			switch err := err.(type) {
+			case *telegram.Error:
+				re = status.New(codes.Code(err.Code), err.Message)
+			case *errors.Error:
+				re = status.New(codes.Code(err.Code), err.Detail)
+			default:
+				re = status.New(codes.Unknown, err.Error())
+			}
+
+			res = append(res, &chat.BroadcastPeer{
+				Peer:  req.Peer[peerId],
+				Error: re.Proto(),
+			})
+
+			rsp.Failure = res
+		}
+		template = telegram.MessageConfig{
+			Text: req.GetMessage().GetText(),
+			// // https://core.telegram.org/bots/api#formatting-options
+			// ParseMode: "MarkdownV2",
+		}
+	)
+
+	for i, peer := range req.GetPeer() {
+		chatId, err := strconv.ParseInt(peer, 10, 64)
+		if err != nil {
+			// ERR: Peer NOT Acceptable !
+			broadcastError(i, errors.BadRequest("", "chat.id: expect integer identifier"))
+			continue
+		}
+
+		template.ChatID = chatId
+		// template.ChannelUsername
+		_, err = c.BotAPI.Send(template)
+		if err != nil {
+			// ERR: Send failed !
+			broadcastError(i, err)
+			continue
+		}
+	}
+
+	// rsp.Peers[].Erro detailed
+	return nil
+}

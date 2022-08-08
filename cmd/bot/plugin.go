@@ -7,9 +7,10 @@ import (
 
 	// Register Chat Bot Provider(s) ...
 	_ "github.com/webitel/chat_manager/bot/corezoid"
-	_ "github.com/webitel/chat_manager/bot/facebook"     // legacy
-	_ "github.com/webitel/chat_manager/bot/facebook.v12" // messenger
-	_ "github.com/webitel/chat_manager/bot/telegram"
+	_ "github.com/webitel/chat_manager/bot/facebook"      // legacy [facebook]
+	_ "github.com/webitel/chat_manager/bot/facebook.v12"  // messenger
+	_ "github.com/webitel/chat_manager/bot/telegram/gotd" // telegram-app [gotd]
+	_ "github.com/webitel/chat_manager/bot/telegram/http" // telegram-bot [telegram]
 	_ "github.com/webitel/chat_manager/bot/viber"
 	_ "github.com/webitel/chat_manager/bot/webchat" // websocket
 	_ "github.com/webitel/chat_manager/bot/whatsapp/infobip"

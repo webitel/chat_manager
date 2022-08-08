@@ -146,6 +146,12 @@ func Run(ctx *cli.Context) error {
 			Msg(err.Error())
 		return err
 	}
+	if err := pb.RegisterMessagesHandler(service.Server(), serv); err != nil {
+		logger.Fatal().
+			Str("app", "failed to register service").
+			Msg(err.Error())
+		return err
+	}
 
 	///debug/events
 	///debug/requests

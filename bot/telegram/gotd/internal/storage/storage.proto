@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package webitel.chat.bot;
+
+option go_package = "github.com/webitel/chat_manager/bot/telegram/client/internal/storage";
+
+message Dataset {
+    // map[user.id]access_hash
+    map<int64,int64> users = 1;
+}
+
+message Login {
+    // At all times, the logout token database
+    // should contain at most 20 tokens:
+    // evict older tokens as new tokens are added.
+    // https://core.telegram.org/api/auth#logout-tokens
+    repeated bytes tokens = 1;
+}

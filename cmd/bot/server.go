@@ -3,6 +3,7 @@ package bot
 import (
 	"net"
 	"net/url"
+	"os"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
@@ -48,6 +49,11 @@ var (
 			// Value: "https://example.com/chat", // TODO: use http[s]://${address} if blank
 		},
 		&cli.StringFlag{
+			Name:  "web_root",
+			Usage: "Base folder where the website additional assets are located.",
+			Value: "/var/lib/webitel/public-html",
+		},
+		&cli.StringFlag{
 			Name:    "address",
 			EnvVars: []string{"WEBITEL_BOT_ADDRESS"},
 			Usage:   "Bind address for the HTTP server.",
@@ -91,6 +97,7 @@ func Run(ctx *cli.Context) error {
 
 	logsLvl := ctx.String("log_level")
 	baseURL := ctx.String("site_url")
+	webRoot := ctx.String("web_root")
 	srvAddr := ctx.String("address")
 	// LOGs
 	colorize := true
@@ -109,6 +116,14 @@ func Run(ctx *cli.Context) error {
 	// CHECK: valid URL specified
 	if _, err := url.Parse(baseURL); err != nil {
 		return errors.Wrap(err, "Invalid URL")
+	}
+	// CHECK: web_root folder exists
+	rootDir, err := os.Stat(webRoot)
+	if os.IsNotExist(err) {
+		return errors.Wrap(err, "--web_root")
+	}
+	if !rootDir.IsDir() {
+		return errors.New("--web_root: directory required")
 	}
 
 	sender := service.Client()                                                          // Micro-From-Service: webitel.chat.bot
@@ -137,6 +152,7 @@ func Run(ctx *cli.Context) error {
 	// configure
 	store := sqlxrepo.NewBotStore(&logger, dbo.DB)
 	srv = bot.NewService(store, &logger, agent)
+	srv.WebRoot = webRoot // Static assets base folder
 
 	// AUTH: go.webitel.app
 	srv.Auth = auth.NewClient(
@@ -144,14 +160,16 @@ func Run(ctx *cli.Context) error {
 		auth.ClientCache(auth.NewLru(4096)),
 	)
 
-	// err := pb.RegisterBotServiceHandler(service.Server(), srv)
-	err = pb.RegisterBotsHandler(service.Server(), srv)
-
-	if err != nil {
-		logger.Fatal().
-			Str("app", "failed to register service").
-			Msg(err.Error())
-		return err
+	for _, regErr := range []error{
+		pb.RegisterBotsHandler(service.Server(), srv),
+		pbchat.RegisterMessagesHandler(service.Server(), srv),
+	} {
+		if regErr != nil {
+			logger.Fatal().
+				Str("app", "failed to register service").
+				Msg(regErr.Error())
+			return regErr
+		}
 	}
 
 	srv.URL = baseURL

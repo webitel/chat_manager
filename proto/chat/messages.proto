@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package webitel.chat.server;
+
+option go_package = "github.com/webitel/chat_manager/api/proto/chat";
+
+import "message.proto";
+import "google/rpc/status.proto";
+
+service Messages {
+  // Broadcast message `from` given bot profile to `peer` recipient(s)
+  rpc BroadcastMessage(BroadcastMessageRequest) returns (BroadcastMessageResponse) {}
+}
+
+message BroadcastMessageRequest {
+  // REQUIRED. Message content (accept: text) to broadcast
+  webitel.chat.server.Message message = 1;
+  // REQUIRED. From sender bot unique profile.id
+  int64 from = 2;
+  // REQUIRED. List of recipients; `from` provider-specific, e.g.:
+  // telegram - user.id (int64) which contacted the `from` bot.
+  // gotd - phone numbers according to the E.164 standard
+  repeated string peer = 3;
+}
+
+// Broadcast recepient status
+message BroadcastPeer {
+  // Peer identification
+  string peer = 1;
+  // Broadcast peer status
+  google.rpc.Status error = 2;
+}
+
+message BroadcastMessageResponse {
+  repeated BroadcastPeer failure = 1;
+}

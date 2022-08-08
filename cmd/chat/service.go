@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/micro/micro/v3/service/broker"
+	"github.com/micro/micro/v3/service/client"
 	"github.com/micro/micro/v3/service/context/metadata"
 	"github.com/micro/micro/v3/service/errors"
 
@@ -50,6 +51,8 @@ type Service interface {
 
 	SetVariables(ctx context.Context, in *pb.SetVariablesRequest, out *pb.ChatVariablesResponse) error
 	BlindTransfer(ctx context.Context, in *pb.ChatTransferRequest, out *pb.ChatTransferResponse) error
+
+	BroadcastMessage(ctx context.Context, in *pb.BroadcastMessageRequest, out *pb.BroadcastMessageResponse) error
 }
 
 type chatService struct {
@@ -2884,4 +2887,11 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 	}
 	// res.* ?
 	return nil
+}
+
+func (c *chatService) BroadcastMessage(ctx context.Context, req *pb.BroadcastMessageRequest, res *pb.BroadcastMessageResponse) error {
+	// Proxy: "webitel.chat.bot" service
+	gRPClient := client.DefaultClient
+	fwdRequest := gRPClient.NewRequest("webitel.chat.bot", "Messages.BroadcastMessage", req)
+	return gRPClient.Call(ctx, fwdRequest, res) // , opts...)
 }

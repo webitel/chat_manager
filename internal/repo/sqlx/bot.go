@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
+	"strings"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/jackc/pgconn"
@@ -528,6 +529,22 @@ func searchBotRequest(req *app.SearchOptions) (stmtQ SelectStmt, params params, 
 					assert,
 				)
 			}
+		case "name":
+			switch data := assert.(type) {
+			case string:
+				if data = strings.TrimSpace(data); data == "" {
+					continue
+				}
+				params.set("name", postgres.Substring(app.Substring(data)))
+				stmtQ = stmtQ.Where(`bot."name" ILIKE :name COLLATE "default"`)
+			default:
+				err = errors.BadRequest(
+					"chat.bot.search.name.invalid",
+					"chatbot: invalid filter=%s type=%T",
+					name, assert,
+				)
+			}
+		case "flow":
 		case "enabled":
 			switch data := assert.(type) {
 			case bool:
@@ -540,6 +557,26 @@ func searchBotRequest(req *app.SearchOptions) (stmtQ SelectStmt, params params, 
 				err = errors.BadRequest(
 					"chat.bot.search.enabled.invalid",
 					"chatbot: invalid filter=%s value=%T type",
+					name, assert,
+				)
+			}
+		case "provider":
+			switch data := assert.(type) {
+			case string:
+				if data = strings.TrimSpace(data); data == "" {
+					continue
+				}
+				params.set("typeof", postgres.Substring(app.Substring(data)))
+				stmtQ = stmtQ.Where(`bot.provider ILIKE :typeof COLLATE "default"`)
+			case []string:
+				param := pgtype.TextArray{}
+				_ = param.Set(data)
+				params.set("typeof", data)
+				stmtQ = stmtQ.Where(`bot.provider ILIKE ANY(:typeof)`)
+			default:
+				err = errors.BadRequest(
+					"chat.bot.search.provider.invalid",
+					"chatbot: invalid filter=%s type=%T",
 					name, assert,
 				)
 			}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 
 	// "github.com/golang/protobuf/proto"
 	"github.com/micro/micro/v3/service/errors"
@@ -14,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/webitel/chat_manager/api/proto/bot"
+	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/auth"
 )
@@ -94,6 +96,20 @@ func (srv *Service) SearchBot(ctx context.Context, req *bot.SearchBotRequest, rs
 		Order:  req.GetSort(),
 		Size:   int(req.GetSize()),
 		Page:   int(req.GetPage()),
+	}
+
+	if vs := req.GetUri(); vs != "" {
+		search.FilterAND("uri", vs)
+	}
+	if vs := req.GetName(); vs != "" {
+		search.FilterAND("name", vs)
+	}
+	switch vs := req.GetProvider(); len(vs) {
+	case 0:
+	case 1:
+		search.FilterAND("provider", vs[0])
+	default:
+		search.FilterAND("provider", vs)
 	}
 
 	// size := search.GetSize() // normalized
@@ -432,12 +448,17 @@ func (srv *Service) constraintChatBotsLimit(req *app.Context, delta int) error {
 	}
 	// Choose license.product(s).CHAT maximum .limit count
 	var limitMax int32
+	const ChatProductName = "CHAT"
 	for _, grant := range tenant.GetLicense() {
-		if grant.Product != "CHAT" {
+		if grant.Product != ChatProductName {
 			continue // Lookup CHAT only !
 		}
-		if len(grant.Status.Errors) != 0 {
-			continue // Currently invalid
+		if errs := grant.Status.Errors; len(errs) != 0 {
+			// Also, ignore single 'product exhausted' (remain < 1) error
+			// as we do not consider product user assignments here ...
+			if !(len(errs) == 1 && errs[0] == "product exhausted") {
+				continue // Currently invalid
+			}
 		}
 		if limitMax < grant.Limit {
 			limitMax = grant.Limit
@@ -941,6 +962,7 @@ next:
 			if len(run.external) == 0 {
 				_ = run.Deregister(context.TODO())
 				_ = run.Remove()
+				_ = run.External.Close()
 			}
 			run.Unlock() // -RW
 		}
@@ -1251,4 +1273,79 @@ func metadataHash(md map[string]string) []byte {
 	}
 
 	return hash.Sum(nil)
+}
+
+type (
+	BroadcastMessageRequest  = pbchat.BroadcastMessageRequest
+	BroadcastMessageResponse = pbchat.BroadcastMessageResponse
+)
+
+// Broadcast message [from] bot profile [to] multiple recipients
+func (srv *Service) BroadcastMessage(ctx context.Context, req *pbchat.BroadcastMessageRequest, rsp *pbchat.BroadcastMessageResponse) error {
+
+	sendMessage := req.GetMessage()
+	if sendMessage == nil {
+		return errors.BadRequest(
+			"chat.broadcast.message.required",
+			"broadcast: message required but missing",
+		)
+	}
+	contentType := strings.ToLower(sendMessage.Type)
+	sendMessage.Type = contentType
+	switch contentType {
+	case "text", "":
+		messageText := strings.TrimSpace(sendMessage.Text)
+		sendMessage.Text = messageText
+		if messageText == "" {
+			return errors.BadRequest(
+				"chat.broadcast.message.text.required",
+				"broadcast: message.text required but missing",
+			)
+		}
+	default:
+		return errors.BadRequest(
+			"chat.broadcast.message.type.invalid",
+			"broadcast: text message acceptable only",
+		)
+	}
+
+	// Lookup bot profile by from.id !
+	fromId := req.GetFrom()
+	from, err := srv.Gateway(ctx, fromId, "")
+
+	if err != nil {
+		return err
+	}
+
+	if from == nil || from.GetId() != fromId {
+		return errors.BadRequest(
+			"chat.broadcast.from.not_found",
+			"broadcast: from.id=%d bot not found",
+			fromId,
+		)
+	}
+
+	if !from.Bot.GetEnabled() {
+		return errors.BadRequest(
+			"chat.broadcast.from.disabled",
+			"broadcast: from.id=%d bot disabled",
+			fromId,
+		)
+	}
+
+	// Does provider support .Broadcast interface ?
+	provider := from.External
+	sender, is := provider.(interface {
+		BroadcastMessage(ctx context.Context, req *BroadcastMessageRequest, res *BroadcastMessageResponse) error
+	})
+
+	if !is {
+		return errors.BadRequest(
+			"chat.broadcast.from.not_supported",
+			"broadcast: from.type=%s not supported",
+			from.External.String(),
+		)
+	}
+
+	return sender.BroadcastMessage(ctx, req, rsp)
 }

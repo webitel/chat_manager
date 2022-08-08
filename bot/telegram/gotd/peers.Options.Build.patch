@@ -1,0 +1,25 @@
+diff --git a/telegram/peers/options.go b/telegram/peers/options.go
+index d926d3632..ccb27a647 100644
+--- a/telegram/peers/options.go
++++ b/telegram/peers/options.go
+@@ -4,6 +4,7 @@ import (
+ 	"go.uber.org/zap"
+ 	"golang.org/x/sync/singleflight"
+ 
++	"github.com/gotd/td/constant"
+ 	"github.com/gotd/td/tg"
+ )
+ 
+@@ -36,5 +37,12 @@ func (o Options) Build(api *tg.Client) *Manager {
+ 		me:      new(atomicUser),
+ 		logger:  o.Logger,
+ 		sg:      singleflight.Group{},
++
++		needUpdate: peerIDSet{
++			m: make(map[constant.TDLibPeerID]struct{}),
++		},
++		needUpdateFull: peerIDSet{
++			m: make(map[constant.TDLibPeerID]struct{}),
++		},
+ 	}
+ }

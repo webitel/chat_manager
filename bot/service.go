@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"net/http/pprof"
@@ -26,7 +28,8 @@ type Service struct {
 	URL string
 
 	// Address to listen HTTP callbacks (webhook) requests
-	Addr string
+	Addr    string
+	WebRoot string
 
 	Log    zerolog.Logger
 	Auth   *auth.Client
@@ -58,6 +61,79 @@ func NewService(
 
 		gateways: make(map[string]int64),
 		profiles: make(map[int64]*Gateway),
+	}
+}
+
+func (srv *Service) onStart() {
+
+	srv.Log.Info().Msg("Server [bots] Connecting recipient subscriptions . . .")
+
+	ctx := context.TODO()
+	lookup := app.SearchOptions{
+		Context: app.Context{
+			// Date:    time.Time{},
+			// Error:   nil,
+			Context: ctx,
+			Authorization: auth.Authorization{
+				Service: "webitel.chat.bot",
+				Method:  "internal",
+				Token:   "webitel.chat.bot",
+				// Creds: &auth.Userinfo{
+				// 	Dc:                0,
+				// 	Domain:            "",
+				// 	UserId:            0,
+				// 	Name:              "",
+				// 	Username:          "",
+				// 	PreferredUsername: "",
+				// 	Extension:         "",
+				// 	Scope:             nil,
+				// 	Roles:             nil,
+				// 	License:           nil,
+				// 	Permissions:       nil,
+				// 	UpdatedAt:         0,
+				// 	ExpiresAt:         0,
+				// },
+			},
+		},
+		// ID:   nil,
+		// Term: "",
+		Filter: map[string]interface{}{
+			// LoadAndStart providers which must init their client connections
+			"provider": []string{"gotd"},
+		},
+		// Access: 0,
+		Fields: []string{
+			"dc", "id",
+			"name", "uri",
+			"enabled", "flow",
+			"provider", "metadata",
+			"created_at", "created_by",
+			"updated_at", "updated_by",
+		},
+		// Order:  nil,
+		Size: -1,
+		// Page:   0,
+	}
+
+	bots, err := srv.store.Search(&lookup)
+	if err != nil {
+		srv.Log.Err(err).Msg("service.onStart")
+	}
+
+	for _, profile := range bots {
+		// TODO: Check profile.domain license activity; validity boundaries
+		pid := profile.GetId()
+		gate, err := srv.setup(profile)
+		if err != nil {
+			// return nil, err
+			srv.Log.Err(err).Int64("pid", pid).Msg("service.onStart.bot.setup")
+		}
+		force := false // REGISTER WebHook(!)
+		err = gate.Register(ctx, force)
+		if err != nil {
+			// return nil, err
+			srv.Log.Err(err).Int64("pid", pid).Msg("service.onStart.bot.register")
+		}
 	}
 }
 
@@ -168,6 +244,9 @@ func (srv *Service) Start() error {
 		ch <- ln.Close()
 	}()
 
+	// TODO: onStartup()
+	srv.onStart()
+
 	return nil
 }
 
@@ -186,6 +265,13 @@ func (srv *Service) Close() error {
 	// 	}
 	// 	delete(b.bots, k)
 	// }
+
+	for _, gate := range srv.profiles {
+		_ = gate.Remove()
+		if re := gate.External.Close(); re != nil {
+			gate.Log.Err(re).Msg("STOP")
+		}
+	}
 
 	return nil
 }
@@ -590,6 +676,7 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// TODO: Allow GET or POST Methods ONLY !
 	switch r.Method {
 	case http.MethodOptions:
+		// TODO: Access-Control-Request-Headers: x-xsrf-token, X-Requested-With
 		fallthrough
 	case http.MethodGet:
 		header := w.Header()
@@ -597,7 +684,8 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		header.Set("Access-Control-Allow-Methods", "OPTIONS, GET, POST")
 		header.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Webitel-Access, Cookie, "+
 			"Connection, Upgrade, Sec-Websocket-Version, Sec-Websocket-Extensions, Sec-Websocket-Key, Sec-Websocket-Protocol, "+
-			"X-XSRF-Token", // Axios frontend
+			"X-XSRF-Token, "+ // Axios frontend
+			"X-Requested-With",
 		)
 		origin := r.Header.Get(hdrOrigin)
 		if origin == "" {
@@ -607,6 +695,12 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return // 200 OK
+		}
+		// File exists ? static asset !
+		name := filepath.Join(srv.WebRoot, r.URL.Path)
+		if file, re := os.Stat(name); re == nil && !file.IsDir() {
+			http.ServeFile(w, r, name)
+			return
 		}
 	case http.MethodPost:
 		// Receive Update Event !

@@ -88,6 +88,7 @@ func (c *Channel) Close() (err error) {
 				_ = bot.Deregister(context.TODO())
 				// NOTE: Removes srv.profiles[oid] index
 				_ = bot.Remove()
+				_ = bot.External.Close()
 			} else if !bot.Enabled {
 				bot.Log.Warn().Msg("DISABLED")
 			}
@@ -181,6 +182,7 @@ func (c *Channel) Close() (err error) {
 						_ = bot.Deregister(context.TODO())
 						// NOTE: Removes srv.profiles[oid] index
 						_ = bot.Remove()
+						_ = bot.External.Close()
 					} else if !bot.Enabled {
 						bot.Log.Warn().Msg("DISABLED")
 					}
