@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 
+	goerrs "github.com/go-faster/errors"
 	"github.com/google/uuid"
 	"github.com/gotd/td/bin"
 	"github.com/gotd/td/telegram"
@@ -34,6 +35,7 @@ import (
 	"github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/bot"
 
+	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -167,6 +169,72 @@ func (c *App) String() string {
 	return providerType
 }
 
+// FromMediaFile uploads file from storage service `media` URL using given `client` Source.
+func FromMediaFile(media *chat.File, client *http.Client) message.UploadOption {
+	return message.Upload(func(ctx context.Context, b message.Uploader) (_ tg.InputFileClass, re error) {
+
+		sourceURL, err := url.ParseRequestURI(media.Url)
+		if err != nil {
+			return nil, goerrs.Wrapf(err, "parse url %q", media.Url)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL.String(), nil)
+		if err != nil {
+			return nil, goerrs.Wrap(err, "create request")
+		}
+
+		if client == nil {
+			client = http.DefaultClient
+		}
+		rsp, err := client.Do(req)
+		if err != nil {
+			return nil, goerrs.Wrap(err, "get")
+		}
+		defer func() {
+			if re != nil {
+				multierr.AppendInto(&re, rsp.Body.Close())
+			}
+		}()
+		if rsp.StatusCode >= 400 {
+			return nil, goerrs.Errorf("bad code %d", rsp.StatusCode)
+		}
+
+		filename := media.Name
+		if filename == "" {
+			// Content-Disposition
+			if disposition := rsp.Header.Get("Content-Disposition"); disposition != "" {
+				if _, params, err := mime.ParseMediaType(disposition); err == nil {
+					if filename = params["filename"]; filename != "" {
+						// RFC 7578, Section 4.2 requires that if a filename is provided, the
+						// directory path information must not be used.
+						switch filename = filepath.Base(filename); filename {
+						case ".", string(filepath.Separator):
+							filename = "" // invalid
+						}
+					}
+				}
+			}
+			if filename == "" {
+				if rsp.Request.URL != nil {
+					sourceURL = rsp.Request.URL
+				}
+				filename = path.Base(sourceURL.Path)
+			}
+		}
+		// Resolve filename extension if omitted; AUDIO !
+		if ext := filepath.Ext(filename); ext == "" {
+			mediaType := rsp.Header.Get("Content-Type")
+			if mediaType, _, err = mime.ParseMediaType(mediaType); err == nil {
+				if ext, _ := mime.ExtensionsByType(mediaType); len(ext) != 0 {
+					filename += ext[0]
+				}
+			}
+		}
+
+		return b.FromReader(ctx, filename, rsp.Body)
+	})
+}
+
 // channel := notify.Chat
 // contact := notify.User
 func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
@@ -245,7 +313,8 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 			)
 		}
 		uploadFile := sendMessage.Upload(
-			message.FromURL(mediaFile.Url),
+			FromMediaFile(mediaFile, nil),
+			// message.FromURL(mediaFile.Url),
 		)
 		switch mediaType {
 		case "image/gif":
