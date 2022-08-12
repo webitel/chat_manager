@@ -14,6 +14,24 @@ message Refer {
     string name = 2;
 }
 
+// ChatUpdates defines optional text/template(s)
+// for some kind of chat updates message notifications
+message ChatUpdates {
+  // Title of the NEW chat.
+  // Context: chat.Account.
+  // Default: {{.FirstName}} {{.LastName}}
+  string title = 1;
+  // Close chat message.
+  // Context: none.
+  string close = 2;
+  // Join member update.
+  // Context: chat.Account.
+  string join = 3;
+  // Left member update.
+  // Context: chat.Account.
+  string left = 4;
+}
+
 // webitel.chat.server.Profile
 message Bot {
 
@@ -35,6 +53,8 @@ message Bot {
   string provider = 7;
   // Optional. Provider specific bot settings
   map<string, string> metadata = 8;
+  // Updates message templates
+  ChatUpdates updates = 9;
 
   // Readonly. Created at timestamp
   int64 created_at = 10;

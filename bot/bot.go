@@ -11,8 +11,9 @@ import (
 )
 
 type (
-	Bot   = bot.Bot
-	Refer = bot.Refer
+	Bot         = bot.Bot
+	Refer       = bot.Refer
+	ChatUpdates = bot.ChatUpdates
 )
 
 func IsNew(e *Bot) bool {
@@ -143,10 +144,19 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 		Log:      &log,
 		Bot:      add,
 		Internal: srv,
+		Template: NewTemplate(add.Provider),
 		// // CACHE Store
 		// RWMutex:  new(sync.RWMutex),
 		// internal: make(map[int64]*Channel), // map[internal.user.id]
 		// external: make(map[string]*Channel), // map[provider.user.id]
+	}
+
+	tmpls := add.GetUpdates()
+	// Compile .Updates template(s); if provided
+	err = agent.Template.FromProto(tmpls)
+	if err != nil {
+		log.Err(err).Msg("TMPL")
+		return nil, err
 	}
 
 	var state Provider

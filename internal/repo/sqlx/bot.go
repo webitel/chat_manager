@@ -319,6 +319,22 @@ SELECT count(id)
 	return // n, nil
 }
 
+func nullChatUpdates(src *bot.ChatUpdates) *bot.ChatUpdates {
+	if src != nil {
+		for _, s := range []string{
+			src.Title, src.Close,
+			src.Join, src.Left,
+		} {
+			if s != "" {
+				return src
+			}
+		}
+		// Zero(!) All fields are zero
+		src = nil
+	}
+	return src
+}
+
 func createBotRequest(req *app.CreateOptions, obj *bot.Bot) (stmtQ SelectStmt, params params, err error) {
 
 	deref := app.SearchOptions{
@@ -335,8 +351,8 @@ func createBotRequest(req *app.CreateOptions, obj *bot.Bot) (stmtQ SelectStmt, p
 
 	stmtQ = stmtQ.
 		Prefix("WITH created AS (" +
-			"INSERT INTO chat.bot (dc, uri, name, flow_id, enabled, provider, metadata, created_at, created_by, updated_at, updated_by)" +
-			" VALUES (:dc, :uri, :name, :flow_id, :enabled, :provider, :metadata, :created_at, :created_by, :created_at, :created_by)" +
+			"INSERT INTO chat.bot (dc, uri, name, flow_id, enabled, updates, provider, metadata, created_at, created_by, updated_at, updated_by)" +
+			" VALUES (:dc, :uri, :name, :flow_id, :enabled, :updates, :provider, :metadata, :created_at, :created_by, :created_at, :created_by)" +
 			" RETURNING bot.*" +
 			")",
 		).
@@ -347,6 +363,9 @@ func createBotRequest(req *app.CreateOptions, obj *bot.Bot) (stmtQ SelectStmt, p
 	params.set("name", obj.GetName())
 	params.set("flow_id", obj.GetFlow().GetId())
 	params.set("enabled", obj.GetEnabled())
+	params.set("updates", dbl.NullJSONBytes(
+		nullChatUpdates(obj.GetUpdates()),
+	))
 	params.set("provider", obj.GetProvider())
 	params.set("metadata", dbl.NullJSONBytes(
 		obj.GetMetadata(),
@@ -421,6 +440,7 @@ func searchBotRequest(req *app.SearchOptions) (stmtQ SelectStmt, params params, 
 			"uri", "name",
 			"flow", "enabled",
 			"provider", "metadata",
+			"updates", // template of updates
 			"created_at", "created_by",
 			"updated_at", "updated_by",
 		}
@@ -448,6 +468,8 @@ func searchBotRequest(req *app.SearchOptions) (stmtQ SelectStmt, params params, 
 			)
 		case "enabled":
 			stmtQ = stmtQ.Column("bot.enabled")
+		case "updates":
+			stmtQ = stmtQ.Column("bot.updates")
 		case "provider":
 			stmtQ = stmtQ.Column("bot.provider")
 		case "metadata":
@@ -696,6 +718,28 @@ func searchBotResults(rows *sql.Rows, limit int) ([]*bot.Bot, error) {
 			row[i] = func() interface{} {
 				return &obj.Enabled // *bool NOTNULL
 			}
+		case "updates":
+			row[i] = func() interface{} { // *bot.ChatUpdates NULL
+				return ScanFunc(func(src interface{}) error {
+					if src == nil {
+						obj.Updates = nil
+						return nil
+					}
+
+					dst := obj.Updates
+					if dst == nil {
+						dst = new(bot.ChatUpdates)
+					}
+
+					err := ScanJSON(dst)(src)
+					if err != nil {
+						return err
+					}
+
+					obj.Updates = nullChatUpdates(dst)
+					return nil
+				})
+			}
 		case "provider":
 			row[i] = func() interface{} {
 				return &obj.Provider // *string NOTNULL
@@ -800,7 +844,7 @@ func updateBotRequest(req *app.UpdateOptions, set *bot.Bot) (stmt SelectStmt, pa
 			// "id", "dc", "uri",
 			"name", "flow", "enabled",
 			// "provider",
-			"metadata",
+			"metadata", "updates",
 			// "created_at", // "created_by",
 			// "updated_at", "updated_by",
 		}
@@ -832,6 +876,11 @@ func updateBotRequest(req *app.UpdateOptions, set *bot.Bot) (stmt SelectStmt, pa
 		case "enabled":
 			params.set("enabled", set.GetEnabled())
 			update = update.Set("enabled", dbl.Expr(":enabled"))
+		case "updates":
+			params.set("updates", dbl.NullJSONBytes(
+				nullChatUpdates(set.GetUpdates())),
+			)
+			update = update.Set("updates", dbl.Expr(":updates"))
 		case "metadata":
 			params.set("metadata", dbl.NullJSONBytes(
 				set.GetMetadata(),

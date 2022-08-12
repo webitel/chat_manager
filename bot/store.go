@@ -36,6 +36,7 @@ func (srv *Service) LocateBot(req *app.SearchOptions) (*Bot, error) {
 				"name", "uri",
 				"enabled", "flow",
 				"provider", "metadata",
+				"updates",
 				"created_at", "created_by",
 				"updated_at", "updated_by",
 			},

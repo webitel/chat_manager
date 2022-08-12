@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	goerrs "github.com/go-faster/errors"
 	"github.com/google/uuid"
@@ -28,6 +29,7 @@ import (
 	"github.com/gotd/td/telegram/updates"
 	"github.com/gotd/td/tg"
 	"github.com/gotd/td/tgerr"
+	"github.com/rs/zerolog"
 
 	"github.com/micro/micro/v3/service/client"
 	"github.com/micro/micro/v3/service/errors"
@@ -118,6 +120,16 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 		return nil, errors.BadRequest(
 			"chat.bot.telegram.api_hash.required",
 			"telegram: api_hash required but missing",
+		)
+	}
+
+	// Validate ChatUpdates message template(s)
+	chatUpdates := agent.Template
+	err = chatUpdates.Test(nil)
+	if err != nil {
+		return nil, errors.BadRequest(
+			"chat.bot.telegram.updates.invalid",
+			err.Error(),
 		)
 	}
 
@@ -295,7 +307,9 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 	// TODO: resolution for various notify content !
 	switch sentMessage.Type { // notify.Event {
 	case "text": // default
-		_, err = sendMessage.Text(ctx, sentMessage.Text)
+		_, err = sendMessage.StyledText(
+			ctx, StyledText(sentMessage.Text),
+		)
 		if err != nil {
 			c.Gateway.Log.Err(err).Msg("telegram/messages.sendMessage")
 			return err
@@ -315,6 +329,7 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 		uploadFile := sendMessage.Upload(
 			FromMediaFile(mediaFile, nil),
 			// message.FromURL(mediaFile.Url),
+			// message.FromSource(source.NewHTTPSource(), mediaFile.Url),
 		)
 		switch mediaType {
 		case "image/gif":
@@ -883,47 +898,53 @@ loop:
 
 // ----------------------------------------------------
 // u: updates
-//   updates:
-//   - updatePeerSettings
-//       peer: peerUser
-//         user_id: 520924760
-//       settings: peerSettings
 //
-//   users:
-//   - user
-//       id: 520924760
-//       access_hash: -5194293066050022801
-//       first_name: srgdemon
-//       username: srgdemon
-//       photo: userProfilePhoto
-//         photo_id: 2237354808332887977
-//         stripped_thumb: AQgIoOQIwCPyooooAw
-//         dc_id: 2
-//       status: userStatusRecently
+//	updates:
+//	- updatePeerSettings
+//	    peer: peerUser
+//	      user_id: 520924760
+//	    settings: peerSettings
 //
-//   chats:
+//	users:
+//	- user
+//	    id: 520924760
+//	    access_hash: -5194293066050022801
+//	    first_name: srgdemon
+//	    username: srgdemon
+//	    photo: userProfilePhoto
+//	      photo_id: 2237354808332887977
+//	      stripped_thumb: AQgIoOQIwCPyooooAw
+//	      dc_id: 2
+//	    status: userStatusRecently
 //
-//   date: 2022-07-01T12:28:19Z
-//   seq: 2
+//	chats:
+//
+//	date: 2022-07-01T12:28:19Z
+//	seq: 2
+//
 // ----------------------------------------------------
 // u: updateShort
-//   update: updateUserTyping
-// 	user_id: 520924760
-// 	action: sendMessageTypingAction
+//
+//	  update: updateUserTyping
+//		user_id: 520924760
+//		action: sendMessageTypingAction
+//
 // date: 2022-07-01T12:28:46Z
 // ----------------------------------------------------
 // u: updateShort
-//   update: updateNewMessage
-// 	message: message
-// 		id: 399
-// 		from_id: peerUser
-// 			user_id: 520924760
-// 		peer_id: peerUser
-// 			user_id: 520924760
-// 		date: 2022-07-01T12:28:52Z
-// 		message: Hi
-// 	pts: 509
-// 	pts_count: 1
+//
+//	  update: updateNewMessage
+//		message: message
+//			id: 399
+//			from_id: peerUser
+//				user_id: 520924760
+//			peer_id: peerUser
+//				user_id: 520924760
+//			date: 2022-07-01T12:28:52Z
+//			message: Hi
+//		pts: 509
+//		pts_count: 1
+//
 // date: 2022-07-01T12:28:52Z
 // ----------------------------------------------------
 // Settings of a certain peer have changed
@@ -1308,6 +1329,55 @@ func (c *App) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Update
 	return nil
 }
 
+// FIXME:
+// u: updateShort
+//
+//	  update: updateServiceNotification
+//	    popup: true
+//	    type: AUTH_KEY_DROP_DUPLICATE_157
+//	    message: Authorization error. Use the "Log out" button to log out, then log in again with your phone number. We apologize for the inconvenience.
+//
+//				Note: Logging out will remove your Secret Chats. Use the "Cancel" button if you'd like to save some data from your secret chats before proceeding.
+//	    media: messageMediaEmpty
+//	    entities:
+//
+//	  date: 2022-08-10T10:27:37Z
+func (c *App) onServiceNotification(ctx context.Context, e tg.Entities, update *tg.UpdateServiceNotification) error {
+
+	var (
+		tgWarn *tgerr.Error
+		notice *zerolog.Event
+	)
+	if typeOf := update.GetType(); typeOf == "" {
+		notice = c.Gateway.Log.Info()
+	} else {
+		tgWarn = tgerr.New(400, typeOf)
+		tgWarn.Message = update.GetMessage()
+		notice = c.Gateway.Log.Error().
+			Str("error", tgWarn.Type).
+			Str("backoff", (time.Second * time.Duration(tgWarn.Argument)).String())
+	}
+	notice.Msg("Telegram Notifications (777000):")
+	fmt.Printf("\n%s\n\n", update.GetMessage())
+	// notice.Msg("updateServiceNotification")
+	// fmt.Printf("Telegram Notifications (777000):\n\n%s\n\n", update.GetMessage())
+
+	// if tgWarn.IsType("AUTH_KEY_DROP_DUPLICATE") {
+	// 	// Authorization error. Use the "Log out" button to log out, then log in again with your phone number. We apologize for the inconvenience.
+	// 	// Note: Logging out will remove your Secret Chats. Use the "Cancel" button if you'd like to save some data from your secret chats before proceeding.
+	// 	err := c.Login.LogOut(ctx)
+	// 	if err != nil {
+	// 		notice = c.Gateway.Log.Err(err)
+	// 	} else {
+	// 		notice = c.Gateway.Log.Info()
+	// 	}
+	// 	notice.Bool("force", true).Msg("telegram/auth.logOut(!)")
+	// }
+
+	// c.stop()
+	return nil
+}
+
 func (c *App) init(debug bool) {
 
 	c.log, _ = zap.NewDevelopment(
@@ -1444,8 +1514,9 @@ func (c *App) init(debug bool) {
 	handler = c.peers.UpdateHook(c.gaps)
 
 	// Bind Receiver
+	dispatcher.OnNewMessage(c.onNewMessage)     //
 	dispatcher.OnPeerSettings(c.onPeerSettings) // newInboundUser access from here ...
-	dispatcher.OnNewMessage(c.onNewMessage)
+	dispatcher.OnServiceNotification(c.onServiceNotification)
 	// Once telegram/message.Sender state init
 	c.Sender = message.NewSender(c.Client.API())
 
@@ -1601,6 +1672,7 @@ func (c *App) run(ctx context.Context, start chan<- error) {
 	for _, closed := range c.onClose {
 		closed()
 	}
+	c.Gateway.Log.Warn().Err(err).Msg("disconnect")
 	// finally
 	select {
 	// try respond to .stop() request

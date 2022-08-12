@@ -25,7 +25,8 @@ type Gateway struct {
 	// identity
 	*Bot // *chat.Profile
 	Log  *zerolog.Logger
-
+	// Template of .Bot.Updates; Compiled
+	Template *Template
 	// communication
 	Internal *Service // Local CHAT service client
 	External Provider // Remote CHAT service client Receiver|Sender
@@ -653,7 +654,7 @@ func ZerologJSON(key string, obj interface{}) zerolog.LogObjectMarshaler {
 }
 
 // Read notification [FROM] external: chat.provider [TO] internal: chat.server
-func (c *Gateway) Read(ctx context.Context, notify *Update) error {
+func (c *Gateway) Read(ctx context.Context, notify *Update) (err error) {
 
 	// sender: chat/user
 	channel := notify.Chat
@@ -667,11 +668,18 @@ func (c *Gateway) Read(ctx context.Context, notify *Update) error {
 		contact.Channel = channel.Provider()
 	}
 
+	if channel.IsNew() {
+		if channel.Title, err = c.Template.MessageText("title", contact); err != nil {
+			channel.Log.Warn().Err(err).Msg("bot.updateChatTitle")
+			err = nil
+		}
+	}
+
 	// TODO: transform envelope due to event mime-type code name
 	sendMessage := notify.Message
 
 	// PERFORM: receive !
-	err := channel.Recv(ctx, sendMessage)
+	err = channel.Recv(ctx, sendMessage)
 
 	if err != nil {
 		return err // NACK(!)

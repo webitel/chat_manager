@@ -70,7 +70,7 @@ func (srv *Service) SearchBot(ctx context.Context, req *bot.SearchBotRequest, rs
 			// operational
 			[]string{
 				"dc",
-				"metadata",
+				"metadata", "updates",
 				"created_at", "created_by",
 				"updated_at", "updated_by",
 			},
@@ -135,8 +135,6 @@ func (srv *Service) SearchBot(ctx context.Context, req *bot.SearchBotRequest, rs
 	rsp.Items = list[0:size]
 
 	return nil
-
-	panic("not implemented") // TODO: Implement
 }
 
 // Select returns a single bot profile by unique identifier
@@ -172,6 +170,7 @@ func (srv *Service) SelectBot(ctx context.Context, req *bot.SelectBotRequest, rs
 				"name", "uri",
 				"enabled", "flow",
 				"provider", "metadata",
+				"updates",
 				"created_at", "created_by",
 				"updated_at", "updated_by",
 			},
@@ -518,7 +517,7 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 			// "id", "dc", "uri",
 			"name", "flow", "enabled",
 			// "provider",
-			"metadata",
+			"metadata", "updates",
 			// "created_at", // "created_by",
 			// "updated_at", "updated_by",
 		}
@@ -538,7 +537,7 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 				att,
 			)
 		// EDITABLE
-		case "name", "enabled", "flow", "metadata":
+		case "name", "flow", "enabled", "updates", "metadata":
 		// INVALID
 		default:
 			return errors.BadRequest(

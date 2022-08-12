@@ -8,8 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	// "net/url"
+	"unicode"
 
 	"net/http"
 
@@ -21,7 +20,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	// gate "github.com/webitel/chat_manager/api/proto/bot"
 	telegram "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 )
@@ -34,6 +32,7 @@ func init() {
 type TelegramBot struct {
 	*bot.Gateway
 	*telegram.BotAPI
+	contacts map[int64]*bot.Account
 }
 
 func (_ *TelegramBot) Close() error {
@@ -62,8 +61,20 @@ func NewTelegramBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 		)
 	}
 
+	// Quick test message templates
+	chatUpdates := agent.Template
+	// Populate telegram-specific escaper funcs
+	chatUpdates.Root().Funcs(builtin)
+	// Validate defined message templates
+	err := chatUpdates.Test(nil)
+	if err != nil {
+		return nil, errors.BadRequest(
+			"chat.bot.telegram.updates.invalid",
+			err.Error(),
+		)
+	}
+
 	var (
-		err        error
 		botAPI     *telegram.BotAPI
 		httpClient *http.Client
 	)
@@ -115,8 +126,9 @@ func NewTelegramBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 	}
 
 	return &TelegramBot{
-		Gateway: agent,
-		BotAPI:  botAPI,
+		Gateway:  agent,
+		BotAPI:   botAPI,
+		contacts: make(map[int64]*bot.Account),
 	}, nil
 }
 
@@ -170,25 +182,35 @@ func (c *TelegramBot) Deregister(ctx context.Context) error {
 	return nil
 }
 
-func utf16Length(s string) (n int) {
-
-	// return len(utf16.Encode([]rune(s)))
-
-	// See https://pkg.go.dev/unicode/utf16#EncodeRune
-	const (
-		runeSelf = 0x10000
-		runeMax  = '\U0010FFFF' // Maximum valid Unicode code point.
-	)
-
-	for _, r := range s {
-		if runeSelf <= r && r <= runeMax {
-			n += 2 // needs surrogate sequence
-			continue
-		}
-		n++ // self -or- overflow (replacementChar)
+func contactPeer(peer *chat.Account) *chat.Account {
+	if peer.LastName == "" {
+		peer.FirstName, peer.LastName =
+			bot.FirstLastName(peer.FirstName)
 	}
+	return peer
+}
 
-	return // n
+func messageMode(messageText string) (mode, text string) {
+	text = strings.TrimSpace(messageText)
+	colon := strings.IndexByte(text, ':')
+	if colon > 1 {
+		mode = text[0:colon]
+		switch strings.ToLower(mode) {
+		case "html":
+			mode = telegram.ModeHTML
+		case "markdown", "md":
+			mode = telegram.ModeMarkdown
+		case "markdownv2", "md2":
+			mode = telegram.ModeMarkdownV2
+		default:
+			mode = "" // default: "plain";
+			return    // mode, text
+		}
+		text = strings.TrimLeftFunc(
+			text[colon+1:], unicode.IsSpace,
+		)
+	}
+	return // mode, text
 }
 
 // SendNotify implements provider.Sender interface for Telegram
@@ -239,7 +261,11 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 	case "text": // default
 
 		messageText := message.GetText()
+		// Accept: "md2: Some __underlined__ and ||spoiler|| *message \*text* stylings"
+		parseMode, messageText := messageMode(messageText)
 		sendMessage := telegram.NewMessage(chatID, messageText)
+		sendMessage.ParseMode = parseMode
+
 		// Inline: Next to this specific message ONLY !
 		// Reply:  Persistent keyboard buttons, under the input ! (Location, Contact, Persistent Text postback)
 		if message.Buttons != nil { // NOT <nil> BUT <zero>: designed to clear all persistent menu (keyboard buttons)
@@ -376,128 +402,70 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 	// case "kicked":
 	case "joined": // ACK: ChatService.JoinConversation()
 
-		joinChatMember := message.NewChatMembers[0]
-		personFirstName := joinChatMember.FirstName
-
-		sendMessage := telegram.NewMessage(chatID,
-			"👤 "+personFirstName,
+		peer := contactPeer(message.NewChatMembers[0])
+		updates := c.Gateway.Template
+		messageText, err := updates.MessageText("join", peer)
+		if err != nil {
+			c.Gateway.Log.Err(err).
+				Str("update", message.Type).
+				Msg("telegram/bot.updateChatMember")
+		}
+		parseMode, messageText := messageMode(messageText)
+		if messageText == "" {
+			// IGNORE: message text is missing
+			return nil
+		}
+		sendMessage := telegram.NewMessage(
+			chatID, messageText,
 		)
-		// https://core.telegram.org/bots/api#messageentity
-		utf16EmojiLen := utf16Length("👤 ")
-		utf16AgentLen := utf16Length(personFirstName)
-		sendMessage.Entities = append(
-			sendMessage.Entities,
-			telegram.MessageEntity{
-				Type:   "bold",
-				Length: utf16AgentLen,
-				Offset: utf16EmojiLen,
-			},
-			telegram.MessageEntity{
-				Type:   "underline",
-				Length: utf16AgentLen,
-				Offset: utf16EmojiLen,
-			},
-		)
+		sendMessage.ParseMode = parseMode
 
 		sendUpdate = sendMessage
-
-		// newChatMember := message.NewChatMembers[0]
-		// // reply.From = newChatMember.GetFirstName()
-		// if props == nil {
-		// 	props = make(map[string]string)
-		// 	channel.Properties = props // autobind
-		// }
-		// interlocutor := props["interlocutor"]
-		// oid, name := decodeInterlocutorInfo(interlocutor)
-		// if oid == 0 && name == "" {
-		// 	interlocutor = encodeInterlocutorInfo(
-		// 		newChatMember.GetId(), newChatMember.GetFirstName(),
-		// 	)
-		// 	props["interlocutor"] = interlocutor // CACHE
-		// 	bind("interlocutor", interlocutor)   // STORE
-
-		// }
-		// // if props["joined"] == "" {
-		// // 	// STORE changes
-		// // 	bind("joined", strconv.FormatInt(newChatMember.Id, 10))
-		// // 	bind("titled", newChatMember.GetFirstName())
-		// // 	// CACHE changes
-		// // 	props["joined"] = binding["joined"]
-		// // 	props["titled"] = binding["titled"]
-		// // }
-		// // setup result binding changed !
-		// message.Variables = binding
-
-		// return nil // +OK; IGNORE!
 
 	case "left": // ACK: ChatService.LeaveConversation()
 
-		leftChatMember := message.LeftChatMember
-		personFirstName := leftChatMember.FirstName
-
-		sendMessage := telegram.NewMessage(chatID,
-			"👤 "+personFirstName,
+		peer := contactPeer(message.LeftChatMember)
+		updates := c.Gateway.Template
+		messageText, err := updates.MessageText("left", peer)
+		if err != nil {
+			c.Gateway.Log.Err(err).
+				Str("update", message.Type).
+				Msg("telegram/bot.updateLeftMember")
+		}
+		parseMode, messageText := messageMode(messageText)
+		if messageText == "" {
+			// IGNORE: message text is missing
+			return nil
+		}
+		sendMessage := telegram.NewMessage(
+			chatID, messageText,
 		)
-		// https://core.telegram.org/bots/api#messageentity
-		utf16EmojiLen := utf16Length("👤 ")
-		utf16AgentLen := utf16Length(personFirstName)
-		sendMessage.Entities = append(
-			sendMessage.Entities,
-			telegram.MessageEntity{
-				Type:   "bold",
-				Length: utf16AgentLen,
-				Offset: utf16EmojiLen,
-			},
-			telegram.MessageEntity{
-				Type:   "strikethrough",
-				Length: utf16AgentLen,
-				Offset: utf16EmojiLen,
-			},
-		)
+		sendMessage.ParseMode = parseMode
 
 		sendUpdate = sendMessage
-
-		// leftChatMember := message.LeftChatMember
-		// // if reply.From == leftChatMember.GetFirstName() {
-		// // 	reply.From = "" // TODO: set default ! FIXME: "bot" ?
-		// // }
-
-		// if props != nil {
-
-		// 	interlocutor := props["interlocutor"]
-		// 	oid, _ := decodeInterlocutorInfo(interlocutor)
-
-		// 	if oid == leftChatMember.Id {
-		// 		delete(props, "interlocutor") // CAHCE
-		// 		bind("interlocutor", "")      // STORE
-		// 		// setup result binding changed !
-		// 		message.Variables = binding
-		// 	}
-		// }
-
-		// // if props != nil && props["joined"] == strconv.FormatInt(leftChatMember.Id, 10) {
-		// // 	// UNBIND !
-		// // 	bind("joined", "")
-		// // 	bind("titled", "")
-
-		// // 	delete(props, "joined")
-		// // 	delete(props, "titled")
-
-		// // 	// setup result binding changed !
-		// // 	message.Variables = binding
-		// // }
-
-		// return nil // +OK; IGNORE!
 
 	// case "typing":
 	// case "upload":
 
 	// case "invite":
 	case "closed":
-		// SEND: notify message text
-		messageText := "❌ " + message.GetText()
-		// NOTE: sendMessage.Type = 'close'
-		sendMessage := telegram.NewMessage(chatID, messageText)
+
+		updates := c.Gateway.Template
+		messageText, err := updates.MessageText("close", nil)
+		if err != nil {
+			c.Gateway.Log.Err(err).
+				Str("update", message.Type).
+				Msg("telegram/bot.updateChatClose")
+		}
+		parseMode, messageText := messageMode(messageText)
+		if messageText == "" {
+			// IGNORE: message text is missing
+			return nil
+		}
+		sendMessage := telegram.NewMessage(
+			chatID, messageText,
+		)
+		sendMessage.ParseMode = parseMode
 		// Force clear persistent keyboard
 		sendMessage.ReplyMarkup = telegram.NewRemoveKeyboard(true)
 
@@ -960,61 +928,29 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		return
 	}
 
-	// var recvMessage *telegram.Message
-
-	// if recvUpdate.Message != nil {
-	// 	recvMessage = recvUpdate.Message
-
-	// } else if recvUpdate.EditedMessage != nil {
-	// 	recvMessage = recvUpdate.EditedMessage
-	// 	c.Gateway.Log.Warn().
-
-	// 		Int(  "telegram-id", recvMessage.From.ID).
-	// 		Str(  "username",    recvMessage.From.UserName).
-	// 		Int64("chat-id",     recvMessage.Chat.ID).
-	// 		// Str("first_name", message.From.FirstName).
-	// 		// Str("last_name",  message.From.LastName)
-
-	// 	Msg("IGNORE Update; NOT A Text Message")
-
-	// 	return // 200 IGNORE
-
-	// } else if recvUpdate.CallbackQuery != nil {
-	// 	// TODO Button
-	// 	return // 200 IGNORE
-	// }
-
-	// // if recvMessage != recvUpdate.Message {
-
-	// // 	c.Gateway.Log.Warn().
-
-	// // 		Int(  "telegram-id", recvMessage.From.ID).
-	// // 		Str(  "username",    recvMessage.From.UserName).
-	// // 		Int64("chat-id",     recvMessage.Chat.ID).
-	// // 		// Str("first_name", message.From.FirstName).
-	// // 		// Str("last_name",  message.From.LastName)
-
-	// // 	Msg("IGNORE Update; NOT A Text Message")
-
-	// // 	return // 200 IGNORE
-	// // }
-
 	// sender: user|chat
 	senderUser := recvMessage.From
 	senderChat := recvMessage.Chat
 
 	// region: contact
-	contact := &bot.Account{
+	// NOTE: Telegram is supposed to send updates in sequential mode
+	// therefore we do not use contact blocking
+	contact := c.contacts[senderUser.ID]
+	if contact == nil {
+		contact = &bot.Account{
 
-		ID: 0, // LOOKUP
+			ID: 0, // LOOKUP
 
-		Channel: "telegram",
-		Contact: strconv.FormatInt(senderUser.ID, 10),
+			Channel: "telegram",
+			Contact: strconv.FormatInt(senderUser.ID, 10),
 
-		FirstName: senderUser.FirstName,
-		LastName:  senderUser.LastName,
+			FirstName: senderUser.FirstName,
+			LastName:  senderUser.LastName,
 
-		Username: senderUser.UserName,
+			Username: senderUser.UserName,
+		}
+		// processed
+		c.contacts[senderUser.ID] = contact
 	}
 
 	// username := recvMessage.From.FirstName

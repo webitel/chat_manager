@@ -106,6 +106,7 @@ func (srv *Service) onStart() {
 			"dc", "id",
 			"name", "uri",
 			"enabled", "flow",
+			"updates",
 			"provider", "metadata",
 			"created_at", "created_by",
 			"updated_at", "updated_by",
@@ -125,8 +126,7 @@ func (srv *Service) onStart() {
 		pid := profile.GetId()
 		gate, err := srv.setup(profile)
 		if err != nil {
-			// return nil, err
-			srv.Log.Err(err).Int64("pid", pid).Msg("service.onStart.bot.setup")
+			continue
 		}
 		force := false // REGISTER WebHook(!)
 		err = gate.Register(ctx, force)
