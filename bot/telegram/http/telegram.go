@@ -117,7 +117,12 @@ func NewTelegramBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 	}
 
 	if err != nil {
-
+		switch e := err.(type) {
+		case *telegram.Error:
+			if e.Code == 404 {
+				err = fmt.Errorf("bot API token is invalid")
+			}
+		}
 		return nil, errors.New(
 			"chat.bot.telegram.setup.error",
 			"telegram: "+err.Error(),
