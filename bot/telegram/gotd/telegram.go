@@ -340,28 +340,51 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 			}
 			switch mediaType {
 			case "image":
-				_, err = uploadFile.Photo(ctx, caption...)
-				// _, err = sendMessage.PhotoExternal(
-				// 	ctx, mediaFile.Url,
-				// 	// Caption
-				// 	styling.Plain(sentMessage.Text),
-				// )
+				// _, err = uploadFile.Photo(ctx, caption...)
+				inputFile, re := uploadFile.AsInputFile(ctx)
+				if err = re; err == nil {
+					_, err = sendMessage.Media(ctx,
+						message.UploadedPhoto(inputFile, caption...),
+					)
+				}
+
 			case "audio":
-				_, err = uploadFile.Audio(ctx, caption...)
-				// _, err = sendMessage.Upload(
-				// 	message.FromURL(mediaFile.Url),
-				// ).Audio(
-				// 	ctx, styling.Plain(sentMessage.Text),
-				// )
+				// _, err = uploadFile.Audio(ctx, caption...)
+				inputFile, re := uploadFile.AsInputFile(ctx)
+				if err = re; err == nil {
+					// Send as an Audio document
+					_, err = sendMessage.Media(ctx,
+						message.UploadedDocument(inputFile, caption...).
+							Filename(mediaFile.Name).
+							MIME(mediaFile.Mime).
+							Audio(), // .Title(mediaFile.Name),
+					)
+				}
+
 			case "video":
-				_, err = uploadFile.Video(ctx, caption...)
-				// _, err = sendMessage.Upload(
-				// 	message.FromURL(mediaFile.Url),
-				// ).Video(
-				// 	ctx, styling.Plain(sentMessage.Text),
-				// )
+				// _, err = uploadFile.Video(ctx, caption...)
+				inputFile, re := uploadFile.AsInputFile(ctx)
+				if err = re; err == nil {
+					// Send as a Video document
+					_, err = sendMessage.Media(ctx,
+						message.UploadedDocument(inputFile, caption...).
+							Filename(mediaFile.Name).
+							MIME(mediaFile.Mime).
+							Video(),
+					)
+				}
+
 			default:
-				_, err = uploadFile.File(ctx, caption...)
+				// _, err = uploadFile.File(ctx, caption...)
+				inputFile, re := uploadFile.AsInputFile(ctx)
+				if err = re; err == nil {
+					// Send as a Document file
+					_, err = sendMessage.Media(ctx,
+						message.UploadedDocument(inputFile, caption...).
+							Filename(mediaFile.Name).
+							MIME(mediaFile.Mime),
+					)
+				}
 			}
 		}
 
@@ -768,23 +791,32 @@ loop:
 					return nil, err
 				}
 				// https://core.telegram.org/type/storage.FileType
+				filename := "2006-01-02_15-04-05"
 				switch part.Type.(type) {
 				case *tg.StorageFileJpeg:
 					media.Mime = "image/jpeg"
+					filename = "image_" + filename + ".jpg"
 				case *tg.StorageFileGif:
 					media.Mime = "image/gif"
+					filename = "image_" + filename + ".gif"
 				case *tg.StorageFilePng:
 					media.Mime = "image/png"
+					filename = "image_" + filename + ".png"
 				case *tg.StorageFilePdf:
 					media.Mime = "application/pdf"
+					filename = "doc_" + filename + ".pdf"
 				case *tg.StorageFileMp3:
 					media.Mime = "audio/mpeg"
+					filename = "audio_" + filename + ".mp3"
 				case *tg.StorageFileMov:
 					media.Mime = "video/quicktime"
+					filename = "video_" + filename + ".mov"
 				case *tg.StorageFileMp4:
 					media.Mime = "video/mp4"
+					filename = "video_" + filename + ".mp4"
 				case *tg.StorageFileWebp:
 					media.Mime = "image/webp"
+					filename = "image_" + filename + ".webp"
 				// case *tg.StorageFileUnknown: // Unknown type.
 				// 	media.Mime = "application/octet-stream"
 				// case *tg.StorageFilePartial: // Part of a bigger file.
@@ -792,29 +824,15 @@ loop:
 				// 		panic("telegram/upload.getFile(*tg.StorageFilePartial)")
 				// 	}
 				default:
-					// panic("telegram/upload.getFile(default)")
+					// case *tg.StorageFileUnknown
 					if media.Mime == "" {
 						media.Mime = "application/octet-stream" // default
 					}
+					filename = "file_" + filename + ".bin" // binary
 				}
 				// Default filename generation
 				if media.Name == "" {
-					media.Name = media.Mime
-					// trim media[/subtype]
-					if n := strings.IndexByte(media.Name, '/'); n > 0 {
-						media.Name = media.Name[0:n]
-					}
-					switch media.Name {
-					case "image", "audio", "video":
-					// case "application":
-					default:
-						media.Name = "file"
-					}
-					media.Name += "_1" // FIXME: need a suffix generation to be sure filename is unique
-					ext, _ := mime.ExtensionsByType(media.Mime)
-					if len(ext) != 0 {
-						media.Name += ext[0]
-					}
+					media.Name = time.Now().Format(filename)
 				}
 				// INIT: WRITE
 				err = stream.Send(&storage.UploadFileRequest{
@@ -1245,7 +1263,7 @@ func (c *App) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Update
 					sendMessage.Text = att.GetAlt()
 
 					file.Mime = "image/webp"
-					file.Name = uuid.Must(uuid.NewRandom()).String() + ".webp"
+					// file.Name = uuid.Must(uuid.NewRandom()).String() + ".webp"
 
 				case *tg.DocumentAttributeVideo: // Defines a video
 					// locate:
