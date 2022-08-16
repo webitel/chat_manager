@@ -21,7 +21,6 @@ import (
 	bot "github.com/webitel/chat_manager/api/proto/workflow"
 	"github.com/webitel/chat_manager/app"
 	store "github.com/webitel/chat_manager/internal/repo/sqlx"
-	strategy "github.com/webitel/chat_manager/internal/selector"
 )
 
 // Channel [FROM] chat.srv [TO] workflow
@@ -349,9 +348,9 @@ func (c chatFlowSelector) Select(hosts []string, opts ...selector.SelectOption) 
 
 	if c.Host == "" {
 		// START
-		// // return selector.Random(services)
-		// return randomize.Select(hosts, opts...)
-		return strategy.PrefferedHost("10.9.8.111")(hosts, opts...) // workflow
+		// return selector.Random(services)
+		return randomize.Select(hosts, opts...)
+		// return strategy.PrefferedHost("127.0.0.1")(hosts, opts...) // workflow
 	}
 
 	var peer string
