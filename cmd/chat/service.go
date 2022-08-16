@@ -2345,8 +2345,6 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 
 		rebind  bool
 		binding = notify.GetVariables()
-		// default: workflow chat@bot channel -if- no any member(s)
-		chatflow *app.Channel
 	)
 	// Broadcast message to every member in the room,
 	// in front of chaRoom.Channel as a sender !
@@ -2433,14 +2431,11 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 			})
 
 		case "chatflow": // TO: workflow (internal)
-			// NOTE: we do not send messages to chat@bot channel
-			// until there is not a private (one-to-one) chat room
-			if member == sender { // e == 0
+
+			if member == sender {
 				continue
 			}
-			chatflow = member
-			continue
-			// err = c.flowClient.SendMessageV1(member, notify)
+			err = c.flowClient.SendMessageV1(member, notify)
 
 		default: // TO: webitel.chat.bot (external)
 			// s.eventRouter.sendMessageToBotUser()
@@ -2503,18 +2498,14 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 			Str("TO", member.User.FirstName).
 			Msg("SENT")
 	}
-	// Otherwise, if NO-ONE in the room - route message to the chat-flow !
-	if sent == 0 && chatflow != nil {
-		// MUST: (chatflow != nil)
-		err = c.flowClient.SendMessageV1(chatflow, notify)
 
-		if err != nil {
-			c.log.Error().Err(err).Str("chat-id", chatflow.Chat.ID).Msg("SEND TO chat@flow")
-		}
-
-	} else if rebind {
-
+	if rebind {
 		_ = c.repo.BindMessage(ctx, notify.Id, binding)
+	}
+
+	if sent == 0 {
+		// ERR: unreachable code
+		c.log.Warn().Str("error", "no any recepients").Msg("SEND")
 	}
 
 	return sent, nil // err
