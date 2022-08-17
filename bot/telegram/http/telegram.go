@@ -905,6 +905,11 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		// TODO Button
 		recvMessage = recvUpdate.CallbackQuery.Message
 		recvMessage.Text = recvUpdate.CallbackQuery.Data
+		recvMessage.From = recvUpdate.CallbackQuery.From
+		// NOTE:
+		// callback_query.from => is our recepient (*tg.User) !
+		// callback_query.message.from => is our bot account,
+		//   as the original sender of the message with buttons !
 
 		inlineKeyboardRemove := telegram.NewEditMessageReplyMarkup(
 			recvMessage.Chat.ID, recvMessage.MessageID,
@@ -934,28 +939,28 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	}
 
 	// sender: user|chat
-	senderUser := recvMessage.From
+	// senderUser := recvMessage.From
 	senderChat := recvMessage.Chat
 
 	// region: contact
 	// NOTE: Telegram is supposed to send updates in sequential mode
 	// therefore we do not use contact blocking
-	contact := c.contacts[senderUser.ID]
+	contact := c.contacts[senderChat.ID]
 	if contact == nil {
 		contact = &bot.Account{
 
 			ID: 0, // LOOKUP
 
 			Channel: "telegram",
-			Contact: strconv.FormatInt(senderUser.ID, 10),
+			Contact: strconv.FormatInt(senderChat.ID, 10),
 
-			FirstName: senderUser.FirstName,
-			LastName:  senderUser.LastName,
+			FirstName: senderChat.FirstName,
+			LastName:  senderChat.LastName,
 
-			Username: senderUser.UserName,
+			Username: senderChat.UserName,
 		}
 		// processed
-		c.contacts[senderUser.ID] = contact
+		c.contacts[senderChat.ID] = contact
 	}
 
 	// username := recvMessage.From.FirstName
