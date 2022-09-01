@@ -157,15 +157,8 @@ func connect(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 		Logger()
 
 	agent.Log = &log
-	// initialize
-	// debug, _ := strconv.ParseBool(metadata["debug"])
-	// // app.init(debug)
-
-	// // background connect ...
-	// // ignore authorization error
-	// _ = app.start()
-	go app.connect()
-	return app, nil
+	// await connection
+	return app, app.connect()
 }
 
 func (c *app) connect() error {
