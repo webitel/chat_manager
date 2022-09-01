@@ -22,10 +22,15 @@ import (
 
 	telegram "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/webitel/chat_manager/bot/telegram/internal/markdown"
+)
+
+const (
+	provider = "telegram"
 )
 
 func init() {
-	bot.Register("telegram", NewTelegramBot)
+	bot.Register(provider, NewTelegramBot)
 }
 
 // Telegram BOT chat provider
@@ -41,7 +46,7 @@ func (_ *TelegramBot) Close() error {
 
 // String "telegram" provider's name
 func (_ *TelegramBot) String() string {
-	return "telegram"
+	return provider
 }
 
 // NewTelegramBotV1 initialize new agent.profile service provider
@@ -61,12 +66,20 @@ func NewTelegramBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 		)
 	}
 
-	// Quick test message templates
-	chatUpdates := agent.Template
-	// Populate telegram-specific escaper funcs
-	chatUpdates.Root().Funcs(builtin)
-	// Validate defined message templates
-	err := chatUpdates.Test(nil)
+	// Parse and validate message templates
+	var err error
+	agent.Template = bot.NewTemplate(provider)
+	// Populate telegram-specific markdown-escape helper funcs
+	agent.Template.Root().Funcs(
+		markdown.TemplateFuncs,
+	)
+	// Parse message templates
+	if err = agent.Template.FromProto(
+		agent.Bot.GetUpdates(),
+	); err == nil {
+		// Quick tests ! <nil> means default (well-known) test cases
+		err = agent.Template.Test(nil)
+	}
 	if err != nil {
 		return nil, errors.BadRequest(
 			"chat.bot.telegram.updates.invalid",
@@ -265,11 +278,20 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 	switch message.Type { // notify.Event {
 	case "text": // default
 
-		messageText := message.GetText()
-		// Accept: "md2: Some __underlined__ and ||spoiler|| *message \*text* stylings"
-		parseMode, messageText := messageMode(messageText)
-		sendMessage := telegram.NewMessage(chatID, messageText)
-		sendMessage.ParseMode = parseMode
+		messageText := strings.TrimSpace(
+			message.GetText(),
+		)
+		// messageText, textEntities := markdown.TextEntities(message.GetText())
+		// // parseMode, messageText := messageMode(messageText)
+		if messageText == "" {
+			// IGNORE: message text is missing
+			return nil
+		}
+		sendMessage := telegram.NewMessage(
+			chatID, messageText,
+		)
+		// // sendMessage.ParseMode = parseMode
+		// sendMessage.Entities = textEntities
 
 		// Inline: Next to this specific message ONLY !
 		// Reply:  Persistent keyboard buttons, under the input ! (Location, Contact, Persistent Text postback)
@@ -409,21 +431,23 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 
 		peer := contactPeer(message.NewChatMembers[0])
 		updates := c.Gateway.Template
-		messageText, err := updates.MessageText("join", peer)
+		text, err := updates.MessageText("join", peer)
 		if err != nil {
 			c.Gateway.Log.Err(err).
 				Str("update", message.Type).
 				Msg("telegram/bot.updateChatMember")
 		}
-		parseMode, messageText := messageMode(messageText)
-		if messageText == "" {
+		text, entities := markdown.TextEntities(text)
+		// parseMode, messageText := messageMode(messageText)
+		if text == "" {
 			// IGNORE: message text is missing
 			return nil
 		}
 		sendMessage := telegram.NewMessage(
-			chatID, messageText,
+			chatID, text,
 		)
-		sendMessage.ParseMode = parseMode
+		// sendMessage.ParseMode = parseMode
+		sendMessage.Entities = entities
 
 		sendUpdate = sendMessage
 
@@ -437,7 +461,8 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 				Str("update", message.Type).
 				Msg("telegram/bot.updateLeftMember")
 		}
-		parseMode, messageText := messageMode(messageText)
+		messageText, textEntities := markdown.TextEntities(messageText)
+		// parseMode, messageText := messageMode(messageText)
 		if messageText == "" {
 			// IGNORE: message text is missing
 			return nil
@@ -445,7 +470,8 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		sendMessage := telegram.NewMessage(
 			chatID, messageText,
 		)
-		sendMessage.ParseMode = parseMode
+		// sendMessage.ParseMode = parseMode
+		sendMessage.Entities = textEntities
 
 		sendUpdate = sendMessage
 
@@ -462,7 +488,8 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 				Str("update", message.Type).
 				Msg("telegram/bot.updateChatClose")
 		}
-		parseMode, messageText := messageMode(messageText)
+		// parseMode, messageText := messageMode(messageText)
+		messageText, textEntities := markdown.TextEntities(messageText)
 		if messageText == "" {
 			// IGNORE: message text is missing
 			return nil
@@ -470,7 +497,8 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		sendMessage := telegram.NewMessage(
 			chatID, messageText,
 		)
-		sendMessage.ParseMode = parseMode
+		// sendMessage.ParseMode = parseMode
+		sendMessage.Entities = textEntities
 		// Force clear persistent keyboard
 		sendMessage.ReplyMarkup = telegram.NewRemoveKeyboard(true)
 

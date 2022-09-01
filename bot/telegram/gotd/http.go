@@ -1,4 +1,4 @@
-package client
+package gotd
 
 import (
 	"encoding/json"
@@ -105,21 +105,3 @@ func writeError(w http.ResponseWriter, err error, code int) {
 
 	writeJSON(w, res, code)
 }
-
-// func writeRedirect(w http.ResponseWriter, r *http.Request, res interface{}, uri string, code int) {
-
-// 	if res != nil {
-
-// 		h := w.Header()
-// 		h.Set("Pragma", "no-cache")
-// 		h.Set("Cache-Control", "no-cache")
-// 		// h.Set("Connection", "close")
-// 		h.Set("Content-Type", "application/json; charset=utf-8")
-
-// 		http.Redirect(w, r, uri, code)
-// 		writeJSON(w, res, code)
-// 		return
-// 	}
-
-// 	http.Redirect(w, r, uri, code)
-// }

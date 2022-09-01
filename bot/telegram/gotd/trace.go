@@ -1,9 +1,10 @@
-package client
+package gotd
 
 import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/gotd/td/bin"
@@ -13,19 +14,23 @@ import (
 )
 
 // prettyMiddleware pretty-prints request and response.
-func prettyMiddleware() telegram.MiddlewareFunc {
+func prettyMiddleware(prompt string) telegram.MiddlewareFunc {
+	prompt = strings.TrimSpace(prompt)
+	if prompt != "" {
+		prompt += "\n"
+	}
 	return func(next tg.Invoker) telegram.InvokeFunc {
 		return func(ctx context.Context, input bin.Encoder, output bin.Decoder) error {
-			fmt.Println("←", formatObject(input))
+			fmt.Printf("%s← %s\n", prompt, formatObject(input))
 			start := time.Now()
 			err := next.Invoke(ctx, input, output)
 			elapsed := time.Since(start).Round(time.Millisecond)
 			if err != nil {
-				fmt.Printf("→ (%s) ERR %v\n", elapsed, err)
+				fmt.Printf("%s→ (%s) ERR %v\n", prompt, elapsed, err)
 				return err
 			}
 
-			fmt.Printf("→ (%s) %s\n", elapsed, formatObject(output))
+			fmt.Printf("%s→ (%s) %s\n", prompt, elapsed, formatObject(output))
 
 			return nil
 		}

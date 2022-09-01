@@ -144,20 +144,23 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 		Log:      &log,
 		Bot:      add,
 		Internal: srv,
-		Template: NewTemplate(add.Provider),
+		// Template: NewTemplate(add.Provider),
 		// // CACHE Store
 		// RWMutex:  new(sync.RWMutex),
 		// internal: make(map[int64]*Channel), // map[internal.user.id]
 		// external: make(map[string]*Channel), // map[provider.user.id]
 	}
 
-	tmpls := add.GetUpdates()
-	// Compile .Updates template(s); if provided
-	err = agent.Template.FromProto(tmpls)
-	if err != nil {
-		log.Err(err).Msg("TMPL")
-		return nil, err
-	}
+	// NOTE: We oblige providers to independently manage templates for updates.
+	// For some of them, support is not yet implemented, some allow the use of auxiliary functions, etc ...
+
+	// tmpls := add.GetUpdates()
+	// // Compile .Updates template(s); if provided
+	// err = agent.Template.FromProto(tmpls)
+	// if err != nil {
+	// 	log.Err(err).Msg("TMPL")
+	// 	return nil, err
+	// }
 
 	var state Provider
 	if ok && run != nil {

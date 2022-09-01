@@ -1,0 +1,89 @@
+diff --git a/tdp/tdp.go b/tdp/tdp.go
+index 6ae0c9b34..015a2a498 100644
+--- a/tdp/tdp.go
++++ b/tdp/tdp.go
+@@ -3,7 +3,7 @@
+ package tdp
+ 
+ import (
+-	"encoding/base64"
++	// "encoding/base64"
+ 	"fmt"
+ 	"reflect"
+ 	"strconv"
+@@ -40,7 +40,8 @@ func formatValue(b *strings.Builder, prefix, fieldName string, opt options, v re
+ 		}
+ 	case reflect.Slice:
+ 		if buf, ok := v.Interface().([]byte); ok {
+-			b.WriteString(base64.RawURLEncoding.EncodeToString(buf))
++			// b.WriteString(base64.RawURLEncoding.EncodeToString(buf))
++			fmt.Fprintf(b, "[%d]bytes", len(buf))
+ 			return
+ 		}
+ 
+diff --git a/telegram/message/text.go b/telegram/message/text.go
+index de6bd4801..a4388a302 100644
+--- a/telegram/message/text.go
++++ b/telegram/message/text.go
+@@ -15,7 +15,8 @@ func (b *Builder) sendRequest(
+ 	msg string,
+ 	entities []tg.MessageEntityClass,
+ ) *tg.MessagesSendMessageRequest {
+-	return &tg.MessagesSendMessageRequest{
++
++	req := &tg.MessagesSendMessageRequest{
+ 		NoWebpage:    b.noWebpage,
+ 		Silent:       b.silent,
+ 		Background:   b.background,
+@@ -30,6 +31,12 @@ func (b *Builder) sendRequest(
+ 		ScheduleDate: b.scheduleDate,
+ 		SendAs:       b.sendAs,
+ 	}
++
++	if len(entities) != 0 {
++		req.SetEntities(entities)
++	}
++
++	return req
+ }
+ 
+ // Text sends text message.
+diff --git a/telegram/peers/apply.go b/telegram/peers/apply.go
+index e7fea6a75..93e0e649d 100644
+--- a/telegram/peers/apply.go
++++ b/telegram/peers/apply.go
+@@ -48,6 +48,9 @@ func (m *Manager) applyUsers(ctx context.Context, input ...tg.UserClass) error {
+ 				return errors.Wrapf(err, "save user %d", user.ID)
+ 			}
+ 		}
++		if user.Self {
++			m.me.Store(user)
++		}
+ 		ids = append(ids, userPeerID(id))
+ 	}
+ 
+diff --git a/telegram/peers/options.go b/telegram/peers/options.go
+index d926d3632..ccb27a647 100644
+--- a/telegram/peers/options.go
++++ b/telegram/peers/options.go
+@@ -4,6 +4,7 @@ import (
+ 	"go.uber.org/zap"
+ 	"golang.org/x/sync/singleflight"
+ 
++	"github.com/gotd/td/constant"
+ 	"github.com/gotd/td/tg"
+ )
+ 
+@@ -36,5 +37,12 @@ func (o Options) Build(api *tg.Client) *Manager {
+ 		me:      new(atomicUser),
+ 		logger:  o.Logger,
+ 		sg:      singleflight.Group{},
++
++		needUpdate: peerIDSet{
++			m: make(map[constant.TDLibPeerID]struct{}),
++		},
++		needUpdateFull: peerIDSet{
++			m: make(map[constant.TDLibPeerID]struct{}),
++		},
+ 	}
+ }
