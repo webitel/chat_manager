@@ -198,6 +198,32 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 
 		return nil, re
 	}
+	// Template: default empty
+	if agent.Template == nil {
+		agent.Template = NewTemplate(
+			agent.Bot.Provider,
+		)
+		// CHECH: User specified ? Not empty ?
+		spec := agent.Bot.Updates
+		if is := (spec != nil); is {
+			for _, tmpl := range []string{
+				spec.Title, spec.Close,
+				spec.Join, spec.Left,
+			} {
+				tmpl = strings.TrimSpace(tmpl)
+				if is = (tmpl != ""); is {
+
+					re := errors.BadRequest(
+						"chat.bot."+add.Provider+".updates.not_implemented",
+						"updates: this provider does not implement templates yet",
+					).(*errors.Error)
+
+					log.Error().Str("error", re.Detail).Msg("SETUP")
+					return nil, re
+				}
+			}
+		}
+	}
 
 	// if !add.GetEnabled() {
 	// 	return agent, nil
