@@ -7,7 +7,7 @@
 [+] При введені коду - бачу для якого номеру; При введені паролю - ні !
 [+] Картка провайдера: API-ID, API-Hash перенести все на праву сторону.
 
-[ ] Запускати лише ліцензія домену активна !!!
+[ ] Запускати лише з активною ліцензією домену !!!
 [ ] Додати .logOut перед видаленням
 [+] Після розсилки на невідомого контакта - не зберігає кеш ?! peer.(*User).AccessHash == 0 !
 [+] Need to run such clients on startup to initiate state connection
@@ -20,6 +20,8 @@
 [+] Handle remote logout (session kill)
 [+] Broadcast message; What we accept as an inputPeer to broadcast to ? phoneNumber !
 [?] Cleanup internal storage onLoggedOut
+[+] Зберігати сесію лише після успішної авторизації !!!
+
 ```
 
 ```

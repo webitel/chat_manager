@@ -1,8 +1,7 @@
-package client
+package gotd
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -10,11 +9,9 @@ import (
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/tgerr"
 	backup "github.com/webitel/chat_manager/bot/telegram/gotd/internal/storage"
-	"go.uber.org/zap"
 	protowire "google.golang.org/protobuf/proto"
 
 	"github.com/gotd/td/telegram/auth"
-	"github.com/gotd/td/telegram/peers"
 	"github.com/gotd/td/tg"
 )
 
@@ -119,50 +116,82 @@ var defaultAuth auth.Flow = auth.NewFlow(
 )
 */
 
-type sessionLogin struct {
+type sessionAuth struct {
 	// ctor
-	apiId   int
-	apiHash string
-	api     *tg.Client // auth.Client
-	log     *zap.Logger
+	*session
 	// opts
-	sync.Mutex        // guard
-	rxURI      string // redirectURI
-	phone      string // current phone number
+	// sync.Mutex        // guard
+	// rxURI string // redirectURI
+	phone string // current phone number
 	// state
 	requestAt time.Time
-	request   *tg.AuthSentCode      // login: await verification code
-	sessionAt time.Time             // authenticatedAt timestamp
-	session   *tg.AuthAuthorization // successful login session
-	tokens    [][]byte              // future login tokens
-	user      *tg.User              // loggedIn
+	request   *tg.AuthSentCode // login: await verification code
+	sessionAt time.Time        // authenticatedAt timestamp
+	// session   *tg.AuthAuthorization // successful login session
+	tokens [][]byte // future login tokens
+	user   *tg.User // loggedIn
 
 	notify []chan *tg.User
 	// err error
 }
 
-func newSessionLogin(apiId int, apiHash string, peers *peers.Manager, log *zap.Logger) (login *sessionLogin, state error) {
+func newSessionAuth(c *session) *sessionAuth {
 
-	login = &sessionLogin{
-		log:     log,
-		api:     peers.API(),
-		apiId:   apiId,
-		apiHash: apiHash,
+	login := &sessionAuth{
+		session: c,
 	}
 
-	// Fetch user info.
-	// me, err := app.Self(ctx)
-	me, err := peers.Self(context.TODO())
-	if err == nil {
-		login.user = me.Raw()
-	}
+	// // Fetch user info.
+	// // me, err := app.Self(ctx)
+	// me, err := peers.Self(context.TODO())
+	// if err == nil {
+	// 	login.user = me.Raw()
+	// }
 
-	state = err
-	return // login, state
+	// state = err
+	return login
+}
+
+func (c *sessionAuth) Lock() {
+	c.session.sync.Lock()
+}
+
+func (c *sessionAuth) Unlock() {
+	c.session.sync.Unlock()
+}
+
+func (c *sessionAuth) User() *tg.User {
+
+	c.Lock()
+	defer c.Unlock()
+
+	return c.user
+}
+
+func (c *sessionAuth) Auth(user *tg.User) {
+	c.Lock()
+	defer c.Unlock()
+	c.doAuth(user)
+}
+
+func (c *sessionAuth) doAuth(user *tg.User) {
+	if user != nil && !user.Self {
+		panic("auth.Authorization.user!self")
+	}
+	self := c.user // session User
+	c.user = user  // current User
+	// notify -if- changed !
+	if self.GetID() != user.GetID() {
+		c.signal()
+	}
+}
+
+func (c *sessionAuth) API() *tg.Client {
+	return c.session.App.Client.API()
 }
 
 // restore .logoutTokens dataset
-func (c *sessionLogin) restore(data []byte) error {
+func (c *sessionAuth) restore(data []byte) error {
 
 	if len(data) == 0 {
 		return nil
@@ -185,8 +214,8 @@ func (c *sessionLogin) restore(data []byte) error {
 		return nil
 	}
 
-	c.Mutex.Lock()
-	defer c.Mutex.Unlock()
+	c.Lock()
+	defer c.Unlock()
 	// Count of available slots ?
 	m := max - len(c.tokens)
 	if m < n {
@@ -201,15 +230,16 @@ func (c *sessionLogin) restore(data []byte) error {
 }
 
 // backup .logoutTokens dataset
-func (c *sessionLogin) backup() ([]byte, error) {
+func (c *sessionAuth) backup() ([]byte, error) {
 
 	var tokens [][]byte
-	c.Mutex.Lock()
+
+	c.Lock()
 	if n := len(c.tokens); n != 0 {
 		tokens = make([][]byte, n)
 		copy(tokens, c.tokens)
 	}
-	c.Mutex.Unlock()
+	c.Unlock()
 
 	if len(tokens) == 0 {
 		return nil, nil
@@ -226,15 +256,15 @@ func (c *sessionLogin) backup() ([]byte, error) {
 }
 
 // SendCode sends the verification code for login
-func (c *sessionLogin) SendCode(ctx context.Context, phone string) (*tg.AuthSentCode, error) {
+func (c *sessionAuth) SendCode(ctx context.Context, phone string) (*tg.AuthSentCode, error) {
 
-	c.Mutex.Lock()
-	defer c.Mutex.Unlock()
-
+	c.Lock()
+	defer c.Unlock()
+	// Latest attempt timestamp
+	c.requestAt = time.Now()
 	if c.request != nil {
 		// TODO: resendCode
-		c.requestAt = time.Now()
-		request, err := c.api.AuthResendCode(ctx,
+		request, err := c.API().AuthResendCode(ctx,
 			&tg.AuthResendCodeRequest{
 				PhoneNumber:   phone,
 				PhoneCodeHash: c.request.PhoneCodeHash,
@@ -259,8 +289,8 @@ func (c *sessionLogin) SendCode(ctx context.Context, phone string) (*tg.AuthSent
 	}
 
 	sendCode := &tg.AuthSendCodeRequest{
-		APIID:       c.apiId,
-		APIHash:     c.apiHash,
+		APIID:       c.session.App.apiId,
+		APIHash:     c.session.App.apiHash,
 		PhoneNumber: phone,
 		// Settings: tg.CodeSettings{
 		// 	AllowFlashcall:  false,
@@ -273,8 +303,8 @@ func (c *sessionLogin) SendCode(ctx context.Context, phone string) (*tg.AuthSent
 	if tokens := c.tokens; len(tokens) != 0 {
 		sendCode.Settings.SetLogoutTokens(tokens)
 	}
-	c.requestAt = time.Now() // Latest attempt timestamp
-	sentCode, err := c.api.AuthSendCode(
+	// PERFORM: auth.sendCode
+	sentCode, err := c.API().AuthSendCode(
 		ctx, sendCode,
 	)
 
@@ -303,16 +333,16 @@ func (c *sessionLogin) SendCode(ctx context.Context, phone string) (*tg.AuthSent
 }
 
 // Cancel the login verification code
-func (c *sessionLogin) CancelCode(ctx context.Context) error {
+func (c *sessionAuth) CancelCode(ctx context.Context) error {
 
-	c.Mutex.Lock()
-	defer c.Mutex.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	if c.request == nil {
 		return nil // DO Nothing !
 	}
 
-	_, _ = c.api.AuthCancelCode(ctx,
+	_, _ = c.API().AuthCancelCode(ctx,
 		&tg.AuthCancelCodeRequest{
 			PhoneNumber:   c.phone,
 			PhoneCodeHash: c.request.PhoneCodeHash,
@@ -352,10 +382,10 @@ func loginSession(res tg.AuthAuthorizationClass) (*tg.AuthAuthorization, error) 
 }
 
 // SignIn performs sign in with provided login code.
-func (c *sessionLogin) SignIn(ctx context.Context, code string) (*tg.AuthAuthorization, error) {
+func (c *sessionAuth) SignIn(ctx context.Context, code string) (*tg.AuthAuthorization, error) {
 
-	c.Mutex.Lock()
-	defer c.Mutex.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	if c.request == nil {
 		// auth.sendCode() NOT performed !
@@ -366,7 +396,7 @@ func (c *sessionLogin) SignIn(ctx context.Context, code string) (*tg.AuthAuthori
 		}
 	}
 
-	res, err := c.api.AuthSignIn(ctx,
+	res, err := c.API().AuthSignIn(ctx,
 		&tg.AuthSignInRequest{
 			PhoneNumber:   c.phone,
 			PhoneCodeHash: c.request.PhoneCodeHash,
@@ -392,7 +422,7 @@ func (c *sessionLogin) SignIn(ctx context.Context, code string) (*tg.AuthAuthori
 		return nil, err
 	}
 
-	c.session, err = loginSession(res)
+	authZ, err := loginSession(res)
 
 	// if errors.Is(err, auth.ErrPasswordAuthNeeded) {
 	// 	password, err := f.Auth.Password(ctx)
@@ -406,26 +436,27 @@ func (c *sessionLogin) SignIn(ctx context.Context, code string) (*tg.AuthAuthori
 	// }
 
 	if err != nil {
-		c.session = nil
 		return nil, err
 	}
 
-	c.request = nil // Code used !
-	// c.session = authZ.(*tg.AuthAuthorization)
-	c.user, _ = c.session.GetUser().AsNotEmpty()
-	c.sessionAt = time.Now()
-	c.signal() // LOCKED
+	c.request = nil          // Code used !
+	c.sessionAt = time.Now() // Authenticated timestamp
+	// c.user, _ = authZ.GetUser().AsNotEmpty()
+	// c.signal() // LOCKED
+	user, _ := authZ.GetUser().AsNotEmpty()
+	// LOCKED
+	c.doAuth(user)
 
-	return c.session, nil
+	return authZ, nil
 }
 
 // Password performs login via secure remote password (aka 2FA).
-func (c *sessionLogin) Password(ctx context.Context, password string) (*tg.AuthAuthorization, error) {
+func (c *sessionAuth) Password(ctx context.Context, password string) (*tg.AuthAuthorization, error) {
 
-	c.Mutex.Lock()
-	defer c.Mutex.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
-	p, err := c.api.AccountGetPassword(ctx)
+	p, err := c.API().AccountGetPassword(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "get SRP parameters")
 	}
@@ -435,7 +466,7 @@ func (c *sessionLogin) Password(ctx context.Context, password string) (*tg.AuthA
 		return nil, errors.Wrap(err, "compute password hash")
 	}
 
-	res, err := c.api.AuthCheckPassword(ctx,
+	res, err := c.API().AuthCheckPassword(ctx,
 		&tg.InputCheckPasswordSRP{
 			SRPID: p.SRPID,
 			A:     a.A,
@@ -456,27 +487,30 @@ func (c *sessionLogin) Password(ctx context.Context, password string) (*tg.AuthA
 		return nil, errors.Wrap(err, "check password")
 	}
 
-	session, err := loginSession(res)
+	authZ, err := loginSession(res)
 
 	if err != nil {
 		return nil, errors.Wrap(err, "check")
 	}
 
-	c.request = nil // Code used !
-	c.session = session
-	c.user, _ = c.session.GetUser().AsNotEmpty()
-	c.sessionAt = time.Now()
-	c.signal() // LOCKED
-	return session, nil
+	c.request = nil          // Code used !
+	c.sessionAt = time.Now() // Authenticated timestamp
+	// c.user, _ = authZ.GetUser().AsNotEmpty()
+	// c.signal() // LOCKED
+	user, _ := authZ.GetUser().AsNotEmpty()
+	// LOCKED
+	c.doAuth(user)
+
+	return authZ, nil
 }
 
 // LogOut logs out the user.
-func (c *sessionLogin) LogOut(ctx context.Context) error {
+func (c *sessionAuth) LogOut(ctx context.Context) error {
 
-	c.Mutex.Lock()
-	defer c.Mutex.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
-	res, err := c.api.AuthLogOut(ctx)
+	res, err := c.API().AuthLogOut(ctx)
 	// var (
 	// 	err error
 	// 	res = &tg.AuthLoggedOut{
@@ -522,68 +556,87 @@ func (c *sessionLogin) LogOut(ctx context.Context) error {
 		tokens[0] = res.FutureAuthToken
 		c.tokens = tokens
 	}
+	// FIXME: Middleware will do it's job: AUTH_KEY_UNREGISTERED !
+	// c.user = nil
+	// c.signal()
 
-	c.user = nil
-	c.session = nil
-	c.signal() // LOCKED
+	// LOCKED
+	c.doAuth(nil)
 
 	return nil
 }
 
-// Wait blocks until authorizationState change
-// Returs either:
-// - non <nil> *tg.User reference is case of new login session
-// - <nil> reference in case of session logout
-func (c *sessionLogin) Wait() <-chan *tg.User {
-
-	c.Mutex.Lock()
-	defer c.Mutex.Unlock()
-
-	notify := make(chan *tg.User, 1)
-	if c.user != nil {
-		notify <- c.user
-		close(notify)
-	} else {
-		c.notify = append(c.notify, notify)
-	}
-
-	return notify
-}
-
 // signal state LOCKED !
-func (c *sessionLogin) signal() {
+func (c *sessionAuth) signal() {
 	for sub, notify := range c.notify {
 		select {
-		case notify <- c.user:
+		case notify <- c.user: // sent; OK
 		default: // busy (full); unsubscribe
 			c.notify = append(c.notify[0:sub], c.notify[sub+1:]...)
+			close(notify)
 			panic("onAuthorizationState: blocked; unsubscribe")
 		}
 	}
 }
 
-func (c *sessionLogin) Subscribe() <-chan *tg.User {
+func (c *sessionAuth) init() {
+	// Fetch user info.
+	// me, err := app.Self(ctx)
+	self, err := c.peers.Self(context.TODO())
+	if err != nil {
+		if tgerr.IsCode(err, 401) {
+			err = nil // Ignore: UNAUTHORIZED
+		} else {
+			c.session.log.Error(err.Error()) // LOG: getSelf ERROR
+		}
+	}
+
+	// c.Lock()
+	// defer c.Unlock()
+
+	// c.resetUser(self.Raw())
+	c.Auth(self.Raw())
+
+	// sessionUser := c.user
+	// currentUser := self.Raw()
+	// c.user = currentUser
+
+	// if currentUser.GetID() != sessionUser.GetID() {
+	// 	c.signal() // notify subscribers
+	// }
+}
+
+// Subscribe for authorizationState changes
+// Trigger:
+// - non <nil> *tg.User reference is case of session new Login
+// - <nil> *tg.User reference in case of session Logout
+func (c *sessionAuth) Subscribe() <-chan *tg.User {
 
 	notify := make(chan *tg.User, 1) // buffered
 
-	c.Mutex.Lock()
-	defer c.Mutex.Unlock()
-
+	c.Lock()
+	reinit := len(notify) == 0
 	c.notify = append(c.notify, notify)
+	c.Unlock()
 
-	if c.user != nil {
-		// Immediate if user authorized !
-		notify <- c.user
+	if reinit {
+		c.init()
 	}
+
+	// if c.user != nil {
+	// 	// Immediate if user authorized !
+	// 	notify <- c.user
+	// }
 
 	return notify
 }
 
-func (c *sessionLogin) Unsubscribe(notify <-chan *tg.User) {
-
-	c.Mutex.Lock()
+func (c *sessionAuth) Unsubscribe(notify <-chan *tg.User) {
 
 	var origin chan *tg.User
+
+	c.Lock()
+
 	for i, sub := range c.notify {
 		if sub == notify {
 			c.notify = append(c.notify[0:i], c.notify[i+1:]...)
@@ -592,7 +645,11 @@ func (c *sessionLogin) Unsubscribe(notify <-chan *tg.User) {
 		}
 	}
 
-	c.Mutex.Unlock()
+	c.Unlock()
+
+	if origin == nil {
+		return // Subscription: NOT found !
+	}
 
 	close(origin)
 
@@ -600,27 +657,28 @@ func (c *sessionLogin) Unsubscribe(notify <-chan *tg.User) {
 		select {
 		case _, ok := <-notify:
 			if !ok {
-				return
+				return // break for
 			}
 		default:
-			return
+			return // break for
 		}
 	}
 }
 
-func (c *sessionLogin) MiddlewareHook(next tg.Invoker) telegram.InvokeFunc {
+func (c *sessionAuth) MiddlewareHook(next tg.Invoker) telegram.InvokeFunc {
 	return func(ctx context.Context, input bin.Encoder, output bin.Decoder) error {
 		// PERFORM request !
 		err := next.Invoke(ctx, input, output)
 		// Logout/Terminate session interception
 		if c.user != nil && auth.IsUnauthorized(err) {
-			c.Mutex.Lock()
 
-			c.user = nil
-			c.session = nil
-			c.signal()
+			c.Auth(nil)
+			// c.Lock()
 
-			c.Mutex.Unlock()
+			// c.user = nil
+			// c.signal()
+
+			// c.Unlock()
 		}
 		// Operation error ?
 		return err

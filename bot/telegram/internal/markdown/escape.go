@@ -1,30 +1,101 @@
-package telegram
+package markdown
 
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	tmpl "text/template"
+	"unicode/utf8"
 
 	telegram "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+const (
+	ESC = '\\' // backslash ("\")
+)
+
+var (
+	htmlEscaper       = strings.NewReplacer("<", "&lt;", ">", "&gt;", "&", "&amp;")
+	markdownEscaper   = strings.NewReplacer("_", "\\_", "*", "\\*", "`", "\\`", "[", "\\[")
+	markdownV2Escaper = strings.NewReplacer(
+		"_", "\\_", "*", "\\*", "[", "\\[", "]", "\\]", "(",
+		"\\(", ")", "\\)", "~", "\\~", "`", "\\`", ">", "\\>",
+		"#", "\\#", "+", "\\+", "-", "\\-", "=", "\\=", "|",
+		"\\|", "{", "\\{", "}", "\\}", ".", "\\.", "!", "\\!",
+	)
+)
+
+// EscapeText takes an input text and escape Telegram markup symbols.
+// In this way we can send a text without being afraid of having to escape the characters manually.
+// Note that you don't have to include the formatting style in the input text, or it will be escaped too.
+// If there is an error, an empty string will be returned.
+//
+// parseMode is the text formatting mode (ModeMarkdown, ModeMarkdownV2 or ModeHTML)
+// text is the input string that will be escaped
+func Escape(parseMode string, text string) string {
+	var escaper *strings.Replacer
+
+	switch parseMode {
+	case telegram.ModeHTML:
+		escaper = htmlEscaper
+	case telegram.ModeMarkdown:
+		escaper = markdownEscaper
+	case telegram.ModeMarkdownV2:
+		escaper = markdownV2Escaper
+	default:
+		return text
+	}
+
+	return escaper.Replace(text)
+}
+
+func UnescapeBytes(text []byte) []byte {
+	var (
+		c    rune
+		size int
+		esc  bool
+	)
+	for i := 0; i < len(text); i += size {
+		c, size = utf8.DecodeRune(text[i:])
+		if c == ESC && !esc {
+			text = append(text[0:i], text[i+size:]...)
+			esc = true
+			i -= size
+			continue
+		}
+		// printable char
+		esc = false
+	}
+	return text
+}
+
+func Unescape(text string) string {
+	// Need unescape ?
+	if strings.IndexByte(text, ESC) >= 0 {
+		return string(
+			UnescapeBytes([]byte(text)),
+		)
+	}
+	return text
+}
+
 // Helper template functions to correctly escape values
 // for different message content formatting
-var builtin = tmpl.FuncMap{
-	"md":  MarkdownEscaper,   // Markdown (legacy)
-	"md2": MarkdownV2Escaper, // MarkdownV2
+var TemplateFuncs = tmpl.FuncMap{
+	"md":  MarkdownEscape,   // Markdown (legacy)
+	"md2": MarkdownV2Escape, // MarkdownV2
 	// "html": tmpl.HTMLEscaper, // builtin
 }
 
 // MarkdownEscaper returns the escaped value of the textual representation of
 // its arguments in a form suitable for embedding in a URL query.
-func MarkdownEscaper(args ...any) string {
+func MarkdownEscape(args ...any) string {
 	return telegram.EscapeText(telegram.ModeMarkdown, evalArgs(args))
 }
 
 // URLQueryEscaper returns the escaped value of the textual representation of
 // its arguments in a form suitable for embedding in a URL query.
-func MarkdownV2Escaper(args ...any) string {
+func MarkdownV2Escape(args ...any) string {
 	return telegram.EscapeText(telegram.ModeMarkdownV2, evalArgs(args))
 }
 
@@ -52,7 +123,8 @@ func printableValue(v reflect.Value) (any, bool) {
 		v, _ = indirect(v) // fmt.Fprint handles nil.
 	}
 	if !v.IsValid() {
-		return "<no value>", true
+		// return "<no value>", true
+		return nil, false
 	}
 
 	if !v.Type().Implements(errorType) && !v.Type().Implements(fmtStringerType) {
@@ -69,7 +141,9 @@ func printableValue(v reflect.Value) (any, bool) {
 }
 
 // evalArgs formats the list of arguments into a string. It is therefore equivalent to
+//
 //	fmt.Sprint(args...)
+//
 // except that each argument is indirected (if a pointer), as required,
 // using the same rules as the default string evaluation during template
 // execution.
