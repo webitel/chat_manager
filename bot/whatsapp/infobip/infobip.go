@@ -248,13 +248,6 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 		}
 	}
 
-	// // DETECT: MIME Content-Type by URL filename extension
-	// if media.Mime == "" {
-	// 	media.Mime = mime.TypeByExtension(
-	// 		path.Ext(media.Name),
-	// 	)
-	// }
-
 	// ctx := context.Background()
 	req, err := http.NewRequest(
 		http.MethodGet, media.Url, nil,
@@ -285,6 +278,7 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 	defer rsp.Body.Close()
 	// Content-Type
 	if mediaType := rsp.Header.Get("Content-Type"); mediaType != "" {
+		// Split: mediatype/subtype[;opt=param]
 		if mediaType, _, re := mime.ParseMediaType(mediaType); re == nil {
 			media.Mime = mediaType
 		}
@@ -306,12 +300,78 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 			}
 		}
 	}
-	// Resolve filename extension if omitted; AUDIO !
-	if ext := filepath.Ext(media.Name); ext == "" {
-		if ext, _ := mime.ExtensionsByType(media.Mime); len(ext) != 0 {
-			media.Name += ext[0]
+	// Generate unique filename
+	var (
+		filebase = time.Now().Format("2006-01-02_15-04-05") // combines media filename with the timestamp received
+		filename = filepath.Base(media.Name)
+		filexten = filepath.Ext(filename)
+	)
+	filename = filename[0 : len(filename)-len(filexten)]
+	if mediaType := media.Mime; mediaType != "" {
+		// Get file extension for MIME type
+		var ext []string
+		switch filexten {
+		default:
+			ext = []string{filexten}
+		case "", ".":
+			switch strings.ToLower(mediaType) {
+			case "application/octet-stream":
+				ext = []string{".bin"}
+			case "image/jpeg": // IMAGE
+				ext = []string{".jpg"}
+			case "audio/mpeg": // AUDIO
+				ext = []string{".mp3"}
+			case "audio/ogg": // VOICE
+				ext = []string{".ogg"}
+			default:
+				// Resolve for MIME type ...
+				ext, _ = mime.ExtensionsByType(mediaType)
+			}
+		}
+		// Split: mediatype[/subtype]
+		var subType string
+		if slash := strings.IndexByte(mediaType, '/'); slash > 0 {
+			subType = mediaType[slash+1:]
+			mediaType = mediaType[0:slash]
+		}
+		if len(ext) == 0 { // != 1 {
+			ext = strings.FieldsFunc(
+				subType,
+				func(c rune) bool {
+					return !unicode.IsLetter(c)
+				},
+			)
+			for n := len(ext) - 1; n >= 0; n-- {
+				if ext[n] != "" {
+					ext = []string{
+						"." + ext[n],
+					}
+					break
+				}
+			}
+		}
+		if n := len(ext); n != 0 {
+			filexten = ext[n-1] // last
+		}
+		if filename == "" {
+			filename = strings.ToLower(mediaType)
+			switch mediaType {
+			case "image", "audio", "video":
+			default:
+				filename = "file"
+			}
 		}
 	}
+	// Build unique filename
+	if filename != "" {
+		filename += "_"
+	}
+	filename += filebase
+	if filexten != "" {
+		filename += filexten
+	}
+	// Populate unique filename
+	media.Name = filename
 
 	// serviceName := "storage"
 	grpcClient := client.DefaultClient
@@ -334,7 +394,7 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 		return nil, err
 	}
 
-	// stream, err := grpcClient.Stream(ctx, uploadFile) // , clientOpts...)
+	// c.Gateway.Log.Debug().Interface("media", media).Msg("storage.uploadFile")
 	err = stream.Send(&storage.UploadFileRequest{
 		Data: &storage.UploadFileRequest_Metadata_{
 			Metadata: &storage.UploadFileRequest_Metadata{
@@ -634,13 +694,12 @@ const (
 // recv := Update{/* decode from notice.Body */}
 // err = c.Gateway.Read(notice.Context(), recv)
 //
-// if err != nil {
-// 	http.Error(res, "Failed to deliver .Update notification", http.StatusBadGateway)
-// 	return // 502 Bad Gateway
-// }
+//	if err != nil {
+//		http.Error(res, "Failed to deliver .Update notification", http.StatusBadGateway)
+//		return // 502 Bad Gateway
+//	}
 //
 // reply.WriteHeader(http.StatusOK)
-//
 func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
@@ -772,33 +831,29 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 			doc := &chat.File{
 				Id:   0,
 				Mime: "",
-				Name: sendMessage.Text, // .Caption (parsed above)
+				// Name: sendMessage.Text, // .Caption (parsed above)
 				Url:  recvMessage.URL,
 				Size: 0,
 			}
 
+			doc.Name = strings.ToLower(messageType)
 			switch messageType {
-			case "IMAGE",
-				"STICKER":
-				// sendMessage.File.Mime = "image"
-				doc.Mime = "image"
-			case "AUDIO",
-				"VOICE":
-				// sendMessage.File.Mime = "audio"
-				doc.Mime = "audio"
-			case "VIDEO":
-				// sendMessage.File.Mime = "video"
-				doc.Mime = "video"
-			default: // "DOCUMENT"
-				// Auto-detect while download
+			// case "IMAGE":
+			// case "AUDIO":
+			// case "VOICE":
+			// case "VIDEO":
+			// case "STICKER":
+			case "DOCUMENT":
+				doc.Name = sendMessage.Text // .Caption (parsed above)
+				sendMessage.Text = ""       // Clear; This is the document filename !
 			}
 			_, err = c.forwardFile(doc, channel)
 			if err != nil {
 				c.Gateway.Log.Err(err).Msg("INFOBIP: MEDIA")
 			}
 			sendMessage.File = doc
-			// Normalize filename
-			sendMessage.Text = doc.Name
+			// // Normalize filename
+			// sendMessage.Text = doc.Name
 
 		// case "CONTACT":
 		case "LOCATION":
