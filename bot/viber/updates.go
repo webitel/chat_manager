@@ -312,44 +312,105 @@ func (c *Bot) onNewDialog(ctx context.Context, event *Update) error {
 	return nil
 }
 
-// ON: [delivered, seen, failed]
+// ON: [subscribed]
 //
-// Viber offers message status updates for each message sent, allowing the account
-// to be notified when the message was delivered to the user’s device (delivered status)
-// and when the conversation containing the message was opened (seen status).
+// Before an account can send messages to a user, the user will need to subscribe to the account.
+// Subscribing can take place if the user sends a message to the bot.
+// When a user sends its first message to a bot the user will be automatically subscribed to the bot.
+// Sending the first message will not trigger a subscribe callback, only a message callback (see receive message from user section).
 //
-// The seen callback will only be sent once when the user reads the unread messages,
-// regardless of the number of messages sent to them, or the number of devices they are using.
+// You will receive a subscribed event when unsubscribed users do the following:
 //
-// If the message recipient is using their Viber account on multiple devices,
-// each of the devices will return a delivered, meaning that several delivered callbacks
-// can be received for a single message.
+// 1. Open conversation with the bot.
+// 2. Tap on the 3-dots button in the top right and then on “Chat Info”.
+// 3. Tap on “Receive messages”.
 //
-// If Viber is unable to deliver the message to the client it will try to deliver it for up to 14 days.
-// If the message wasn’t delivered within the 14 days it will not be delivered
-// and no “delivered” or “seen” callbacks will be received for it.
+// Note: A subscribe event will delete any context or tracking_data information related to the conversation. This means that if a user had a conversation with a service and then chose to unsubscribe and subscribe again, a new conversation will be started without any information related to the old conversation.
 //
-// https://developers.viber.com/docs/api/rest-bot-api/#message-receipts-callbacks
-func (c *Bot) onMsgStatus(ctx context.Context, event *Update) error {
+// https://developers.viber.com/docs/api/rest-bot-api/#subscribed
+func (c *Bot) onJoinMember(ctx context.Context, event *Update) error {
+
+	return nil // IGNORE
+
+	var (
+		update  = event.JoinMember
+		sender  = update.User
+		contact = &bot.Account{
+			ID:        0, // LOOKUP
+			Channel:   provider,
+			Contact:   sender.ID,
+			FirstName: sender.Name,
+		}
+	)
+
+	chatID := sender.ID
+	dialog, err := c.Gateway.GetChannel(
+		ctx, chatID, contact,
+	)
+	if err != nil {
+		// Failed locate chat channel !
+		re := errors.FromError(err)
+		if re.Code == 0 {
+			re.Code = (int32)(http.StatusBadGateway)
+		}
+		return re // 502 Bad Gateway
+	}
+
+	if !dialog.IsNew() {
+		return nil // FIXME: How can we got here ?
+	}
+
+	sendUpdate := bot.Update{
+		Chat:  dialog,
+		User:  contact,
+		Title: dialog.Title,
+		Message: &chat.Message{
+			Type: "text",
+			Text: "/subscribed",
+		},
+	}
+	err = c.Gateway.Read(ctx, &sendUpdate)
+
+	var notice func() *zerolog.Event
+	if err == nil {
+		notice = c.Gateway.Log.Info
+	} else {
+		notice = func() *zerolog.Event {
+			return c.Gateway.Log.Err(err)
+		}
+	}
+	notice().Interface("user", &User{ID: sender.ID, Name: sender.Name}).
+		Msg("viber/bot.onSubscribed")
+
 	return nil
-	// update := event.Message
-	// switch update.Status { // == event.Type
-	// case updateSentMessage:
-	// 	// NOTE: may trigger several times for single message
-	// 	//       for each account's device succesfull delivery
-	// 	//
-	// 	// update.UserId
-	// 	// update.MessageId
-	// case updateReadMessage:
-	// 	// update.UserId
-	// 	// update.MessageId
-	// case updateFailMessage:
-	// 	// update.UserId
-	// 	// update.MessageId
-	// 	// update.Failed // ERROR Message
-	// default:
-	// 	return
-	// }
+}
+
+// ON: [unsubscribed]
+//
+// The user will have the option to unsubscribe from the PA.
+// This will trigger an unsubscribed callback.
+//
+// https://developers.viber.com/docs/api/rest-bot-api/#unsubscribed
+func (c *Bot) onLeftMember(ctx context.Context, event *Update) error {
+	// Viber user tap "Do NOT receive messages" from our Bot !
+	chatId := event.LeftMember.UserId
+	dialog, err := c.Gateway.GetChannel(ctx, chatId, nil)
+	if err == nil && !dialog.IsNew() {
+		err = dialog.Close()
+	}
+
+	var notice func() *zerolog.Event
+	if err == nil {
+		notice = c.Gateway.Log.Info
+	} else {
+		notice = func() *zerolog.Event {
+			return c.Gateway.Log.Err(err)
+		}
+	}
+	notice().Str("userId", chatId).
+		Msg("viber/bot.onUnsubscribed")
+
+	return nil
 }
 
 // on: [message]
@@ -476,103 +537,42 @@ func (c *Bot) onNewMessage(ctx context.Context, event *Update) error {
 	return nil
 }
 
-// ON: [subscribed]
+// ON: [delivered, seen, failed]
 //
-// Before an account can send messages to a user, the user will need to subscribe to the account.
-// Subscribing can take place if the user sends a message to the bot.
-// When a user sends its first message to a bot the user will be automatically subscribed to the bot.
-// Sending the first message will not trigger a subscribe callback, only a message callback (see receive message from user section).
+// Viber offers message status updates for each message sent, allowing the account
+// to be notified when the message was delivered to the user’s device (delivered status)
+// and when the conversation containing the message was opened (seen status).
 //
-// You will receive a subscribed event when unsubscribed users do the following:
+// The seen callback will only be sent once when the user reads the unread messages,
+// regardless of the number of messages sent to them, or the number of devices they are using.
 //
-// 1. Open conversation with the bot.
-// 2. Tap on the 3-dots button in the top right and then on “Chat Info”.
-// 3. Tap on “Receive messages”.
+// If the message recipient is using their Viber account on multiple devices,
+// each of the devices will return a delivered, meaning that several delivered callbacks
+// can be received for a single message.
 //
-// Note: A subscribe event will delete any context or tracking_data information related to the conversation. This means that if a user had a conversation with a service and then chose to unsubscribe and subscribe again, a new conversation will be started without any information related to the old conversation.
+// If Viber is unable to deliver the message to the client it will try to deliver it for up to 14 days.
+// If the message wasn’t delivered within the 14 days it will not be delivered
+// and no “delivered” or “seen” callbacks will be received for it.
 //
-// https://developers.viber.com/docs/api/rest-bot-api/#subscribed
-func (c *Bot) onJoinMember(ctx context.Context, event *Update) error {
-
-	return nil // IGNORE
-
-	var (
-		update  = event.JoinMember
-		sender  = update.User
-		contact = &bot.Account{
-			ID:        0, // LOOKUP
-			Channel:   provider,
-			Contact:   sender.ID,
-			FirstName: sender.Name,
-		}
-	)
-
-	chatID := sender.ID
-	dialog, err := c.Gateway.GetChannel(
-		ctx, chatID, contact,
-	)
-	if err != nil {
-		// Failed locate chat channel !
-		re := errors.FromError(err)
-		if re.Code == 0 {
-			re.Code = (int32)(http.StatusBadGateway)
-		}
-		return re // 502 Bad Gateway
-	}
-
-	if !dialog.IsNew() {
-		return nil // FIXME: How can we got here ?
-	}
-
-	sendUpdate := bot.Update{
-		Chat:  dialog,
-		User:  contact,
-		Title: dialog.Title,
-		Message: &chat.Message{
-			Type: "text",
-			Text: "/subscribed",
-		},
-	}
-	err = c.Gateway.Read(ctx, &sendUpdate)
-
-	var notice func() *zerolog.Event
-	if err == nil {
-		notice = c.Gateway.Log.Info
-	} else {
-		notice = func() *zerolog.Event {
-			return c.Gateway.Log.Err(err)
-		}
-	}
-	notice().Interface("user", &User{ID: sender.ID, Name: sender.Name}).
-		Msg("viber/bot.onSubscribed")
-
+// https://developers.viber.com/docs/api/rest-bot-api/#message-receipts-callbacks
+func (c *Bot) onMsgStatus(ctx context.Context, event *Update) error {
 	return nil
-}
-
-// ON: [unsubscribed]
-//
-// The user will have the option to unsubscribe from the PA.
-// This will trigger an unsubscribed callback.
-//
-// https://developers.viber.com/docs/api/rest-bot-api/#unsubscribed
-func (c *Bot) onLeftMember(ctx context.Context, event *Update) error {
-	// Viber user tap "Do NOT receive messages" from our Bot !
-	chatId := event.LeftMember.UserId
-	dialog, err := c.Gateway.GetChannel(ctx, chatId, nil)
-	if err == nil && !dialog.IsNew() {
-		err = dialog.Close()
-	}
-
-	var notice func() *zerolog.Event
-	if err == nil {
-		notice = c.Gateway.Log.Info
-	} else {
-		notice = func() *zerolog.Event {
-			return c.Gateway.Log.Err(err)
-		}
-	}
-	notice().Str("userId", chatId).
-		Msg("viber/bot.onUnsubscribed")
-
-	return nil
+	// update := event.Message
+	// switch update.Status { // == event.Type
+	// case updateSentMessage:
+	// 	// NOTE: may trigger several times for single message
+	// 	//       for each account's device succesfull delivery
+	// 	//
+	// 	// update.UserId
+	// 	// update.MessageId
+	// case updateReadMessage:
+	// 	// update.UserId
+	// 	// update.MessageId
+	// case updateFailMessage:
+	// 	// update.UserId
+	// 	// update.MessageId
+	// 	// update.Failed // ERROR Message
+	// default:
+	// 	return
+	// }
 }

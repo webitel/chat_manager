@@ -1,6 +1,7 @@
 package viber
 
 import (
+	"html"
 	"strings"
 
 	"github.com/webitel/chat_manager/api/proto/chat"
@@ -20,8 +21,9 @@ type Keyboard struct {
 	BgColor string `json:",omitempty"`
 	// OPTIONAL. When true - the keyboard will always be displayed with the same height as the native keyboard.
 	// When false - short keyboards will be displayed with the minimal possible height.
-	// Maximal height will be native keyboard height
-	DefaultHeight bool // `json:",omitempty"`
+	// Maximal height will be native keyboard height.
+	// Default: false.
+	DefaultHeight bool `json:",omitempty"`
 	// OPTIONAL (api level 3). How much percent of free screen space in chat should be taken by keyboard.
 	// The final height will be not less than height of system keyboard
 	// 40..70
@@ -212,7 +214,7 @@ func coalesce(text ...string) string {
 	return ""
 }
 
-// map[row.count]btn.width
+// map[row.count]btn.width(columns)
 // https://developers.viber.com/docs/tools/keyboards/#keyboard-design
 var buttonsLayout = map[int][]int{
 	1: {6},
@@ -223,68 +225,89 @@ var buttonsLayout = map[int][]int{
 	6: {1, 1, 1, 1, 1, 1},
 }
 
-// Button Text default styling
-func buttonText(text string) string {
+// ButtonText default styling
+func ButtonText(text string) string {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return ""
 	}
-	// Has custom HTML styling ?
+	// Has custom HTML ?
 	if text[0] == '<' {
 		return text
 	}
-	// Default text customizations ...
-	return "<font color=\"#F5FFFF\"><b>" + text + "</b></font>"
+	// Button's text default style ... // #ffc107 - yellow
+	return "<font color=\"#ffffff\"><b>" + html.EscapeString(text) + "</b></font>"
+}
+
+// Default button(s) styling
+var (
+	buttonFrame = Frame{
+		BorderColor: "#808d9d", // viber:light-gray
+		// BorderColor:  "#ffc107", // webitel:yellow
+		BorderWidth:  5,
+		CornerRadius: 10,
+	}
+	keyboardButton = Button{
+		TextSize: "large",
+		BgColor:  "#1d2733", // viber:dark-gray
+		// BgColor:  "#171a2a", // webitel:dark-blue
+		// BgColor:  "#086d55",
+		// Frame:      &buttonFrame,
+	}
+)
+
+// NewButton returns a keyboard button with the default style
+func NewButton(action, text, code string) *Button {
+	// shallowcopy
+	btn := keyboardButton
+	frame := buttonFrame
+	btn.Frame = &frame
+	// constructor
+	btn.ActionType = action
+	btn.ActionBody = coalesce(code, text)
+	btn.Text = ButtonText(coalesce(text, code))
+
+	return &btn
 }
 
 func ButtonNone(text string) *Button {
-	return &Button{
-		BgColor:    "#360200", // gray
-		TextSize:   "large",
-		ActionType: "none",
-		ActionBody: coalesce(text, "#none"),
-		Text:       buttonText(text),
-	}
+	return NewButton(
+		"none",
+		text,
+		"#none",
+	)
 }
 
 func ButtonURL(text, url string) *Button {
-	return &Button{
-		BgColor:    "#586c02", // green
-		TextSize:   "large",
-		ActionType: "open-url",
-		ActionBody: url,
-		Text:       buttonText(text),
-	}
+	return NewButton(
+		"open-url",
+		text,
+		url,
+	)
 }
 
 func ButtonReply(text, code string) *Button {
-	return &Button{
-		BgColor:    "#086d55", // "#362448", // "#c3e0e0", // blue
-		TextSize:   "large",
-		ActionType: "reply",
-		ActionBody: coalesce(code, text),
-		Text:       buttonText(coalesce(text, code)),
-	}
+	return NewButton(
+		"reply",
+		text,
+		code,
+	)
 }
 
 func ButtonContact(text string) *Button {
-	return &Button{
-		BgColor:    "#7c2201", // purple
-		TextSize:   "large",
-		ActionType: "share-phone",
-		ActionBody: "#no-phone",
-		Text:       buttonText("📱" + coalesce(text, "Share Contact")),
-	}
+	return NewButton(
+		"share-phone",
+		"📱"+coalesce(text, "Share Contact"),
+		"#contact",
+	)
 }
 
 func ButtonLocation(text string) *Button {
-	return &Button{
-		BgColor:    "#5a0725", // purple
-		TextSize:   "large",
-		ActionType: "location-picker",
-		ActionBody: "#no-location",
-		Text:       buttonText("📍" + coalesce(text, "Share Location")),
-	}
+	return NewButton(
+		"location-picker",
+		"📍"+coalesce(text, "Share Location"),
+		"#location",
+	)
 }
 
 func (req *sendOptions) Menu(layout []*chat.Buttons) *sendOptions {
@@ -343,9 +366,11 @@ func (req *sendOptions) Menu(layout []*chat.Buttons) *sendOptions {
 				)
 			case "email": // not-supported
 			default:
-				// ButtonNone(
-				// 	???
-				// )
+				row = append(row,
+					ButtonNone(
+						btn.GetText(),
+					),
+				)
 			}
 		}
 		rows[r] = row
@@ -361,6 +386,7 @@ func (req *sendOptions) Menu(layout []*chat.Buttons) *sendOptions {
 	}
 
 	req.Keyboard = &Keyboard{
+		// Type:       "rich_media",
 		Type:          "keyboard",
 		Buttons:       btns,
 		DefaultHeight: false,

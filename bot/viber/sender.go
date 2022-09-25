@@ -88,10 +88,10 @@ type sendOptions struct {
 	Message
 	// File size in bytes
 	FileSize int64 `json:"size,omitempty"`
-	//
-	// RichMedia *struct{}
-	//
+	// Keyboard buttons layout
 	Keyboard *Keyboard `json:"keyboard,omitempty"`
+	// Carousel buttons layout
+	RichMedia *Keyboard `json:"rich_media,omitempty"`
 }
 
 // Text of the message to be send
