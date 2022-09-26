@@ -2,7 +2,6 @@ package bot
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -49,11 +48,10 @@ type Template tmpl.Template
 func NewTemplate(name string) *Template {
 	root := tmpl.New(name)
 	root.Delims("$(", ")")
-	// FIXME: Parse error: function not defined !
-	root.Funcs(tmpl.FuncMap{
-		"md":  fmt.Sprint,
-		"md2": fmt.Sprint,
-	})
+	// // FIXME: Parse error: function not defined !
+	// root.Funcs(tmpl.FuncMap{
+	// 	"md2": fmt.Sprint,
+	// })
 	return (*Template)(root)
 }
 

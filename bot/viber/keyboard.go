@@ -244,8 +244,8 @@ var (
 	buttonFrame = Frame{
 		BorderColor: "#808d9d", // viber:light-gray
 		// BorderColor:  "#ffc107", // webitel:yellow
-		BorderWidth:  5,
-		CornerRadius: 10,
+		BorderWidth:  1,
+		CornerRadius: 6,
 	}
 	keyboardButton = Button{
 		TextSize: "large",

@@ -290,7 +290,7 @@ func (c *Bot) onNewDialog(ctx context.Context, event *Update) error {
 		Title: dialog.Title,
 		Message: &chat.Message{
 			Type: "text",
-			Text: "/start",
+			Text: "/welcome",
 		},
 	}
 	// Start new dialog
