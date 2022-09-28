@@ -4,108 +4,48 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"path"
+	"strconv"
 	"strings"
 
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
 )
 
-type viberBot struct {
+type Bot struct {
 	Token   string
-	Events  []string
-	BotName string
-	Gateway *bot.Gateway
+	Sender  *User
 	Client  *http.Client
+	Account *Account
+	Gateway *bot.Gateway
 }
 
-// eventPayload received from Viber server on webhook
-type eventPayload struct {
-	Event        string  `json:"event"`
-	Timestamp    int     `json:"timestamp"`
-	ChatHostname string  `json:"chat_hostname"`
-	MessageToken uint64  `json:"message_token"`
-	Sender       sender  `json:"sender"`
-	Message      message `json:"message"`
-	Silent       bool    `json:"silent"`
-	UserID       string  `json:"user_id,omitempty"`
-}
-
-type message struct {
-	Type    string `json:"type"`
-	Text    string `json:"text"`
-	Contact struct {
-		Name        string `json:"name"`
-		PhoneNumber string `json:"phone_number"`
-	}
-	Location struct {
-		Latitude  float64 `json:"lat"`
-		Longitude float64 `json:"lon"`
-	}
-	Media     string `json:"media"`
-	Thumbnail string `json:"thumbnail"`
-	FileName  string `json:"file_name"`
-}
-
-type sender struct {
-	ID         string `json:"id,omitempty"`
-	Name       string `json:"name"`
-	Language   string `json:"language,omitempty"`
-	Country    string `json:"country,omitempty"`
-	APIVersion int    `json:"api_version,omitempty"`
-}
-
-// viberReqBody struct used for sending text messages to messenger
-type viberReqBody struct {
-	Receiver      string `json:"receiver",omitempty`
-	Sender        sender `json:"sender"`
-	MinApiVersion int    `json:"min_api_version,omitempty"`
-	Type          string `json:"type"`
-	Text          string `json:"text"`
-	Media         string `json:"media,omitempty"`
-	Size          int64  `json:"size,omitempty"`
-	FileName      string `json:"file_name,omitempty"`
-	//BroadcastList []string 	`json:"broadcast_list,omitempty"`
-	Keyboard *keyboard `json:"keyboard,omitempty"`
-}
-
-type viberResponse struct {
-	MessageToken int `json:"message_token,omitempty"`
-}
-
-type keyboard struct {
-	Type          string   `json:"Type,omitempty"`
-	DefaultHeight bool     `json:"DefaultHeight,omitempty"`
-	Buttons       []button `json:"Buttons,omitempty"`
-}
-
-type button struct {
-	ActionType string `json:"ActionType"`
-	ActionBody string `json:"ActionBody"`
-	Text       string `json:"Text"`
-	Columns    int    `json:"Columns"`
-	BgColor    string `json:"BgColor,omitempty"`
-}
-
-// WebhookReq request
-type WebhookReq struct {
-	URL        string   `json:"url"`
-	EventTypes []string `json:"event_types"`
-}
+// constants
+const (
+	provider    = "viber"
+	endpointURL = "https://chatapi.viber.com/pa"
+	// MUST: strings.TrimRight(endpointURL, "/")
+)
 
 func init() {
-	// NewProvider(viber)
-	bot.Register("viber", NewViberBot)
+	// Register "viber" provider factory method
+	bot.Register(provider, New)
 }
 
-// NewViberBot initialize new agent.profile service provider
-// func NewViberBot(agent *bot.Gateway) (bot.Provider, error) {
-func NewViberBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
+// New initialize new agent.profile service Viber Bot provider
+func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
+	// Latest (current) state
+	app, _ := state.(*Bot)
+	// Validate NEW Options
 	profile := agent.Bot.GetMetadata()
-	appToken, ok := profile["token"]
+	botToken, ok := profile["token"]
 	if !ok {
 		log.Error().Msg("AppToken not found")
 		return nil, errors.BadRequest(
@@ -113,410 +53,509 @@ func NewViberBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 			"viber: bot API token required",
 		)
 	}
-
-	name, ok := profile["botName"]
-	if !ok {
-		name = "bot"
-		log.Error().Msg("botName not found")
+	// Sender's specified .Name
+	botName, _ := profile["bot_name"]
+	// HTTP Client | http.DefaultClient
+	var client *http.Client
+	trace := profile["trace"]
+	if on, _ := strconv.ParseBool(trace); on {
+		var transport http.RoundTripper
+		if client != nil {
+			transport = client.Transport
+		}
+		if transport == nil {
+			transport = http.DefaultTransport
+		}
+		transport = &bot.TransportDump{
+			Transport: transport,
+			WithBody:  true,
+		}
+		if client == nil {
+			client = &http.Client{
+				Transport: transport,
+			}
+		} else {
+			// NOTE: Be aware of http.DefaultClient.Transport reassignment !
+			client.Transport = transport
+		}
 	}
 
-	eventTypes, _ := profile["eventTypes"]
-	types := strings.Split(eventTypes, ",")
+	// Parse and validate message templates
+	agent.Template = bot.NewTemplate(
+		provider,
+	)
 
-	return &viberBot{
-		Events:  types,
-		Token:   appToken,
-		BotName: name,
-		Gateway: agent,
-	}, nil
+	var err error
+	// // Populate viber-specific template helper funcs
+	// agent.Template.Root().Funcs(
+	// 	markdown.TemplateFuncs,
+	// )
+	// Parse message templates
+	if err = agent.Template.FromProto(
+		agent.Bot.GetUpdates(),
+	); err == nil {
+		// Quick tests ! <nil> means default (well-known) test cases
+		err = agent.Template.Test(nil)
+	}
+	if err != nil {
+		return nil, errors.BadRequest(
+			"chat.bot.viber.updates.invalid",
+			err.Error(),
+		)
+	}
+	// Can we upgrade latest bot account ?
+	if app != nil && app.Token != botToken {
+		app = nil // NOTE: No ! Brand NEW Account !
+	}
+
+	if app == nil {
+		app = new(Bot)
+	}
+	// [RE]Bind
+	app.Gateway = agent
+	app.Client = client
+	app.Token = botToken
+
+	sender := &User{
+		Name: botName,
+	}
+	// CHECK: Token is still valid !
+	me, err := app.getMe(true)
+	if err != nil {
+		return nil, err
+	}
+
+	if sender.Name == "" {
+		sender.Name = me.Name
+	}
+	// Sender account name
+	app.Sender = sender
+
+	return app, nil
 }
 
-func (_ *viberBot) Close() error {
+func (*Bot) Close() error {
 	return nil
 }
 
-func (_ *viberBot) String() string {
-	return "viber"
+func (*Bot) String() string {
+	return provider
 }
 
 // Register Viber Bot Webhook endpoint URI
-func (v *viberBot) Register(ctx context.Context, linkURL string) error {
-	req := WebhookReq{
-		URL:        linkURL,
-		EventTypes: v.Events,
-	}
+func (c *Bot) Register(ctx context.Context, linkURL string) error {
 
-	_, err := v.PostData("https://chatapi.viber.com/pa/set_webhook", req)
+	var (
+		res struct {
+			Status
+			Hostname      string   `json:"chat_hostname"`
+			Subscriptions []string `json:"event_types"`
+		}
+		req = setWebhook{
+			CallbackURL: linkURL,
+			EventTypes: []string{
+				// "delivered",
+				// "seen",
+				// "failed",
+				"message",
+				"subscribed",
+				"unsubscribed",
+				"conversation_started",
+			},
+			SendName: true,
+		}
+	)
+
+	err := c.do(req, &res)
+	if err == nil {
+		err = res.Err()
+	}
 
 	if err != nil {
-		v.Gateway.Log.Error().Err(err).Msg("Failed to .Register webhook")
+		c.Gateway.Log.Err(err).Msg("viber/bot.setWebhook")
 		return err
 	}
+
+	// Refresh Account Info
+	that := c.Account
+	this, _ := c.getMe(true)
+	if that != nil && this != nil {
+		if c.Sender.Name == that.Name {
+			c.Sender.Name = this.Name // Sender NEW Name
+		}
+	}
+
 	return nil
 }
 
 // Deregister viber Bot Webhook endpoint URI
-func (v *viberBot) Deregister(ctx context.Context) error {
-	req := WebhookReq{
-		URL: "",
-	}
+func (c *Bot) Deregister(ctx context.Context) error {
 
-	_, err := v.PostData("https://chatapi.viber.com/pa/set_webhook", req)
+	var (
+		res Status
+		req = setWebhook{
+			CallbackURL: "",
+		}
+	)
+
+	err := c.do(req, &res)
+	if err == nil {
+		err = res.Err()
+	}
 
 	if err != nil {
 		return err
 	}
+
+	if me := c.Account; me != nil {
+		me.Webhook = ""
+		me.Events = nil
+	}
+
 	return nil
 }
 
-func (v *viberBot) SendNotify(ctx context.Context, notify *bot.Update) error {
+func contactPeer(peer *chat.Account) *chat.Account {
+	if peer.LastName == "" {
+		peer.FirstName, peer.LastName =
+			bot.FirstLastName(peer.FirstName)
+	}
+	return peer
+}
+
+func (c *Bot) SendNotify(ctx context.Context, notify *bot.Update) error {
 
 	var (
-		// notify.Chat
-		channel = notify.Chat
-		//notify.Message
-		message = notify.Message
+		// notify.Dialog
+		peerChannel = notify.Chat
+		// notify.Message
+		sentMessage = notify.Message
+		// msgBindings map[string]string
 	)
 
-	msg := viberReqBody{
-		Receiver: channel.ChatID,
-		Sender: sender{
-			Name: v.BotName,
+	sendMessage := SendMessage{
+		// Target
+		PeerId: peerChannel.ChatID,
+		// Options
+		sendOptions: sendOptions{
+			Sender: c.Sender,
 		},
 	}
 
-	switch message.Type {
+	switch sentMessage.Type {
 
 	case "text":
 
-		msg.Type = "text"
+		sendMessage.Text(
+			sentMessage.GetText(),
+		)
 
-		msg.Text = message.GetText()
-
-		if message.Buttons != nil {
-
-			if len(message.Buttons) > 0 {
-
-				msg.MinApiVersion = 6
-				v.viberMessageMenu(message.GetButtons(), &msg)
-			}
+		if sentMessage.Buttons != nil {
+			sendMessage.MinVersion = 6
+			sendMessage.Menu(sentMessage.Buttons)
 		}
 
 	case "file":
-		viberMessageFile(message.GetFile(), &msg)
+
+		sendMessage.Media(
+			sentMessage.GetFile(),
+			sentMessage.GetText(), // Max 512 characters !
+		)
+
+	case "left":
+
+		peer := contactPeer(sentMessage.LeftChatMember)
+		updates := c.Gateway.Template
+		messageText, err := updates.MessageText("left", peer)
+		if err != nil {
+			c.Gateway.Log.Err(err).
+				Str("update", sentMessage.Type).
+				Msg("viber/bot.updateLeftMember")
+		}
+		messageText = strings.TrimSpace(
+			messageText,
+		)
+		if messageText == "" {
+			// IGNORE: empty message text !
+			return nil
+		}
+		sendMessage.Text(messageText)
+
+	case "joined":
+
+		peer := contactPeer(sentMessage.NewChatMembers[0])
+		updates := c.Gateway.Template
+		messageText, err := updates.MessageText("join", peer)
+		if err != nil {
+			c.Gateway.Log.Err(err).
+				Str("update", sentMessage.Type).
+				Msg("vider/bot.updateChatMember")
+		}
+		messageText = strings.TrimSpace(
+			messageText,
+		)
+		if messageText == "" {
+			// IGNORE: empty message text !
+			return nil
+		}
+		sendMessage.Text(messageText)
 
 	case "closed":
-		msg.Type = "text"
-		msg.Text = message.GetText()
+
+		updates := c.Gateway.Template
+		messageText, err := updates.MessageText("close", nil)
+		if err != nil {
+			c.Gateway.Log.Err(err).
+				Str("update", sentMessage.Type).
+				Msg("viber/bot.updateChatClose")
+		}
+		messageText = strings.TrimSpace(
+			messageText,
+		)
+		if messageText == "" {
+			// IGNORE: empty message text !
+			return nil
+		}
+		sendMessage.Text(messageText)
 
 	default:
-		return nil // UNKNOWN Event
+		// UNKNOWN Internal Message Update
+		return nil
 	}
 
-	_, err := v.PostData("https://chatapi.viber.com/pa/send_message", msg)
+	// https://developers.viber.com/docs/api/rest-bot-api/#response
+	var res SendResponse
+
+	err := c.do(&sendMessage, &res)
+	if err == nil {
+		err = res.Err()
+	}
+
 	if err != nil {
+		// Is Viber status error ?
+		if rpcErr, is := err.(*Error); is {
+			//
+			// https://developers.viber.com/docs/api/rest-bot-api/#error-codes
+			//
+			// (6) receiverNotSubscribed: The receiver is not subscribed to the account
+			//
+			// NOTE: This might happen, when Viber user opened a deeplink to our bot
+			// and got the very first, so called, "welcome" message from our (bot) flow schema
+			// https://developers.viber.com/docs/api/rest-bot-api/#sending-a-welcome-message
+			// but did nothing more, no any reaction ...
+			//
+			// Any other messages from our flow schema will fail to send with above status.
+			// So here we force close the dialog channel with such Viber member(s) ...
+			if rpcErr.IsCode(6) { // && rpcErr.Message == "notSubscribed" {
+				defer peerChannel.Close()
+			}
+		}
 		return err
 	}
 
 	return nil
 }
 
-func viberMessageFile(f *chat.File, m *viberReqBody) {
-	const (
-		// 30 Mb = 1024 Kb * 1024 b
-		imageSizeMax = 30 * 1024 * 1024
-		// 26 Mb = 1024 Kb * 1024 b
-		videoSizeMax = 26 * 1024 * 1024
+func (c *Bot) httpClient() (htc *http.Client) {
+	htc = c.Client
+	if htc == nil {
+		htc = http.DefaultClient
+	}
+	return // htc
+}
+
+type request interface {
+	method() string
+}
+
+type resultError http.Response
+
+func (res *resultError) Error() string {
+	return fmt.Sprintf("(%d) %s", res.StatusCode, res.Status)
+}
+
+func (c *Bot) do(r request, w interface{}) error {
+
+	var (
+		err error
+		req *http.Request
+		res *http.Response
+		buf = bytes.NewBuffer(nil)
+		enc = json.NewEncoder(buf)
+	)
+	// ENCODE Request JSON
+	enc.SetEscapeHTML(false)
+	err = enc.Encode(r)
+	if err != nil {
+		return err
+	}
+	// PREPARE Request JSON
+	req, err = http.NewRequest(
+		"POST", endpointURL+path.Join("/", r.method()), buf,
 	)
 
-	switch {
-
-	case strings.HasPrefix(f.Mime, "image") && f.Size < imageSizeMax:
-		m.Type = "picture"
-		m.Media = f.Url
-
-	case strings.HasPrefix(f.Mime, "video") && f.Size < videoSizeMax:
-		m.Type = "video"
-		m.Media = f.Url
-		m.Size = f.Size
-
-	default:
-		m.Type = "file"
-		m.FileName = f.Name
-		m.Media = f.Url
-		m.Size = f.Size
+	if err != nil {
+		return err
 	}
-}
 
-func (v *viberBot) viberMessageMenu(buttons []*chat.Buttons, m *viberReqBody) {
+	req.Close = true // Connection: close
+	req.Header.Set("X-Viber-Auth-Token", c.Token)
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 
-	var rows = make([]button, 0)
+	// PERFORM RPC Request
+	res, err = c.httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
 
-	layout := newLayout()
-
-	for _, line := range buttons {
-
-		rowlayout, ok := layout[len(line.Button)]
-
-		if !ok {
-			v.Gateway.Log.Error().Int("Value", len(line.Button)).Str("Err", "line layout NOT Found. Possible values 1 - 6")
-			continue
-		}
-
-		for i, b := range line.Button {
-
-			if b.Type == "url" {
-				rows = append(rows, newKeyboardButtonURL(b.Text, b.Url, rowlayout[i]))
-
-			} else if b.Type == "contact" {
-				rows = append(rows, newKeyboardButtonContact(b.Text, rowlayout[i]))
-
-			} else if b.Type == "location" {
-				rows = append(rows, newKeyboardButtonLocation(b.Text, rowlayout[i]))
-
-			} else if b.Type == "reply" {
-				rows = append(rows, newKeyboardButtonReply(b.Text, rowlayout[i]))
-
-			} else if b.Text != "" {
-				rows = append(rows, newKeyboardNoneButton(b.Text, rowlayout[i]))
-			}
+	if w != nil {
+		err = json.NewDecoder(res.Body).Decode(w)
+	} else {
+		code := res.StatusCode
+		switch {
+		case 200 <= code && code < 300: // Success
+		// case 300 <= code && code < 400: // Redirect
+		// case 400 <= code && code < 500: // Client Error(s)
+		// case 500 <= code: // Server Error(s)
+		default:
+			err = (*resultError)(res)
 		}
 	}
 
-	m.Keyboard = &keyboard{
-		DefaultHeight: true,
-		Type:          "keyboard",
-		Buttons:       rows,
-	}
-}
-
-func (v *viberBot) PostData(url string, i interface{}) (*viberResponse, error) {
-
-	body, err := json.Marshal(i)
-
 	if err != nil {
-		return nil, err
+		c.Gateway.Log.Err(err).Msg("viber/" + r.method() + ":result")
+		return err
 	}
 
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
-	req.Header.Add("X-Viber-Auth-Token", v.Token)
-	req.Close = true
-
-	viberRes, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	defer viberRes.Body.Close()
-
-	var res viberResponse
-
-	if err := json.NewDecoder(viberRes.Body).Decode(&res); err != nil {
-
-		v.Gateway.Log.Error().Err(err).Msg("Failed to decode viber response")
-
-		return nil, err
-	}
-
-	return &res, nil
-}
-
-func newLayout() map[int][]int {
-	return map[int][]int{
-		1: {6},
-		2: {3, 3},
-		3: {2, 2, 2},
-		4: {2, 2, 1, 1},
-		5: {2, 1, 1, 1, 1},
-		6: {1, 1, 1, 1, 1, 1},
-	}
-}
-
-func newKeyboardButtonURL(text string, url string, col int) button {
-	return button{
-		ActionType: "open-url",
-		BgColor:    "#c3e0e0",
-		ActionBody: url,
-		Text:       text,
-		Columns:    col,
-	}
-}
-
-func newKeyboardButtonContact(text string, col int) button {
-	return button{
-		ActionType: "share-phone",
-		ActionBody: "reply",
-		BgColor:    "#c3e0e0",
-		Text:       text,
-		Columns:    col,
-	}
-}
-
-func newKeyboardButtonLocation(text string, col int) button {
-	return button{
-		ActionType: "location-picker",
-		BgColor:    "#c3e0e0",
-		Text:       text,
-		Columns:    col,
-	}
-}
-
-func newKeyboardButtonReply(text string, col int) button {
-	return button{
-		ActionType: "reply",
-		BgColor:    "#c3e0e0",
-		ActionBody: text,
-		Text:       text,
-		Columns:    col,
-	}
-}
-
-func newKeyboardNoneButton(text string, col int) button {
-	return button{
-		ActionType: "none",
-		BgColor:    "#c3e0e0",
-		Text:       text,
-		Columns:    col,
-	}
+	return nil
 }
 
 // WebHook implementes provider.Receiver interface for viber
-func (v *viberBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
-	var req *eventPayload
+func (c *Bot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
-	if err := json.NewDecoder(notice.Body).Decode(&req); err != nil {
-		v.Gateway.Log.Error().Err(err).Msg("Failed to decode update request")
-		http.Error(reply, "Failed to decode update request", http.StatusBadRequest) // 400
+	switch notice.Method {
+	case http.MethodPost:
+		// Handle Update(s) ...
+	case http.MethodGet:
+		// TODO: Viber Bot Public API
 		return
-	}
-
-	switch req.Event {
-	case "message":
-		contact := &bot.Account{
-			ID:       0, // LOOKUP
-			Username: req.Sender.Name,
-			Channel:  "viber",
-			Contact:  req.Sender.ID,
-		}
-		// endregion
-
-		// region: channel
-		chatID := req.Sender.ID
-		channel, err := v.Gateway.GetChannel(
-			notice.Context(), chatID, contact,
-		)
-		if err != nil {
-			// Failed locate chat channel !
-			re := errors.FromError(err)
-			if re.Code == 0 {
-				re.Code = (int32)(http.StatusBadGateway)
-			}
-			http.Error(reply, re.Detail, (int)(re.Code))
-			return // 503 Bad Gateway
-		}
-
-		sendUpdate := bot.Update{
-			Title: channel.Title,
-			Chat:  channel,
-			User:  contact,
-		}
-
-		switch req.Message.Type {
-
-		case "text":
-			sendUpdate.Message = &chat.Message{
-				Type: "text",
-				Text: req.Message.Text,
-			}
-
-		case "url":
-			sendUpdate.Message = &chat.Message{
-				Type: "text",
-				Text: req.Message.Media,
-			}
-
-		case "picture":
-			sendUpdate.Message = &chat.Message{
-				Type: "file",
-				File: &chat.File{
-					Url:  req.Message.Media,
-					Name: req.Message.FileName,
-				},
-			}
-
-		case "video", "sticker", "file":
-			sendUpdate.Message = &chat.Message{
-				Type: "file",
-				File: &chat.File{
-					Url:  req.Message.Media,
-					Name: req.Message.FileName,
-				},
-			}
-
-		case "contact":
-			sendUpdate.Message = &chat.Message{
-				Type: "contact",
-				Contact: &chat.Account{
-					Contact: req.Message.Contact.PhoneNumber,
-				},
-			}
-
-		default:
-			//http.Error(reply, "Unknown type message", http.StatusBadRequest) // 400
-			return // IGNORE
-		}
-
-		err = v.Gateway.Read(notice.Context(), &sendUpdate)
-
-		if err != nil {
-			http.Error(reply, "Failed to deliver viber .Update message", http.StatusInternalServerError)
-			return // 502 Bad Gateway
-		}
-
-		reply.WriteHeader(http.StatusOK)
-		return
-
-	case "unsubscribed":
-		v.userUnsubscribed(req)
-
-	case "delivered":
-		// TODO...
-
-	case "seen":
-		// TODO...
-
 	default:
-
+		// ERROR(!)
+		code := http.StatusMethodNotAllowed
+		http.Error(reply, http.StatusText(code), code)
+		return // (405) Method Not Allowed
 	}
+
+	// POST Inbound Update(s) ...
+	var event Update
+	err := json.NewDecoder(notice.Body).Decode(&event)
+	if err != nil {
+		c.Gateway.Log.Err(err).Msg("viber/bot.onUpdate")
+		return // (200) IGNORE
+	}
+
+	var (
+		ctx  = notice.Context()
+		hook func(ctx context.Context, event *Update) error
+	)
+	switch event.Type {
+	case updateWebhook:
+		// {"event":"webhook","timestamp":1663858877101,"chat_hostname":"SN-CHAT-03_","message_token":5753750845017966998}
+		return // (200) OK
+	case updateNewDialog:
+		hook = c.onNewDialog
+	case updateNewMessage:
+		hook = c.onNewMessage
+	case updateJoinMember:
+		hook = c.onJoinMember
+	case updateLeftMember:
+		hook = c.onLeftMember
+	case updateSentMessage,
+		updateReadMessage,
+		updateFailMessage:
+		hook = c.onMsgStatus
+	default:
+		c.Gateway.Log.Warn().
+			Str("event", event.Type).
+			Str("error", "event: no update reaction").
+			Msg("viber/bot.onUpdate")
+		return // (200) IGNORE
+	}
+	// Handle update event
+	err = hook(ctx, &event)
+	if err != nil {
+		c.Gateway.Log.Err(err).
+			Msg("viber/bot.on" + strings.Title(event.Type))
+		return // (200) IGNORE
+	}
+
+	// return // (200) IGNORE [Re]delivery!
 }
 
-func (v viberBot) userUnsubscribed(msg *eventPayload) {
+// Broadcast given `req.Message` message [to] provided `req.Peer(s)`
+func (c *Bot) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
 
-	contact := &bot.Account{
-		ID:      0,
-		Channel: "viber",
-		Contact: msg.UserID,
-	}
+	var (
+		n       = len(req.GetPeer())
+		castErr = func(peerId string, err error) {
+			res := rsp.GetFailure()
+			if res == nil {
+				res = make([]*chat.BroadcastPeer, 0, n)
+			}
 
-	channel, err := v.Gateway.GetChannel(
-		context.TODO(), msg.UserID, contact,
+			var re *status.Status
+			switch err := err.(type) {
+			case *Error: // Viber Status Error
+				// code := err.Code
+				// // https://developers.viber.com/docs/api/rest-bot-api/#error-codes
+				// switch code {
+				// // 5 "receiverNotRegistered" The receiver is not registered to Viber
+				// case 5:
+				// }
+				re = status.New(codes.Code(err.Code), err.Message)
+			case *errors.Error:
+				re = status.New(codes.Code(err.Code), err.Detail)
+			default:
+				re = status.New(codes.Unknown, err.Error())
+			}
+
+			res = append(res, &chat.BroadcastPeer{
+				Peer:  peerId,
+				Error: re.Proto(),
+			})
+
+			rsp.Failure = res
+		}
+		// https://developers.viber.com/docs/api/rest-bot-api/#response-1
+		res BroadcastResponse
+		// https://developers.viber.com/docs/api/rest-bot-api/#post-parameters
+		cast = BroadcastMessage{
+			// Recipient(s)
+			PeerId: req.GetPeer(),
+			// SendOptions
+			sendOptions: sendOptions{
+				Sender: c.Sender,
+			},
+		}
 	)
+
+	// Prepare message text to broadcast
+	_ = cast.Text(req.GetMessage().GetText())
+	// Perform broadcast request
+	err := c.do(&cast, &res)
+	if err == nil {
+		err = res.Err()
+	}
+
 	if err != nil {
-		return //200 IGNORE
+		return err // ERR
 	}
 
-	// TODO: break flow execution !
-	if channel.IsNew() {
-
-		channel.Log.Warn().Msg("CLOSE Request NO Channel; IGNORE")
-		return // TODO: NOTHING !
+	// Populate failed peer(s) status
+	for _, fail := range res.FailStatus {
+		castErr(fail.PeerId, fail.Err())
 	}
 
-	channel.Log.Info().Msg("CLOSE External request; PERFORM")
-
-	// DO: .CloseConversation(!)
-	// cause := commandCloseRecvDisposiotion
-	_ = channel.Close() // (cause) // default: /close request
-
-	return
+	return nil // OK
 }
