@@ -503,10 +503,24 @@ func (c *Bot) onNewMessage(ctx context.Context, event *Update) error {
 			_, _ = buf.WriteString(err.Error())
 		}
 
+		// sendUpdate.Message = &chat.Message{
+		// 	Type: "text",
+		// 	Text: buf.String(),
+		// }
 		sendUpdate.Message = &chat.Message{
-			Type: "text",
+			Type: "contact",
 			Text: buf.String(),
+			Contact: &chat.Account{
+				// Id:        0,
+				Channel:   "phone",
+				Contact:   message.Contact.Phone,
+				FirstName: message.Contact.Name,
+				// LastName:  "",
+			},
 		}
+
+		sendUpdate.Message.Contact.FirstName, sendUpdate.Message.Contact.LastName =
+			bot.FirstLastName(sendUpdate.Message.Contact.FirstName)
 
 	case mediaLocation:
 		location := message.Location

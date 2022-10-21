@@ -890,9 +890,30 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 				buf.Reset()
 				_, _ = buf.WriteString(err.Error())
 			}
+			// Resolve the first ContactInfo from the list
+			sentContact := recvMessage.Contacts[0]
+			sendContact := &chat.Account{
+				// Id:        0,
+				FirstName: sentContact.Name.FirstName,
+				LastName: strings.Join([]string{
+					sentContact.Name.MiddleName, sentContact.Name.LastName,
+				}, " "),
+			}
 
-			sendMessage.Type = "text"
+			if len(sentContact.Phones) != 0 {
+				sendContact.Channel = "phone"
+				sendContact.Contact = sentContact.Phones[0].Phone
+			} else if len(sentContact.Emails) != 0 {
+				sendContact.Channel = "email"
+				sendContact.Contact = sentContact.Emails[0].Email
+			} else {
+				sendContact.Channel = "name"
+				sendContact.Contact = sentContact.Name.FormattedName
+			}
+
+			sendMessage.Type = "contact" // "text"
 			sendMessage.Text = buf.String()
+			sendMessage.Contact = sendContact
 
 		default:
 
