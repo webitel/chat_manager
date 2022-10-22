@@ -141,7 +141,7 @@ func (c *Channel) Close() (err error) {
 		// // }
 		// // cause := "" // ACK: "Conversation closed" expected !
 		// if cause == "" {
-		cause := commandCloseRecvDisposiotion // FROM: external, end-user request !
+		cause := commandCloseRecvDisposition // FROM: external, end-user request !
 		// }
 		// // switch cause {
 		// // case "": // default: "Conversation closed"
@@ -337,7 +337,7 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 	// // // NOTE: sending the last conversation message
 	messageText := message.GetText()
 	// close := messageText == commandClose
-	close := messageText == commandCloseRecvDisposiotion && message.Type == "text"
+	close := messageText == commandCloseRecvDisposition && message.Type == "text"
 	// // if close {
 	// // 	// received: /stop command from external
 	// // 	// DO: .CloseConversation(!)
@@ -352,7 +352,7 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 		}
 
 		if close { // command: /close ?
-			c.Log.Warn().Str("command", commandCloseRecvDisposiotion).
+			c.Log.Warn().Str("command", commandCloseRecvDisposition).
 				Str("notice", "channel: chat not running").Msg("IGNORE")
 			return nil
 		}

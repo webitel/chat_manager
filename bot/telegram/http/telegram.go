@@ -516,58 +516,66 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		return nil
 	}
 
+retry:
+
 	if chatAction != "" {
-		_, _ = c.BotAPI.Send(
+		_, err = c.BotAPI.Request(
 			telegram.NewChatAction(
 				chatID, chatAction,
 			),
 		)
 	}
 
-	sentMessage, err = c.BotAPI.Send(sendUpdate)
+	if err == nil {
+		sentMessage, err = c.BotAPI.Send(sendUpdate)
+	}
 
 	if err != nil {
+		channel.Log.Err(err).Msg("TELEGRAM: SEND")
 		switch e := err.(type) {
-		case telegram.Error:
-			const (
-				// HTTP/1.1 403 Forbidden
-				// Content-Length: 84
-				// Access-Control-Allow-Origin: *
-				// Access-Control-Expose-Headers: Content-Length,Content-Type,Date,Server,Connection
-				// Connection: keep-alive
-				// Content-Type: application/json
-				// Date: Fri, 11 Dec 2020 11:13:29 GMT
-				// Server: nginx/1.16.1
-				// Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
-				//
-				// {"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}
-				ErrBlockedByUser = "Forbidden: bot was blocked by the user"
-				// HTTP/1.1 429 Too Many Requests
-				// Content-Length: 109
-				// Access-Control-Allow-Origin: *
-				// Access-Control-Expose-Headers: Content-Length,Content-Type,Date,Server,Connection
-				// Connection: keep-alive
-				// Content-Type: application/json
-				// Date: Fri, 11 Dec 2020 13:12:39 GMT
-				// Retry-After: 1
-				// Server: nginx/1.16.1
-				// Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
-				//
-				// {"ok":false,"error_code":429,"description":"Too Many Requests: retry after 1","parameters":{"retry_after":1}}
-				ErrTooManyRequests = "Too Many Requests: " // retry after 1
-			)
+		case *telegram.Error:
+			switch e.Code {
 			// HTTP/1.1 403 Forbidden
-			if e.Message == ErrBlockedByUser {
-				// DO: .CloseConversation(!) cause: blocked by the user
-				// REMOVE: runtime state
-				_ = channel.Close() // ("telegram:bot: blocked by the user")
-			}
+			// Content-Length: 84
+			// Access-Control-Allow-Origin: *
+			// Access-Control-Expose-Headers: Content-Length,Content-Type,Date,Server,Connection
+			// Connection: keep-alive
+			// Content-Type: application/json
+			// Date: Fri, 11 Dec 2020 11:13:29 GMT
+			// Server: nginx/1.16.1
+			// Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+			//
+			// {"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}
+			case 403:
+				{
+					_ = channel.Close() // ("telegram:bot: blocked by the user")
+				}
 			// HTTP/1.1 429 Too Many Requests
-			if strings.HasPrefix(e.Message, ErrTooManyRequests) {
-				// TODO: breaker !
+			// Content-Length: 109
+			// Access-Control-Allow-Origin: *
+			// Access-Control-Expose-Headers: Content-Length,Content-Type,Date,Server,Connection
+			// Connection: keep-alive
+			// Content-Type: application/json
+			// Date: Fri, 11 Dec 2020 13:12:39 GMT
+			// Retry-After: 1
+			// Server: nginx/1.16.1
+			// Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+			//
+			// {"ok":false,"error_code":429,"description":"Too Many Requests: retry after 1","parameters":{"retry_after":1}}
+			case 429, 420: // 420 FLOOD_WAIT
+				floodWait := time.Duration(e.RetryAfter) * time.Second
+				if floodWait > 0 {
+					select {
+					case <-ctx.Done():
+						err = ctx.Err()
+						break
+					case <-time.After(floodWait):
+						goto retry
+					}
+				}
+				// default:
 			}
 		}
-		channel.Log.Err(err).Msg("TELEGRAM: SEND")
 		return err
 	}
 
@@ -923,6 +931,16 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// } else {}
 	// endregion
 
+	// Optional. The bot's chat member status was updated in a chat.
+	// For private chats, this update is received only
+	// when the bot is blocked or unblocked by the user.
+	if e := recvUpdate.MyChatMember; e != nil {
+		c.onMyChatMember(notice.Context(), e) // hook
+		code := http.StatusOK
+		reply.WriteHeader(code)
+		return // (200) OK
+	}
+
 	recvMessage := recvUpdate.Message // SENT NEW (!)
 	if recvMessage == nil {
 		recvMessage = recvUpdate.EditedMessage // EDITED (!)
@@ -967,44 +985,12 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	}
 
 	// sender: user|chat
-	// senderUser := recvMessage.From
-	senderChat := recvMessage.Chat
+	sender := recvMessage.From
+	dialog := recvMessage.Chat
+	dialogId := strconv.FormatInt(dialog.ID, 10)
 
-	// region: contact
-	// NOTE: Telegram is supposed to send updates in sequential mode
-	// therefore we do not use contact blocking
-	contact := c.contacts[senderChat.ID]
-	if contact == nil {
-		contact = &bot.Account{
-
-			ID: 0, // LOOKUP
-
-			Channel: "telegram",
-			Contact: strconv.FormatInt(senderChat.ID, 10),
-
-			FirstName: senderChat.FirstName,
-			LastName:  senderChat.LastName,
-
-			Username: senderChat.UserName,
-		}
-		// processed
-		c.contacts[senderChat.ID] = contact
-	}
-
-	// username := recvMessage.From.FirstName
-	// if username != "" && recvMessage.From.LastName != "" {
-	// 	username += " " + recvMessage.From.LastName
-	// }
-
-	// if username == "" {
-	// 	username = recvMessage.From.UserName
-	// }
-	// endregion
-
-	// region: channel
-	chatID := strconv.FormatInt(senderChat.ID, 10)
-	channel, err := c.Gateway.GetChannel(
-		notice.Context(), chatID, contact,
+	channel, err := c.getChannel(
+		notice.Context(), *(dialog),
 	)
 
 	if err != nil {
@@ -1016,7 +1002,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		}
 		// FIXME: Reply with 200 OK to NOT receive this message again ?!.
 		_ = telegram.WriteToHTTPResponse(
-			reply, telegram.NewMessage(senderChat.ID, re.Detail),
+			reply, telegram.NewMessage(dialog.ID, re.Detail),
 		)
 		// reply := telegram.NewMessage(senderChat.ID, re.Detail)
 		// defer func() {
@@ -1034,9 +1020,10 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 		// ChatID: strconv.FormatInt(recvMessage.Chat.ID, 10),
 
-		User:  contact,
+		// User:  contact,
 		Chat:  channel,
 		Title: channel.Title,
+		User:  &channel.Account,
 
 		Message: new(chat.Message),
 	}
@@ -1413,19 +1400,19 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		// sendMessage.ReplyToMessageId = recvMessage.ReplyToMessage.MessageID
 		sendMessage.ReplyToVariables = map[string]string{
 			// FIXME: the same chatID ? Is it correct ?
-			chatID: strconv.Itoa(recvMessage.ReplyToMessage.MessageID),
+			dialogId: strconv.Itoa(recvMessage.ReplyToMessage.MessageID),
 			// "chat_id":    chatID,
 			// "message_id": strconv.Itoa(recvMessage.ReplyToMessage.MessageID),
 		}
 
 	}
 	sendMessage.Variables = map[string]string{
-		chatID: strconv.Itoa(recvMessage.MessageID),
+		dialogId: strconv.Itoa(recvMessage.MessageID),
 		// "chat_id":    chatID,
 		// "message_id": strconv.Itoa(recvMessage.MessageID),
 	}
 	if channel.IsNew() { // && contact.Username != "" {
-		sendMessage.Variables["username"] = contact.Username
+		sendMessage.Variables["username"] = sender.UserName // contact.Username
 	}
 
 	err = c.Gateway.Read(notice.Context(), &sendUpdate)

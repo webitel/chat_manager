@@ -33,7 +33,7 @@ func (e *Account) IsUser() bool {
 func (e *Account) DisplayName() string {
 
 	e.FirstName = strings.TrimSpace(e.FirstName)
-	e.LastName  = strings.TrimSpace(e.LastName)
+	e.LastName = strings.TrimSpace(e.LastName)
 	e.Username = strings.TrimSpace(e.Username)
 
 	displayName := e.FirstName
@@ -69,7 +69,7 @@ type Update struct {
 	// Chat that this message belongs to
 	Chat *Channel
 	// User channel contact
-	User *Account // 
+	User *Account //
 	// Title for .this chat
 	Title string
 	// // Action, e.g.: text, file, edit, send, read, joined, typing, kicked etc
@@ -88,11 +88,11 @@ type Update struct {
 
 const (
 	// chat.Close() command dispositions
-	commandCloseRecvDisposiotion = "/close"              // by external: end-user request
-	commandCloseSendDisposiotion = "Conversation closed" // by internal: .chat.server channel
+	commandCloseRecvDisposition = "/close"              // by external: end-user request
+	commandCloseSendDisposition = "Conversation closed" // by internal: .chat.server channel
 )
 
-// IsCommandClose indicates whether 
+// IsCommandClose indicates whether
 // given update represents the final:
 // chat.closed channel notification text
 func (e *Update) IsCommandClose() bool {
@@ -104,8 +104,8 @@ func (e *Update) IsCommandClose() bool {
 			return true
 		case "text":
 			// if e.Message.UpdatedAt == 0 {
-				text := e.Message.GetText()
-				return IsCommandClose(text)
+			text := e.Message.GetText()
+			return IsCommandClose(text)
 			// }
 		}
 	}
@@ -113,10 +113,10 @@ func (e *Update) IsCommandClose() bool {
 	return false
 }
 
-// IsCommandClose indicates whether 
+// IsCommandClose indicates whether
 // given text represents the chat.closed
 // channel notification or command text
 func IsCommandClose(text string) bool {
-	return text == commandCloseSendDisposiotion ||
-			text == commandCloseRecvDisposiotion
+	return text == commandCloseSendDisposition ||
+		text == commandCloseRecvDisposition
 }
