@@ -24,6 +24,7 @@ type Bot struct {
 	Sender  *User
 	Client  *http.Client
 	Account *Account
+	Buttons ButtonOptions
 	Gateway *bot.Gateway
 }
 
@@ -112,6 +113,10 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 		app = new(Bot)
 	}
 	// [RE]Bind
+	app.Buttons, err = newButtonOptions(profile)
+	if err != nil {
+		return nil, err
+	}
 	app.Gateway = agent
 	app.Client = client
 	app.Token = botToken
@@ -252,7 +257,10 @@ func (c *Bot) SendNotify(ctx context.Context, notify *bot.Update) error {
 
 		if sentMessage.Buttons != nil {
 			sendMessage.MinVersion = 6
-			sendMessage.Menu(sentMessage.Buttons)
+			sendMessage.Menu(
+				&c.Buttons,
+				sentMessage.Buttons,
+			)
 		}
 
 	case "file":

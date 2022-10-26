@@ -1,9 +1,12 @@
 package viber
 
 import (
+	"bytes"
 	"html"
+	"strconv"
 	"strings"
 
+	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/api/proto/chat"
 )
 
@@ -241,7 +244,7 @@ func ButtonText(text string) string {
 
 // Default button(s) styling
 var (
-	buttonFrame = Frame{
+	keyboardFrame = Frame{
 		BorderColor: "#808d9d", // viber:light-gray
 		// BorderColor:  "#ffc107", // webitel:yellow
 		BorderWidth:  1,
@@ -251,8 +254,7 @@ var (
 		TextSize: "large",
 		BgColor:  "#1d2733", // viber:dark-gray
 		// BgColor:  "#171a2a", // webitel:dark-blue
-		// BgColor:  "#086d55",
-		// Frame:      &buttonFrame,
+		Frame: &keyboardFrame,
 	}
 )
 
@@ -260,8 +262,8 @@ var (
 func NewButton(action, text, code string) *Button {
 	// shallowcopy
 	btn := keyboardButton
-	frame := buttonFrame
-	btn.Frame = &frame
+	// frame := keyboardFrame
+	// btn.Frame = &frame
 	// constructor
 	btn.ActionType = action
 	btn.ActionBody = coalesce(code, text)
@@ -270,47 +272,47 @@ func NewButton(action, text, code string) *Button {
 	return &btn
 }
 
-func ButtonNone(text string) *Button {
-	return NewButton(
+func ButtonNone(tmpl *ButtonOptions, text string) *Button {
+	return tmpl.NewButton(
 		"none",
 		text,
 		"#none",
 	)
 }
 
-func ButtonURL(text, url string) *Button {
-	return NewButton(
+func ButtonURL(tmpl *ButtonOptions, text, url string) *Button {
+	return tmpl.NewButton(
 		"open-url",
 		text,
 		url,
 	)
 }
 
-func ButtonReply(text, code string) *Button {
-	return NewButton(
+func ButtonReply(tmpl *ButtonOptions, text, code string) *Button {
+	return tmpl.NewButton(
 		"reply",
 		text,
 		code,
 	)
 }
 
-func ButtonContact(text string) *Button {
-	return NewButton(
+func ButtonContact(tmpl *ButtonOptions, text string) *Button {
+	return tmpl.NewButton(
 		"share-phone",
 		"📱"+coalesce(text, "Share Contact"),
 		"#contact",
 	)
 }
 
-func ButtonLocation(text string) *Button {
-	return NewButton(
+func ButtonLocation(tmpl *ButtonOptions, text string) *Button {
+	return tmpl.NewButton(
 		"location-picker",
 		"📍"+coalesce(text, "Share Location"),
 		"#location",
 	)
 }
 
-func (req *sendOptions) Menu(layout []*chat.Buttons) *sendOptions {
+func (req *sendOptions) Menu(tmpl *ButtonOptions, layout []*chat.Buttons) *sendOptions {
 
 	var size int
 	for _, line := range layout {
@@ -339,6 +341,7 @@ func (req *sendOptions) Menu(layout []*chat.Buttons) *sendOptions {
 			case "url":
 				row = append(row,
 					ButtonURL(
+						tmpl,
 						btn.GetText(),
 						btn.GetUrl(),
 					),
@@ -347,6 +350,7 @@ func (req *sendOptions) Menu(layout []*chat.Buttons) *sendOptions {
 			case "reply", "postback":
 				row = append(row,
 					ButtonReply(
+						tmpl,
 						btn.GetText(),
 						btn.GetCode(),
 					),
@@ -355,12 +359,14 @@ func (req *sendOptions) Menu(layout []*chat.Buttons) *sendOptions {
 			case "location":
 				row = append(row,
 					ButtonLocation(
+						tmpl,
 						btn.GetText(),
 					),
 				)
 			case "contact", "phone":
 				row = append(row,
 					ButtonContact(
+						tmpl,
 						btn.GetText(),
 					),
 				)
@@ -368,6 +374,7 @@ func (req *sendOptions) Menu(layout []*chat.Buttons) *sendOptions {
 			default:
 				row = append(row,
 					ButtonNone(
+						tmpl,
 						btn.GetText(),
 					),
 				)
@@ -393,4 +400,173 @@ func (req *sendOptions) Menu(layout []*chat.Buttons) *sendOptions {
 	}
 
 	return req
+}
+
+// Font Options
+type Font struct {
+	// Specific text color. Must be a HEX value.
+	// Double quotes in JSON should be escaped.
+	Color string `json:"FontColor,omitempty"`
+	// Custom size N for text block inside the tag (api level 4).
+	// Minimum size is 12, maximum size is 32.
+	Size int `json:"FontSize,omitempty"`
+
+	Bold          bool `json:"FontBold,omitempty"`
+	Italic        bool `json:"FontItalic,omitempty"`
+	Underlined    bool `json:"FontUnderlined,omitempty"`
+	Strikethrough bool `json:"FontStrikethrough,omitempty"`
+}
+
+// IsZero reports whether e has any setup
+func (e *Font) IsZero() bool {
+	return e == nil || (e.Color == "" && e.Size == 0 &&
+		!e.Bold && !e.Italic && !e.Underlined && !e.Strikethrough)
+}
+
+// Format according to https://developers.viber.com/docs/tools/keyboards/#text-design
+func (e *Font) Format(text string) string {
+	text = strings.TrimSpace(text)
+	if e == nil || text == "" {
+		return ""
+	}
+	// Has custom HTML ?
+	if text[0] == '<' {
+		return text
+	}
+	var (
+		tag = make([]string, 0, 5) // stack
+		tmp = bytes.NewBuffer(nil)
+	)
+	// <font/>
+	if e.Color != "" || (12 <= e.Size && e.Size <= 32) {
+		tag = append(tag, "font")
+		_, _ = tmp.WriteString("<font")
+		if e.Color != "" {
+			_, _ = tmp.WriteString(
+				" color=\"" + e.Color + "\"",
+			)
+		}
+		if e.Size != 0 {
+			_, _ = tmp.WriteString(
+				" size=\"" + strconv.Itoa(e.Size) + "\"",
+			)
+		}
+		_, _ = tmp.WriteString(">")
+	}
+	// <>
+	if e.Bold {
+		tag = append(tag, "b")
+		_, _ = tmp.WriteString("<b>")
+	}
+	if e.Italic {
+		tag = append(tag, "i")
+		_, _ = tmp.WriteString("<i>")
+	}
+	if e.Underlined {
+		tag = append(tag, "u")
+		_, _ = tmp.WriteString("<u>")
+	}
+	if e.Strikethrough {
+		tag = append(tag, "s")
+		_, _ = tmp.WriteString("<s>")
+	}
+	// $text
+	_, _ = tmp.WriteString(
+		html.EscapeString(text),
+	)
+	// </>
+	for i := len(tag) - 1; i >= 0; i-- {
+		_, _ = tmp.WriteString("</" + tag[i] + ">")
+	}
+	return tmp.String()
+}
+
+// [0-9a-fA-F]
+func IsHex(r rune) bool {
+	switch {
+	case r >= '0' && r <= '9':
+	case r >= 'a' && r <= 'f':
+	case r >= 'A' && r <= 'F':
+	default:
+		return false
+	}
+	return true
+}
+
+// ^#xxxxxx$
+func IsHexColor(s string) bool {
+	const c = 7
+	if len(s) != c || s[0] != '#' {
+		return false
+	}
+	var r int
+	for r = 1; r < c; r++ {
+		if !IsHex(rune(s[r])) {
+			break
+		}
+	}
+	return r == c
+}
+
+func newButtonOptions(profile map[string]string) (opts ButtonOptions, err error) {
+	opts.MinVersion = 6
+	opts.Button = keyboardButton // shallowcopy
+	// opts.Button.Frame = &keyboardFrame // const
+	opts.Font = Font{
+		Color: "#ffffff", // white
+		Bold:  true,
+	}
+	if len(profile) == 0 {
+		return
+	}
+	if s, ok := profile["btn.back.color"]; ok {
+		if !IsHexColor(s) {
+			err = errors.BadRequest(
+				"chat.gateway.viber.btn.back.color",
+				"viber: invalid btn.back.color value; expect: #xxxxxx",
+			)
+			return // opts, err
+		}
+		opts.Button.BgColor = s
+	}
+	if s, ok := profile["btn.font.color"]; ok {
+		if !IsHexColor(s) {
+			err = errors.BadRequest(
+				"chat.gateway.viber.btn.font.color",
+				"viber: invalid btn.font.color value; expect: #xxxxxx",
+			)
+			return // opts, err
+		}
+		opts.Font.Color = s
+	}
+	if s, ok := profile["btn.font.bold"]; ok {
+		ok, _ = strconv.ParseBool(s)
+		opts.Font.Bold = ok
+	}
+	return // opts, nil
+}
+
+type ButtonOptions struct {
+	// TODO
+	MinVersion int
+	// Button template
+	Button
+	// Font: text
+	Font
+}
+
+func (c *ButtonOptions) NewButton(action, text, code string) *Button {
+	if c == nil {
+		// Predefined: default !
+		return NewButton(action, text, code)
+	}
+	// Constructor
+	btn := new(Button)
+	*(btn) = c.Button
+	// FIXME: deep clone nested value(s) ?
+	btn.ActionType = action
+	btn.ActionBody = coalesce(code, text)
+	// btn.Text = c.buttonText(coalesce(text, code))
+	btn.Text = c.Font.Format(coalesce(text, code))
+	return btn
 }
