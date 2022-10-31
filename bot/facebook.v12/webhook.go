@@ -178,7 +178,11 @@ func (c *Client) WebhookEvent(rsp http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		c.WebhookPage(batch)
+		if event.Object == "page" {
+			c.WebhookPage(batch)
+		} else if event.Object == "instagram" {
+			c.WebhookInstagram(batch)
+		}
 
 	// 1. Create Instagram Professional Or Business Account
 	// 2. Connect Facebook Page to the created Instagram Account
@@ -243,7 +247,7 @@ func (c *Client) getExternalThread(chat *bot.Channel) (*Chat, error) {
 	var pageASID string
 	switch props := chat.Properties.(type) {
 	case map[string]string:
-		pageASID, _ = props[paramMessengerPage]
+		pageASID, _ = props[paramFacebookPage]
 		// pageName, _ := props[paramMessengerName]
 	}
 
@@ -427,11 +431,11 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 	if channel.IsNew() {
 		// BIND Channel START properties !
 		thread, _ := channel.Properties.(*Chat)
-		props[paramMessengerPage] = thread.Page.ID
-		props[paramMessengerName] = thread.Page.Name
+		props[paramFacebookPage] = thread.Page.ID
+		props[paramFacebookName] = thread.Page.Name
 		if instagram := thread.Page.Instagram; instagram != nil {
 			props[paramInstagramPage] = instagram.ID
-			props[paramInstagramName] = instagram.Username
+			props[paramInstagramUser] = instagram.Username
 		}
 	} // else { // BIND Message SENT properties ! }
 	sendMsg.Variables = props
@@ -593,11 +597,11 @@ func (c *Client) WebhookPostback(event *messenger.Messaging) error {
 	if channel.IsNew() {
 		// BIND Channel START properties !
 		thread, _ := channel.Properties.(*Chat)
-		props[paramMessengerPage] = thread.Page.ID
-		props[paramMessengerName] = thread.Page.Name
+		props[paramFacebookPage] = thread.Page.ID
+		props[paramFacebookName] = thread.Page.Name
 		if instagram := thread.Page.Instagram; instagram != nil {
 			props[paramInstagramPage] = instagram.ID
-			props[paramInstagramName] = instagram.Username
+			props[paramInstagramUser] = instagram.Username
 		}
 	} // else { // BIND Message SENT properties ! }
 	sendMsg.Variables = props

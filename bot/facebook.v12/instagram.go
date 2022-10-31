@@ -1,13 +1,20 @@
 package facebook
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/url"
 	"path"
 	"sort"
+	"strings"
+	"time"
 
+	"github.com/micro/micro/v3/service/errors"
+	"github.com/rs/zerolog/log"
+	"github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/webitel/chat_manager/bot"
 	graph "github.com/webitel/chat_manager/bot/facebook.v12/graph/v12.0"
 	"github.com/webitel/chat_manager/bot/facebook.v12/messenger"
 	"golang.org/x/oauth2"
@@ -255,6 +262,587 @@ func (c *Client) GetInstagramPages(rsp http.ResponseWriter, req *http.Request) {
 	_, _ = rsp.Write([]byte("]"))
 }
 
+type Timestamp time.Time
+
+func (ts *Timestamp) Time() (tm time.Time) {
+	if ts != nil {
+		tm = (time.Time)(*ts)
+	}
+	return // tm
+}
+
+func (ts *Timestamp) UnmarshalText(data []byte) error {
+	tm, err := time.Parse("2006-01-02T15:04:05-0700", string(data))
+	if err != nil {
+		return err
+	}
+	*(ts) = Timestamp(tm)
+	return nil
+}
+
+// Instagram-scoped ID and username of the Instagram user who created the comment
+type IGCommentFromUser struct {
+	// IGSID of the Instagram user who created the IG Comment.
+	ID string `json:"id"`
+	// Username of the Instagram user who created the IG Comment.
+	Username string `json:"username,omitempty"`
+}
+
+// ID and product type of the IG Media the comment was created on
+type IGCommentMedia struct {
+	// ID of the IG Media the comment was created on
+	ID string `json:"id"`
+	// Product type of the IG Media the comment was created on
+	Type string `json:"media_product_type"`
+}
+
+// Represents an Instagram comment.
+// https://developers.facebook.com/docs/instagram-api/reference/ig-comment/
+type IGComment struct {
+	// IG Comment ID.
+	ID string `json:"id"`
+	// From Instagram user who created the comment
+	From IGCommentFromUser `json:"from"` // *IGUser
+	// Indicates if comment has been hidden (true) or not (false).
+	Hidden bool `json:"hidden,omitempty"`
+	// Number of likes on the IG Comment.
+	LikeCount int `json:"like_count,omitempty"`
+	// IG Media upon which the IG Comment was made.
+	Media *IGMedia `json:"media,omitempty"` // *IGCommentMedia
+	// ID of the parent IG Comment if this comment was created on another IG Comment (i.e. a reply to another comment.
+	ParentID string `json:"parent_id,omitempty"`
+	// A list of replies (IG Comments) made on the IG Comment.
+	// https://developers.facebook.com/docs/instagram-api/reference/ig-comment/replies
+	Replies []*IGComment `json:"replies,omitempty"`
+	// IG Comment text.
+	Text string `json:"text"`
+	// ISO 8601 formatted timestamp indicating when IG Comment was created.
+	Date *Timestamp `json:"timestamp,omitempty"`
+	// ID of IG User who created the IG Comment.
+	// Only returned if the app user created the IG Comment,
+	// otherwise username will be returned instead.
+	User string `json:"user,omitempty"`
+	// Username of Instagram user who created the IG Comment.
+	Username string `json:"username,omitempty"`
+}
+
+// https://www.instagram.com/p/CkQ5eoHI8-k/c/17989946791606028/
+func (e *IGComment) GetPermaLink() (href string, ok bool) {
+	if e == nil || e.ID == "" {
+		return // "", false
+	}
+	media := e.Media
+	if media == nil {
+		return // "", false
+	}
+	href = media.PermaLink
+	if href == "" {
+		if media.ShortCode == "" {
+			return // "", false
+		}
+		href = "https://www.instagram.com/p" +
+			path.Join("/", media.ShortCode, "/")
+	}
+
+	href = strings.TrimRight(href, "/") +
+		path.Join("/c", e.ID, "/")
+
+	return href, true
+}
+
+// IGMention media comment; event value
+// https://developers.facebook.com/docs/graph-api/webhooks/reference/instagram/#mentions
+type IGMention struct {
+	// ID of media containing comment with mention.
+	MediaID string `json:"media_id"`
+	// ID of comment with mention.
+	CommentID string `json:"comment_id"`
+}
+
+// IGMedia represents an Instagram album, photo, or video (uploaded video, live video, video created with the Instagram TV app, reel, or story).
+// https://developers.facebook.com/docs/instagram-api/reference/ig-media
+type IGMedia struct {
+
+	// Caption. Excludes album children.
+	// The @ symbol is excluded, unless the app user can perform admin-equivalent tasks on the Facebook Page
+	// connected to the Instagram account used to create the caption.
+	Caption string `json:"caption,omitempty"`
+
+	// Count of comments on the media. Excludes comments on album child media and the media's caption. Includes replies on comments.
+	CommentsCount int `json:"comments_count,omitempty"`
+
+	// Media ID.
+	ID string `json:"id,omitempty"`
+
+	// // Instagram media ID.
+	// // Used with Legacy Instagram API, now deprecated.
+	// // Use id instead.
+	// IGID string `json:"ig_id,omitempty"`
+
+	// Indicates if comments are enabled or disabled. Excludes album children.
+	IsCommentEnabled bool `json:"is_comment_enabled,omitempty"`
+
+	// Reels only. If true, indicates the reel can appear in both the Feed and Reels tabs. If false, indicates the reel can only appear in the Reels tab.
+	// Note that neither value indicates if the reel actually appears in the Reels tab, as the reel may not meet eligibilty requirements or have been selected by our algorithm. See reel specifications for eligibility critera.
+	IsSharedToFeed bool `json:"is_shared_to_feed,omitempty"`
+
+	// Count of likes on the media, including replies on comments. Excludes likes on album child media and likes on promoted posts created from the media.
+	// If queried indirectly through another endpoint or field expansion:
+	// v10.0 and older calls: The value is 0 if the media owner has hidden like counts.
+	// v11.0+ calls: The like_count field is omitted if the media owner has hidden like counts.
+	LikeCount int `json:"like_count,omitempty"`
+
+	// Surface where the media is published. Can be AD, FEED, STORY or REELS.
+	ProductType string `json:"media_product_type,omitempty"`
+
+	// Media type. Can be CAROUSEL_ALBUM, IMAGE, or VIDEO.
+	MediaType string `json:"media_type,omitempty"`
+
+	// The URL for the media.
+	// The media_url field is omitted from responses if the media contains copyrighted material or has been flagged for a copyright violation. Examples of copyrighted material can include audio on reels.
+	MediaURL string `json:"media_url,omitempty"`
+
+	// Instagram user ID who created the media.
+	// Only returned if the app user making the query also created the media;
+	// otherwise, username field is returned instead.
+	Owner *IGCommentFromUser `json:"owner,omitempty"`
+
+	// Permanent URL to the media.
+	PermaLink string `json:"permalink,omitempty"`
+
+	// Shortcode to the media.
+	ShortCode string `json:"shortcode,omitempty"`
+
+	// Media thumbnail URL. Only available on VIDEO media.
+	ThumbnailURL string `json:"thumbnail_url,omitempty"`
+
+	// ISO 8601-formatted creation date in UTC (default is UTC ±00:00).
+	Timestamp *Timestamp `json:"timestamp,omitempty"`
+
+	// Username of user who created the media.
+	Username string `json:"username,omitempty"`
+
+	// // Deprecated. Omitted from response.
+	// VideoTitle string `json:"video_title,omitempty"`
+
+	// Public edges can be returned through field expansion.
+
+	// Children collection of IG Media objects on an album IG Media.
+	Album []*IGMedia `json:"children,omitempty"`
+	// Comments collection of IG Comments on an IG Media object.
+	Comments []*IGComment `json:"comments,omitempty"`
+	// // Insights social interaction metrics on an IG Media object.
+	// Insights interface{} `json:"insights,omitempty"`
+}
+
+// https://www.instagram.com/p/CkQ5eoHI8-k/c/17989946791606028/
+func (e *IGMedia) GetPermaLink() string {
+	permaLink := e.PermaLink
+	if permaLink == "" && e.ShortCode != "" {
+		permaLink = "https://www.instagram.com/p" +
+			path.Join("/", e.ShortCode, "/")
+	}
+	return permaLink
+}
+
+func (c *Client) fetchIGMedia(ctx context.Context, account *Page, media *IGMedia, fields ...string) error {
+
+	// GET /17986679173617881?fields=caption,owner{name,username},media_type,media_product_type,media_url,permalink,shortcode,username,comments{timestamp,username,text}
+	//
+	// {
+	//   "owner": {
+	//     "name": "IGTest",
+	//     "username": "webitel.chat.msgig",
+	//     "id": "17841453641568741"
+	//   },
+	//   "media_type": "IMAGE",
+	//   "media_product_type": "FEED",
+	//   "media_url": "https://scontent.cdninstagram.com/v/t51.29350-15/312812634_860900711740574_5461841746268790086_n.webp?stp=dst-jpg&_nc_cat=110&ccb=1-7&_nc_sid=8ae9d6&_nc_ohc=0JhyisifsOsAX_2_Z6a&_nc_oc=AQl4dpZG1R8uxfH1qxBhKNAiK8LZlocR8byl9_nIx9XeWBBSnvpZex-fUt-tW359faU&_nc_ht=scontent.cdninstagram.com&edm=AEQ6tj4EAAAA&oh=00_AfACCaohjEJiaMC0pMwRQKl6nTJKIoe4bSfIzDnM2tPiHw&oe=6361E299",
+	//   "permalink": "https://www.instagram.com/p/CkQ5eoHI8-k/",
+	//   "shortcode": "CkQ5eoHI8-k",
+	//   "username": "webitel.chat.msgig",
+	//   "comments": {
+	//     "data": [
+	//       {
+	//         "timestamp": "2022-10-28T16:31:00+0000",
+	//         "username": "vkovalyshyn",
+	//         "text": "Я коментую цей малюнок",
+	//         "id": "17989946791606028"
+	//       }
+	//     ]
+	//   },
+	//   "id": "17986679173617881"
+	// }
+
+	if media == nil || media.ID == "" {
+		return errors.BadRequest(
+			"instagram.media.id.required",
+			"instagram: GET media.id required but missing",
+		)
+	}
+
+	if len(fields) == 0 {
+		fields = []string{
+			"id",
+			"caption",
+			"shortcode",
+			"permalink",
+			"media_url",
+			"media_type",
+			"media_product_type",
+			"owner{id,username}",
+		}
+	}
+
+	// TODO: USER_ACCESS_TOKEN
+	// accessToken := account.Page.AccessToken
+	query := c.requestForm(url.Values{
+		"fields": {strings.Join(fields, ",")},
+	}, account.AccessToken)
+
+	// TODO: Increase Call Context Timeout * n
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodGet, // GET
+		"https://graph.facebook.com"+
+			path.Join("/", c.Version, media.ID)+
+			"?"+query.Encode(),
+		nil,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	rsp, err := c.Client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer rsp.Body.Close()
+
+	var (
+		res = struct {
+			Error    *graph.Error `json:"error,omitempty"`
+			*IGMedia              // Embedded (Anonymous)
+		}{
+			Error:   nil,
+			IGMedia: media,
+		}
+	)
+
+	err = json.NewDecoder(rsp.Body).Decode(&res)
+
+	if err == nil && res.Error != nil {
+		err = res.Error
+	}
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) fetchIGComment(ctx context.Context, account *Page, comment *IGComment, fields ...string) error {
+
+	if comment == nil || comment.ID == "" {
+		return errors.BadRequest(
+			"instagram.comment.id.required",
+			"instagram: GET comment.id required but missing",
+		)
+	}
+
+	if len(fields) == 0 {
+		fields = []string{
+			"id",
+			"from",
+			"text",
+			"timestamp",
+			"parent_id",
+			"media{id,caption,media_type,media_product_type,shortcode,permalink}",
+		}
+	}
+
+	// GET /17989946791606028?fields=timestamp,username,text
+
+	// Permalink: https://www.instagram.com/p/${media.shortcode}/c/${comment.id}/
+	// TODO: USER_ACCESS_TOKEN
+	// accessToken := account.Page.AccessToken
+	query := c.requestForm(url.Values{
+		"fields": {strings.Join(fields, ",")},
+	}, account.AccessToken)
+
+	// TODO: Increase Call Context Timeout * n
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodGet, // GET
+		"https://graph.facebook.com"+
+			path.Join("/", c.Version, comment.ID)+
+			"?"+query.Encode(),
+		nil,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	rsp, err := c.Client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer rsp.Body.Close()
+
+	var (
+		res = struct {
+			Error      *graph.Error `json:"error,omitempty"`
+			*IGComment              // Embedded (Anonymous)
+		}{
+			Error:     nil,
+			IGComment: comment,
+		}
+	)
+
+	err = json.NewDecoder(rsp.Body).Decode(&res)
+
+	if err == nil && res.Error != nil {
+		err = res.Error
+	}
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// https://developers.facebook.com/docs/instagram-api/reference/ig-user/mentioned_media#reading
+// GET /17841453641568741?fields=mentioned_media.media_id(17940733142416889){id,caption,media_url,media_type,media_product_type,permalink,owner,username}
+func (c *Client) fetchIGMentionMedia(ctx context.Context, account *Page, media *IGMedia, fields ...string) error {
+
+	// // GET /17841453641568741?fields=mentioned_media.media_id(17940733142416889){id,caption,media_url,media_type,media_product_type,permalink,owner,username}
+	//
+	// {
+	// 	"mentioned_comment": {
+	// 		"id": "17958981301970930",
+	// 		"media": {
+	// 			"permalink": "https://www.instagram.com/p/CkX46fTsGVE/",
+	// 			"id": "17940733142416889"
+	// 		},
+	// 		"timestamp": "2022-10-31T09:37:24+0000",
+	// 		"like_count": 0,
+	// 		"text": "@webitel.chat.msgig я тебе ще й в коментарі згадую"
+	// 	},
+	// 	"id": "17841453641568741"
+	// }
+
+	if media == nil || media.ID == "" {
+		return errors.BadRequest(
+			"instagram.mention.media.id.required",
+			"instagram: GET mention.media.id required but missing",
+		)
+	}
+
+	if len(fields) == 0 {
+		fields = []string{
+			"id",
+			"caption",
+			"owner",
+			"username",
+			"permalink",
+			"media_url",
+			"media_type",
+			"media_product_type",
+		}
+	}
+
+	// TODO: USER_ACCESS_TOKEN
+	// accessToken := account.Page.AccessToken
+	query := c.requestForm(url.Values{
+		"fields": {"mentioned_media.media_id(" + media.ID + "){" + strings.Join(fields, ",") + "}"},
+	}, account.AccessToken)
+
+	// TODO: Increase Call Context Timeout * n
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodGet, // GET
+		"https://graph.facebook.com"+
+			path.Join("/", c.Version, account.Page.Instagram.ID)+
+			"?"+query.Encode(),
+		nil,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	rsp, err := c.Client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer rsp.Body.Close()
+
+	var (
+		res = struct {
+			Error *graph.Error `json:"error,omitempty"`
+			Media *IGMedia     `json:"mentioned_media,omitempty"`
+		}{
+			Error: nil,
+			Media: media,
+		}
+	)
+
+	err = json.NewDecoder(rsp.Body).Decode(&res)
+
+	if err == nil && res.Error != nil {
+		err = res.Error
+	}
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// https://developers.facebook.com/docs/instagram-api/reference/ig-user/mentioned_comment#reading1
+// GET /17841453641568741?fields=mentioned_comment.comment_id(17958981301970930){id,media{permalink},timestamp,like_count,text}
+func (c *Client) fetchIGMentionComment(ctx context.Context, account *Page, comment *IGComment, fields ...string) error {
+
+	// GET /17841453641568741?fields=mentioned_comment.comment_id(17958981301970930){id,media{permalink},timestamp,like_count,text}
+	//
+	// {
+	// 	"mentioned_comment": {
+	// 		"id": "17958981301970930",
+	// 		"media": {
+	// 			"permalink": "https://www.instagram.com/p/CkX46fTsGVE/",
+	// 			"id": "17940733142416889"
+	// 		},
+	// 		"timestamp": "2022-10-31T09:37:24+0000",
+	// 		"like_count": 0,
+	// 		"text": "@webitel.chat.msgig я тебе ще й в коментарі згадую"
+	// 	},
+	// 	"id": "17841453641568741"
+	// }
+
+	if comment == nil || comment.ID == "" {
+		return errors.BadRequest(
+			"instagram.mention.comment.id.required",
+			"instagram: GET mention.comment.id required but missing",
+		)
+	}
+
+	if len(fields) == 0 {
+		// https://developers.facebook.com/docs/instagram-api/reference/ig-user/mentioned_comment#fields
+		// https://developers.facebook.com/docs/instagram-api/reference/ig-comment#fields
+		fields = []string{
+			"id",
+			"from",
+			"text",
+			// "like_count",
+			"timestamp",
+			"media{permalink}",
+		}
+	}
+
+	// GET /17989946791606028?fields=timestamp,username,text
+
+	// Permalink: https://www.instagram.com/p/${media.shortcode}/c/${comment.id}/
+	// TODO: USER_ACCESS_TOKEN
+	// accessToken := account.Page.AccessToken
+	query := c.requestForm(url.Values{
+		"fields": {"mentioned_comment.comment_id(" + comment.ID + "){" + strings.Join(fields, ",") + "}"},
+	}, account.AccessToken)
+
+	// TODO: Increase Call Context Timeout * n
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodGet, // GET
+		"https://graph.facebook.com"+
+			path.Join("/", c.Version, account.Page.Instagram.ID)+
+			"?"+query.Encode(),
+		nil,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	rsp, err := c.Client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer rsp.Body.Close()
+
+	var (
+		res = struct {
+			Error   *graph.Error `json:"error,omitempty"`
+			Comment *IGComment   `json:"mentioned_comment,omitempty"`
+		}{
+			Error:   nil,
+			Comment: comment,
+		}
+	)
+
+	err = json.NewDecoder(rsp.Body).Decode(&res)
+
+	if err == nil && res.Error != nil {
+		err = res.Error
+	}
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) getIGComment(ctx context.Context, account *Page, commentId string) (*IGComment, error) {
+	// GET /17989946791606028?fields=timestamp,username,text
+
+	// Permalink: https://www.instagram.com/p/${media.shortcode}/c/${comment.id}/
+	// TODO: USER_ACCESS_TOKEN
+	// accessToken := account.Page.AccessToken
+	query := c.requestForm(url.Values{
+		"fields": {"id,parent_id,media{id,permalink,shortcode},timestamp,from,text"},
+	}, account.AccessToken)
+
+	// TODO: Increase Call Context Timeout * n
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodGet, // GET
+		"https://graph.facebook.com"+
+			path.Join("/", c.Version, commentId)+
+			"?"+query.Encode(),
+		nil,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rsp, err := c.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer rsp.Body.Close()
+
+	var (
+		res = struct {
+			Error     *graph.Error `json:"error,omitempty"`
+			IGComment              // Embedded (Anonymous)
+		}{
+			// Alloc
+		}
+	)
+
+	err = json.NewDecoder(rsp.Body).Decode(&res)
+
+	if err == nil && res.Error != nil {
+		err = res.Error
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &res.IGComment, nil
+}
+
 func (c *Client) WebhookInstagram(batch []*messenger.Entry) {
 
 	for _, entry := range batch {
@@ -275,6 +863,63 @@ func (c *Client) WebhookInstagram(batch []*messenger.Entry) {
 				// }
 			}
 
+		} else if vs := entry.Changes; len(vs) != 0 {
+
+			for _, e := range vs {
+				switch e.Field {
+				// Notifies you when an Instagram User comments on a media object that you own.
+				// https://developers.facebook.com/docs/graph-api/webhooks/reference/instagram/#comments
+				case "comments":
+
+					hook := c.hookIGComment
+					// c.onInstagramComment
+					if hook == nil {
+						c.Gateway.Log.Warn().
+							Str("error", "update: instagram{comments} is disabled").
+							Msg("instagram.onComment")
+						return // (200) OK
+					}
+
+					var comment IGComment
+					err := e.GetValue(&comment)
+					if err != nil {
+						c.Gateway.Log.Err(err).
+							Msg("instagram.onComment")
+						break
+					}
+					// Handle update event
+					hook(entry.ObjectID, &comment)
+
+				// Notifies you when an Instagram User @mentions you in a comment or caption on a media object that you do not own.
+				// https://developers.facebook.com/docs/graph-api/webhooks/reference/instagram/#mentions
+				case "mentions":
+
+					hook := c.hookIGMention
+					// c.onInstagramMention
+					if hook == nil {
+						c.Gateway.Log.Warn().
+							Str("error", "update: instagram{mentions} is disabled").
+							Msg("instagram.onMention")
+						return // (200) OK
+					}
+
+					var mention IGMention
+					err := e.GetValue(&mention)
+					if err != nil {
+						c.Gateway.Log.Err(err).
+							Msg("instagram.onMention")
+						break
+					}
+					// Handle update event
+					hook(entry.ObjectID, &mention)
+
+				default:
+					c.Gateway.Log.Warn().
+						Str("field", e.Field).
+						Str("error", "update: instagram{"+e.Field+"} field is unknown").
+						Msg("instagram.onUpdate")
+				}
+			}
 		} // else if len(entry.Standby) != 0 {
 		// 	// Array of messages received in the standby channel.
 		// 	// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/standby
@@ -283,4 +928,317 @@ func (c *Client) WebhookInstagram(batch []*messenger.Entry) {
 		// 	}
 		// }
 	}
+}
+
+// IGSID, as an [I]nta[g]ram-[s]coped [ID] recipient; Instagram Owner of the IGMedia, which was just commented
+// comment, as an update event argument
+func (c *Client) onInstagramComment(IGSID string, comment *IGComment) {
+	// NOTE: Has partial content! For more info see comments.value definition
+	// https://developers.facebook.com/docs/graph-api/webhooks/reference/instagram/#comments
+
+	// Resolve comment's Instagram Account ID related TO
+	account := c.instagram.getPage(IGSID)
+	if account == nil {
+		c.Gateway.Log.Error().
+			Str("error", "instagram: page not found").
+			Str("igsid", IGSID).
+			Msg("instagram.onComment")
+		return
+	}
+	// GET more comment's data to be able to generate valid comment permalink
+	ctx := context.TODO()
+	err := c.fetchIGComment(ctx, account, comment,
+		// "id",
+		"media{id,caption,media_type,media_product_type,shortcode,permalink}",
+	)
+	if err != nil {
+		c.Gateway.Log.Err(err).
+			Str("igsid", IGSID).
+			Msg("instagram.onComment")
+		return
+	}
+
+	commentLink, ok := comment.GetPermaLink()
+	if !ok {
+		c.Gateway.Log.Warn().
+			Str("error", "instagram: not enough data to generate a comment permalink").
+			Str("igsid", IGSID).
+			Msg("instagram.onComment")
+		return
+	}
+
+	sender := comment.From
+	instagram := account.Page.Instagram
+
+	userPSID := sender.ID // [P]age-[s]coped [ID]
+	// pageASID := instagram.ID // [A]pp-[s]coped [ID] -or- [I]nsta[G]ram-[s]coped [ID]
+
+	// channel, err := c.getInternalThread(
+	// 	ctx, pageASID, userPSID,
+	// )
+	contact := bot.Account{
+		ID: 0, // LOOKUP
+		// FirstName: sender.Name, // sender.FirstName,
+		// LastName:  sender.LastName,
+		Username: sender.Username,
+		// NOTE: This is the [P]age-[S]coped User [ID]
+		// For the same Facebook User, but different Pages
+		// this value differs
+		Channel: "instagram",
+		Contact: sender.ID,
+	}
+
+	// GET Chat
+	chatID := userPSID // .sender.id
+	channel, err := c.Gateway.GetChannel(
+		ctx, chatID, &contact,
+	)
+
+	if err != nil {
+		// Failed locate chat channel !
+		re := errors.FromError(err)
+		if re.Code == 0 {
+			re.Code = (int32)(http.StatusBadGateway)
+		}
+		// http.Error(reply, re.Detail, (int)(re.Code))
+		return // nil, re // 503 Bad Gateway
+	}
+
+	// IGID := instagram.ID
+	sendMsg := &chat.Message{
+		Type: "text",
+		Text: "#comment",
+		Variables: map[string]string{
+			// Comment Data
+			paramIGCommentText: comment.Text,
+			paramIGCommentLink: commentLink,
+		},
+	}
+
+	if channel.IsNew() {
+		// Facebook Page VIA
+		sendMsg.Variables[paramFacebookPage] = account.Page.ID
+		sendMsg.Variables[paramFacebookName] = account.Page.Name
+		// Instagram Page FOR
+		sendMsg.Variables[paramInstagramPage] = instagram.ID
+		sendMsg.Variables[paramInstagramUser] = instagram.Username
+	}
+
+	update := bot.Update{
+		Title:   channel.Title,
+		Chat:    channel,
+		User:    &channel.Account,
+		Message: sendMsg,
+	}
+
+	// Forward Instagram comment update as an internal message
+	err = c.Gateway.Read(ctx, &update)
+
+	if err != nil {
+		log.Err(err).Msg("instagram.onComment")
+		// http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
+		return // err // 502 Bad Gateway
+	}
+
+	c.Gateway.Log.Debug().
+		Interface("sender", comment.From).
+		Interface("comment", comment.Text).
+		Interface("permalink", commentLink).
+		// Authenticated VIA Facebook Page
+		Interface("facebook", IGCommentFromUser{
+			ID: account.ID, Username: account.Name,
+		}).
+		// Comment FOR Instagram Account
+		Interface("instagram", IGCommentFromUser{
+			ID: instagram.ID, Username: instagram.Username,
+		}).
+		Msg("instagram.onComment")
+}
+
+// account, as a recipient; Instagram Page, which was just mentioned
+// metion, as an update args
+func (c *Client) onInstagramMention(IGSID string, mention *IGMention) {
+	// Resolve comment's Instagram Account ID related TO
+	account := c.instagram.getPage(IGSID)
+	if account == nil {
+		c.Gateway.Log.Error().
+			Str("error", "instagram: page account not found").
+			Str("igsid", IGSID).
+			Msg("instagram.onMention")
+		return
+	}
+
+	var (
+		ctx    = context.TODO()
+		sender IGCommentFromUser
+		// enVars = make(map[string]string)
+		// captIn = (mention.CommentID == "")
+		// Default: IGMedia @mention in .Caption
+		media = IGMedia{
+			ID: mention.MediaID,
+		}
+		mentionText string
+		mentionLink string
+	)
+	// Media caption @mention ?
+	if mention.CommentID == "" {
+		// https://developers.facebook.com/docs/instagram-api/reference/ig-user/mentioned_media#reading
+		// GET /17841453641568741?fields=mentioned_media.media_id(17940733142416889){id,caption,media_url,media_type,media_product_type,permalink,owner,username}
+		err := c.fetchIGMentionMedia(ctx, account, &media)
+		// "id",
+		// "caption",
+		// "shortcode",
+		// "permalink",
+		// "media_url",
+		// "media_type",
+		// "media_product_type",
+		// "owner{id,username}",
+		if err != nil {
+			c.Gateway.Log.Err(err).
+				Str("igsid", IGSID).
+				Msg("instagram.onMention")
+			return
+		}
+
+		mentionText = media.Caption
+		mentionLink = media.PermaLink
+
+		if from := media.Owner; from != nil {
+			sender.ID = from.ID
+			sender.Username = from.Username
+		}
+		if sender.ID == "" {
+			sender.ID = media.ID // mentioned_media.id !!!
+		}
+		if sender.Username == "" {
+			sender.Username = media.Username
+		}
+
+	} else {
+
+		comment := IGComment{
+			ID:    mention.CommentID,
+			Media: &media,
+		}
+
+		// https://developers.facebook.com/docs/instagram-api/reference/ig-user/mentioned_comment#reading
+		// GET /17841453641568741?fields=mentioned_comment.comment_id(17958981301970930){id,media{permalink},timestamp,like_count,text}
+		err := c.fetchIGMentionComment(ctx, account, &comment)
+		// "id",
+		// "from",
+		// "text",
+		// "timestamp",
+		// "parent_id",
+		// "media{id,caption,media_type,media_product_type,shortcode,permalink}",
+
+		if err != nil {
+			c.Gateway.Log.Err(err).
+				Str("igsid", IGSID).
+				Msg("instagram.onMention")
+			return
+		}
+
+		mentionText = comment.Text
+		mentionLink, _ = comment.GetPermaLink()
+
+		// if from := comment.From; from != nil {
+		sender.ID = comment.From.ID
+		sender.Username = comment.From.Username
+		// }
+		if sender.ID == "" {
+			sender.ID = comment.ID // mentioned_comment.id !!!
+		}
+		if sender.Username == "" {
+			sender.Username = comment.Username
+		}
+
+	}
+
+	// sender := comment.From
+	instagram := account.Page.Instagram
+
+	userPSID := sender.ID // [P]age-[s]coped [ID]
+	// pageASID := instagram.ID // [A]pp-[s]coped [ID] -or- [I]nsta[G]ram-[s]coped [ID]
+
+	// channel, err := c.getInternalThread(
+	// 	ctx, pageASID, userPSID,
+	// )
+	contact := bot.Account{
+		ID: 0, // LOOKUP
+		// FirstName: sender.Name, // sender.FirstName,
+		// LastName:  sender.LastName,
+		Username: sender.Username,
+		// NOTE: This is the [P]age-[S]coped User [ID]
+		// For the same Facebook User, but different Pages
+		// this value differs
+		Channel: "instagram",
+		Contact: sender.ID,
+	}
+
+	// GET Chat
+	chatID := userPSID // .sender.id
+	channel, err := c.Gateway.GetChannel(
+		ctx, chatID, &contact,
+	)
+
+	if err != nil {
+		// Failed locate chat channel !
+		re := errors.FromError(err)
+		if re.Code == 0 {
+			re.Code = (int32)(http.StatusBadGateway)
+		}
+		// http.Error(reply, re.Detail, (int)(re.Code))
+		return // nil, re // 503 Bad Gateway
+	}
+
+	// IGID := instagram.ID
+	sendMsg := &chat.Message{
+		Type: "text",
+		Text: "#mention",
+		Variables: map[string]string{
+			// Mention Data
+			paramIGMentionText: mentionText,
+			paramIGMentionLink: mentionLink,
+		},
+	}
+
+	if channel.IsNew() {
+		// Facebook Page VIA
+		sendMsg.Variables[paramFacebookPage] = account.Page.ID
+		sendMsg.Variables[paramFacebookName] = account.Page.Name
+		// Instagram Page FOR
+		sendMsg.Variables[paramInstagramPage] = instagram.ID
+		sendMsg.Variables[paramInstagramUser] = instagram.Username
+	}
+
+	update := bot.Update{
+		Title:   channel.Title,
+		Chat:    channel,
+		User:    &channel.Account,
+		Message: sendMsg,
+	}
+
+	// Forward Instagram comment update as an internal message
+	err = c.Gateway.Read(ctx, &update)
+
+	if err != nil {
+		log.Err(err).Msg("instagram.onMention")
+		// http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
+		return // err // 502 Bad Gateway
+	}
+
+	c.Gateway.Log.Debug().
+		// Interface("from", comment.From).
+		Interface("sender", sender).
+		Interface("mention", mentionText).
+		Interface("permalink", mentionLink).
+		// Authenticated VIA Facebook Page
+		Interface("facebook", IGCommentFromUser{
+			ID: account.ID, Username: account.Name,
+		}).
+		// Comment FOR Instagram Account
+		Interface("instagram", IGCommentFromUser{
+			ID: instagram.ID, Username: instagram.Username,
+		}).
+		Msg("instagram.onMention")
 }

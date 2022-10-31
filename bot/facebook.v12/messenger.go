@@ -18,7 +18,7 @@ var (
 	messengerFacebookScope = []string{
 		// "public_profile",
 		// // https://developers.facebook.com/docs/permissions/reference/pages_show_list
-		// "pages_show_list", // GET /{user}/accounts
+		"pages_show_list", // GET /{user}/accounts
 		// https://developers.facebook.com/docs/permissions/reference/pages_messaging
 		"pages_messaging", // POST /{page}/messages (SendAPI)
 		// // https://developers.facebook.com/docs/permissions/reference/pages_read_engagement
@@ -33,6 +33,7 @@ var (
 		// https://developers.facebook.com/docs/permissions/reference/pages_messaging
 		"instagram_basic", // POST /{page}/messages (SendAPI)
 		"instagram_manage_messages",
+		"instagram_manage_comments", // FIXME: Required for creating a comment ONLY ?
 		// https://developers.facebook.com/docs/permissions/reference/pages_manage_metadata
 		"pages_manage_metadata", // GET|POST|DELETE /{page}/subscribed_apps
 	}
@@ -141,8 +142,10 @@ type UserAccounts struct {
 }
 
 // POST /?batch=[
-// 	{"method":"GET","relative_uri":"{PAGE-ID}?fields=subscribed_apps{subscribed_fields}"},
-// 	. . .
+//
+//	{"method":"GET","relative_uri":"{PAGE-ID}?fields=subscribed_apps{subscribed_fields}"},
+//	. . .
+//
 // ]
 func (c *Client) getSubscribedFields(token *oauth2.Token, pages []*Page) error {
 

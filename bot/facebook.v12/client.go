@@ -30,6 +30,9 @@ type Client struct {
 	Version string // "v12.0"
 	webhook webhooks.WebHook
 	creds   oauth2.TokenSource
+	// Extra Fields subscription hook(s)
+	hookIGComment func(IGSID string, comment *IGComment)
+	hookIGMention func(IGSID string, comment *IGMention)
 
 	pages     *messengerPages // App Messenger Product Config
 	instagram *messengerPages // App Messenger Product Config

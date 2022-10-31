@@ -1,4 +1,4 @@
-# Facebook Messenger **Bot API**
+# Meta Messenger **Bot API**
 
 > The Messenger Bot's Pages **API**s are available thru HTTP **GET `/{bot-callback-uri}`**</br>endpoint with specified **URL** *?query=* parameters as described below:
 
@@ -13,11 +13,24 @@ GET /$callbackURI | Description
 
 -----
 
-> This bot provider also distributes the following settings for each chat channel to help you determine which page you are contacted on behalf:
+> This type of chat client provider may be customized with a several parameters, type of _string_ value.
+>
+> <span style="color:red">**WARN**</span>: **Instagram** NOT working while your App is in *Development Mode* !!!
+
+Metadata | Value | Usage
+---------|-------|------
+**`client_id`**|_REQUIRED. App-ID._|Client Authentication.
+**`client_secret`**|_REQUIRED. App-Secret._|Client Authorization.
+**`instagram.comments`**|_OPTIONAL. Default_: `"false"`.|Forward comment(s) on your Instagram media posts in chat ?<br/>`text: #comment`<br/>`[variables]:`<br/>`instagram.comment: $comment.text`<br/>`instagram.comment.link: $comment.link`
+**`instagram.mentions`**|_OPTIONAL. Default_: `"false"`.|Forward @mention(s) of you in Instagram media posts or comments in chat ?<br/>`text: #mention`<br/>`[variables]:`<br/>`instagram.mention: $mention.text`<br/>`instagram.mention.link: $mention.link`
+
+-----
+
+> This type of chat client provider also distributes the following variables for each chat channel to help you determine which page you are contacted on behalf:
 
 Parameter | Description
 ----------|------------
-**`messenger_page`** | *[**A**]pp-[**S**]coped Page unique [**ID**] as an undelaying Chat recipient*
-**`messenger_name`** | *Human-readable Name of the Messenger Page to display*
-**`instagram_page`** | *[**I**]nsta[**G**]ram-[**S**]coped Page unique [**ID**] as an undelaying Chat recipient*
-**`instagram_name`** | *Username of the Instagram Professional or Business Account to display*
+**`facebook.page`** | *[**A**]pp-[**s**]coped Facebook Account Page unique [**ID**]entifier*
+**`facebook.name`** | *Facebook Account Page Name*
+**`instagram.page`** | *[**I**]nsta[**G**]ram-[**s**]coped Account Page unique [**ID**]entifier*
+**`instagram.user`** | *Username of the Instagram Professional or Business Account*

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,13 +31,19 @@ const (
 	PageInboxApplicationID = "263902037430900"
 
 	// Messenger Bot's Conversation WITH Facebook Page ID
-	paramMessengerPage = "messenger_page"
+	paramFacebookPage = "facebook.page"
 	// Messenger Bot's Conversation WITH Facebook Page Name
-	paramMessengerName = "messenger_name"
+	paramFacebookName = "facebook.name"
 	// Messenger Bot's Conversation WITH Instagram Page ID
-	paramInstagramPage = "instagram_page"
+	paramInstagramPage = "instagram.page"
 	// Messenger Bot's Conversation WITH Instagram Username
-	paramInstagramName = "instagram_name"
+	paramInstagramUser = "instagram.user"
+	// Instagram::mention(s)
+	paramIGMentionText = "instagram.mention"
+	paramIGMentionLink = "instagram.mention.link"
+	// Instagram::comment(s)
+	paramIGCommentText = "instagram.comment"
+	paramIGCommentLink = "instagram.comment.link"
 )
 
 func init() {
@@ -177,6 +184,46 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 	if app.proofs == nil {
 		app.proofMx = new(sync.Mutex)
 		app.proofs = make(map[string]string)
+	}
+
+	var (
+		on bool
+		// err error
+		set string
+	)
+	for object, fields := range map[string][]string{
+		// "facebook": {
+		// 	// "feed",
+		// 	"comments",
+		// 	"mentions",
+		// },
+		"instagram": {
+			"comments",
+			"mentions",
+		},
+	} {
+		for _, field := range fields {
+			param := object + "." + field
+			if set, on = metadata[param]; on {
+				if on, _ = strconv.ParseBool(set); on {
+					// TRUE Specified !
+					switch object {
+					// case "facebook":
+					case "instagram":
+						switch field {
+						case "comments":
+							app.hookIGComment = app.onInstagramComment
+						case "mentions":
+							app.hookIGMention = app.onInstagramMention
+						}
+					}
+				} // else if err == nil { // && !set {
+				// 	// FALSE Specified !
+				// } // else {
+				// BOOL Invalid !
+				// }
+			}
+		}
 	}
 
 	return app, nil
@@ -515,13 +562,12 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 // recv := Update{/* decode from notice.Body */}
 // err = c.Gateway.Read(notice.Context(), recv)
 //
-// if err != nil {
-// 	http.Error(res, "Failed to deliver .Update notification", http.StatusBadGateway)
-// 	return // 502 Bad Gateway
-// }
+//	if err != nil {
+//		http.Error(res, "Failed to deliver .Update notification", http.StatusBadGateway)
+//		return // 502 Bad Gateway
+//	}
 //
 // reply.WriteHeader(http.StatusOK)
-//
 func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 	// panic("not implemented") // TODO: Implement
 
@@ -762,6 +808,8 @@ func (c *Client) SubscribeObjects(ctx context.Context, uri string) error {
 			{
 				Object: "instagram",
 				Fields: []string{
+					"mentions",
+					"comments",
 					// "standby",
 					"messages",
 					// "message_reactions",

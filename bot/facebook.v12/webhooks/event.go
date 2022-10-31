@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"hash"
 	"io"
@@ -15,19 +16,23 @@ import (
 // https://developers.facebook.com/docs/graph-api/webhooks/getting-started#event-notifications
 type Event struct {
 	// The object's type (e.g., user, page, etc.)
-	Object string          `json:"object,omitempty"`
+	Object string `json:"object,omitempty"`
 	// An array containing an object describing the changes.
 	// Multiple changes from different objects that are of the same type
 	// may be batched together.
-	Entry interface{}      `json:"entry,omitempty"`
+	Entry interface{} `json:"entry,omitempty"`
 }
 
 // Entry base content
 type Entry struct {
 	// The object's ID
-	ObjectID string        `json:"id,omitempty"`
+	ObjectID string `json:"id,omitempty"`
 	// A UNIX timestamp indicating when the Event Notification was sent (not when the change that triggered the notification occurred).
-	Timestamp int64        `json:"time,omitempty"`
+	Timestamp int64 `json:"time,omitempty"`
+	// An array containing an object describing the changed fields and their new values.
+	// Only included if you enable the Include Values setting
+	// when configuring the Webhooks product in your app's App Dashboard.
+	Changes []*FieldValue
 	// An array of strings indicating the names of the fields that have been changed. Only included if you disable the Include Values setting when configuring the Webhooks product in your app's App Dashboard.
 	ChangedFields []string `json:"changed_fields,omitempty"`
 	// // An array containing an object describing the changed fields and their new values.
@@ -35,6 +40,19 @@ type Entry struct {
 	// // when configuring the Webhooks product in your app's App Dashboard.
 	// Changes []interface{}  `json:"changes,omitempty"`
 	// Extersion fields below ...
+}
+
+// FieldValue describe field value(s) changes
+type FieldValue struct {
+	// Name of the updated field
+	Field string `json:"field"`
+	// The result value(s)
+	Value json.RawMessage `json:"value,omitempty"`
+}
+
+// GetValue tries to unmarshal Value into v.
+func (e FieldValue) GetValue(v interface{}) error {
+	return json.Unmarshal(e.Value, v)
 }
 
 type eventReader struct {
@@ -52,7 +70,7 @@ var _ io.ReadCloser = (*eventReader)(nil)
 
 // https://developers.facebook.com/docs/messenger-platform/webhook#security
 func EventReader(key []byte, req *http.Request) (io.ReadCloser, error) {
-	
+
 	var (
 		algo = sha1.New
 		size = sha1.Size
@@ -78,14 +96,14 @@ func EventReader(key []byte, req *http.Request) (io.ReadCloser, error) {
 	}
 
 	hash := hmac.New(algo, key)
-	
+
 	return &eventReader{
-		s: sum, // []byte(s),
-		h: hash,
-		r: io.TeeReader(req.Body, hash),
-		c: req.Body,
-	},
-	nil
+			s: sum, // []byte(s),
+			h: hash,
+			r: io.TeeReader(req.Body, hash),
+			c: req.Body,
+		},
+		nil
 }
 
 func (r *eventReader) Read(b []byte) (int, error) {
