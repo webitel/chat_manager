@@ -203,7 +203,7 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 		},
 	} {
 		for _, field := range fields {
-			param := object + "." + field
+			param := object + "_" + field
 			if set, on = metadata[param]; on {
 				if on, _ = strconv.ParseBool(set); on {
 					// TRUE Specified !
