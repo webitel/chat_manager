@@ -21,15 +21,15 @@ Metadata | Value | Usage
 ---------|-------|------
 **`client_id`**|_REQUIRED. App-ID._|Client Authentication.
 **`client_secret`**|_REQUIRED. App-Secret._|Client Authorization.
-**`instagram.comments`**|_OPTIONAL. Default_: `"false"`.|Forward comment(s) on your Instagram media posts in chat ?<br/>`text: #comment`<br/>`[variables]:`<br/>`instagram.comment: $comment.text`<br/>`instagram.comment.link: $comment.link`
-**`instagram.mentions`**|_OPTIONAL. Default_: `"false"`.|Forward @mention(s) of you in Instagram media posts or comments in chat ?<br/>`text: #mention`<br/>`[variables]:`<br/>`instagram.mention: $mention.text`<br/>`instagram.mention.link: $mention.link`
+**`instagram_comments`**|_OPTIONAL. Default_: `"false"`.|Forward comment(s) on your Instagram media posts in chat ?<br/>`text: #comment`<br/>`[variables]:`<br/>`instagram.comment: $comment.text`<br/>`instagram.comment.link: $comment.link`
+**`instagram_mentions`**|_OPTIONAL. Default_: `"false"`.|Forward @mention(s) of you in Instagram media posts or comments in chat ?<br/>`text: #mention`<br/>`[variables]:`<br/>`instagram.mention: $mention.text`<br/>`instagram.mention.link: $mention.link`
 
 -----
 
-> This type of chat client provider also distributes the following variables for each chat channel to help you determine which page you are contacted on behalf:
+> This type of chat client provider also propagates the following variables for each chat channel to help you identify which of your Account Page(s) the sender is contacted:
 
-Parameter | Description
-----------|------------
+Variable | Description
+---------|------------
 **`facebook.page`** | *[**A**]pp-[**s**]coped Facebook Account Page unique [**ID**]entifier*
 **`facebook.name`** | *Facebook Account Page Name*
 **`instagram.page`** | *[**I**]nsta[**G**]ram-[**s**]coped Account Page unique [**ID**]entifier*
