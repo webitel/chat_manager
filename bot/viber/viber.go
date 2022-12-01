@@ -256,7 +256,6 @@ func (c *Bot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		)
 
 		if sentMessage.Buttons != nil {
-			sendMessage.MinVersion = 6
 			sendMessage.Menu(
 				&c.Buttons,
 				sentMessage.Buttons,

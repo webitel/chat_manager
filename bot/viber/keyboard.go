@@ -323,6 +323,7 @@ func (req *sendOptions) Menu(tmpl *ButtonOptions, layout []*chat.Buttons) *sendO
 		rows [][]*Button
 		btns = make([]*Button, 0, size)
 	)
+build:
 	for _, line := range layout {
 		r := len(rows)
 		if r == 0 {
@@ -371,11 +372,16 @@ func (req *sendOptions) Menu(tmpl *ButtonOptions, layout []*chat.Buttons) *sendO
 					),
 				)
 			case "email": // not-supported
+			case "clear":
+				// empty buttons list will NOT send ANY keyboard spec at all
+				// which will cause to automatic clear current keyboard state
+				rows = rows[:0]
+				break build
 			default:
 				row = append(row,
 					ButtonNone(
 						tmpl,
-						btn.GetText(),
+						coalesce(btn.GetText(), btn.GetCaption(), btn.GetCode()),
 					),
 				)
 			}
@@ -392,6 +398,16 @@ func (req *sendOptions) Menu(tmpl *ButtonOptions, layout []*chat.Buttons) *sendO
 		}
 	}
 
+	// viber: (3) keyboard is not valid. [array is too short: must have at least 1 elements but instance has 0 elements]
+	if len(btns) == 0 {
+		// NO [Acceptable] Button(s) provided; Skip keyboard setup
+		return req
+	}
+
+	const minVersion = 6
+	if req.MinVersion < minVersion {
+		req.MinVersion = minVersion
+	}
 	req.Keyboard = &Keyboard{
 		// Type:       "rich_media",
 		Type:          "keyboard",
