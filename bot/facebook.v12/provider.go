@@ -607,7 +607,7 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 
 				c.PromptSetup(
 					rsp, req,
-					messengerInstagramScope, "ig", // "instagram"
+					c.instagramOAuth2Scope(), "ig", // "instagram"
 					oauth2.SetAuthURLParam(
 						"display", "popup",
 					),
@@ -1054,8 +1054,19 @@ func (c *Client) SubscribePages(pageIds ...string) ([]*Page, error) {
 		return nil, err
 	}
 
+	fields := []string{
+		// "standby",
+		"messages",
+		// "message_reads",
+		// "message_reactions",
+		// "messaging_referrals",
+		"messaging_postbacks",
+		// "messaging_handovers",
+		// "user_action",
+	}
+
 	// Do subscribe for page(s) webhook updates
-	err = c.subscribePages(pages)
+	err = c.subscribePages(pages, fields)
 
 	if err != nil {
 		return nil, err

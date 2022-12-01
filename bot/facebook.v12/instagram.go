@@ -20,6 +20,37 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// reports whether instagram_manage_comments permission
+// for this Meta App supposed to be requested to use
+func (c *Client) instagramManageComments() bool {
+	return c != nil && (c.hookIGComment != nil || c.hookIGMention != nil)
+}
+
+// returns OAuth 2.0 scope used to Authorize Instagram Page(s)
+func (c *Client) instagramOAuth2Scope() (scope []string) {
+	// STATIC
+	// https://developers.facebook.com/docs/messenger-platform/instagram/get-started#2--implement-facebook-login
+	scope = []string{
+		// "public_profile",
+		// https://developers.facebook.com/docs/permissions/reference/pages_manage_metadata
+		"pages_manage_metadata", // GET|POST|DELETE /{page}/subscribed_apps
+		// https://developers.facebook.com/docs/permissions/reference/pages_messaging
+		"instagram_basic", // POST /{page}/messages (SendAPI)
+		// https://developers.facebook.com/docs/permissions/reference/instagram_manage_messages
+		"instagram_manage_messages",
+	}
+	// DYNAMIC
+	if c.instagramManageComments() {
+		scope = append(scope,
+			// The allowed usage for instagram_manage_comments permission is
+			// to read, update and delete comments of Instagram Business Accounts,
+			// or to read media objects, such as Stories, of Instagram Business Accounts.
+			"instagram_manage_comments",
+		)
+	}
+	return // scope
+}
+
 // Retrive Facebook User profile and it's accounts (Pages) access granted
 // Refresh Pages webhook subscription state
 func (c *Client) getInstagramPages(token *oauth2.Token) (*UserAccounts, error) {
@@ -90,9 +121,12 @@ func (c *Client) getInstagramPages(token *oauth2.Token) (*UserAccounts, error) {
 
 	// GET Each Page's subscription state !
 	err = c.getSubscribedFields(token, pages)
+	// if err == nil {
+	// 	err = c.subscribeInstagramPages(pages)
+	// }
 
 	if err != nil {
-		// Failed to GET Page(s) subscribed_fields (subscription) state !
+		// Failed to GET or POST Page(s) subscribed_fields (subscription) state !
 		return nil, err
 	}
 
@@ -102,7 +136,7 @@ func (c *Client) getInstagramPages(token *oauth2.Token) (*UserAccounts, error) {
 func (c *Client) SetupInstagramPages(rsp http.ResponseWriter, req *http.Request) {
 
 	// USER_ACCESS_TOKEN
-	token, err := c.completeOAuth(req, messengerInstagramScope...)
+	token, err := c.completeOAuth(req, c.instagramOAuth2Scope()...)
 
 	if err != nil {
 		// http.Error(rsp, err.Error(), http.StatusBadRequest)
@@ -153,6 +187,40 @@ func (c *Client) addInstagramPages(accounts *UserAccounts) {
 	_ = c.instagram.setPages(accounts)
 }
 
+func (c *Client) subscribeInstagramPages(pages []*Page) error {
+
+	//
+	fields := []string{
+		// "standby",
+		"messages",
+		// "message_reads",
+		// "message_reactions",
+		// "messaging_referrals",
+		"messaging_postbacks",
+		// "messaging_handovers",
+	}
+
+	// NOTE: Your app must enable Page subscriptions on the Page connected to the app user's account
+	// by sending a POST request to the Page Subscribed Apps edge and subscribing to ANY Page field.
+	// https://developers.facebook.com/docs/graph-api/webhooks/getting-started/webhooks-for-instagram#step-2--enable-page-subscriptions
+	// if c.instagramManageComments() {
+	// 	fields = append(fields,
+	// 		"feed",
+	// 		// "comments",
+	// 		// "mentions",
+	// 	)
+	// }
+
+	// Do subscribe for page(s) webhook updates
+	err := c.subscribePages(pages, fields)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *Client) SubscribeInstagramPages(pageIds ...string) ([]*Page, error) {
 
 	// Find ALL requested page(s)...
@@ -163,7 +231,7 @@ func (c *Client) SubscribeInstagramPages(pageIds ...string) ([]*Page, error) {
 	}
 
 	// Do subscribe for page(s) webhook updates
-	err = c.subscribePages(pages)
+	err = c.subscribeInstagramPages(pages)
 
 	if err != nil {
 		return nil, err

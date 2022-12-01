@@ -26,17 +26,6 @@ var (
 		// https://developers.facebook.com/docs/permissions/reference/pages_manage_metadata
 		"pages_manage_metadata", // GET|POST|DELETE /{page}/subscribed_apps
 	}
-
-	// https://developers.facebook.com/docs/messenger-platform/instagram/get-started#2--implement-facebook-login
-	messengerInstagramScope = []string{
-		// "public_profile",
-		// https://developers.facebook.com/docs/permissions/reference/pages_messaging
-		"instagram_basic", // POST /{page}/messages (SendAPI)
-		"instagram_manage_messages",
-		"instagram_manage_comments", // FIXME: Required for creating a comment ONLY ?
-		// https://developers.facebook.com/docs/permissions/reference/pages_manage_metadata
-		"pages_manage_metadata", // GET|POST|DELETE /{page}/subscribed_apps
-	}
 )
 
 func (c *Client) SetupMessengerPages(rsp http.ResponseWriter, req *http.Request) {
@@ -340,7 +329,7 @@ func (c *Client) addMessengerPages(accounts *UserAccounts) {
 // Install Facebook App for all page(s) specified
 // Other words, subscribe Facebook App to the Page's webhook updates
 // https://developers.facebook.com/docs/graph-api/reference/page/subscribed_apps/#Creating
-func (c *Client) subscribePages(pages []*Page) error {
+func (c *Client) subscribePages(pages []*Page, fields []string) error {
 
 	n := len(pages)
 	if n == 0 {
@@ -348,19 +337,20 @@ func (c *Client) subscribePages(pages []*Page) error {
 	}
 
 	var (
-		subscribedPageFields = []string{
-			// "standby",
-			"messages",
-			"messaging_postbacks",
-			// "messaging_handovers",
-			// "user_action",
-		}
+		// subscribedPageFields = []string{
+		// 	// "standby",
+		// 	"messages",
+		// 	"messaging_postbacks",
+		// 	// "messaging_handovers",
+		// 	// "user_action",
+		// }
 
 		// https://developers.facebook.com/docs/graph-api/reference/page/subscribed_apps/#parameters-2
 		form = url.Values{
 			// Page Webhooks fields that you want to subscribe
 			"subscribed_fields": {
-				strings.Join(subscribedPageFields, ","),
+				// strings.Join(subscribedPageFields, ","),
+				strings.Join(fields, ","),
 			},
 		}
 		//
@@ -456,7 +446,7 @@ func (c *Client) subscribePages(pages []*Page) error {
 		}
 		// SUCCESS !
 		save = (save || len(page.SubscribedFields) == 0)
-		page.SubscribedFields = subscribedPageFields
+		page.SubscribedFields = fields // subscribedPageFields
 	}
 
 	if save {
