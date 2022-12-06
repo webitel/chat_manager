@@ -31,8 +31,9 @@ type Client struct {
 	webhook webhooks.WebHook
 	creds   oauth2.TokenSource
 	// Extra Fields subscription hook(s)
-	hookIGComment func(IGSID string, comment *IGComment)
-	hookIGMention func(IGSID string, comment *IGMention)
+	hookIGStoryMention func(IGSID string, mention *IGStoryMention)
+	hookIGMediaMention func(IGSID string, mention *IGMention)
+	hookIGMediaComment func(IGSID string, comment *IGComment)
 
 	pages     *messengerPages // App Messenger Product Config
 	instagram *messengerPages // App Messenger Product Config

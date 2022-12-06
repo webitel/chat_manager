@@ -21,8 +21,9 @@ Metadata | Value | Usage
 ---------|-------|------
 **`client_id`**|_REQUIRED. App-ID._|Client Authentication.
 **`client_secret`**|_REQUIRED. App-Secret._|Client Authorization.
-**`instagram_comments`**|_OPTIONAL. Default_: `"false"`.|Forward comment(s) on your Instagram media posts in chat ?<br/>`text: #comment`<br/>`[variables]:`<br/>`instagram.comment: $comment.text`<br/>`instagram.comment.link: $comment.link`
-**`instagram_mentions`**|_OPTIONAL. Default_: `"false"`.|Forward @mention(s) of you in Instagram media posts or comments in chat ?<br/>`text: #mention`<br/>`[variables]:`<br/>`instagram.mention: $mention.text`<br/>`instagram.mention.link: $mention.link`
+**`instagram_comments`**|_OPTIONAL. Default_: `"false"`.|Forward comment(s) on your Instagram media posts into chat ?<br/>`text: #comment`<br/>`[variables]:`<br/>`instagram.comment: $comment.text`<br/>`instagram.comment.link: $comment.link`
+**`instagram_mentions`**|_OPTIONAL. Default_: `"false"`.|Forward @mention(s) of you in Instagram media posts or comments into chat ?<br/>`text: #mention`<br/>`[variables]:`<br/>`instagram.mention: $mention.text`<br/>`instagram.mention.link: $mention.link`
+**`instagram_story_mentions`**|_OPTIONAL. Default_: `"false"`.|Forward @mention(s) of you in Instagram Stories into chat ?<br/>`text: #story_mention`<br/>`[variables]:`<br/>`instagram.story.mention: $story.caption`<br/>`instagram.story.mention.link: $story.permalink`
 
 -----
 

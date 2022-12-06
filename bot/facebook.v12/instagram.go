@@ -23,7 +23,7 @@ import (
 // reports whether instagram_manage_comments permission
 // for this Meta App supposed to be requested to use
 func (c *Client) instagramManageComments() bool {
-	return c != nil && (c.hookIGComment != nil || c.hookIGMention != nil)
+	return c != nil && (c.hookIGMediaComment != nil || c.hookIGMediaMention != nil)
 }
 
 // returns OAuth 2.0 scope used to Authorize Instagram Page(s)
@@ -610,6 +610,55 @@ func (c *Client) fetchIGMedia(ctx context.Context, account *Page, media *IGMedia
 	return nil
 }
 
+// UnifiedStoryMention
+type StoryMention struct {
+	// Media ID.
+	ID string `json:"id"`
+	// CDN Media content URL.
+	Link string `json:"link"`
+}
+
+type IGStoryMention struct {
+	// Message ID.
+	ID string
+	// UnifiedStoryMention
+	Mention StoryMention
+}
+
+func (c *Client) fetchStoryMention(ctx context.Context, account *Page, mention *IGStoryMention) (*IGMedia, error) {
+
+	// GET <MESSAGE_ID>?fields=story
+	//
+	// {
+	// 	"story": {
+	// 		"mention": {
+	// 			"link": "<CDN_URL>",
+	// 			"id": "<STORY_ID>"
+	// 		}
+	// 	},
+	// 	"id": "<MESSAGE_ID>"
+	// }
+	// https://developers.facebook.com/docs/messenger-platform/instagram/features/story-mention/#example-request-to-retrieve-story-mention-via-conversation-api
+	mediaURL, err := url.ParseRequestURI(mention.Mention.Link)
+	if err != nil {
+		return nil, err
+	}
+	mention.Mention.ID = mediaURL.Query().Get("asset_id")
+	story := &IGMedia{
+		ID: mention.Mention.ID,
+	}
+	err = c.fetchIGMedia(ctx, account, story,
+		"caption",    // as mention[ed] message text
+		"media_type", // Content MIMETYPE: CAROUSEL_ALBUM, IMAGE, or VIDEO
+		// "media_product_type", // Surface where the media is published. Can be AD, FEED, STORY or REELS.
+		"permalink",
+	)
+	// if err != nil {
+	// 	return story, err
+	// }
+	return story, err
+}
+
 func (c *Client) fetchIGComment(ctx context.Context, account *Page, comment *IGComment, fields ...string) error {
 
 	if comment == nil || comment.ID == "" {
@@ -913,6 +962,10 @@ func (c *Client) getIGComment(ctx context.Context, account *Page, commentId stri
 
 func (c *Client) WebhookInstagram(batch []*messenger.Entry) {
 
+	var (
+		err error
+		on  = "instagram.onUpdate"
+	)
 	for _, entry := range batch {
 		if len(entry.Messaging) != 0 {
 			// Array containing one messaging object.
@@ -922,10 +975,12 @@ func (c *Client) WebhookInstagram(batch []*messenger.Entry) {
 			for _, event := range entry.Messaging {
 				if event.Message != nil {
 					// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/messages
-					_ = c.WebhookMessage(event)
+					on = "instagram.onMessage"
+					err = c.WebhookMessage(event)
 				} else if event.Postback != nil {
 					// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/messaging_postbacks
-					_ = c.WebhookPostback(event)
+					on = "instagram.onPostback"
+					err = c.WebhookPostback(event)
 				} // else {
 				// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events#event_list
 				// }
@@ -939,21 +994,21 @@ func (c *Client) WebhookInstagram(batch []*messenger.Entry) {
 				// https://developers.facebook.com/docs/graph-api/webhooks/reference/instagram/#comments
 				case "comments":
 
-					hook := c.hookIGComment
+					hook := c.hookIGMediaComment
 					// c.onInstagramComment
 					if hook == nil {
 						c.Gateway.Log.Warn().
 							Str("error", "update: instagram{comments} is disabled").
 							Msg("instagram.onComment")
-						return // (200) OK
+						break // switch // (200) OK
 					}
 
 					var comment IGComment
-					err := e.GetValue(&comment)
+					err = e.GetValue(&comment)
 					if err != nil {
 						c.Gateway.Log.Err(err).
 							Msg("instagram.onComment")
-						break
+						break // switch // (200) OK
 					}
 					// Handle update event
 					hook(entry.ObjectID, &comment)
@@ -962,13 +1017,13 @@ func (c *Client) WebhookInstagram(batch []*messenger.Entry) {
 				// https://developers.facebook.com/docs/graph-api/webhooks/reference/instagram/#mentions
 				case "mentions":
 
-					hook := c.hookIGMention
+					hook := c.hookIGMediaMention
 					// c.onInstagramMention
 					if hook == nil {
 						c.Gateway.Log.Warn().
 							Str("error", "update: instagram{mentions} is disabled").
 							Msg("instagram.onMention")
-						return // (200) OK
+						break // switch // (200) OK
 					}
 
 					var mention IGMention
@@ -988,19 +1043,37 @@ func (c *Client) WebhookInstagram(batch []*messenger.Entry) {
 						Msg("instagram.onUpdate")
 				}
 			}
-		} // else if len(entry.Standby) != 0 {
-		// 	// Array of messages received in the standby channel.
-		// 	// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/standby
-		// 	for _, event := range entry.Standby {
-		//
-		// 	}
-		// }
+
+			// } else if len(entry.Standby) != 0 {
+			// 	// Array of messages received in the standby channel.
+			// 	// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/standby
+			// 	for _, event := range entry.Standby {
+			//
+			// 	}
+			// }
+
+		} else {
+			on = "instagram.onUpdate"
+			err = errors.BadRequest(
+				"messenger.update.not_supported",
+				"instagram: update event type not supported",
+			)
+		}
+
+		if err != nil {
+			re := errors.FromError(err)
+			c.Gateway.Log.Error().
+				Str("error", re.Detail).
+				Msg(on)
+			err = nil
+			// continue
+		}
 	}
 }
 
 // IGSID, as an [I]nta[g]ram-[s]coped [ID] recipient; Instagram Owner of the IGMedia, which was just commented
 // comment, as an update event argument
-func (c *Client) onInstagramComment(IGSID string, comment *IGComment) {
+func (c *Client) onIGMediaComment(IGSID string, comment *IGComment) {
 	// NOTE: Has partial content! For more info see comments.value definition
 	// https://developers.facebook.com/docs/graph-api/webhooks/reference/instagram/#comments
 
@@ -1125,7 +1198,7 @@ func (c *Client) onInstagramComment(IGSID string, comment *IGComment) {
 
 // account, as a recipient; Instagram Page, which was just mentioned
 // metion, as an update args
-func (c *Client) onInstagramMention(IGSID string, mention *IGMention) {
+func (c *Client) onIGMediaMention(IGSID string, mention *IGMention) {
 	// Resolve comment's Instagram Account ID related TO
 	account := c.instagram.getPage(IGSID)
 	if account == nil {
@@ -1309,4 +1382,8 @@ func (c *Client) onInstagramMention(IGSID string, mention *IGMention) {
 			ID: instagram.ID, Username: instagram.Username,
 		}).
 		Msg("instagram.onMention")
+}
+
+func (c *Client) onIGStoryMention(IGSID string, mention *IGStoryMention) {
+	// NOTE: stub function to enable instagram.story_mention processing ...
 }

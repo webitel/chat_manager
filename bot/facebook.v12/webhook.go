@@ -193,7 +193,9 @@ func (c *Client) WebhookEvent(rsp http.ResponseWriter, req *http.Request) {
 	// case "user":
 	// case "permissions":
 	default:
-		c.Log.Warn().Str("object", event.Object).Msg("WEBHOOK: NOT SUPPORTED")
+		c.Log.Warn().Str("object", event.Object).
+			Str("error", "update: object not supported").
+			Msg("messenger.onUpdate")
 	}
 
 	// 200 OK / IGNORE [RE]DELIVERY !
@@ -206,6 +208,10 @@ func (c *Client) WebhookEvent(rsp http.ResponseWriter, req *http.Request) {
 
 func (c *Client) WebhookPage(batch []*messenger.Entry) {
 
+	var (
+		err error
+		on  = "facebook.onUpdate"
+	)
 	for _, entry := range batch {
 		if len(entry.Messaging) != 0 {
 			// Array containing one messaging object.
@@ -215,22 +221,40 @@ func (c *Client) WebhookPage(batch []*messenger.Entry) {
 			for _, event := range entry.Messaging {
 				if event.Message != nil {
 					// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/messages
-					_ = c.WebhookMessage(event)
+					on = "facebook.onMessage"
+					err = c.WebhookMessage(event)
 				} else if event.Postback != nil {
 					// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/messaging_postbacks
-					_ = c.WebhookPostback(event)
+					on = "facebook.onPostback"
+					err = c.WebhookPostback(event)
 				} // else {
 				// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events#event_list
 				// }
 			}
 
-		} // else if len(entry.Standby) != 0 {
-		// 	// Array of messages received in the standby channel.
-		// 	// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/standby
-		// 	for _, event := range entry.Standby {
-		//
-		// 	}
-		// }
+			// } else if len(entry.Standby) != 0 {
+			// 	// Array of messages received in the standby channel.
+			// 	// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/standby
+			// 	for _, event := range entry.Standby {
+			//
+			// 	}
+			// }
+		} else {
+			on = "facebook.onUpdate"
+			err = errors.BadRequest(
+				"messenger.update.not_supported",
+				"facebook: update event type not supported",
+			)
+		}
+
+		if err != nil {
+			re := errors.FromError(err)
+			c.Gateway.Log.Error().
+				Str("error", re.Detail).
+				Msg(on)
+			err = nil
+			// continue
+		}
 	}
 }
 
@@ -303,13 +327,17 @@ func (c *Client) getInternalThread(ctx context.Context, pageASID, userPSID strin
 	return c.GetChannel(ctx, userPSID, pageASID)
 }
 
+func (c *Client) getPage(asid string) (page *Page) {
+	page = c.pages.getPage(asid)
+	if page == nil {
+		page = c.instagram.getPage(asid)
+	}
+	return // page
+}
+
 func (c *Client) GetChannel(ctx context.Context, userPSID, pageASID string) (*bot.Channel, error) {
 
-	// page := c.getPageAccount(pageASID, "messages")
-	page := c.pages.getPage(pageASID)
-	if page == nil {
-		page = c.instagram.getPage(pageASID)
-	}
+	page := c.getPage(pageASID)
 	if page == nil {
 		err := errors.BadRequest(
 			"bot.messenger.page.not_found",
@@ -372,13 +400,16 @@ func (c *Client) GetChannel(ctx context.Context, userPSID, pageASID string) (*bo
 		return nil, re // 503 Bad Gateway
 	}
 
-	if channel.IsNew() {
+	// if channel.IsNew() {
+	// 	channel.Properties = thread
+	// 	// props := map[string]string{
+	// 	// 	paramMessengerPage: page.ID,
+	// 	// 	paramMessengerName: page.Name,
+	// 	// }
+	// 	// channel.Properties = props
+	// }
+	if dlg, ok := channel.Properties.(*Chat); !ok || dlg.User.ID != userPSID {
 		channel.Properties = thread
-		// props := map[string]string{
-		// 	paramMessengerPage: page.ID,
-		// 	paramMessengerName: page.Name,
-		// }
-		// channel.Properties = props
 	}
 
 	return channel, nil
@@ -387,8 +418,36 @@ func (c *Client) GetChannel(ctx context.Context, userPSID, pageASID string) (*bo
 // https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/messages
 func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 
-	userPSID := event.Sender.ID    // [P]age-[s]coped [ID]
+	message := event.Message
 	pageASID := event.Recipient.ID // [A]pp-[s]coped [ID] -or- [I]nsta[G]ram-[s]coped [ID]
+	userPSID := event.Sender.ID    // [P]age-[s]coped [ID]
+	// Ignore @self publication(s) !
+	if message.IsEcho {
+		// sender: event.Sender.ID; ECHO from out page publication
+		fromId := userPSID
+		sender := c.getPage(fromId)
+		if sender == nil || sender.Page == nil {
+			c.Gateway.Log.Warn().
+				Str("error", "account: page.id="+fromId+" not found").
+				Msg("messenger.onMessage")
+		}
+		platform := "facebook"
+		pageName := sender.Name
+		if sender.IGSID() == fromId {
+			platform = "instagram"
+			pageName = sender.Instagram.Name
+			if pageName == "" {
+				pageName = sender.Instagram.Username
+			}
+		}
+		c.Gateway.Log.Warn().
+			Str("asid", fromId).
+			Str(platform, pageName).
+			Str("echo", "ignore: @self publication echo").
+			Msg(platform + ".onMessage")
+		// IGNORE // (200) OK
+		return nil
+	}
 
 	ctx := context.TODO()
 	channel, err := c.getInternalThread(
@@ -404,12 +463,33 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 	}
 
 	chatID := userPSID
+	dialog, _ := channel.Properties.(*Chat)
+	platform := "facebook"
+	facebook := dialog.Page // MUST: recipient
+	pageName := facebook.Name
+	instagram := facebook.Instagram
+	if instagram != nil {
+		platform = "instagram"
+		pageName = instagram.Name
+		if pageName == "" {
+			pageName = instagram.Username
+		}
+	}
+
 	// update := bot.Update {
 	// 	Title:   channel.Title,
 	// 	Chat:    channel,
 	// 	User:    &channel.Account,
 	// 	Message: new(chat.Message),
 	// }
+	if message.IsDeleted {
+		c.Gateway.Log.Warn().
+			Str("asid", pageASID).
+			Str(platform, pageName).
+			Str("error", "ignore: message deletion not implemented yet").
+			Msg(platform + ".onMessage")
+		return nil // (200) OK
+	}
 
 	// Spread multiple attachments into separate internal messages ...
 	n := len(event.Message.Attachments)
@@ -466,6 +546,44 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 	// TODO: Separate each Attachment to individual internal message
 	for _, doc := range sentMsg.Attachments {
 		switch data := doc.Payload; doc.Type {
+		// INSTAGRAM: Story @mention for oneof @yours connected page(s)
+		// https://developers.facebook.com/docs/messenger-platform/instagram/features/webhook#webhook-events
+		// See `messages` notification cases !
+		case "story_mention":
+			hook := c.hookIGStoryMention
+			if hook == nil {
+				c.Gateway.Log.Warn().
+					Str("asid", pageASID).
+					Str(platform, pageName).
+					Str("error", "update: instagram{story_mentions} is disabled").
+					Msg("instagram.onStoryMention")
+				continue
+			}
+			mention := IGStoryMention{
+				ID: sentMsg.ID,
+				Mention: StoryMention{
+					Link: data.URL,
+				},
+			}
+			// Build Story permalink !
+			dialog, _ := channel.Properties.(*Chat)
+			account := dialog.Page // @mention[ed]
+			story, err := c.fetchStoryMention(
+				context.TODO(), account,
+				// sentMsg.ID, data.URL,
+				&mention,
+			)
+			if err != nil {
+				c.Gateway.Log.Err(err).
+					Msg("instagram.onStoryMention")
+				continue
+			}
+			sendMsg.Text = "#story_mention"
+			doc.Type = strings.ToLower(story.MediaType)
+			props[paramStoryMentionText] = story.Caption
+			props[paramStoryMentionLink] = story.GetPermaLink()
+			fallthrough // send story @mention as an inbox media message
+
 		case "audio", "file", "video", "image":
 			if doc.Type == "image" && data.StickerID != 0 {
 				// Applicable to attachment type: image only if a sticker is sent.
@@ -483,15 +601,15 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 				continue // NEXT !
 			}
 
-			mime := doc.Type
-			name := path.Base(url.Path)
-			switch name {
+			mimetype := doc.Type
+			filename := path.Base(url.Path)
+			switch filename {
 			case "/", ".":
-				name = ""
+				filename = ""
 			}
 
-			if ext := path.Ext(name); ext != "" {
-				mime = path.Join(mime, ext[1:]) // crop leading dot(.)
+			if ext := path.Ext(filename); ext != "" {
+				mimetype = path.Join(mimetype, ext[1:]) // crop leading dot(.)
 			}
 
 			if sendMsg.File != nil {
@@ -510,8 +628,8 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 			sendMsg.File = &chat.File{
 				Id:   0, // TO Be downloaded ON chat_manager service !
 				Url:  data.URL,
-				Mime: mime,
-				Name: name,
+				Mime: mimetype,
+				Name: filename,
 				Size: 0, // Unknown !
 			}
 
@@ -538,12 +656,26 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 	n = len(messages)
 	for i := 0; i < n; i++ {
 		// Populate next prepared message
-		update.Message = &messages[i]
+		sendMsg = &messages[i]
+		switch sendMsg.Type {
+		case "text", "":
+			if sendMsg.Text == "" {
+				continue // NO Message; IGNORE
+			}
+		case "file":
+			if sendMsg.File == nil {
+				continue // NO Media; IGNORE
+			}
+		}
+		update.Message = sendMsg
 		// Forward Bot received Message !
 		err = c.Gateway.Read(ctx, &update)
 
 		if err != nil {
-			log.Err(err).Msg("MESSENGER: FORWARD")
+			log.Err(err).
+				Str("asid", pageASID).
+				Str(platform, pageName).
+				Msg(platform + ".onMessage")
 			// http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
 			// return err // 502 Bad Gateway
 			if re == nil {

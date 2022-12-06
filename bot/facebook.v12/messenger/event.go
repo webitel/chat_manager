@@ -28,11 +28,10 @@ type Entry struct {
 	Standby []*Messaging `json:"standby,omitempty"`
 }
 
-
 type Messaging struct {
 	// Sender user ID. sender.id: <PSID>
 	// The PSID of the user that triggered the webhook event.
-	Sender    *Account `json:"sender,omitempty"`
+	Sender *Account `json:"sender,omitempty"`
 	// Recipient user ID. recipient.id: <PAGE_ID>
 	// Your Page ID.
 	Recipient *Account `json:"recipient,omitempty"`
@@ -53,7 +52,7 @@ type Messaging struct {
 	PassThreadControl    *pass_thread_control    `json:"pass_thread_control,omitempty"`
 	TakeThreadControl    *take_thread_control    `json:"take_thread_control,omitempty"`
 	RequestThreadControl *request_thread_control `json:"request_thread_control,omitempty"`
-	AppRoles              app_roles              `json:"app_roles,omitempty"`
+	AppRoles             app_roles               `json:"app_roles,omitempty"`
 }
 
 type Account struct {
@@ -68,18 +67,18 @@ type Account struct {
 // https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/messaging_postbacks
 type Postback struct {
 	// Message ID
-	MessageID string      `json:"mid,omitempty"`
+	MessageID string `json:"mid,omitempty"`
 	// Title for the CTA that was clicked on.
 	// This is sent to all apps subscribed to the page.
 	// For apps other than the original CTA sender,
 	// the postback event will be delivered via the standby channel.
-	Title     string      `json:"title,omitempty"`
+	Title string `json:"title,omitempty"`
 	// Payload parameter that was defined with the button.
 	// This is only visible to the app that send the original template message.
-	Payload   string      `json:"payload,omitempty"`
+	Payload string `json:"payload,omitempty"`
 	// Referral information for how the user got into the thread. Structure follows referral event:
 	// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/messaging_referrals#referral
-	Referral  interface{} `json:"referral,omitempty"`
+	Referral interface{} `json:"referral,omitempty"`
 }
 
 // Message callback will occur when a message has been sent to your Page.
@@ -93,17 +92,23 @@ type Postback struct {
 // You can subscribe to this callback by selecting message when setting up your webhook.
 type Message struct {
 	// Message ID
-	ID          string        `json:"mid"`
+	ID string `json:"mid"`
 	// Text of message
-	Text        string        `json:"text,omitempty"`
+	Text string `json:"text,omitempty"`
+	// Included when your business sends a message to the customer
+	IsEcho bool `json:"is_echo,omitempty"`
+	// Included when a customer deletes a message
+	IsDeleted bool `json:"is_deleted,omitempty"`
+	// Included when a customer sends a message with unsupported media
+	IsUnsupported bool `json:"is_unsupported,omitempty"`
 	// Reference to the message id (mid) that this message is replying to
-	ReplyTo     *ReplyTo      `json:"reply_to,omitempty"`
+	ReplyTo *ReplyTo `json:"reply_to,omitempty"`
 	// Optional custom data provided by the sending app
-	QuickReply  *QuickReply   `json:"quick_reply,omitempty"`
+	QuickReply *QuickReply `json:"quick_reply,omitempty"`
 	// Array containing attachment data
 	Attachments []*Attachment `json:"attachments,omitempty"`
 	// Referral of the message from Shops product details page.
-	Referral    *Referral     `json:"referral,omitempty"`
+	Referral *Referral `json:"referral,omitempty"`
 }
 
 // // A quick_reply payload is only provided with a text message when the user tap on a Quick Replies button.
@@ -112,7 +117,6 @@ type Message struct {
 // 	Payload string `json:"payload"`
 // }
 
-// 
 type ReplyTo struct {
 	// Reference to the message ID that this message is replying to
 	MessageID string `json:"mid"`
@@ -123,12 +127,12 @@ type Referral struct {
 	Product struct {
 		// Reference to the message ID that this message is replying to
 		ID string `json:"id"`
-	}             `json:"product"`
+	} `json:"product"`
 }
 
 type Attachment struct {
 	// audio, file, image, location, video or fallback
-	Type string `json:"type"`
+	Type    string     `json:"type"`
 	Payload attachment `json:"payload"` // attachment
 }
 
@@ -144,7 +148,7 @@ type attachment struct {
 	StickerID int64 `json:"sticker_id,omitempty"`
 	// Coordinates. Applicable to attachment type: location
 	Coordinates *struct {
-		Latitude float64 `json:"lat"` // Number ?
+		Latitude  float64 `json:"lat"`  // Number ?
 		Longitude float64 `json:"long"` // Number ?
 	} `json:"coordinates,omitempty"`
 

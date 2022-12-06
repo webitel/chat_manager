@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/micro/micro/v3/service/errors"
+	chat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
 	graph "github.com/webitel/chat_manager/bot/facebook.v12/graph/v12.0"
 	"github.com/webitel/chat_manager/bot/facebook.v12/messenger"
@@ -44,6 +45,9 @@ const (
 	// Instagram::comment(s)
 	paramIGCommentText = "instagram.comment"
 	paramIGCommentLink = "instagram.comment.link"
+	// Story::mention(s)
+	paramStoryMentionText = "instagram.story.mention"
+	paramStoryMentionLink = "instagram.story.mention.link"
 )
 
 func init() {
@@ -63,6 +67,27 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 	// agent: NEW config (to validate provider settings integrity)
 	// state: RUN config (current to grab internal state if needed)
 	// current, _ := state.(*Client)
+
+	// Parse and validate message templates
+	var err error
+	agent.Template = bot.NewTemplate(providerType)
+	// // Populate messenger-specific markdown-escape helper funcs
+	// agent.Template.Root().Funcs(
+	// 	markdown.TemplateFuncs,
+	// )
+	// Parse message templates
+	if err = agent.Template.FromProto(
+		agent.Bot.GetUpdates(),
+	); err == nil {
+		// Quick tests ! <nil> means default (well-known) test cases
+		err = agent.Template.Test(nil)
+	}
+	if err != nil {
+		return nil, errors.BadRequest(
+			"chat.bot.messenger.updates.invalid",
+			err.Error(),
+		)
+	}
 
 	metadata := agent.Bot.Metadata
 	if len(metadata) == 0 {
@@ -198,6 +223,7 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 		// 	"mentions",
 		// },
 		"instagram": {
+			"story_mentions",
 			"comments",
 			"mentions",
 		},
@@ -211,10 +237,15 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 					// case "facebook":
 					case "instagram":
 						switch field {
+						// required: instagram_manage_messages
+						case "story_mentions":
+							app.hookIGStoryMention = app.onIGStoryMention
+						// required: instagram_manage_comments
 						case "comments":
-							app.hookIGComment = app.onInstagramComment
+							app.hookIGMediaComment = app.onIGMediaComment
+						// required: instagram_manage_comments
 						case "mentions":
-							app.hookIGMention = app.onInstagramMention
+							app.hookIGMediaMention = app.onIGMediaMention
 						}
 					}
 				} // else if err == nil { // && !set {
@@ -276,6 +307,14 @@ func scanTextPlain(s string, max int) string {
 	return strings.TrimRightFunc(s, unicode.IsSpace)
 }
 
+func contactPeer(peer *chat.Account) *chat.Account {
+	if peer.LastName == "" {
+		peer.FirstName, peer.LastName =
+			bot.FirstLastName(peer.FirstName)
+	}
+	return peer
+}
+
 // channel := notify.Chat
 // contact := notify.User
 func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
@@ -309,8 +348,21 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 			recipientUserPSID,
 		)
 		// return err
-		c.Log.Err(err).Msg("MESSENGER: SEND")
+		c.Log.Err(err).Msg("messenger.sendMessage")
 		return nil
+	}
+
+	dialog := chat
+	platform := "facebook"
+	facebook := dialog.Page // MUST: sender
+	pageName := facebook.Name
+	instagram := facebook.Instagram
+	if instagram != nil {
+		platform = "instagram"
+		pageName = instagram.Name
+		if pageName == "" {
+			pageName = instagram.Username
+		}
 	}
 
 	// Prepare SendAPI Request
@@ -356,9 +408,8 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 			// newInlineboardFb(message.GetInline(), &reqBody.Message, message.Text);
 			// See https://developers.facebook.com/docs/messenger-platform/reference/buttons/quick-replies#quick_reply
 			var (
-				buttons   []*messenger.Button
-				replies   []*messenger.QuickReply
-				instagram = (chat.Page.IGSID() != "")
+				buttons []*messenger.Button
+				replies []*messenger.QuickReply
 			)
 			for _, row := range menu {
 				for _, src := range row.Button {
@@ -369,14 +420,14 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 					// Url     string
 					switch strings.ToLower(src.Type) {
 					case "email", "mail": // https://developers.facebook.com/docs/messenger-platform/send-messages/quick-replies#email
-						if instagram {
+						if instagram != nil {
 							continue
 						} // NOT Supported !
 						replies = append(replies, &messenger.QuickReply{
 							Type: "user_email",
 						})
 					case "phone", "contact": // https://developers.facebook.com/docs/messenger-platform/send-messages/quick-replies#phone
-						if instagram {
+						if instagram != nil {
 							continue
 						} // NOT Supported !
 						replies = append(replies, &messenger.QuickReply{
@@ -435,7 +486,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 			}
 
 			if len(buttons) != 0 {
-				if !instagram {
+				if instagram == nil {
 					// Facebook(!)
 					// (#100) Only one of the text, attachment, and dynamic_text fields can be specified
 					sendMessage.Text = "" // NULLify !
@@ -523,14 +574,67 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 
 	// case "left": // Someone left the conversation thread !
 
+	case "joined": // ACK: ChatService.JoinConversation()
+
+		peer := contactPeer(message.NewChatMembers[0])
+		updates := c.Gateway.Template
+		text, err := updates.MessageText("join", peer)
+		if err != nil {
+			c.Gateway.Log.Err(err).
+				Str("update", message.Type).
+				Msg(platform + ".updateChatMember")
+		}
+		// Template for update specified ?
+		if text == "" {
+			// IGNORE: message text is missing
+			return nil
+		}
+		// Send Text
+		sendMessage.Text = text
+
+	case "left": // ACK: ChatService.LeaveConversation()
+
+		peer := contactPeer(message.LeftChatMember)
+		updates := c.Gateway.Template
+		text, err := updates.MessageText("left", peer)
+		if err != nil {
+			c.Gateway.Log.Err(err).
+				Str("update", message.Type).
+				Msg(platform + ".updateLeftMember")
+		}
+		// Template for update specified ?
+		if text == "" {
+			// IGNORE: message text is missing
+			return nil
+		}
+		// Send Text
+		sendMessage.Text = text
+
+	// case "typing":
+	// case "upload":
+
+	// case "invite":
 	case "closed":
-		sendMessage.Text = message.GetText()
+
+		updates := c.Gateway.Template
+		text, err := updates.MessageText("close", nil)
+		if err != nil {
+			c.Gateway.Log.Err(err).
+				Str("update", message.Type).
+				Msg(platform + ".updateChatClose")
+		}
+		// Template for update specified ?
+		if text == "" {
+			// IGNORE: message text is missing
+			return nil
+		}
+		// Send Text
+		sendMessage.Text = text
 
 	default:
 		c.Log.Warn().
-			// Str("type", message.Type).
-			Str("error", "message: type="+message.Type+" not implemented yet").
-			Msg("MESSENGER: SEND")
+			Str("error", "send: content type="+message.Type+" not supported").
+			Msg(platform + ".sendMessage")
 		return nil
 	}
 
