@@ -105,9 +105,9 @@ func (p *Page) Authorize(token *PageToken) {
 // Deathorize Page's p .Accounts for specified .User PSID
 // If psid is an empty string - deauthorize Messenger Page at ALL !
 //
-// if page.Deauthorize("") {
-// 	// NOTE: page.IsAuthorized() == false
-// }
+//	if page.Deauthorize("") {
+//		// NOTE: page.IsAuthorized() == false
+//	}
 func (p *Page) Deauthorize(psid string) []*PageToken {
 
 	if psid == "" {
@@ -177,9 +177,16 @@ func (c *messengerPages) setPages(accounts *UserAccounts) []*Page {
 	c.mx.Lock()         // +RW
 	defer c.mx.Unlock() // -RW
 
-	// Uninstall .pages aceess, this user install before ...
+	// Uninstall .pages access, this accounts.User install before ...
 	for asid, that := range c.pages {
 		page = nil // NO MATCH !
+		// Facebook INDEX ?
+		if asid != that.ID {
+			// Instagram INDEX ! IGNORE (asid == that.IGSID())
+			// NOTE: Process MAIN Facebook Page ID INDEX only
+			// which will deal with its Instagram Page ID INDEX
+			continue
+		}
 		// for _, this := range accounts.Pages {
 		for n := 0; n < len(progress); n++ {
 			this := progress[n]
@@ -188,6 +195,7 @@ func (c *messengerPages) setPages(accounts *UserAccounts) []*Page {
 				page = this
 				// Update latest info !
 				that.Name = page.Name
+				// Deal with OPTIONAL related Instagram Page ID INDEX !
 				if IGSID := page.IGSID(); IGSID != "" { // NEW
 					if igsid := that.IGSID(); igsid != "" {
 						if igsid != IGSID {
