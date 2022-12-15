@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog"
@@ -1525,9 +1527,9 @@ func (s *chatService) WaitMessage(ctx context.Context, req *pb.WaitMessageReques
 }
 
 // CheckSession performs:
-// - Locate OR Create client contact
-// - Identify whether exists channel for
-//   requested chat-bot gateway profile.id
+//   - Locate OR Create client contact
+//   - Identify whether exists channel for
+//     requested chat-bot gateway profile.id
 func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequest, res *pb.CheckSessionResponse) error {
 
 	s.log.Trace().
@@ -2219,8 +2221,65 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			doc.Id = res.Id
 			doc.Url = res.Url // src.String()
 			doc.Size = res.Size
-			// doc.Mime = res.Mime
-			// doc.Name = res.Name // Normalized ABOVE !
+			// MIME: auto-detected while download ...
+			doc.Mime = res.Mime
+			// EXT: detect from MIME spec -if- missing
+			filename := filepath.Base(doc.Name)
+			filexten := filepath.Ext(filename)
+
+			filename = filename[0 : len(filename)-len(filexten)]
+			if mediaType := doc.Mime; mediaType != "" {
+				// Get file extension for MIME type
+				var ext []string
+				switch filexten {
+				default:
+					ext = []string{filexten}
+				case "", ".":
+					switch strings.ToLower(mediaType) {
+					case "application/octet-stream":
+						ext = []string{".bin"}
+					case "image/jpeg": // IMAGE
+						ext = []string{".jpg"}
+					case "audio/mpeg": // AUDIO
+						ext = []string{".mp3"}
+					case "audio/ogg": // VOICE
+						ext = []string{".ogg"}
+					default:
+						// Resolve for MIME type ...
+						ext, _ = mime.ExtensionsByType(mediaType)
+					}
+				}
+				// Split: mediatype[/subtype]
+				var subType string
+				if slash := strings.IndexByte(mediaType, '/'); slash > 0 {
+					subType = mediaType[slash+1:]
+					mediaType = mediaType[0:slash]
+				}
+				if len(ext) == 0 { // != 1 {
+					ext = strings.FieldsFunc(
+						subType,
+						func(c rune) bool {
+							return !unicode.IsLetter(c)
+						},
+					)
+					for n := len(ext) - 1; n >= 0; n-- {
+						if ext[n] != "" {
+							ext = []string{
+								"." + ext[n],
+							}
+							break
+						}
+					}
+				}
+				if n := len(ext); n != 0 {
+					filexten = ext[n-1] // last
+				}
+			}
+			if filexten != "" {
+				filename += filexten
+			}
+			// Populate unique filename
+			doc.Name = filename
 		}
 
 		// Fill .Document
@@ -2777,6 +2836,7 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 			chatFlowID,
 		)
 	}
+	// Resolve .conversationId -from- .originatorId -if- omitted
 	chatFlowID = chat.Channel.Chat.Invite
 
 	if chatFromID != "" && chat.ID != chatFromID {
@@ -2789,8 +2849,8 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 	}
 	chatFromID = chat.ID
 
-	originator := chat.Channel
-	conversation := chat.GetMember(chatFlowID)
+	originator := chat.Channel                 // Mostly: call-center operator (channelId)
+	conversation := chat.GetMember(chatFlowID) // MUST: schema@workflow (conversationId)
 
 	/*var userToID int64 = 72
 	if userToID != 0 {

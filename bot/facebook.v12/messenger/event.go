@@ -117,9 +117,19 @@ type Message struct {
 // 	Payload string `json:"payload"`
 // }
 
+// Story reference
+type Story struct {
+	// The Story ID.
+	ID string `json:"id"`
+	// CDN Media content URL.
+	URL string `json:"url"`
+}
+
 type ReplyTo struct {
 	// Reference to the message ID that this message is replying to
-	MessageID string `json:"mid"`
+	MessageID string `json:"mid,omitempty"`
+	// Instagram Story
+	Story *Story `json:"story,omitempty"`
 }
 
 // Referral payload is only provided when the user sends a message from Shops product detail page.

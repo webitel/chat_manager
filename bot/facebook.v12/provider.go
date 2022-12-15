@@ -46,8 +46,9 @@ const (
 	paramIGCommentText = "instagram.comment"
 	paramIGCommentLink = "instagram.comment.link"
 	// Story::mention(s)
-	paramStoryMentionText = "instagram.story.mention"
-	paramStoryMentionLink = "instagram.story.mention.link"
+	paramStoryMentionCDN = "instagram.story.cdn"
+	// paramStoryMentionText = "instagram.story.mention"
+	// paramStoryMentionLink = "instagram.story.mention.link"
 )
 
 func init() {
@@ -104,7 +105,7 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 	}
 	client.Timeout = time.Second * 15
 
-	const version = "v13.0"
+	const version = "v15.0" // "v13.0"
 
 	app := &Client{
 
@@ -191,7 +192,7 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 				err = app.pages.restore(data)
 			}
 			if err != nil {
-				app.Log.Err(err).Msg("MESSENGER: ACCOUNTS")
+				app.Log.Err(err).Msg("FACEBOOK: ACCOUNTS")
 			}
 		}
 		if s := metadata["ig"]; s != "" {
@@ -689,7 +690,7 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 		// TODO: Check for ?code=|error= OAuth 2.0 flow stage
 		if state, is := IsOAuthCallback(query); is {
 			switch state {
-			case "fb": // Messenger Pages
+			case "fb": // Facebook Pages
 				c.SetupMessengerPages(rsp, req)
 				return
 			case "ig": // Instagram Pages
@@ -767,7 +768,7 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			http.Error(rsp, "instagram: operation not supported", http.StatusBadRequest)
 			return // (400) Bad Request
 		}
-
+		// Tag: Facebook section ...
 		switch op := query.Get("pages"); op {
 		case "setup":
 
@@ -921,17 +922,18 @@ func (c *Client) SubscribeObjects(ctx context.Context, uri string) error {
 					// "messaging_handovers",
 					// "messaging_seen",
 				},
-				// },
-				// {
-				// 	Object: "permissions",
-				// 	Fields: []string{
-				// 		"connected",
-				// 		"pages_show_list",
-				// 		"pages_messaging",
-				// 		"pages_messaging_subscriptions",
-				// 		"pages_manage_metadata",
-				// 	},
-			}}
+			},
+			// {
+			// 	Object: "permissions",
+			// 	Fields: []string{
+			// 		"connected",
+			// 		"pages_show_list",
+			// 		"pages_messaging",
+			// 		"pages_messaging_subscriptions",
+			// 		"pages_manage_metadata",
+			// 	},
+			// },
+		}
 
 		res = struct {
 			graph.Success              // Embedded (Anonymous)

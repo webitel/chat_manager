@@ -537,11 +537,22 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 	// MARK As a reply TO message
 	replyTo := sentMsg.ReplyTo
 	if replyTo != nil {
-		bind := map[string]string{
-			// ChatID: MessageID
-			chatID: replyTo.MessageID,
+		// Variables binding
+		var vs map[string]string
+		if re := replyTo.MessageID; re != "" {
+			vs = map[string]string{
+				// ChatID: MessageID
+				chatID: re,
+			}
+		} else if re := replyTo.Story; re != nil {
+			// ReplyTo [Instagram] Story
+			vs = map[string]string{
+				// ChatID: MessageID
+				"story.id":  re.ID,
+				"story.url": re.URL,
+			}
 		}
-		sendMsg.ReplyToVariables = bind
+		sendMsg.ReplyToVariables = vs
 	}
 	// TODO: Separate each Attachment to individual internal message
 	for _, doc := range sentMsg.Attachments {
@@ -559,29 +570,38 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 					Msg("instagram.onStoryMention")
 				continue
 			}
-			mention := IGStoryMention{
-				ID: sentMsg.ID,
-				Mention: StoryMention{
-					Link: data.URL,
-				},
-			}
-			// Build Story permalink !
-			dialog, _ := channel.Properties.(*Chat)
-			account := dialog.Page // @mention[ed]
-			story, err := c.fetchStoryMention(
-				context.TODO(), account,
-				// sentMsg.ID, data.URL,
-				&mention,
-			)
-			if err != nil {
-				c.Gateway.Log.Err(err).
-					Msg("instagram.onStoryMention")
-				continue
-			}
+			// mention := IGStoryMention{
+			// 	ID: sentMsg.ID,
+			// 	Mention: StoryMention{
+			// 		Link: data.URL,
+			// 	},
+			// }
+			// // Build Story permalink !
+			// dialog, _ := channel.Properties.(*Chat)
+			// account := dialog.Page // @mention[ed]
+			// story, err := c.fetchStoryMention(
+			// 	context.TODO(), account,
+			// 	// sentMsg.ID, data.URL,
+			// 	&mention,
+			// )
+			// if err != nil {
+			// 	c.Gateway.Log.Warn().
+			// 		Str("error", "getMentionedStory: "+err.Error()).
+			// 		Msg("instagram.onStoryMention")
+			// 	// continue
+			// }
 			sendMsg.Text = "#story_mention"
-			doc.Type = strings.ToLower(story.MediaType)
-			props[paramStoryMentionText] = story.Caption
-			props[paramStoryMentionLink] = story.GetPermaLink()
+			// FIXME: How to GET mentioned Story permalink ?
+			doc.Type = "image"
+			// NOTE: doc.Type will be auto-detected and [re]defined
+			// while downloading on messages/storage service(s)
+			props[paramStoryMentionCDN] = data.URL
+			// if story != nil {
+			// 	doc.Type = strings.ToLower(story.MediaType)
+			// 	props[paramStoryMentionText] = story.Caption
+			// 	props[paramStoryMentionLink] = story.GetPermaLink()
+			// }
+			// props["knowledge_base"] = data.URL
 			fallthrough // send story @mention as an inbox media message
 
 		case "audio", "file", "video", "image":
