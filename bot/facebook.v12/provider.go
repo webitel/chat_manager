@@ -716,6 +716,10 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 					oauth2.SetAuthURLParam(
 						"display", "popup",
 					),
+					// https://developers.facebook.com/docs/facebook-login/guides/advanced/manual-flow#reaskperms
+					oauth2.SetAuthURLParam(
+						"auth_type", "rerequest",
+					),
 				)
 				return // (302) Found
 
@@ -777,6 +781,10 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 				messengerFacebookScope, "fb", // "facebook"
 				oauth2.SetAuthURLParam(
 					"display", "popup",
+				),
+				// https://developers.facebook.com/docs/facebook-login/guides/advanced/manual-flow#reaskperms
+				oauth2.SetAuthURLParam(
+					"auth_type", "rerequest",
 				),
 			)
 			return // (302) Found
@@ -1085,6 +1093,50 @@ func (c *Client) Close() error {
 	return nil
 }
 
+var (
+	//
+	facebookPageFields = []string{
+		// "standby",
+		"messages",
+		// "message_reads",
+		// "message_reactions",
+		// "messaging_referrals",
+		"messaging_postbacks",
+		// "messaging_handovers",
+		// "user_action",
+	}
+
+	instagramPageFields = []string{
+		// FAKE subscription field to be able
+		// to receive Instagram Business Account Inbox Messages
+		// update event notifications
+		"name",
+	}
+)
+
+func intersectFields(fields, known []string) (inner []string) {
+	if len(fields) == 0 || len(known) == 0 {
+		return // nil
+	}
+	var (
+		e, n = 0, len(fields)
+	)
+intersect:
+	for _, field := range known {
+		for e = 0; e < n && fields[e] != field; e++ {
+			// Lookup for known `field` in given `fields` set
+		}
+		if e < n {
+			if inner == nil {
+				inner = make([]string, 0, len(known)) // max
+			}
+			inner = append(inner, field)
+			continue intersect
+		}
+	}
+	return // inner
+}
+
 func (c *Client) MessengerPages(rsp http.ResponseWriter, req *http.Request) {
 
 	// TODO: Authorization Required
@@ -1143,7 +1195,10 @@ func (c *Client) MessengerPages(rsp http.ResponseWriter, req *http.Request) {
 		// item.Page.AccessToken = page.GetAccessToken()
 
 		item.Accounts = page.Accounts
-		item.SubscribedFields = page.SubscribedFields
+		// item.SubscribedFields = page.SubscribedFields
+		item.SubscribedFields = intersectFields(
+			page.SubscribedFields, facebookPageFields,
+		)
 
 		_ = enc.Encode(item)
 	}
@@ -1151,6 +1206,7 @@ func (c *Client) MessengerPages(rsp http.ResponseWriter, req *http.Request) {
 	_, _ = rsp.Write([]byte("]"))
 }
 
+// Subscribe Facebook Page(s)
 func (c *Client) SubscribePages(pageIds ...string) ([]*Page, error) {
 
 	// Find ALL requested page(s)...
@@ -1160,19 +1216,8 @@ func (c *Client) SubscribePages(pageIds ...string) ([]*Page, error) {
 		return nil, err
 	}
 
-	fields := []string{
-		// "standby",
-		"messages",
-		// "message_reads",
-		// "message_reactions",
-		// "messaging_referrals",
-		"messaging_postbacks",
-		// "messaging_handovers",
-		// "user_action",
-	}
-
 	// Do subscribe for page(s) webhook updates
-	err = c.subscribePages(pages, fields)
+	err = c.subscribePages(pages, facebookPageFields)
 
 	if err != nil {
 		return nil, err
@@ -1181,6 +1226,7 @@ func (c *Client) SubscribePages(pageIds ...string) ([]*Page, error) {
 	return pages, nil
 }
 
+// Unsubscribe Facebook Page(s)
 func (c *Client) UnsubscribePages(pageIds ...string) ([]*Page, error) {
 
 	// Find ALL requested page(s)...
@@ -1191,7 +1237,7 @@ func (c *Client) UnsubscribePages(pageIds ...string) ([]*Page, error) {
 	}
 
 	// Do subscribe for page(s) webhook updates
-	err = c.unsubscribePages(pages)
+	err = c.unsubscribePages(pages) //, facebookPageFields)
 
 	if err != nil {
 		return nil, err

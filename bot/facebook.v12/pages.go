@@ -179,7 +179,6 @@ func (c *messengerPages) setPages(accounts *UserAccounts) []*Page {
 
 	// Uninstall .pages access, this accounts.User install before ...
 	for asid, that := range c.pages {
-		page = nil // NO MATCH !
 		// Facebook INDEX ?
 		if asid != that.ID {
 			// Instagram INDEX ! IGNORE (asid == that.IGSID())
@@ -187,6 +186,7 @@ func (c *messengerPages) setPages(accounts *UserAccounts) []*Page {
 			// which will deal with its Instagram Page ID INDEX
 			continue
 		}
+		page = nil // NO MATCH !
 		// for _, this := range accounts.Pages {
 		for n := 0; n < len(progress); n++ {
 			this := progress[n]

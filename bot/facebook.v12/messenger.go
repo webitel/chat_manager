@@ -359,7 +359,7 @@ func (c *Client) subscribePages(pages []*Page, fields []string) error {
 
 	for i, page := range pages {
 		// [RE]Authorize Each Request
-		// form = c.requestForm(form, page.AccessToken)
+		form = c.requestForm(form, page.AccessToken)
 
 		req := &batch[i]
 		req.Method = http.MethodPost
@@ -471,6 +471,18 @@ func (c *Client) subscribePages(pages []*Page, fields []string) error {
 	return nil
 }
 
+// Uninstall Facebook App for all page(s) specified
+// Other words, unsubscribe Facebook App from the Page's webhook updates
+// https://developers.facebook.com/docs/graph-api/reference/page/subscribed_apps/#Deleting
+//
+// [TODO]: We need to wait for page's ALL active chat(s) to close, before doing this ...
+func (c *Client) unsubscribePages(pages []*Page) error {
+	// Need to be subscribed at least on ANY field(s)
+	// to be able to receive optional Instagram notification(s)
+	return c.subscribePages(pages, instagramPageFields) // ["name"]
+}
+
+/*
 // Uninstall Facebook App for all page(s) specified
 // Other words, unsubscribe Facebook App from the Page's webhook updates
 // https://developers.facebook.com/docs/graph-api/reference/page/subscribed_apps/#Deleting
@@ -636,3 +648,4 @@ func (c *Client) unsubscribePages(pages []*Page) error {
 
 	return nil
 }
+*/

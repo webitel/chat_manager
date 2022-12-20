@@ -121,9 +121,11 @@ func (c *Client) getInstagramPages(token *oauth2.Token) (*UserAccounts, error) {
 
 	// GET Each Page's subscription state !
 	err = c.getSubscribedFields(token, pages)
-	// if err == nil {
-	// 	err = c.subscribeInstagramPages(pages)
-	// }
+	if err == nil {
+		// Subscribe undelaying Facebook Page on ANY field(s)
+		// to be able to receive Instagram messages update(s)...
+		err = c.subscribeInstagramPages(pages)
+	}
 
 	if err != nil {
 		// Failed to GET or POST Page(s) subscribed_fields (subscription) state !
@@ -188,28 +190,48 @@ func (c *Client) addInstagramPages(accounts *UserAccounts) {
 }
 
 func (c *Client) subscribeInstagramPages(pages []*Page) error {
+	// DO NOT process subscribed page(s)
+	var (
+		page *Page
+		todo []*Page
+	)
+	for i := 0; i < len(pages); i++ {
+		if page = pages[i]; len(page.SubscribedFields) != 0 {
+			// DO NOT subscribe due to:
+			//
+			// Set Up Webhooks for Instagram
+			// Step 2: Enable Page Subscriptions
+			// Your app must enable Page subscriptions on the Page connected to the app user's account
+			// by sending a POST request to the Page Subscribed Apps edge and subscribing to any Page field.
+			//
+			// https://developers.facebook.com/docs/graph-api/webhooks/getting-started/webhooks-for-instagram#step-2--enable-page-subscriptions
+			if todo == nil {
+				todo = make([]*Page, 0, len(pages)-1)
+				todo = append(todo, pages[0:i]...)
+			}
+			continue // OMIT
+		}
+		if todo != nil {
+			todo = append(todo, page)
+		}
+	}
 
-	//
-	fields := []string{
-		// "standby",
-		"messages",
-		// "message_reads",
-		// "message_reactions",
-		// "messaging_referrals",
-		"messaging_postbacks",
-		// "messaging_handovers",
+	if todo != nil {
+		pages = todo
+	}
+
+	if len(pages) == 0 {
+		// NO Pages to Subscribe ! -OR-
+		// ALLready Subscribed at least on ANYone field(s)
+		return nil
 	}
 
 	// NOTE: Your app must enable Page subscriptions on the Page connected to the app user's account
 	// by sending a POST request to the Page Subscribed Apps edge and subscribing to ANY Page field.
 	// https://developers.facebook.com/docs/graph-api/webhooks/getting-started/webhooks-for-instagram#step-2--enable-page-subscriptions
-	// if c.instagramManageComments() {
-	// 	fields = append(fields,
-	// 		"feed",
-	// 		// "comments",
-	// 		// "mentions",
-	// 	)
-	// }
+	//
+	// (#100) The parameter subscribed_fields is required.
+	fields := instagramPageFields
 
 	// Do subscribe for page(s) webhook updates
 	err := c.subscribePages(pages, fields)
@@ -321,7 +343,8 @@ func (c *Client) GetInstagramPages(rsp http.ResponseWriter, req *http.Request) {
 		// item.Page.AccessToken = page.GetAccessToken()
 
 		item.Accounts = page.Accounts
-		item.SubscribedFields = page.SubscribedFields
+		// item.SubscribedFields = page.SubscribedFields
+		// // ["name", "messages", "messaging_postbacks"]
 
 		_ = enc.Encode(item)
 		n++ // Output: Count
