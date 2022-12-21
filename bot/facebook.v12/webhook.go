@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"path"
@@ -415,6 +417,52 @@ func (c *Client) GetChannel(ctx context.Context, userPSID, pageASID string) (*bo
 	return channel, nil
 }
 
+func (c *Client) mediaHead(media *chat.File) error {
+
+	const method = http.MethodHead // HEAD
+	req, err := http.NewRequestWithContext(
+		context.TODO(), method,
+		media.GetUrl(), nil,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	res, err := c.Client.Do(req)
+
+	if err != nil {
+		return err
+	}
+	// defer res.Body.Close()
+	res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("%s %d %s",
+			method, res.StatusCode, res.Status,
+		)
+	}
+
+	var (
+		mediaType string
+		header    = res.Header
+	)
+	mediaType, _, err = mime.ParseMediaType(
+		header.Get("Content-Type"),
+	)
+	if err != nil {
+		return err
+	}
+	if mediaType != "" {
+		media.Mime = mediaType
+	}
+	if n := res.ContentLength; n > 0 {
+		media.Size = n
+	}
+
+	return nil
+}
+
 // https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/messages
 func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 
@@ -590,12 +638,28 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 			// 		Msg("instagram.onStoryMention")
 			// 	// continue
 			// }
+			sendMsg.Type = "file"
 			sendMsg.Text = "#story_mention"
 			// FIXME: How to GET mentioned Story permalink ?
-			doc.Type = "image"
-			// NOTE: doc.Type will be auto-detected and [re]defined
-			// while downloading on messages/storage service(s)
 			props[paramStoryMentionCDN] = data.URL
+			sendMsg.File = &chat.File{
+				Id:  -1, // DO NOT download VIA chat_manager service !
+				Url: data.URL,
+			}
+			// HEAD URL
+			// Mime: "image/jpeg",
+			// Name: "cdn_media_story.jpg",
+			// Size: 153403,``
+			err = c.mediaHead(sendMsg.File)
+			if err != nil {
+				c.Gateway.Log.Error().
+					Str("asid", pageASID).
+					Str(platform, pageName).
+					Str("error", "media: no definition; "+err.Error()).
+					Msg("instagram.onStoryMention")
+			}
+			break
+
 			// if story != nil {
 			// 	doc.Type = strings.ToLower(story.MediaType)
 			// 	props[paramStoryMentionText] = story.Caption

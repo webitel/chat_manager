@@ -117,7 +117,9 @@ func (e *eventRouter) RouteCloseConversation(channel *store.Channel, cause strin
 
 // RouteCloseConversationFromFlow same as RouteCloseConversation
 // FIXME: except of thing that `flow_manager` service has already
-//        closed all `webitel` (internal) related chat channels.
+//
+//	closed all `webitel` (internal) related chat channels.
+//
 // NOTE:  that is NOT the truth !  =(
 func (e *eventRouter) RouteCloseConversationFromFlow(conversationID *string, cause string) error {
 	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil)
@@ -331,6 +333,7 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 			if doc := src.File; doc != nil {
 				dst.File = &events.File{
 					ID:   doc.Id,
+					URL:  doc.Url,
 					Size: doc.Size,
 					Type: doc.Mime,
 					Name: doc.Name,
@@ -673,6 +676,7 @@ func (e *eventRouter) RouteMessage(sender *store.Channel, message *chat.Message)
 					if doc := message.File; doc != nil {
 						notify.File = &events.File{
 							ID:   doc.Id,
+							URL:  doc.Url,
 							Size: doc.Size,
 							Type: doc.Mime,
 							Name: doc.Name,
@@ -765,6 +769,7 @@ func (e *eventRouter) RouteMessageFromFlow(conversationID *string, message *chat
 					if doc := message.File; doc != nil {
 						notify.File = &events.File{
 							ID:   doc.Id,
+							URL:  doc.Url,
 							Size: doc.Size,
 							Type: doc.Mime,
 							Name: doc.Name,

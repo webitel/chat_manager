@@ -122,8 +122,9 @@ type MessageForwarded struct {
 
 type File struct {
 	ID   int64  `json:"id"`
-	Size int64  `json:"size"`
+	URL  string `json:"url,omitempty"`
 	Type string `json:"mime"`
+	Size int64  `json:"size"`
 	Name string `json:"name"`
 }
 

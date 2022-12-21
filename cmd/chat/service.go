@@ -2280,6 +2280,19 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			}
 			// Populate unique filename
 			doc.Name = filename
+
+		} else if doc.Id < 0 {
+
+			// DO NOT store/cache requested;
+			// JUST rely original CDN media URL
+
+			// doc.Url != "" // MUST
+			doc.Id = 0 // NONE
+
+			// TODO:
+			// HEAD|GET URL
+			// Content-Type: ?
+			// Content-Length: ?
 		}
 
 		// Fill .Document
@@ -2287,8 +2300,11 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		saveMessage.File = &pg.Document{
 			ID:   doc.Id,
 			Size: doc.Size,
-			Name: doc.Name,
 			Type: doc.Mime,
+			Name: doc.Name,
+		}
+		if doc.Id == 0 {
+			saveMessage.File.URL = doc.Url
 		}
 		// Fill .Caption
 		saveMessage.Text = caption
@@ -2459,8 +2475,9 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 				if doc := notify.File; doc != nil {
 					notice.File = &events.File{
 						ID:   doc.Id,
-						Size: doc.Size,
+						URL:  doc.Url,
 						Type: doc.Mime,
+						Size: doc.Size,
 						Name: doc.Name,
 					}
 				}

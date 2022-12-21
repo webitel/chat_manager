@@ -30,16 +30,16 @@ func (repo *sqlxRepository) CreateMessage(ctx context.Context, m *Message) error
 
 	err := repo.db.GetContext(
 		// context, result
-		ctx, &m.ID, 
+		ctx, &m.ID,
 		// statement query !
 		sentMessageQ,
 		// statement params ...
-		m.CreatedAt.UTC(),// $1 - SEND timestamp
-		m.ChannelID,      // $2 - FROM: sender channel_id
-		m.ConversationID, // $3 - TO: session conversation_id
-		m.Type,           // $4 - SEND: message event (default: text)
-		m.Text,           // $5 - SEND: message text
-		m.Variables,      // $6 - SEND: message vars
+		m.CreatedAt.UTC(), // $1 - SEND timestamp
+		m.ChannelID,       // $2 - FROM: sender channel_id
+		m.ConversationID,  // $3 - TO: session conversation_id
+		m.Type,            // $4 - SEND: message event (default: text)
+		m.Text,            // $5 - SEND: message text
+		m.Variables,       // $6 - SEND: message vars
 	)
 
 	if err != nil {
@@ -75,13 +75,13 @@ func (repo *sqlxRepository) CreateMessage(ctx context.Context, m *Message) error
 
 func (repo *sqlxRepository) GetMessages(ctx context.Context, id int64, size, page int32, fields, sort []string, domainID int64, conversationID string) ([]*Message, error) {
 	result := []*Message{}
-	fieldsStr, whereStr, sortStr, limitStr := 
+	fieldsStr, whereStr, sortStr, limitStr :=
 		"m.id, m.channel_id, m.conversation_id, m.text, m.created_at, m.updated_at, m.type, m.variables", //, "+
 		//  "c.user_id, c.type as user_type",
 		"where c.domain_id=$1 and m.conversation_id=$2",
 		"order by created_at desc",
 		""
-	
+
 	if size == 0 {
 		size = 15
 	}
@@ -107,8 +107,7 @@ func (repo *sqlxRepository) GetLastMessage(conversationID string) (*Message, err
 // $4 - SEND: message event (default: text)
 // $5 - SEND: message text
 // $6 - SEND: message vars
-const sentMessageQ = 
-`WITH sender AS (UPDATE chat.channel SET updated_at=$1 WHERE id=$2)
+const sentMessageQ = `WITH sender AS (UPDATE chat.channel SET updated_at=$1 WHERE id=$2)
 , latest AS (UPDATE chat.conversation SET updated_at=$1 WHERE id=$3)
 INSERT INTO chat.message (
   created_at, updated_at, channel_id, conversation_id, type, text, variables
@@ -116,13 +115,10 @@ INSERT INTO chat.message (
   $1, NULL, $2, $3, $4, $5, $6
 ) RETURNING id`
 
-
-
-
 func MessageRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, err error) {
 
 	param := func(args ...interface{}) (sql string) {
-		
+
 		if params == nil {
 			params = make([]interface{}, 0, len(args))
 		}
@@ -141,30 +137,31 @@ func MessageRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 		// }
 		return sql
 	}
-	
+
 	stmt = psql.Select().
-	From("chat.message AS m").
-	Columns(
-		
-		"m.id",
-		"coalesce(m.channel_id,m.conversation_id) AS channel_id", // senderChatID
-		"m.conversation_id", // targetChatID
+		From("chat.message AS m").
+		Columns(
 
-		"m.created_at",
-		"m.updated_at",
+			"m.id",
+			"coalesce(m.channel_id,m.conversation_id) AS channel_id", // senderChatID
+			"m.conversation_id", // targetChatID
 
-		"m.type",
-		"m.text",
-		"m.file_id",
-		"m.file_size",
-		"m.file_type",
-		"m.file_name",
+			"m.created_at",
+			"m.updated_at",
 
-		"m.reply_to",
-		"m.forward_id",
+			"m.type",
+			"m.text",
+			"m.file_id",
+			"m.file_url",
+			"m.file_size",
+			"m.file_type",
+			"m.file_name",
 
-		"m.variables",
-	)
+			"m.reply_to",
+			"m.forward_id",
+
+			"m.variables",
+		)
 
 	// region: apply filters
 
@@ -180,7 +177,7 @@ func MessageRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 
 	// 	// }
 	// 	id, err := uuid.Parse(s)
-		
+
 	// 	if err != nil {
 	// 		return nil, err // uuid.Must(!)
 	// 	} else {
@@ -199,7 +196,7 @@ func MessageRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 			// stmt = stmt.Where("c.id="+param(id))
 
 			req.Size = 1 // normalized !
-			stmt = stmt.Where("m.id="+param(q))
+			stmt = stmt.Where("m.id=" + param(q))
 
 		case []int64: // []OID
 			size := len(q)
@@ -210,8 +207,8 @@ func MessageRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 			var v pgtype.Int8Array
 			_ = v.Set(q)
 
-			stmt = stmt.Where("m.id = ANY("+param(&v)+")")
-			
+			stmt = stmt.Where("m.id = ANY(" + param(&v) + ")")
+
 		default:
 			// err = errors.InternalServerError(
 			// 	"chat.channel.search.id.filter",
@@ -225,7 +222,7 @@ func MessageRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 	if q, ok := req.Params["sender.id"]; ok && q != nil {
 		switch q := q.(type) {
 		case string: // UUID
-			stmt = stmt.Where("coalesce(m.channel_id,m.conversation_id)="+param(q))
+			stmt = stmt.Where("coalesce(m.channel_id,m.conversation_id)=" + param(q))
 		default:
 			err = errs.Errorf("search=message filter=from:chat.id convert=%#v", q)
 			return SelectStmt{}, nil, err
@@ -235,7 +232,7 @@ func MessageRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 	if q, ok := req.Params["chat.id"]; ok && q != nil {
 		switch q := q.(type) {
 		case string: // UUID
-			stmt = stmt.Where("m.conversation_id="+param(q))
+			stmt = stmt.Where("m.conversation_id=" + param(q))
 		default:
 			err = errs.Errorf("search=message filter=to:chat.id convert=%#v", q)
 			return SelectStmt{}, nil, err
@@ -259,7 +256,7 @@ func MessageRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 				err = errs.Errorf("search=message filter=props convert=%#v error=failed to encode props", q)
 				return SelectStmt{}, nil, err
 			}
-			stmt = stmt.Where("m.variables @> "+param(string(data))+"::JSONB")
+			stmt = stmt.Where("m.variables @> " + param(string(data)) + "::JSONB")
 		default:
 			err = errs.Errorf("search=message filter=props convert=%#v", q)
 			return SelectStmt{}, nil, err
@@ -269,7 +266,7 @@ func MessageRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 	if q, ok := req.Params["type"]; ok && q != nil {
 		switch q := q.(type) {
 		case string:
-			stmt = stmt.Where("m.type="+param(q))
+			stmt = stmt.Where("m.type=" + param(q))
 		default:
 			err = errs.Errorf("search=message filter=type convert=%#v", q)
 			return SelectStmt{}, nil, err
@@ -282,7 +279,7 @@ func MessageRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 		return SelectStmt{}, nil, err
 	}
 	// endregion
-	
+
 	// region: sort order
 	sort := req.Sort
 	if len(sort) == 0 {
@@ -312,10 +309,10 @@ func MessageRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 		stmt = stmt.OrderBy(ref + order)
 	}
 	// endregion
-	
+
 	// region: limit/offset
 	size, page := req.GetSize(), req.GetPage()
-	
+
 	if size > 0 {
 		// OFFSET (page-1)*size -- omit same-sized previous page(s) from result
 		if page > 1 {
@@ -335,7 +332,7 @@ func MessageRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 // which indicates that .`next` result page exist !
 func MessageList(rows *sql.Rows, limit int) ([]*Message, error) {
 
-	// 
+	//
 	if limit < 0 {
 		limit = 0
 	}
@@ -347,34 +344,49 @@ func MessageList(rows *sql.Rows, limit int) ([]*Message, error) {
 	}
 	// alloc projection map
 	var (
-
-		obj *Message // cursor: target for current tuple
-		doc *Document // 
+		obj  *Message                                // cursor: target for current tuple
+		doc  *Document                               //
 		plan = make([]func() interface{}, len(cols)) // , len(cols))
 	)
 
 	for c, col := range cols {
 		switch col {
-		
-		case "id":              plan[c] = func() interface{} { return &obj.ID }             // NOTNULL (!)
-		case "channel_id":      plan[c] = func() interface{} { return ScanString(&obj.ChannelID) }      // NULL: *sql.NullString{}
-		case "conversation_id": plan[c] = func() interface{} { return &obj.ConversationID } // NOTNULL (!)
 
-		case "created_at":      plan[c] = func() interface{} { return ScanDatetime(&obj.CreatedAt) } // NOTNULL (!)
-		case "updated_at":      plan[c] = func() interface{} { return ScanDatetime(&obj.UpdatedAt) } // NULL: **time.Time
+		case "id":
+			plan[c] = func() interface{} { return &obj.ID } // NOTNULL (!)
+		case "channel_id":
+			plan[c] = func() interface{} { return ScanString(&obj.ChannelID) } // NULL: *sql.NullString{}
+		case "conversation_id":
+			plan[c] = func() interface{} { return &obj.ConversationID } // NOTNULL (!)
 
-		case "type":            plan[c] = func() interface{} { return &obj.Type } // NOTNULL (!)
-		case "text":            plan[c] = func() interface{} { return ScanString(&obj.Text) } // NULL: *sql.NullString
-		case "file_id":         plan[c] = func() interface{} { return ScanInteger(&doc.ID) }
-		case "file_size":       plan[c] = func() interface{} { return ScanInteger(&doc.Size) }
-		case "file_type":       plan[c] = func() interface{} { return ScanString(&doc.Type) }
-		case "file_name":       plan[c] = func() interface{} { return ScanString(&doc.Name) }
+		case "created_at":
+			plan[c] = func() interface{} { return ScanDatetime(&obj.CreatedAt) } // NOTNULL (!)
+		case "updated_at":
+			plan[c] = func() interface{} { return ScanDatetime(&obj.UpdatedAt) } // NULL: **time.Time
 
-		case "reply_to":        plan[c] = func() interface{} { return ScanInteger(&obj.ReplyToMessageID) }
-		case "forward_id":      plan[c] = func() interface{} { return ScanInteger(&obj.ForwardFromMessageID) }
+		case "type":
+			plan[c] = func() interface{} { return &obj.Type } // NOTNULL (!)
+		case "text":
+			plan[c] = func() interface{} { return ScanString(&obj.Text) } // NULL: *sql.NullString
+		case "file_id":
+			plan[c] = func() interface{} { return ScanInteger(&doc.ID) }
+		case "file_url":
+			plan[c] = func() interface{} { return ScanString(&doc.URL) }
+		case "file_size":
+			plan[c] = func() interface{} { return ScanInteger(&doc.Size) }
+		case "file_type":
+			plan[c] = func() interface{} { return ScanString(&doc.Type) }
+		case "file_name":
+			plan[c] = func() interface{} { return ScanString(&doc.Name) }
+
+		case "reply_to":
+			plan[c] = func() interface{} { return ScanInteger(&obj.ReplyToMessageID) }
+		case "forward_id":
+			plan[c] = func() interface{} { return ScanInteger(&obj.ForwardFromMessageID) }
 
 		// case "variables":       proj[c] = func() interface{} { return ScanProperties(&obj.Variables) }
-		case "variables":       plan[c] = func() interface{} { return &obj.Variables }
+		case "variables":
+			plan[c] = func() interface{} { return &obj.Variables }
 
 		default:
 
@@ -383,11 +395,9 @@ func MessageList(rows *sql.Rows, limit int) ([]*Message, error) {
 		}
 	}
 
-
 	dst := make([]interface{}, len(cols)) // , len(cols))
 
 	var (
-
 		page []Message  // mempage
 		list []*Message // results
 	)
@@ -400,7 +410,7 @@ func MessageList(rows *sql.Rows, limit int) ([]*Message, error) {
 	}
 
 	// var (
-		
+
 	// 	err error
 	// 	row *Message
 	// )
@@ -410,7 +420,7 @@ func MessageList(rows *sql.Rows, limit int) ([]*Message, error) {
 		if 0 < limit && len(list) == limit {
 			// indicate next page exists !
 			// if rows.Next() {
-				list = append(list, nil)
+			list = append(list, nil)
 			// }
 			break
 		}
@@ -431,7 +441,7 @@ func MessageList(rows *sql.Rows, limit int) ([]*Message, error) {
 		}
 
 		err = rows.Scan(dst...)
-		
+
 		if err != nil {
 			break
 		}
@@ -491,7 +501,7 @@ func GetMessages(dcx sqlx.ExtContext, req *SearchOptions) ([]*Message, error) {
 	if err != nil {
 		return nil, err // 500
 	}
-	
+
 	// region: bind context transaction
 	// // dc := session
 	// tx, err := session.BeginTxx(ctx, nil) // +R
@@ -524,7 +534,7 @@ func GetMessages(dcx sqlx.ExtContext, req *SearchOptions) ([]*Message, error) {
 
 func (repo *sqlxRepository) GetMessage(ctx context.Context, oid int64, senderChatID, targetChatID string, searchProps map[string]string) (*Message, error) {
 
-	search := SearchOptions {
+	search := SearchOptions{
 		Operation: Operation{
 			ID:      "",
 			Time:    time.Now(),
@@ -532,7 +542,7 @@ func (repo *sqlxRepository) GetMessage(ctx context.Context, oid int64, senderCha
 		},
 		// prepare filter(s)
 		Params: make(map[string]interface{}),
-		Fields: []string{"id","*"}, // NOT applicable
+		Fields: []string{"id", "*"}, // NOT applicable
 		Sort:   []string{},
 		Page:   0,
 		Size:   1, // GET(!)
@@ -589,7 +599,7 @@ func (repo *sqlxRepository) GetMessage(ctx context.Context, oid int64, senderCha
 }
 
 /*func (repo *sqlxRepository) GetMessages(search *SearchOptions) (*Message, error) {
-	
+
 	// search := SearchOptions{
 	// 	// prepare filter(s)
 	// 	Params: map[string]interface{}{
@@ -644,7 +654,7 @@ func SaveMessage(ctx context.Context, dcx sqlx.ExtContext, msg *Message) (err er
 	if msg.UpdatedAt.IsZero() {
 
 		msg.ID = 0 // NOTE: generated by DB schema sequence
-		
+
 		if msg.CreatedAt.IsZero() {
 			msg.CreatedAt = app.CurrentTime() // time.Now().UTC()
 			// m.UpdatedAt.IsZero() // NOTE: NEW ! NOT an EDIT !
@@ -662,20 +672,21 @@ func SaveMessage(ctx context.Context, dcx sqlx.ExtContext, msg *Message) (err er
 			// statement query !
 			psqlMessageNewQ,
 			// statement params ...
-			msg.CreatedAt.UTC(),                   // $1  - SEND timestamp
-			NullString(msg.ChannelID),             // $2  - FROM: sender channel_id
-			msg.ConversationID,                    // $3  - TO: session conversation_id
+			msg.CreatedAt.UTC(),       // $1  - SEND timestamp
+			NullString(msg.ChannelID), // $2  - FROM: sender channel_id
+			msg.ConversationID,        // $3  - TO: session conversation_id
 			// ---------------------------------------------------------------------------
-			msg.Type,                              // $4  - NEW message content type: text or file
-			msg.Text,                              // $5  - NEW message text or document caption
-			NullInteger(doc.ID),                   // $6  - NEW message file document id
-			NullInteger(doc.Size),                 // $7  - NEW message file document size
-			NullString(doc.Type),                  // $8  - NEW message file document type
-			NullString(doc.Name),                  // $9  - NEW message file document name
+			msg.Type,              // $4  - NEW message content type: text or file
+			msg.Text,              // $5  - NEW message text or document caption
+			NullInteger(doc.ID),   // $6  - NEW message file document id
+			NullString(doc.URL),   // $7  - NEW message file document URL
+			NullInteger(doc.Size), // $8  - NEW message file document size
+			NullString(doc.Type),  // $9  - NEW message file document type
+			NullString(doc.Name),  // $10 - NEW message file document name
 			// ---------------------------------------------------------------------------
-			NullInteger(msg.ReplyToMessageID),     // $10 - NEW message is reply to some previous message id
-			NullInteger(msg.ForwardFromMessageID), // $11 - NEW message is forwarding from previous message id
-			NullMetadata(msg.Variables),           // $12 - NEW message extra properties
+			NullInteger(msg.ReplyToMessageID),     // $11 - NEW message is reply to some previous message id
+			NullInteger(msg.ForwardFromMessageID), // $12 - NEW message is forwarding from previous message id
+			NullMetadata(msg.Variables),           // $13 - NEW message extra properties
 			// NullMetadata(props),                   // $12 - NEW message extra properties
 			// msg.Variables,                         // $12 - NEW message extra properties
 		)
@@ -694,13 +705,13 @@ func SaveMessage(ctx context.Context, dcx sqlx.ExtContext, msg *Message) (err er
 	}
 
 	// NOTE: (!msg.UpdatedAt.IsZero()) EDIT !
-	// MUST: be manually set before calling this method 
+	// MUST: be manually set before calling this method
 	// to indicate EDIT operation to be performed !
 	if msg.ID == 0 {
 		panic("postgres: edit message <zero> id")
 	}
 	if msg.ChannelID == "" {
-	// if msg.ChannelID.String == "" {
+		// if msg.ChannelID.String == "" {
 		panic("postgres: edit message for <nil> channel id")
 	}
 	// msg.ChannelID.Valid = true
@@ -713,15 +724,16 @@ func SaveMessage(ctx context.Context, dcx sqlx.ExtContext, msg *Message) (err er
 		// statement query !
 		psqlMessageEditQ,
 		// statement params ...
-		msg.ID,                     // $1 - original message_id
-		NullString(msg.ChannelID),  // $2 - original sent from chat_id (author)
-		msg.UpdatedAt.UTC(),        // $3 - edit date timestamp, updated_at
+		msg.ID,                    // $1 - original message_id
+		NullString(msg.ChannelID), // $2 - original sent from chat_id (author)
+		msg.UpdatedAt.UTC(),       // $3 - edit date timestamp, updated_at
 		// message content changes
-		msg.Text,                   // $4 - EDIT: NEW message text or document caption
-		NullInteger(doc.ID),        // $5 - EDIT: NEW message file document id
-		NullInteger(doc.Size),      // $6 - EDIT: NEW message file document size
-		NullString(doc.Type),       // $7 - EDIT: NEW message file document MIME type
-		NullString(doc.Name),       // $8 - EDIT: NEW message file document name
+		msg.Text,              // $4 - EDIT: NEW message text or document caption
+		NullInteger(doc.ID),   // $5 - EDIT: NEW message file document id
+		NullString(doc.URL),   // $6 - EDIT: NEW message file document URL
+		NullInteger(doc.Size), // $7 - EDIT: NEW message file document size
+		NullString(doc.Type),  // $8 - EDIT: NEW message file document MIME type
+		NullString(doc.Name),  // $9 - EDIT: NEW message file document name
 	)
 
 	if err == nil && oid != msg.ID {
@@ -759,45 +771,44 @@ func (repo *sqlxRepository) BindMessage(ctx context.Context, oid int64, vars map
 // $4 - SENT: NEW message content type: text or file
 // $5 - SENT: NEW message text or document caption
 // $6 - SENT: NEW message file document id
-// $7 - SENT: NEW message file document size
-// $8 - SENT: NEW message file document MIME type
-// $9 - SENT: NEW message file document name
+// $7 - SENT: NEW message file document URL
+// $8 - SENT: NEW message file document size
+// $9 - SENT: NEW message file document MIME type
+// $10 - SENT: NEW message file document name
 //
-// $10 - SENT: NEW message as reply to previous message id
-// $11 - SENT: NEW message as forward from previous message id
-// $12 - SENT: NEW message extra properties
-//
-const psqlMessageNewQ = 
+// $11 - SENT: NEW message as reply to previous message id
+// $12 - SENT: NEW message as forward from previous message id
+// $13 - SENT: NEW message extra properties
+const psqlMessageNewQ =
 // Mark channel as 'just seen'; it's either chat@channel or chat@workflow
 `WITH seenUser AS (UPDATE chat.channel SET updated_at=$1 WHERE id=$2)
 , seenBot AS (UPDATE chat.conversation SET updated_at=$1 WHERE id=coalesce($2,$3))
 INSERT INTO chat.message (
   created_at, updated_at, channel_id, conversation_id,
-  type, text, file_id, file_size, file_type, file_name,
+  type, text, file_id, file_url, file_size, file_type, file_name,
   reply_to, forward_id, variables
 ) VALUES (
   $1, NULL, NULLIF($2,$3), $3,
-  $4, $5, $6, $7, $8, $9,
-  $10, $11, $12
+  $4, $5, $6, $7, $8, $9, $10,
+  $11, $12, $13
 ) RETURNING id`
 
 // Statement to edit historical (SENT) message
-// 
+//
 // $1 - EDIT: original message_id
 // $2 - FROM: original message sender chat_id
 //
 // $3 - EDIT: timestamp updated at
 // $4 - EDIT: NEW message text or document caption
 // $5 - EDIT: NEW message file document id
-// $6 - EDIT: NEW message file document size
-// $7 - EDIT: NEW message file document MIME type
-// $8 - EDIT: NEW message file document name
-//
-const psqlMessageEditQ = 
-`WITH seenUser AS (UPDATE chat.channel SET updated_at=$3 WHERE id=$2)
+// $6 - EDIT: NEW message file document URL
+// $7 - EDIT: NEW message file document size
+// $8 - EDIT: NEW message file document MIME type
+// $9 - EDIT: NEW message file document name
+const psqlMessageEditQ = `WITH seenUser AS (UPDATE chat.channel SET updated_at=$3 WHERE id=$2)
 , seenBot AS (UPDATE chat.conversation SET updated_at=$3 WHERE id=$2)
 UPDATE chat.message SET
-  updated_at = $3, text = $4, file_id = $5,
-  file_size = $6, file_type = $7, file_name = $8
+  updated_at = $3, text = $4, file_id = $5, file_url = $6,
+  file_size = $7, file_type = $8, file_name = $9
  WHERE id = $1 AND channel_id = $2
 RETURNING id` // to keep same results with Save() message operation

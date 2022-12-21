@@ -190,7 +190,7 @@ func transformConversationFromRepoModel(c *pg.Conversation) *pb.Conversation {
 			if doc := src.File; doc != nil {
 				dst.File = &pb.File{
 					Id:   doc.ID,
-					Url:  "",
+					Url:  doc.URL,
 					Size: doc.Size,
 					Mime: doc.Type,
 					Name: doc.Name,

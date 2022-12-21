@@ -190,8 +190,8 @@ func (repo *sqlxRepository) GetConversations(
 							m.updated_at,
 							m.type,
 							m.text,
-							(case when m.file_id isnull then null else
-								json_build_object('id',m.file_id,'size',m.file_size,'type',m.file_type,'name',m.file_name)
+							(case when (m.file_id isnull and nullif(m.file_url,'') isnull) then null else
+								json_build_object('id',m.file_id,'url',m.file_url,'size',m.file_size,'type',m.file_type,'name',m.file_name)
 							end) as file,
 							m.reply_to as reply_to_message_id,
 							m.forward_id as forward_from_message_id

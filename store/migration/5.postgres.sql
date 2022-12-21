@@ -1,0 +1,1 @@
+ALTER TABLE chat.message ADD file_url text NULL;
