@@ -15,6 +15,7 @@ type Repository interface {
 	ClientRepository
 	InviteRepository
 	MessageRepository
+	DeleteMessages(ctx context.Context, mid ...int64) (n int64, err error)
 	CacheRepository
 	Store // v1
 	GetWebitelUserByID(ctx context.Context, id int64) (*WebitelUser, error)

@@ -524,6 +524,13 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 		}
 	}
 
+	// Facebook Message SENT Mapping !
+	sentMsg := event.Message
+	props := map[string]string{
+		// ChatID: MessageID
+		chatID: sentMsg.ID,
+	}
+
 	// update := bot.Update {
 	// 	Title:   channel.Title,
 	// 	Chat:    channel,
@@ -531,12 +538,27 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 	// 	Message: new(chat.Message),
 	// }
 	if message.IsDeleted {
-		c.Gateway.Log.Warn().
-			Str("asid", pageASID).
-			Str(platform, pageName).
-			Str("error", "ignore: message deletion not implemented yet").
-			Msg(platform + ".onMessage")
-		return nil // (200) OK
+		err = c.Gateway.DeleteMessage(
+			context.TODO(), &bot.Update{
+				Title: channel.Title,
+				Chat:  channel,
+				User:  &channel.Account,
+				Message: &chat.Message{
+					Id:        0,     // Internal MID: unknown;
+					Variables: props, // Lookup: on external binding(s)
+				},
+			},
+		)
+		if err != nil {
+			c.Gateway.Log.Err(err).
+				Str("asid", pageASID).
+				Str(platform, pageName).
+				Str("psid", userPSID).
+				Str("from", channel.Account.DisplayName()).
+				Msg(platform + ".onMessageDelete")
+		}
+		// return nil // (200) OK
+		return err
 	}
 
 	// Spread multiple attachments into separate internal messages ...
@@ -545,16 +567,9 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 		n = 1
 	}
 	messages := make([]chat.Message, 1, n)
-
-	sentMsg := event.Message
 	// sendMsg := update.Message
 	sendMsg := &messages[0]
 
-	// Facebook Message SENT Mapping !
-	props := map[string]string{
-		// ChatID: MessageID
-		chatID: sentMsg.ID,
-	}
 	// Facebook Chat Bindings ...
 	if channel.IsNew() {
 		// BIND Channel START properties !

@@ -11,6 +11,7 @@ import (
 
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/pkg/events"
+	"github.com/webitel/chat_manager/service/broker/rabbitmq"
 
 	gate "github.com/webitel/chat_manager/api/proto/bot"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
@@ -34,6 +35,7 @@ type Router interface {
 	RouteLeaveConversation(channel *store.Channel, conversationID *string, cause string) error
 	RouteMessage(channel *store.Channel, message *chat.Message) (bool, error)
 	RouteMessageFromFlow(conversationID *string, message *chat.Message) error
+	RouteMessageDeleted(dialog *app.Session, deleted *chat.HistoryMessage) error
 	SendInviteToWebitelUser(conversation *chat.Conversation, invite *store.Invite) error
 	SendDeclineInviteToWebitelUser(domainID *int64, conversationID *string, userID *int64, inviteID *string, cause string) error
 	SendUpdateChannel(channel *store.Channel, updated_at int64) error
@@ -796,6 +798,90 @@ func (e *eventRouter) RouteMessageFromFlow(conversationID *string, message *chat
 				Str("type", item.Type).
 				Str("connection", item.Connection.String).
 				Msg("FAILED Sending message TO channel")
+		}
+	}
+
+	return nil
+}
+
+func (e *eventRouter) RouteMessageDeleted(dialog *app.Session, deleted *chat.HistoryMessage) error {
+
+	if dialog.IsClosed() {
+		// TODO: Nothing !
+		return nil
+	}
+
+	var (
+		err    error
+		data   []byte
+		date   = time.Now()
+		sender = dialog.GetMember(deleted.ChannelId)
+		// NOTE: Encode update event data once (!)
+		body = func() []byte {
+
+			if data != nil {
+				return data
+			}
+
+			update := events.MessageEvent{
+				BaseEvent: events.BaseEvent{
+					ConversationID: sender.Invite,
+					Timestamp:      date.UnixMilli(),
+				},
+				Message: events.Message{
+					ChannelID: sender.ID,
+					ID:        deleted.GetId(),
+					Type:      "text",
+					Text:      "[deleted]",
+				},
+			}
+
+			data, _ = json.Marshal(update)
+			return data
+		}
+	)
+
+	const event = events.MessageDeletedEventType
+	for _, member := range dialog.Members {
+		switch member.Channel {
+		case "websocket": // engine.user
+			{
+				// if sender.ID == member.ID {
+				// 	continue
+				// }
+
+				// err = e.sendEventToWebitelUser(
+				// 	sender, member, events.MessageDeletedEventType, body(),
+				// )
+
+				err = e.broker.Publish(
+					// routing key
+					fmt.Sprintf("event.%s.%d.%d",
+						event, member.DomainID, member.User.ID,
+					),
+					// delivery
+					&broker.Message{
+						Header: map[string]string{
+							"content_type": "text/json",
+						},
+						Body: body(),
+					},
+					rabbitmq.ContentType("text/json"),
+					rabbitmq.ContentEncoding("charset=utf-8"),
+				)
+				if err != nil {
+					// LOG
+				}
+			}
+
+			// default: // "telegram", "infobip-whatsapp"
+
+			// 	if sender.ID == member.ID {
+			// 		continue
+			// 	}
+
+			// 	err = e.sendMessageToBotUser(sender, member, message)
+
 		}
 	}
 

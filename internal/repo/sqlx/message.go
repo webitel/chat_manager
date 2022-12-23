@@ -598,6 +598,54 @@ func (repo *sqlxRepository) GetMessage(ctx context.Context, oid int64, senderCha
 	return obj, nil
 }
 
+func (repo *sqlxRepository) DeleteMessages(ctx context.Context, mid ...int64) (n int64, err error) {
+
+	var e int
+	for e = 0; e < len(mid) && mid[e] > 0; e++ {
+		// lookup zero identifier(s) spec
+	}
+	if e < len(mid) {
+		// Found ZERO (!)
+		req := make([]int64, e, len(mid)-1)
+		copy(req, mid[0:e])
+		for e++; e < len(mid); e++ {
+			if mid[e] > 0 {
+				req = append(req, mid[e])
+			}
+		}
+		mid = req
+	}
+
+	if len(mid) == 0 {
+		return 0, nil // Nothing !
+	}
+
+	params := make([]interface{}, 1)
+	query := "DELETE FROM chat.message WHERE message.id = "
+	if len(mid) == 1 {
+		params[0] = mid[0]
+		query += "$1"
+	} else {
+		var keys pgtype.Int8Array
+		_ = keys.Set(mid)
+		params[0] = &keys
+		query += "ANY($1)" // ::[]int8
+	}
+	query += ";"
+
+	res, re := repo.db.ExecContext(ctx, query, params...)
+	if err = re; err != nil {
+		return 0, err
+	}
+
+	n, err = res.RowsAffected()
+	if err != nil {
+		return // 0, err
+	}
+
+	return // n, nil
+}
+
 /*func (repo *sqlxRepository) GetMessages(search *SearchOptions) (*Message, error) {
 
 	// search := SearchOptions{

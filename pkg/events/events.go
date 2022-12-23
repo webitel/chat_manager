@@ -2,6 +2,7 @@ package events
 
 const (
 	MessageEventType            = "message"
+	MessageDeletedEventType     = "message_deleted"
 	CloseConversationEventType  = "close_conversation"
 	JoinConversationEventType   = "join_conversation"
 	LeaveConversationEventType  = "leave_conversation"

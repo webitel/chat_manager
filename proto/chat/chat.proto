@@ -21,6 +21,8 @@ service ChatService {
   rpc InviteToConversation(InviteToConversationRequest) returns (InviteToConversationResponse) {}
   // DeclineInvitation declines chat invitation FROM user
   rpc DeclineInvitation(DeclineInvitationRequest) returns (DeclineInvitationResponse) {}
+  // DeleteMessage by unique `id` or `variables` as external binding(s)
+  rpc DeleteMessage(DeleteMessageRequest) returns (HistoryMessage) {} // (DeleteMessageResponse) {}
   // CheckSession returns internal chat channel for external chat user
   rpc CheckSession(CheckSessionRequest) returns (CheckSessionResponse) {}
   rpc WaitMessage(WaitMessageRequest) returns (WaitMessageResponse) {}
@@ -241,6 +243,26 @@ message DeclineInvitationRequest {
 }
 
 message DeclineInvitationResponse {
+}
+
+message DeleteMessageRequest {
+  // Unique message id to lookup
+  int64 id = 1;
+  // Veriables to lookup message external binding(s)
+  map<string,string> variables = 2;
+  
+  // --- Authentication ---
+
+  // Sender chat unique id
+  string channel_id = 5;
+  // Dialog (Conversation) unique id
+  string conversation_id = 6;
+  // Sender user (Owner).
+  int64 auth_user_id = 7;
+}
+
+message DeleteMessageResponse {
+  repeated int64 id = 1;
 }
 
 message GetConversationsRequest {

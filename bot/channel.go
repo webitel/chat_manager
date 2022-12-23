@@ -401,6 +401,45 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 	return err
 }
 
+// SendMessage [FROM] .provider [TO] flow-bot@chat.server
+func (c *Channel) DeleteMessage(ctx context.Context, message *chat.Message) error {
+
+	// PERFORM resend to internal chat service provider
+	msg, err := c.Gateway.Internal.Client.DeleteMessage(
+		ctx, // operation cancellation context
+		&chat.DeleteMessageRequest{
+
+			AuthUserId: c.Account.ID, // senderFromID
+
+			ChannelId:      c.ChannelID, // senderChatID
+			ConversationId: c.SessionID, // targetChatID
+
+			Id:        message.Id, // message
+			Variables: message.Variables,
+			// EDIT(?) 0 != message.UpdatedAt
+		},
+		// callOptions ...
+		c.callOpts,
+	)
+
+	var event *zerolog.Event
+
+	if err == nil {
+		event = c.Log.Debug()
+		// TODO: Remove if clause !
+		// For backwards capability only !
+		if msg != nil {
+			// message.DeletedAt = time.Now()
+		}
+	} else {
+		event = c.Log.Error().Err(err)
+	}
+
+	event.Interface("deleted", msg).Msg("***** DEL *****")
+
+	return err
+}
+
 // call implements client.CallWrapper to keep tracking channel @workflow service node
 func (c *Channel) callWrap(next client.CallFunc) client.CallFunc {
 	return func(ctx context.Context, addr string, req client.Request, rsp interface{}, opts client.CallOptions) error {

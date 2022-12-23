@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"time"
 
 	pb "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/app"
@@ -224,6 +225,15 @@ func transformConversationsFromRepoModel(conversations []*pg.Conversation) []*pb
 	return result
 }
 
+var epoch = time.Date(1970, time.January, 01, 00, 00, 00, 000000000, time.UTC)
+
+func timestamp(date time.Time) int64 {
+	if date.IsZero() || !date.After(epoch) {
+		return 0
+	}
+	return date.UnixMilli()
+}
+
 func transformMessageFromRepoModel(message *pg.Message) *pb.HistoryMessage {
 	result := &pb.HistoryMessage{
 		Id:        message.ID,
@@ -232,9 +242,9 @@ func transformMessageFromRepoModel(message *pg.Message) *pb.HistoryMessage {
 		//FromUserId:   message.UserID.Int64,
 		//FromUserType: message.UserType.String,
 		Type:      message.Type,
-		Text:      message.Text, //.String,
-		CreatedAt: message.CreatedAt.Unix() * 1000,
-		UpdatedAt: message.UpdatedAt.Unix() * 1000,
+		Text:      message.Text,                 //.String,
+		CreatedAt: timestamp(message.CreatedAt), // message.CreatedAt.Unix() * 1000,
+		UpdatedAt: timestamp(message.UpdatedAt), // message.UpdatedAt.Unix() * 1000,
 	}
 	return result
 }

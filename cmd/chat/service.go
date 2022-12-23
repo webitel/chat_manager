@@ -41,6 +41,7 @@ type Service interface {
 	GetHistoryMessages(ctx context.Context, req *pb.GetHistoryMessagesRequest, res *pb.GetHistoryMessagesResponse) error
 
 	SendMessage(ctx context.Context, req *pb.SendMessageRequest, res *pb.SendMessageResponse) error
+	DeleteMessage(ctx context.Context, req *pb.DeleteMessageRequest, res *pb.HistoryMessage) error
 	StartConversation(ctx context.Context, req *pb.StartConversationRequest, res *pb.StartConversationResponse) error
 	CloseConversation(ctx context.Context, req *pb.CloseConversationRequest, res *pb.CloseConversationResponse) error
 	JoinConversation(ctx context.Context, req *pb.JoinConversationRequest, res *pb.JoinConversationResponse) error
@@ -297,6 +298,129 @@ func (s *chatService) SendMessage(
 	sentMessage := sendMessage
 	res.Message = sentMessage
 
+	return nil
+}
+
+func (s *chatService) DeleteMessage(
+	ctx context.Context,
+	req *pb.DeleteMessageRequest,
+	res *pb.HistoryMessage,
+) error {
+
+	var (
+		dialogChatID = req.GetConversationId() // TO: Dialog.ID
+		senderChatID = req.GetChannelId()      // FROM: Chat.ID
+		senderFromID = req.GetAuthUserId()     // FROM: User.ID
+	)
+
+	s.log.Debug().
+		Str("channel_id", senderChatID).
+		Str("conversation_id", dialogChatID).
+		Int64("auth_user_id", senderFromID).
+		Msg("DEL Message")
+
+	msg, err := s.repo.GetMessage(
+		ctx, req.Id,
+		senderChatID, dialogChatID,
+		req.GetVariables(),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	lookupMsg := func() (fmt string) {
+		if req.Id != 0 {
+			fmt += " mid:" + strconv.FormatInt(req.Id, 10) + ";"
+		}
+		if req.AuthUserId != 0 {
+			fmt += " user:" + strconv.FormatInt(req.AuthUserId, 10) + ";"
+		}
+		if req.ChannelId != "" {
+			fmt += " from:" + req.ChannelId + ";"
+		}
+		if req.ConversationId != "" {
+			fmt += " chat:" + req.ConversationId + ";"
+		}
+		for key, val := range req.Variables {
+			fmt += " " + key + ":" + val + ";"
+		}
+		return // fmt
+	}
+
+	if msg == nil || (req.Id != 0 && msg.ID != req.Id) {
+		return errors.BadRequest(
+			"chat.message.not_found",
+			"message: not found; %s",
+			lookupMsg(),
+		)
+	}
+
+	if dialogChatID != "" && msg.ConversationID != dialogChatID {
+		// sender dialog ID NOT MATCH !
+		return errors.BadRequest(
+			"chat.message.delete.forbidden",
+			"delete: invalid dialog; message:%s",
+			lookupMsg(),
+		)
+	}
+	dialogChatID = msg.ConversationID
+
+	if senderChatID != "" && msg.ChannelID != senderChatID {
+		// sender channel ID NOT MATCH !
+		return errors.BadRequest(
+			"chat.message.delete.forbidden",
+			"delete: sender required; message:%s",
+			lookupMsg(),
+		)
+	}
+	senderChatID = msg.ChannelID
+
+	// region: lookup target chat session by unique sender chat channel id
+	dialog, err := s.repo.GetSession(ctx, senderChatID) // by: sender
+
+	if err != nil {
+		// lookup operation error
+		return err
+	}
+
+	sender := dialog.GetMember(senderChatID)
+	if sender == nil {
+		return errors.BadRequest(
+			"chat.message.delete.forbidden",
+			"delete: sender not sound; message:%s",
+			lookupMsg(),
+		)
+	}
+
+	if senderFromID != 0 && sender.User.ID != senderFromID {
+		return errors.BadRequest(
+			"chat.message.delete.forbidden",
+			"delete: sender required; message:%s",
+			lookupMsg(),
+		)
+	}
+	// Sender(Owner): APPROVED !
+	req.Id = msg.ID // Disclose mid= in error(s) from now on ...
+	n, err := s.repo.DeleteMessages(ctx, msg.ID)
+	if err == nil && n != 1 {
+		err = errors.InternalServerError(
+			"chat.message.delete.none",
+			"message: none; message:%s",
+			lookupMsg(),
+		)
+	}
+	if err != nil {
+		return err
+	}
+
+	// TODO: Notify ALL dialog's members ...
+	deleted := transformMessageFromRepoModel(msg)
+	_ = s.eventRouter.RouteMessageDeleted(
+		dialog, deleted,
+	)
+
+	*(res) = *(deleted)
 	return nil
 }
 

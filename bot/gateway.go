@@ -627,6 +627,39 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 	return nil
 }
 
+func (c *Gateway) DeleteMessage(ctx context.Context, update *Update) error {
+	// sender: chat/user
+	channel := update.Chat
+	contact := update.User
+
+	if contact == nil {
+		panic("channel: chat user <nil> contact")
+	}
+
+	if contact.Channel == "" {
+		contact.Channel = channel.Provider()
+	}
+
+	// if channel.IsNew() {
+	// 	// MAY Delete historical message(s)
+	//  // so THAT(Sender) session will not be available
+	// 	// channel.IsNew() will be returned; its OK !
+	// }
+
+	// TODO: transform envelope due to event mime-type code name
+	deleteMsg := update.Message
+	// REQUIRE: .ID | .Variables
+
+	// PERFORM: delete !
+	err := channel.DeleteMessage(ctx, deleteMsg)
+
+	if err != nil {
+		return err // NACK(!)
+	}
+
+	return nil // ACK(+)
+}
+
 type zerologFunc func(event *zerolog.Event)
 
 func (fn zerologFunc) MarshalZerologObject(event *zerolog.Event) {
