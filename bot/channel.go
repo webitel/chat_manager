@@ -250,14 +250,16 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 	if metadata == nil {
 		metadata = make(map[string]string, 4)
 	}
-	// Flow Schema unique IDentifier
-	metadata["flow"] = strconv.FormatInt(c.Gateway.Bot.Flow.Id, 10)
+	// External User's (Contact) Internal IDentifier: DB(chat.client.id)
+	metadata["cid"] = strconv.FormatInt(c.Account.ID, 10)
 	// Chat channel's provider type
 	metadata["chat"] = c.Account.Channel
 	// External User's (Contact) unique IDentifier; Chat's type- specific !
 	metadata["user"] = c.Account.Contact
 	// External User's (Contact) Full Name
 	metadata["from"] = c.Account.DisplayName()
+	// Flow Schema unique IDentifier
+	metadata["flow"] = strconv.FormatInt(c.Gateway.Bot.Flow.Id, 10)
 
 	start := chat.StartConversationRequest{
 		DomainId: c.DomainID(),

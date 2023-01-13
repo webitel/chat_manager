@@ -1342,6 +1342,10 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			LastName:  contact.LastName,
 		}
 
+		if contact.UserID == sender.ID {
+			sendMessage.Contact.Id = channel.Account.ID // MARK: sender:owned
+		}
+
 		contactName := strings.TrimSpace(strings.Join(
 			[]string{contact.FirstName, contact.LastName}, " ",
 		))

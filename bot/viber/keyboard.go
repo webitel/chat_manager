@@ -296,19 +296,28 @@ func ButtonReply(tmpl *ButtonOptions, text, code string) *Button {
 	)
 }
 
+const (
+	// Buttons well-known Type(s)
+	btnShareContactType  = "share-phone"
+	btnShareLocationType = "location-picker"
+	// Postback well-known Code(s)
+	btnShareContactCode  = "#contact"
+	btnShareLocationCode = "#location"
+)
+
 func ButtonContact(tmpl *ButtonOptions, text string) *Button {
 	return tmpl.NewButton(
-		"share-phone",
+		btnShareContactType,
 		"📱"+coalesce(text, "Share Contact"),
-		"#contact",
+		btnShareContactCode,
 	)
 }
 
 func ButtonLocation(tmpl *ButtonOptions, text string) *Button {
 	return tmpl.NewButton(
-		"location-picker",
+		btnShareLocationType,
 		"📍"+coalesce(text, "Share Location"),
-		"#location",
+		btnShareLocationCode,
 	)
 }
 
