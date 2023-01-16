@@ -1171,7 +1171,8 @@ func (c *Client) onIGMediaComment(IGSID string, comment *IGComment) {
 	// IGID := instagram.ID
 	sendMsg := &chat.Message{
 		Type: "text",
-		Text: "#comment",
+		// Text: "#comment",
+		Text: "[@comment]: " + comment.Text + "\n" + commentLink,
 		Variables: map[string]string{
 			// Comment Data
 			paramIGCommentText: comment.Text,
@@ -1358,7 +1359,8 @@ func (c *Client) onIGMediaMention(IGSID string, mention *IGMention) {
 	// IGID := instagram.ID
 	sendMsg := &chat.Message{
 		Type: "text",
-		Text: "#mention",
+		// Text: "#mention",
+		Text: "[@mention]: " + mentionText + "\n" + mentionLink,
 		Variables: map[string]string{
 			// Mention Data
 			paramIGMentionText: mentionText,

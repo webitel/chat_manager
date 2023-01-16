@@ -653,26 +653,28 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 			// 		Msg("instagram.onStoryMention")
 			// 	// continue
 			// }
-			sendMsg.Type = "file"
-			sendMsg.Text = "#story_mention"
+			sendMsg.Type = "text"
+			sendMsg.Text = "[@story]: " + data.URL
+			// sendMsg.Type = "file"
+			// sendMsg.Text = "#story_mention"
 			// FIXME: How to GET mentioned Story permalink ?
 			props[paramStoryMentionCDN] = data.URL
-			sendMsg.File = &chat.File{
-				Id:  -1, // DO NOT download VIA chat_manager service !
-				Url: data.URL,
-			}
-			// HEAD URL
-			// Mime: "image/jpeg",
-			// Name: "cdn_media_story.jpg",
-			// Size: 153403,``
-			err = c.mediaHead(sendMsg.File)
-			if err != nil {
-				c.Gateway.Log.Error().
-					Str("asid", pageASID).
-					Str(platform, pageName).
-					Str("error", "media: no definition; "+err.Error()).
-					Msg("instagram.onStoryMention")
-			}
+			// sendMsg.File = &chat.File{
+			// 	Id:  -1, // DO NOT download VIA chat_manager service !
+			// 	Url: data.URL,
+			// }
+			// // HEAD URL
+			// // Mime: "image/jpeg",
+			// // Name: "cdn_media_story.jpg",
+			// // Size: 153403,``
+			// err = c.mediaHead(sendMsg.File)
+			// if err != nil {
+			// 	c.Gateway.Log.Error().
+			// 		Str("asid", pageASID).
+			// 		Str(platform, pageName).
+			// 		Str("error", "media: no definition; "+err.Error()).
+			// 		Msg("instagram.onStoryMention")
+			// }
 			break
 
 			// if story != nil {
