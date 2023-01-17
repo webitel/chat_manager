@@ -26,12 +26,25 @@
 ## **Support**
 
 ---
-|      Type      | Telegram | Messenger | WhatsApp (Infobip)
-|----------------|:--------:|:---------:|:---------:|
-| **`url`**      |    ✔️     |    ✔️     |    ✖     |
-| **`reply`**    |    ✔️     |    ✔️     |    ✔️     |
-| **`postback`** |    ✔️     |    ✔️     |    ✔️     |
-| **`location`** |    ✔️     |    ✖     |    ✖     |
-| **`phone`**    |    ✔️     |    ✔️     |    ✖     |
-| **`email`**    |    ✖     |    ✔️     |    ✖     |
-| **`clear`**    |    ✔️     |    ✖     |    ✖     |
+
+|                | Viber | Telegram | Facebook  | Instagram | WhatsApp  |
+|----------------|:-----:|:--------:|:---------:|:---------:|:---------:|
+| **`url`**      |   ✔️   |    ✔️     |     ✔️     |     ✔️     |     ✖     |
+| **`reply`**    |   ✔️   |    ✔️     |     ✔️     |     ✔️     |     ✔️     |
+| **`postback`** |   ✔️   |    ✔️     |     ✔️     |     ✔️     |     ✔️     |
+| **`location`** |   ✔️   |    ✔️     |     ✖     |     ✖     |     ✖     |
+| **`phone`**    |   ✔️   |    ✔️     |     ✔️     |     ✖     |     ✖     |
+| **`email`**    |   ✖   |    ✖     |     ✔️     |     ✖     |     ✖     |
+| **`clear`**    |   ✖   |    ✔️     |     ✖     |     ✖     |     ✖     |
+
+---
+
+# **BUTTON** Requirements.
+
+|   Provider(s)   | Text (Display) | Code (Postback) | Link(s)
+|-----------------|-------------|-------------|--------------
+| **`Viber`**     | The keyboard is divided into 6 columns. Each button has a width of 1-6 columns. The client will display the buttons according to the order they were sent in, and will fit as many buttons as possible into each row. Keyboards can contain up to 24 rows.</br></br>Max 250 characters. If the text is too long to display on the button it will be cropped and ended with “…” |  | https://developers.viber.com/docs/tools/keyboards/#keyboard-design
+| **`Telegram`**  | Label text on the button | Data to be sent in a callback query to the bot when button is pressed, 1-64 bytes | https://core.telegram.org/bots/api#inlinekeyboardbutton</br>https://core.telegram.org/bots/api#keyboardbutton
+| **`Facebook`**  | Button title. 20 character limit.</br>`.quick_replies[1~13]`</br>A maximum of 13 quick replies are supported.</br>`.attachment{type:button}.payload.buttons[1~3]`</br>Set of 1-3 buttons that appear as call-to-actions.</br>`.attachment{type:generic}.payload.elements[1].buttons[1~3]`</br>elements: A maximum of 1 element is supported.</br>buttons: A maximum of 3 buttons per element is supported. | 1000 character limit. | https://developers.facebook.com/docs/messenger-platform/send-messages/buttons</br>https://developers.facebook.com/docs/messenger-platform/reference/buttons
+| **`Instagram`** | A maximum of **13 quick replies** are supported and each quick reply allows up to 20 characters before being truncated. Quick replies only support plain text. When a quick reply is tapped, the buttons are dismissed. |             | https://developers.facebook.com/docs/messenger-platform/instagram/features/quick-replies</br>https://developers.facebook.com/docs/messenger-platform/instagram/features/generic-template
+| **`WhatsApp`**  | `.interactive{type:button}.action.buttons[1~3]`</br>You can have **up to 3 buttons**!</br>It cannot be an empty string and must be unique within the message. Emojis are supported, markdown is not. Maximum length: 20 characters.</br>`.interactive{type:list}.action.sections[1].rows[1~10]`</br>You can have a **total of 10 rows across your sections**!</br>Each row must have a title (Maximum length: 24 characters). | `.interactive{type:button}.action.buttons[1~3]`</br>Maximum length: 256 characters.</br>`.interactive{type:list}.action.sections[1].rows[1~10]`</br>Maximum length: 200 characters | https://developers.facebook.com/docs/whatsapp/cloud-api/guides/send-messages#interactive-messages</br>https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages#action-object</br>https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages#section-object

@@ -1,0 +1,9 @@
+# **MEDIA** Requirements.
+
+|   Provider(s)   | Upload Media | Links
+|-----------------|------------|--------------
+| **`Viber`**     | `image`: The URL must have a resource with a .jpeg, .png or .gif file extension as the last path segment. Max image size: 1MB on iOS, 3MB on Android.</br>`video`: Max size **26**Mb. Only MP4 and H264 are supported. The URL must have a resource with a .mp4 file extension as the last path segment.</br>`file`: Max size **50**Mb. URL should include the file extension. See forbidden file formats for unsupported file types | https://developers.viber.com/docs/api/rest-bot-api/#picture-message</br>https://developers.viber.com/docs/api/rest-bot-api/#video-message</br>https://developers.viber.com/docs/api/rest-bot-api/#file-message</br>https://developers.viber.com/docs/api/rest-bot-api/#forbiddenFileFormats
+| **`Telegram`**  | **10**Mb max size for photos, **50**Mb for other files. | https://core.telegram.org/bots/api#sending-files</br>https://core.telegram.org/bots/api#sendphoto</br>
+| **`Facebook`**  | **Send-API**: Maximum file size is **25**MB. | https://developers.facebook.com/docs/messenger-platform/reference/send-api</br>https://developers.facebook.com/docs/messenger-platform/send-messages#sending_attachments
+| **`Instagram`** | `image`: [**8**Mb] png, jpeg</br>`audio`: [**25**Mb] acc, m4a, wav, mp4</br>`video`: [**25**Mb] mp4, ogg, avi, mov, webm | https://developers.facebook.com/docs/messenger-platform/instagram/features/send-message#requirements
+| **`WhatsApp`**  | `image`: [**5**Mb] png, jpeg</br>`audio`: [**16**Mb] acc, mp4, mpeg, amr, ogg (opus codec)</br>`video`: [**16**Mb] mp4, 3gp</br>`file`: [**100**Mb] plain, pdf, ms-office... *like | https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media#supported-media-types
