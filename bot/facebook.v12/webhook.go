@@ -194,6 +194,24 @@ func (c *Client) WebhookEvent(rsp http.ResponseWriter, req *http.Request) {
 
 	// case "user":
 	// case "permissions":
+
+	// https://developers.facebook.com/docs/whatsapp/cloud-api/guides/set-up-webhooks
+	// https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components
+	case "whatsapp_business_account":
+
+		var batch []*webhooks.Entry
+		if err = json.Unmarshal(data, &batch); err != nil {
+			//
+			c.Log.Err(err).Msg("meta.onWhatsAppBusinessAccount")
+			// 200 OK / IGNORE REDELIVERY
+			rsp.WriteHeader(http.StatusOK)
+			return
+		}
+
+		for _, entry := range batch {
+			c.whatsAppOnUpdates(req.Context(), entry)
+		}
+
 	default:
 		c.Log.Warn().Str("object", event.Object).
 			Str("error", "update: object not supported").

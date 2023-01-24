@@ -24,5 +24,6 @@ type Error struct {
 
 // Error message
 func (err *Error) Error() string {
+	// return fmt.Sprintf("(%d) %s", err.Code, err.Message)
 	return err.Message
 }

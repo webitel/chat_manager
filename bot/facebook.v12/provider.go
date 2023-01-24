@@ -22,6 +22,7 @@ import (
 	graph "github.com/webitel/chat_manager/bot/facebook.v12/graph/v12.0"
 	"github.com/webitel/chat_manager/bot/facebook.v12/messenger"
 	"github.com/webitel/chat_manager/bot/facebook.v12/webhooks"
+	"github.com/webitel/chat_manager/bot/facebook.v12/whatsapp"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 )
@@ -53,7 +54,7 @@ const (
 
 func init() {
 	// Register Facebook Messenger Application provider
-	bot.Register(providerType, NewV2) // New)
+	bot.Register(providerType, New)
 }
 
 // Implementation
@@ -63,7 +64,7 @@ var (
 	_ bot.Provider = (*Client)(nil)
 )
 
-func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
+func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 
 	// agent: NEW config (to validate provider settings integrity)
 	// state: RUN config (current to grab internal state if needed)
@@ -95,24 +96,13 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 		return nil, fmt.Errorf("messenger: bot setup metadata is missing")
 	}
 
-	client := *http.DefaultClient
-	if client.Transport == nil {
-		client.Transport = http.DefaultTransport
-	}
-	client.Transport = &bot.TransportDump{
-		Transport: client.Transport,
-		WithBody:  true,
-	}
-	client.Timeout = time.Second * 15
-
 	const version = "v15.0" // "v13.0"
 
 	app := &Client{
 
 		Gateway: agent,
-		Client:  &client,
-		Version: version,
 
+		Version: version,
 		Config: oauth2.Config{
 			ClientID:     metadata["client_id"],
 			ClientSecret: metadata["client_secret"],
@@ -131,6 +121,26 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 		},
 	}
 
+	if app.ClientID == "" {
+		return nil, fmt.Errorf("messenger: missing client_id parameter")
+	}
+
+	if app.ClientSecret == "" {
+		return nil, fmt.Errorf("messenger: missing client_secret parameter")
+	}
+
+	client := *http.DefaultClient
+	if client.Transport == nil {
+		client.Transport = http.DefaultTransport
+	}
+	client.Transport = &bot.TransportDump{
+		Transport: client.Transport,
+		WithBody:  true,
+	}
+	client.Timeout = time.Second * 15
+	// HTTP Client Transport
+	app.Client = &client
+
 	creds := clientcredentials.Config{
 		ClientID:       app.Config.ClientID,
 		ClientSecret:   app.Config.ClientSecret,
@@ -143,25 +153,55 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 	app.creds = creds.TokenSource(context.WithValue(
 		context.Background(), oauth2.HTTPClient, &client,
 	))
+	// Verify Meta App client credentials
+	_, err = app.creds.Token()
+	if err != nil {
+		if ret, is := err.(*oauth2.RetrieveError); is {
+			var res struct {
+				*graph.Error `json:"error"`
+			}
+			_ = json.Unmarshal(ret.Body, &res)
+			if res.Error != nil {
+				// ret.Body = append(ret.Body[:0], []byte(res.Error.Message)...)
+				// err = res.Error
+				err = errors.BadGateway(
+					"chat.bot.messenger.oauth.error",
+					"MetaApp: "+res.Error.Message,
+				)
+			}
+		}
+		// Invalid credentials provided
+		return nil, err
+	}
 
 	if current, _ := state.(*Client); current != nil {
 
 		app.chatMx = current.chatMx
 		app.chats = current.chats
 
-		app.pages = current.pages
-		// app.facebook  = current.facebook
-		app.instagram = current.instagram
-
 		if app.Config.ClientSecret == current.Config.ClientSecret {
 			app.proofMx = current.proofMx
 			app.proofs = current.proofs
 		}
 
+		if app.proofs == nil {
+			app.proofMx = new(sync.Mutex)
+			app.proofs = make(map[string]string)
+		}
+
+		app.pages = current.pages
+		// app.facebook  = current.facebook
+		app.instagram = current.instagram
+		// WHATSAPP Business Manager
+		app.whatsApp = current.whatsApp
+
 	} else { // INIT
 
 		app.chatMx = new(sync.RWMutex)
 		app.chats = make(map[string]Chat)
+
+		app.proofMx = new(sync.Mutex)
+		app.proofs = make(map[string]string)
 
 		app.pages = &messengerPages{
 			pages: make(map[string]*Page),
@@ -205,11 +245,33 @@ func NewV2(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 				app.Log.Err(err).Msg("INSTAGRAM: ACCOUNTS")
 			}
 		}
-	}
+		// WHATSAPP: [Continue] Setup ...
+		whatsAppToken := metadata["whatsapp_token"]
+		if whatsAppToken != "" {
+			if app.whatsApp == nil || whatsAppToken != app.whatsApp.AccessToken {
+				// Verify `whatsapp_token` requirements
+				err = app.whatsAppVerifyToken(whatsAppToken)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		if app.whatsApp == nil {
+			// WHATSAPP: INIT
+			app.whatsApp = whatsapp.NewManager(
+				// Meta Business System User's generated token WITH whatsapp_business_management, whatsapp_business_messaging scope GRANTED !
+				whatsAppToken,
+				// https://developers.facebook.com/docs/graph-api/webhooks/getting-started/webhooks-for-whatsapp#available-subscription-fields
+				"messages",
+			)
+			// ERR: Log. Ignore invalid dataset ...
+			_ = app.whatsAppRestoreAccounts()
 
-	if app.proofs == nil {
-		app.proofMx = new(sync.Mutex)
-		app.proofs = make(map[string]string)
+		} else {
+			// NOTE: Manager is populated from current state
+			// Just setup NEWly provided WhatsApp access token !
+			app.whatsApp.AccessToken = whatsAppToken
+		}
 	}
 
 	var (
@@ -271,6 +333,7 @@ func scanTextPlain(s string, max int) string {
 		d, c int
 		rs   []byte
 		n    = max
+		// flags = make([]string, 0, 3)
 	)
 	for i, r := range s {
 
@@ -283,6 +346,30 @@ func scanTextPlain(s string, max int) string {
 		// case unicode.IsSpace(r):
 		// default:
 		// }
+		// flags = flags[0:0]
+		// if unicode.IsPrint(r) {
+		// 	flags = append(flags, "print")
+		// }
+		// if unicode.IsDigit(r) {
+		// 	flags = append(flags, "digit")
+		// }
+		// if unicode.IsLetter(r) {
+		// 	flags = append(flags, "letter")
+		// }
+		// if unicode.IsNumber(r) {
+		// 	flags = append(flags, "number")
+		// }
+		// if unicode.IsSymbol(r) {
+		// 	flags = append(flags, "symbol")
+		// }
+		// if unicode.IsPunct(r) {
+		// 	flags = append(flags, "punct")
+		// }
+		// if unicode.IsSpace(r) {
+		// 	flags = append(flags, "space")
+		// }
+		// fmt.Printf("[%c]: %s\n", r, strings.Join(flags, "|"))
+
 		if !unicode.IsSymbol(r) && unicode.IsPrint(r) && (n < max || !unicode.IsSpace(r)) {
 			if n--; n < 0 {
 				if d != 0 {
@@ -324,20 +411,40 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 		channel = notify.Chat
 		message = notify.Message
 		binding map[string]string //TODO
+		bind    = func(key, value string) {
+			if binding == nil {
+				binding = make(map[string]string)
+			}
+			binding[key] = value
+		}
 	)
 
-	bind := func(key, value string) {
-		if binding == nil {
-			binding = make(map[string]string)
+	// Resolve VIA internal Account
+	switch env := channel.Properties.(type) {
+	case *Chat: // [Instagram] Facebook
+		break
+	case *whatsapp.WhatsAppPhoneNumber: // WhatsApp
+		return c.whatsAppSendUpdate(ctx, notify)
+	case map[string]string: // Recover
+		if _, ok := env[paramWhatsAppNumberID]; ok {
+			return c.whatsAppSendUpdate(ctx, notify)
 		}
-		binding[key] = value
+		// ASID, fb := env[paramFacebookPage]
 	}
+
 	// Resolve Facebook conversation (User+Page)
 	// by channel.Account.Contact [P]age-[s]coped User [ID]
 	chatID := channel.ChatID // channel.Account.Contact
 	recipientUserPSID := chatID
 	chat, err := c.getExternalThread(channel)
 	if err != nil {
+		// re := errors.FromError(err)
+		// switch re.Id {
+		// case "bot.messenger.chat.page.missing":
+		// 	// Facebook Page authentication is missing
+		// 	// Guess: this MAY be the "whatsapp" channel
+		// 	return c.whatsAppSendUpdate(ctx, notify)
+		// } // default:
 		defer channel.Close()
 		return err
 	}
@@ -379,15 +486,6 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 	}
 
 	sendMessage := sendRequest.Message
-
-	coalesce := func(s ...string) string {
-		for _, v := range s {
-			if v = strings.TrimSpace(v); v != "" {
-				return v
-			}
-		}
-		return ""
-	}
 
 	// Transform from internal to external message structure
 	switch message.Type {
@@ -696,6 +794,9 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			case "ig": // Instagram Pages
 				c.SetupInstagramPages(rsp, req)
 				return
+			case "wa": // WhatsApp Business Account(s)
+				c.SetupWhatsAppBusinessAccounts(rsp, req)
+				return
 			default:
 				_ = writeCompleteOAuthHTML(rsp,
 					fmt.Errorf("state: invalid or missing"),
@@ -772,6 +873,67 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			http.Error(rsp, "instagram: operation not supported", http.StatusBadRequest)
 			return // (400) Bad Request
 		}
+
+		// Tab: WhatsApp section ...
+		if _, is := query["whatsapp"]; is {
+
+			switch op := query.Get("whatsapp"); op {
+			case "setup":
+
+				if c.whatsApp.AccessToken == "" {
+					http.Error(rsp, "WhatsApp: integration access token is required but missing", http.StatusBadRequest)
+					return // (400) Bad Request
+				}
+
+				c.PromptSetup(
+					rsp, req,
+					whatsAppOAuthScopes, "wa", // "whatsapp"
+					// oauth2.SetAuthURLParam(
+					// 	"response_type", "code,signed_request",
+					// ),
+					oauth2.SetAuthURLParam(
+						"display", "popup",
+					),
+					// https://developers.facebook.com/docs/facebook-login/guides/advanced/manual-flow#reaskperms
+					oauth2.SetAuthURLParam(
+						"auth_type", "rerequest",
+					),
+					// oauth2.SetAuthURLParam(
+					// 	// https://developers.facebook.com/docs/whatsapp/embedded-signup/pre-filled-data
+					// 	"extras", `{"feature":"whatsapp_embedded_signup","setup":{}}`,
+					// 	// "extras", `{"feature":"whatsapp_embedded_signup"}`, // FIXME: NOT Working =((
+					// ),
+					// oauth2.AccessTypeOffline, // NO REACTION ! NO refresh_token returning
+				)
+				return // (302) Found
+
+			case "remove":
+				// DELETE /{WABAID}/subscribed_apps
+				// delete(c.whatsApp.Businesses, id)
+				c.handleWhatsAppRemoveAccounts(rsp, req)
+				return // (200) OK ?
+
+			case "subscribe":
+				// POST /{WABAID}/subscribed_apps
+				c.handleWhatsAppSubscribeAccounts(rsp, req)
+				return // (200) OK ?
+
+			case "unsubscribe":
+				// DELETE /{WABAID}/subscribed_apps
+				c.handleWhatsAppUnsubscribeAccounts(rsp, req)
+				return // (200) OK ?
+
+			case "search", "":
+
+				c.handleWhatsAppSearchAccounts(rsp, req)
+				return // (200) OK ?
+
+			}
+
+			http.Error(rsp, "whatsapp: operation not supported", http.StatusBadRequest)
+			return // (400) Bad Request
+		}
+
 		// Tag: Facebook section ...
 		switch op := query.Get("pages"); op {
 		case "setup":
@@ -930,6 +1092,13 @@ func (c *Client) SubscribeObjects(ctx context.Context, uri string) error {
 					// "messaging_handovers",
 					// "messaging_seen",
 				},
+			},
+			{
+				Object: "whatsapp_business_account",
+				Fields: c.whatsApp.SubscribedFields,
+				// Fields: []string{
+				// 	"messages",
+				// },
 			},
 			// {
 			// 	Object: "permissions",

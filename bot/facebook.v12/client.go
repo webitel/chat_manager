@@ -19,6 +19,7 @@ import (
 	"github.com/webitel/chat_manager/bot"
 	graph "github.com/webitel/chat_manager/bot/facebook.v12/graph/v12.0"
 	"github.com/webitel/chat_manager/bot/facebook.v12/webhooks"
+	"github.com/webitel/chat_manager/bot/facebook.v12/whatsapp"
 	"golang.org/x/oauth2"
 )
 
@@ -26,6 +27,7 @@ import (
 type Client struct {
 	*bot.Gateway // internal
 	*http.Client // external
+	media        *http.Client
 	oauth2.Config
 	Version string // "v12.0"
 	webhook webhooks.WebHook
@@ -37,6 +39,7 @@ type Client struct {
 
 	pages     *messengerPages // App Messenger Product Config
 	instagram *messengerPages // App Messenger Product Config
+	whatsApp  *whatsapp.Manager
 
 	chatMx *sync.RWMutex   // guards c.chats
 	chats  map[string]Chat // map[userPSID]{.user,.page}
@@ -190,7 +193,13 @@ var completeOAuthHTML, _ = template.New("complete.html").Parse(
   </script>
 </head>
 <body>
-
+	<div>
+	  {{if . -}}
+	  <strong>ERR:</strong> {{html .Detail}}
+	  {{- else -}}
+	  <strong>OK</strong>
+	  {{- end}}
+	</div>
 </body>
 </html>`,
 )

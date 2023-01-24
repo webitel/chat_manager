@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package webitel.chat.bot;
+
+option go_package = "github.com/webitel/chat_manager/bot/facebook.v12/internal;proro";
+
+message WhatsApp {
+
+  message PhoneNumber {
+    string id = 1;
+    string phoneNumber = 2;
+    string verifiedName = 3;
+  }
+
+  message BusinessAccount {
+    string id = 1;
+    string name = 2;
+    repeated PhoneNumber phoneNumbers = 3;
+    bool subscribed = 4;
+  }
+
+  repeated BusinessAccount accounts = 1;
+}
+
+
+
