@@ -656,7 +656,7 @@ func (c *Client) unsubscribeWhatsAppBusinessAccounts(ctx context.Context, accoun
 	defer rsp.Body.Close()
 	// Decode Batch Result(s)
 	res := make([]*graph.BatchResult, 0, n)
-	err = json.NewDecoder(rsp.Body).Decode(&ret)
+	err = json.NewDecoder(rsp.Body).Decode(&res)
 	if err != nil {
 		return ret, err
 	}
