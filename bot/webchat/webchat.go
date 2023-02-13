@@ -93,6 +93,7 @@ func (pttn originWildcard) match(origin string) bool {
 
 // WebChatBot gateway provider
 type WebChatBot struct {
+	// Service Gateway
 	*bot.Gateway
 	// Websocket configuration options
 	Websocket websocket.Upgrader
@@ -114,11 +115,10 @@ type WebChatBot struct {
 	chat map[string]*webChat
 }
 
-// NewWebChatBot initialize new agent.Profile service provider
-// func NewWebChatBot(agent *bot.Gateway) (bot.Provider, error) {
-func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
+// New initialize new agent.Profile service provider
+func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 	// panic("not mplemented")
-	bot := &WebChatBot{
+	svhost := &WebChatBot{
 		Gateway: agent,
 		// Setup: defaults ...
 		Websocket: websocket.Upgrader{
@@ -162,10 +162,31 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 		// chat: make(map[string]*webChat, 4096), // (slots)
 	}
 
-	opts := &bot.Websocket
+	opts := &svhost.Websocket
 	profile := agent.GetMetadata()
 	// config := agent.Profile
 	// profile := config.GetProfile()
+
+	// Parse and validate message templates
+	var err error
+	agent.Template = bot.NewTemplate(provider)
+	// // Populate messenger-specific markdown-escape helper funcs
+	// agent.Template.Root().Funcs(
+	// 	markdown.TemplateFuncs,
+	// )
+	// Parse message templates
+	if err = agent.Template.FromProto(
+		agent.Bot.GetUpdates(),
+	); err == nil {
+		// Quick tests ! <nil> means default (well-known) test cases
+		err = agent.Template.Test(nil)
+	}
+	if err != nil {
+		return nil, errs.BadRequest(
+			"chat.bot.webchat.updates.invalid",
+			err.Error(),
+		)
+	}
 
 	if s := profile["handshake_timeout"]; s != "" {
 		tout, err := time.ParseDuration(s)
@@ -208,7 +229,7 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 				size = sizeMax
 			}
 			// SET
-			bot.MessageMaxSize = int64(size)
+			svhost.MessageMaxSize = int64(size)
 			opts.ReadBufferSize = size
 			opts.WriteBufferSize = size
 
@@ -236,7 +257,7 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 			// 	size = sizeMax
 			// }
 			// SET
-			bot.MediaMaxSize = int64(size)
+			svhost.MediaMaxSize = int64(size)
 
 		} else {
 			// FIXME: default ! 10 Mb.
@@ -262,7 +283,7 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 				tout = tmax
 			}
 			// SET
-			bot.WriteTimeout = tout
+			svhost.WriteTimeout = tout
 
 		} else {
 			// FIXME: assume no PING
@@ -288,7 +309,7 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 				tout = tmax
 			}
 			// SET
-			bot.ReadTimeout = tout
+			svhost.ReadTimeout = tout
 
 		} else {
 			// FIXME: assume no PING
@@ -337,25 +358,25 @@ func NewWebChatBot(agent *bot.Gateway, state bot.Provider) (bot.Provider, error)
 	}
 
 	if state, ok := state.(*WebChatBot); ok && state != nil {
-		bot.RWMutex = state.RWMutex
-		bot.chat = state.chat
+		svhost.RWMutex = state.RWMutex
+		svhost.chat = state.chat
 	} else {
-		bot.RWMutex = new(sync.RWMutex)
-		bot.chat = make(map[string]*webChat, 4096)
+		svhost.RWMutex = new(sync.RWMutex)
+		svhost.chat = make(map[string]*webChat, 4096)
 	}
 
 	// go bot.runtime(context.Background())
 
-	return bot, nil
+	return svhost, nil
 }
 
 const (
 	// Canonical WebChat Provider name
-	providerWebChat = "webchat"
+	provider = "webchat"
 )
 
 func (*WebChatBot) String() string {
-	return providerWebChat
+	return provider
 }
 
 // Register webhook callback URI
@@ -366,6 +387,14 @@ func (*WebChatBot) Register(ctx context.Context, uri string) error {
 // Deregister webhook callback URI
 func (*WebChatBot) Deregister(ctx context.Context) error {
 	return nil
+}
+
+func contactPeer(peer *chat.Account) *chat.Account {
+	if peer.LastName == "" {
+		peer.FirstName, peer.LastName =
+			bot.FirstLastName(peer.FirstName)
+	}
+	return peer
 }
 
 // SendNotify implements Sender interface.
@@ -395,11 +424,50 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 	}
 
 	switch message.Type {
-	case "text": // default
+	// general
+	case "text":
 	case "file":
+	// updates
 	case "left":
+
+		peer := contactPeer(message.LeftChatMember)
+		updates := c.Gateway.Template
+		text, err := updates.MessageText("left", peer)
+		if err != nil {
+			c.Gateway.Log.Err(err).
+				Str("update", message.Type).
+				Msg("webchat.onLeftMember")
+		}
+		// Template for update specified ?
+		if text == "" {
+			// IGNORE: message text is missing
+			return nil
+		}
+		// Send Text
+		message.Type = "text"
+		message.Text = text
+
 	case "joined":
+
+		peer := contactPeer(message.NewChatMembers[0])
+		updates := c.Gateway.Template
+		text, err := updates.MessageText("join", peer)
+		if err != nil {
+			c.Gateway.Log.Err(err).
+				Str("update", message.Type).
+				Msg("webchat.onChatMember")
+		}
+		// Template for update specified ?
+		if text == "" {
+			// IGNORE: message text is missing
+			return nil
+		}
+		// Send Text
+		message.Type = "text"
+		message.Text = text
+
 	case "closed":
+
 		defer func() {
 			// // c.Lock()   // +RW
 			// // delete(c.chat, chat.ChatID)
@@ -434,7 +502,28 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 			}
 		}()
 
+		updates := c.Gateway.Template
+		text, err := updates.MessageText("close", nil)
+		if err != nil {
+			c.Gateway.Log.Err(err).
+				Str("update", message.Type).
+				Msg("webchat.onChatClose")
+		}
+		// Template for update specified ?
+		if text == "" {
+			// IGNORE: message text is missing
+			return nil
+		}
+		// Send Text
+		message.Type = "text"
+		message.Text = text
+
 	default:
+
+		c.Gateway.Log.Warn().
+			Str("error", "message.type: unknown").
+			Msg("webchat.doSendMessage")
+		return nil // IGNORE
 	}
 
 	update := webChatResponse{
@@ -891,13 +980,12 @@ func (c *WebChatBot) uploadMultiMedia(rsp http.ResponseWriter, req *http.Request
 // recv := Update{/* decode from notice.Body */}
 // err = c.Gateway.Read(notice.Context(), recv)
 //
-// if err != nil {
-// 	http.Error(res, "Failed to deliver .Update notification", http.StatusBadGateway)
-// 	return // 502 Bad Gateway
-// }
+//	if err != nil {
+//		http.Error(res, "Failed to deliver .Update notification", http.StatusBadGateway)
+//		return // 502 Bad Gateway
+//	}
 //
 // reply.WriteHeader(http.StatusOK)
-//
 func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 
 	// CORS: Methods
@@ -1619,5 +1707,5 @@ func (c *webChat) broadcast(m interface{}) {
 
 func init() {
 	// Register "webchat" provider ...
-	bot.Register(providerWebChat, NewWebChatBot)
+	bot.Register(provider, New)
 }
