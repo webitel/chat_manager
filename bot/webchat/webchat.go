@@ -509,14 +509,36 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 				Str("update", message.Type).
 				Msg("webchat.onChatClose")
 		}
-		// Template for update specified ?
-		if text == "" {
-			// IGNORE: message text is missing
-			return nil
+		// // Template for update specified ?
+		// if text == "" {
+		// 	// IGNORE: message text is missing
+		// 	return nil
+		// }
+		// // Send Text
+		// message.Type = "text"
+		// message.Text = text
+
+		if text != "" {
+			// snapshot
+			sendMsg := *(message)
+
+			sendMsg.Type = "text"
+			sendMsg.Text = text
+
+			update := webChatResponse{
+				Message: &sendMsg,
+			}
+
+			room.send <- func() {
+				room.pushMessage(message)
+				room.broadcast(update)
+			}
+
 		}
-		// Send Text
-		message.Type = "text"
-		message.Text = text
+
+		// NOTE: PUSH the last message:{type:'closed'} due to Widget-UI is bound to it
+		// FIXME: Force Widget-UI to handle chat-closed by subscription on
+		// Websocket.onclose(event) of the underlying connection.
 
 	default:
 
