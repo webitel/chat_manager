@@ -467,7 +467,7 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		message.Text = text
 
 	case "closed":
-
+		// finaly: close underlying [w]eb[s]ocket connection
 		defer func() {
 			// // c.Lock()   // +RW
 			// // delete(c.chat, chat.ChatID)
@@ -509,36 +509,14 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 				Str("update", message.Type).
 				Msg("webchat.onChatClose")
 		}
-		// // Template for update specified ?
-		// if text == "" {
-		// 	// IGNORE: message text is missing
-		// 	return nil
-		// }
-		// // Send Text
-		// message.Type = "text"
-		// message.Text = text
-
-		if text != "" {
-			// snapshot
-			sendMsg := *(message)
-
-			sendMsg.Type = "text"
-			sendMsg.Text = text
-
-			update := webChatResponse{
-				Message: &sendMsg,
-			}
-
-			room.send <- func() {
-				room.pushMessage(message)
-				room.broadcast(update)
-			}
-
+		// Template for update specified ?
+		if text == "" {
+			// IGNORE: message text is missing
+			return nil
 		}
-
-		// NOTE: PUSH the last message:{type:'closed'} due to Widget-UI is bound to it
-		// FIXME: Force Widget-UI to handle chat-closed by subscription on
-		// Websocket.onclose(event) of the underlying connection.
+		// Send Text
+		message.Type = "text"
+		message.Text = text
 
 	default:
 
