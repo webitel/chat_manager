@@ -257,6 +257,8 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 			}
 		}
 	}
+	// Refresh due to whatsapp_token provided
+	refresh := (whatsAppToken != "")
 	if app.whatsApp == nil {
 		// WHATSAPP: INIT
 		app.whatsApp = whatsapp.NewManager(
@@ -265,13 +267,20 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 			// https://developers.facebook.com/docs/graph-api/webhooks/getting-started/webhooks-for-whatsapp#available-subscription-fields
 			"messages",
 		)
-		// ERR: Log. Ignore invalid dataset ...
-		_ = app.whatsAppRestoreAccounts()
-
 	} else {
 		// NOTE: Manager is populated from current state
+		refresh = (refresh && whatsAppToken != app.whatsApp.AccessToken)
 		// Just setup NEWly provided WhatsApp access token !
 		app.whatsApp.AccessToken = whatsAppToken
+	}
+	// Refresh needed ?
+	if refresh {
+		// Eliminate cached Accounts
+		_ = app.whatsApp.Deregister(
+			app.whatsApp.GetAccounts(),
+		)
+		// ERR: Log. Ignore invalid dataset ...
+		_ = app.whatsAppRestoreAccounts()
 	}
 
 	var (
