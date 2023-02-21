@@ -245,33 +245,33 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 				app.Log.Err(err).Msg("INSTAGRAM: ACCOUNTS")
 			}
 		}
-		// WHATSAPP: [Continue] Setup ...
-		whatsAppToken := metadata["whatsapp_token"]
-		if whatsAppToken != "" {
-			if app.whatsApp == nil || whatsAppToken != app.whatsApp.AccessToken {
-				// Verify `whatsapp_token` requirements
-				err = app.whatsAppVerifyToken(whatsAppToken)
-				if err != nil {
-					return nil, err
-				}
+	}
+	// WHATSAPP: [Continue] Setup ...
+	whatsAppToken := metadata["whatsapp_token"]
+	if whatsAppToken != "" {
+		if app.whatsApp == nil || whatsAppToken != app.whatsApp.AccessToken {
+			// Verify `whatsapp_token` requirements
+			err = app.whatsAppVerifyToken(whatsAppToken)
+			if err != nil {
+				return nil, err
 			}
 		}
-		if app.whatsApp == nil {
-			// WHATSAPP: INIT
-			app.whatsApp = whatsapp.NewManager(
-				// Meta Business System User's generated token WITH whatsapp_business_management, whatsapp_business_messaging scope GRANTED !
-				whatsAppToken,
-				// https://developers.facebook.com/docs/graph-api/webhooks/getting-started/webhooks-for-whatsapp#available-subscription-fields
-				"messages",
-			)
-			// ERR: Log. Ignore invalid dataset ...
-			_ = app.whatsAppRestoreAccounts()
+	}
+	if app.whatsApp == nil {
+		// WHATSAPP: INIT
+		app.whatsApp = whatsapp.NewManager(
+			// Meta Business System User's generated token WITH whatsapp_business_management, whatsapp_business_messaging scope GRANTED !
+			whatsAppToken,
+			// https://developers.facebook.com/docs/graph-api/webhooks/getting-started/webhooks-for-whatsapp#available-subscription-fields
+			"messages",
+		)
+		// ERR: Log. Ignore invalid dataset ...
+		_ = app.whatsAppRestoreAccounts()
 
-		} else {
-			// NOTE: Manager is populated from current state
-			// Just setup NEWly provided WhatsApp access token !
-			app.whatsApp.AccessToken = whatsAppToken
-		}
+	} else {
+		// NOTE: Manager is populated from current state
+		// Just setup NEWly provided WhatsApp access token !
+		app.whatsApp.AccessToken = whatsAppToken
 	}
 
 	var (
