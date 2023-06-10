@@ -820,6 +820,10 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 				LastName:  media.LastName,
 			}
 
+			if media.UserID == fromId {
+				sendMessage.Contact.Id = channel.Account.ID // MARK: sender:owned
+			}
+
 			contactName := strings.TrimSpace(strings.Join(
 				[]string{media.FirstName, media.LastName}, " ",
 			))

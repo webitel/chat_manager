@@ -180,7 +180,7 @@ type Message struct {
 	// – customer_identity_changed; A customer changed their profile information
 	// – customer; The WhatsApp ID for the customer prior to the update
 	//
-	System interface{} `json:"system,omitempty"`
+	System *SystemMsg `json:"system,omitempty"`
 
 	// The message that a business received from a customer is not a supported type.
 	Errors []interface{} `json:"errors,omitempty"`
@@ -383,4 +383,27 @@ type Postback struct {
 	Text string `json:"text"`
 	// The payload for a button set up by the business that a customer clicked as part of an interactive message
 	Data string `json:"payload"`
+}
+
+// System notification message.
+// Customer has updated their phone number or profile information.
+// This object is included in the messages object.
+type SystemMsg struct {
+	// Type of system update.
+	// Will be one of the following:
+	// - customer_changed_number – A customer changed their phone number.
+	// - customer_identity_changed – A customer changed their profile information.
+	Type string `json:"type"`
+	// Describes the change to the customer's identity or phone number.
+	Body string `json:"body,omitempty"`
+	// New WhatsApp ID for the customer when their phone number is updated.
+	// Available on webhook versions v12.0 and later.
+	WAID string `json:"wa_id"`
+	// New WhatsApp ID for the customer when their phone number is updated.
+	// Available on webhook versions v11.0 and earlier.
+	NewWAID string `json:"new_wa_id"`
+	// Hash for the identity fetched from server.
+	Identity string `json:"identity"`
+	// The WhatsApp ID for the customer prior to the update.
+	Customer string `json:"customer"`
 }

@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"path"
@@ -414,9 +415,129 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 					Int64("contact-id", chat.ClientId).
 					Logger(),
 			}
-			// .IsNew() == true
-			return channel, nil
+			// // .IsNew() == true
+			// return channel, nil
 		}
+	}
+
+	// Update: client.external_id ?
+	if channel != nil {
+		// Channel User Contact profile
+		customer := &channel.Account
+
+		newChatTitle := contact.DisplayName()
+		updateChatTitle := (newChatTitle != "noname" && newChatTitle != channel.Account.DisplayName())
+		// Does customer profile name changed ?
+		if updateChatTitle {
+
+			customer.FirstName = contact.FirstName
+			customer.LastName = contact.LastName
+			customer.Username = contact.Username
+
+			metadata, _ := channel.Properties.(map[string]string)
+			if metadata != nil {
+				// External User's (Contact) Full Name
+				metadata["from"] = customer.DisplayName() // newTitle
+			}
+			// Dialog active ?
+			if !channel.IsNew() {
+				var err error
+				channel.Title, err = c.Template.MessageText("title", customer)
+				if err != nil {
+					channel.Log.Warn().Err(err).Msg("BOT.onContactUpdate")
+					err = nil
+				}
+			}
+		}
+		// NEW: client.external_id
+		newChatId := contact.Contact
+		updateChatId := (newChatId != "" && chatID != "" && newChatId != chatID)
+		// Does customer profile ID changed ?
+		// NOTE: whatsapp.update.messages.system.type.customer_changed_number
+		if updateChatId {
+
+			if customer.Channel != "whatsapp" {
+				// panic("BOT.onContactUpdate: client.external_id changed; client.channel(" + customer.Channel + ") not supported")
+				channel.Log.Warn().
+					Str("error", customer.Channel+": no support; accept: whatsapp").
+					// Str("chat-id", chatID). // OLD client.external_id
+					// Int64("contact-id", customer.ID). // BOT.client.id
+					// Str("channel", c.GetProvider()). // BOT.provider(channel-type)
+					Str("new-contact", customer.Channel). // BOT.client.type
+					Str("new-chat-id", newChatId).        // NEW client.external_id
+					Str("new-title", channel.Title).
+					Msg("BOT.onContactUpdate")
+				return channel, nil
+			}
+
+			customer.Contact = newChatId
+			channel.ChatID = newChatId
+
+			metadata, _ := channel.Properties.(map[string]string)
+			if metadata != nil {
+				// External User's (Contact) unique IDentifier; Chat's type- specific !
+				metadata["user"] = customer.Contact
+			}
+
+			c.Lock() // +RW
+			// channel.ChatID = channel.Account.Contact
+			if e, ok := c.external[chatID]; ok {
+				if e == channel {
+					delete(c.external, chatID) // DEL: OLD
+				}
+				c.external[channel.ChatID] = channel // ADD: NEW
+			}
+			// c.internal[channel.Account.ID] = channel
+			c.Unlock() // -RW
+		}
+
+		if updateChatId || updateChatTitle {
+			// Update channel logger info
+			channel.Log = c.Log.With().
+				Str("chat-id", channel.ChatID).
+				Str("username", customer.DisplayName()). // Username).
+				// Str("session-id", c.SessionID). // UNKNOWN
+				Str("channel-id", channel.ChannelID).
+				Int64("contact-id", customer.ID).
+				Logger()
+
+			// Persist store.clients changes
+			contactName := customer.DisplayName()
+			if contactName == "noname" {
+				contactName = "" // DO NOT Update !
+			}
+			ok, err := c.Internal.store.UpdateContact(
+				ctx, &app.User{
+					ID:        customer.ID,      // resolved
+					Channel:   customer.Channel, // resolved
+					Contact:   customer.Contact, // resolved -or- updated
+					FirstName: contactName,      // resolved -or- updated
+					// LastName:  "",
+					// UserName:  "",
+					// Language:  "",
+				},
+			)
+
+			if err == nil && !ok {
+				err = fmt.Errorf("client: not found")
+			}
+
+			var log *zerolog.Event
+			if err == nil {
+				log = channel.Log.Info()
+			} else {
+				log = channel.Log.Warn().Err(err)
+				err = nil // LOG -and- IGNORE
+			}
+			log.
+				// Str("chat-id", chatID).             // NEW client.external_id
+				// Int64("contact-id", customer.ID).   // BOT.client.id
+				// Str("channel", c.GetProvider()).    // BOT.provider(channel-type)
+				Str("contact-type", customer.Channel). // BOT.client.type
+				Str("from-chat-id", chatID).           // OLD client.external_id
+				Msg("BOT.onContactUpdate")
+		}
+
 	}
 
 	return channel, nil
@@ -692,6 +813,12 @@ func (c *Gateway) Read(ctx context.Context, notify *Update) (err error) {
 	// sender: chat/user
 	channel := notify.Chat
 	contact := notify.User
+
+	// if c.Internal.OFF {
+	// 	c.Internal.Log.Warn().Str("error", "OFF: used to drain queue of obsolete messages").Msg("SERVICE")
+	// 	_ = channel.Close()
+	// 	return // Drain external provider's message queues ...
+	// }
 
 	if contact == nil {
 		panic("channel: chat user <nil> contact")

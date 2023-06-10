@@ -1674,6 +1674,7 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 			return err
 		}
 		res.ClientId = contact.ID
+		res.Account = &pb.Account{}
 		res.Exists = false
 		return nil
 	}
@@ -1695,11 +1696,27 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 	if len(channels) != 0 {
 		channel := channels[0]
 		res.ClientId = contact.ID
+		res.Account = &pb.Account{
+			Id:        contact.ID,
+			Channel:   channel.Type,
+			Contact:   contact.ExternalID.String,
+			FirstName: contact.Name.String,
+			LastName:  "",
+			Username:  "",
+		}
 		res.ChannelId = channel.ID
 		res.Exists = channel.ID != ""
 		res.Properties = channel.Variables
 	} else {
 		res.ClientId = contact.ID
+		res.Account = &pb.Account{
+			Id:        contact.ID,
+			Channel:   "", // unknown
+			Contact:   contact.ExternalID.String,
+			FirstName: contact.Name.String,
+			LastName:  "",
+			Username:  "",
+		}
 		res.Exists = false
 	}
 
@@ -2209,15 +2226,37 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 	case "contact":
 
 		contact := sendMessage.GetContact()
+		if contact == nil ||
+			contact.Channel == "" ||
+			contact.Contact == "" {
+			return nil, errors.BadRequest(
+				"chat.send.message.contact.missing",
+				"send: contact data is missing",
+			)
+		}
 
 		saveMessage.Type = "contact"
-		saveMessage.Text = contact.Contact
-		// FIXME: This may be NOT our client's contact !
-		// Client (human) can share some it's own contact with our bot !
-		err := c.repo.UpdateClientNumber(ctx, sender.User.ID, contact.Contact)
-		if err != nil {
-			c.log.Error().Err(err).Msg("Failed to store Client number")
-			return nil, err
+		saveMessage.Text = sendMessage.Text // contact.Contact
+		if saveMessage.Text == "" {
+			saveMessage.Text = contact.Contact
+		}
+		// FIXME: This MAY be NOT Contact Info of our Client (customer).
+		// Customers (people) MAY share ANY Contact(s) from their own Contact Books !
+		if contact.Id > 0 && sender.User != nil && contact.Id == sender.User.ID {
+			var err error
+			switch contact.Channel {
+			case sender.Channel: // client.external_id changed !
+				err = c.repo.UpdateClientChatID(ctx, sender.User.ID, contact.Contact)
+			case "phone": // client.phone_number shared !
+				err = c.repo.UpdateClientNumber(ctx, sender.User.ID, contact.Contact)
+			}
+			if err != nil {
+				c.log.Err(err).
+					Int64("client.id", sender.User.ID).
+					Str(contact.Channel, contact.Contact).
+					Msg("Failed to persist Contact update")
+				return nil, err
+			}
 		}
 
 	case "file":

@@ -292,7 +292,6 @@ func (c *Channel) callOpts(opts *client.CallOptions) {
 	}
 }
 
-//
 type chatFlowSelector struct {
 	*Channel
 }
@@ -851,7 +850,7 @@ func (c *Channel) BreakBridge(cause BreakBridgeCause) error {
 		// request
 		&bot.BreakBridgeRequest{
 			ConversationId: c.ChatID(),
-			Cause:          cause.String(),
+			Cause:          cause.String(), // strings.ToLower(),
 		},
 		// callOptions
 		c.callOpts,
@@ -1004,6 +1003,9 @@ func (c *Channel) TransferToUser(originator *app.Channel, userToID int64) error 
 	return nil
 }
 
+// c => Conversation Channel (Schema:BOT)
+// originator => Who(Operator!) started the XFER action (disconnected)
+// schemaToID => NEW schema to run
 func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) error {
 
 	chatFromID := originator.Chat.ID

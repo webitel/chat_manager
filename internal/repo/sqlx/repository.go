@@ -98,7 +98,8 @@ type ClientRepository interface {
 	GetClientByExternalID(ctx context.Context, externalID string) (*Client, error)
 	CreateClient(ctx context.Context, c *Client) error
 	// GetClients(limit, offset int) ([]*Client, error)
-	UpdateClientNumber(ctx context.Context, id int64, phone string) error
+	UpdateClientChatID(ctx context.Context, id int64, externalId string) error
+	UpdateClientNumber(ctx context.Context, id int64, phoneNumber string) error
 }
 
 type InviteRepository interface {

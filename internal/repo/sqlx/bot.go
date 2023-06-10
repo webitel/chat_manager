@@ -319,6 +319,57 @@ SELECT count(id)
 	return // n, nil
 }
 
+// UpdateContact "phone" -or- external_id
+func (s *pgsqlBotStore) UpdateContact(ctx context.Context, client *app.User) (ok bool, err error) {
+	var (
+		query  string
+		params = []any{
+			client.ID,
+			client.Contact,
+		}
+	)
+	switch client.Channel {
+	case "phone":
+		query = `UPDATE chat.client AS c SET "number"=coalesce(nullif($2,''),c."number") WHERE c.id=$1`
+	default:
+		query = `UPDATE chat.client AS c SET external_id=coalesce(nullif($2,''),c.external_id), "name"=coalesce(nullif($3,''),c."name") WHERE c.id=$1`
+		params = append(params, client.FirstName)
+	}
+	// BEGIN
+	dbo := s.primary() // WRITE
+	tx, re := dbo.BeginTx(ctx, nil)
+	if err = re; err != nil {
+		return // false, err
+	}
+	// END
+	defer func() {
+		if err == nil {
+			err = tx.Commit()
+		} else {
+			_ = tx.Rollback()
+		}
+	}()
+	var (
+		n   int64
+		res sql.Result
+	)
+	res, err = tx.ExecContext(ctx, query, params...)
+	if err == nil {
+		n, err = res.RowsAffected()
+		if err == nil && n > 1 {
+			err = errors.InternalServerError(
+				"chat.bot.store.error",
+				"postgres: client contact update; too much records affected",
+			)
+		}
+	}
+	if err != nil {
+		return // false, err
+	}
+	ok = (n == 1)
+	return // ok, nil
+}
+
 func nullChatUpdates(src *bot.ChatUpdates) *bot.ChatUpdates {
 	if src != nil {
 		for _, s := range []string{

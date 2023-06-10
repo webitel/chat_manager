@@ -16,6 +16,8 @@ type Store interface {
 	// AnalyticsActiveBotsCount returns count of all, currently enabled chat-gateways (bots)
 	// NOTE: Count NOT for given pdc domain only, BUT for his customer's all domain(s)
 	AnalyticsActiveBotsCount(ctx context.Context, pdc int64) (n int, err error)
+	// FIXME:
+	UpdateContact(ctx context.Context, client *app.User) (ok bool, err error)
 }
 
 // LocateBot fetches single result entry or returns an error

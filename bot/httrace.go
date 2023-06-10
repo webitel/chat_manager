@@ -44,7 +44,7 @@ func (c *TransportDump) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	// region: DUMP Response
-	dump, err = httputil.DumpResponse(resp, c.WithBody && resp.ContentLength > 0)
+	dump, err = httputil.DumpResponse(resp, c.WithBody) // && resp.ContentLength > 0)
 
 	tracef = stdlog.Tracef
 	if err != nil {

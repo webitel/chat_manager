@@ -25,6 +25,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/micro/micro/v3/service/client"
 	"github.com/micro/micro/v3/service/errors"
+	"github.com/rs/zerolog"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/bot"
@@ -1159,6 +1160,203 @@ URL[{{.Type}}]: {{.URL}}
 	)
 )
 
+func (c *Client) whatsAppOnStatuses(
+	ctx context.Context,
+	update *whatsapp.Update,
+	account *whatsapp.WhatsAppPhoneNumber,
+) {
+
+	// for _, status := range update.Statuses {
+	// 	// TODO:
+	// }
+}
+
+func (c *Client) whatsAppOnUnknown(
+	ctx context.Context,
+	update *whatsapp.Update,
+	account *whatsapp.WhatsAppPhoneNumber,
+	message *whatsapp.Message,
+) {
+
+	// Example:
+	// {
+	//   "object": "whatsapp_business_account",
+	//   "entry": [
+	//     {
+	//       "id": "112885955140116",
+	//       "changes": [
+	//         {
+	//           "value": {
+	//             "messaging_product": "whatsapp",
+	//             "metadata": {
+	//               "display_phone_number": "94742477523",
+	//               "phone_number_id": "109039232194741"
+	//             },
+	//             "contacts": [
+	//               {
+	//                 "profile": {
+	//                   "name": "Yoga"
+	//                 },
+	//                 "wa_id": "94742238908"
+	//               }
+	//             ],
+	//             "messages": [
+	//               {
+	//                 "from": "94742238908",
+	//                 "id": "wamid.HBgLOTQ3NDIyMzg5MDgVAgASGCBBQUNGQTZBRkJFNERFQjE1OTdEM0JBNzQ2NzNDRUQ2QQA=",
+	//                 "timestamp": "1685927475",
+	//                 "type": "interactive"
+	//               }
+	//             ],
+	//             "errors": [
+	//               {
+	//                 "code": 131000,
+	//                 "title": "Something went wrong",
+	//                 "message": "Something went wrong",
+	//                 "error_data": {
+	//                   "details": "Unsupported webhook payload"
+	//                 }
+	//               }
+	//             ]
+	//           },
+	//           "field": "messages"
+	//         }
+	//       ]
+	//     }
+	//   ]
+	// }
+
+	// TODO: show logs
+	var (
+		notice  *zerolog.Event
+		contact *whatsapp.Sender
+	)
+	for e, err := range update.Errors {
+
+		if err == nil {
+			continue
+		}
+
+		message = nil
+		contact = nil
+		notice = c.Log.Warn().Err(err)
+
+		if len(update.Messages) > e {
+			message = update.Messages[e]
+			if message != nil {
+				_ = notice.
+					Str("from-waid", message.From).
+					Str("msg-type", message.Type)
+
+				contact = update.GetContact(message.From)
+				if contact != nil {
+					_ = notice.
+						Str("from-name", contact.GetName())
+				}
+			}
+		}
+
+		if contact == nil && len(update.Contacts) > e {
+			if contact = update.Contacts[e]; contact != nil {
+				_ = notice.
+					Str("from-waid", contact.WAID).
+					Str("from-name", contact.GetName())
+			}
+		}
+
+		notice.Msg("WHATSAPP.onError")
+	}
+}
+
+func (c *Client) whatsAppOnSystemMsg(
+	ctx context.Context,
+	account *whatsapp.WhatsAppPhoneNumber, // TO: WABA
+	message *whatsapp.Message, // FROM: WABA
+) {
+
+	// Example:
+	// {
+	// 	"from": "94742181320",
+	// 	"id": "wamid.HBgLOTQ3NDIxODEzMjAVAgASGBJFRDk3MDRFMEM1MTNCQjA2NkMA",
+	// 	"timestamp": "1685957943",
+	// 	"system": {
+	// 		"body": "User A changed from \u200e94742181320 to 94774211984\u200e",
+	// 		"wa_id": "94774211984",
+	// 		"type": "user_changed_number"
+	// 	},
+	// 	"type": "system"
+	// }
+
+	sender := message.System
+	fromWAID := message.From // FROM_WA_ID
+	// system:customer_changed_number
+	chatWAID := sender.WAID // NEW_WA_ID; v12.0+
+	if chatWAID == "" {
+		chatWAID = sender.NewWAID // NEW_WA_ID; v11.0-
+	}
+	if chatWAID == "" {
+		// FIXME: How to handle that ?
+		// This is NOT {type:[customer|user]_changed_number}
+		// Guess, this is {type:[customer|user]_identity_changed}
+		// How NEW name will be provided ? Need more examples ...
+		return // IGNORE
+	}
+	// NEW Customer profile FOR UPDATE
+	customer := bot.Account{
+		ID:        0,          // unknown: resolve from store ?!
+		FirstName: "",         // unknown: resolve from store ?!
+		Channel:   "whatsapp", // update.Product,
+		Contact:   chatWAID,   // NEW_WA_ID: PHONE_NUMBER changed
+	}
+
+	// Update Customer profile
+	// input: will create chat.client -if- not exists yet
+	channel, err := c.Gateway.GetChannel(
+		ctx, fromWAID, &customer,
+	)
+
+	if err != nil {
+		// LOG: -ed by Gateway.GetChannel
+		return // OK: ignore
+	}
+
+	return // OK: TODO nothing more !
+
+	// Customer inactive ? NO dialog !
+	if channel.IsNew() {
+		return // OK: ignore
+	}
+
+	// output: merged
+	customer = channel.Account
+	// update: build
+	sendUpdate := bot.Update{
+		Title: channel.Title,
+		Chat:  channel,
+		User:  &channel.Account,
+		Message: &chat.Message{
+			Type: "contact",
+			// Text: "/update",
+			Text: sender.Body,
+			Contact: &chat.Account{
+				Id:        customer.ID,      // customer:owned
+				Channel:   customer.Channel, // "whatsapp"
+				Contact:   customer.Contact, // NEW_WA_ID
+				FirstName: customer.FirstName,
+				LastName:  customer.LastName,
+				Username:  customer.Username,
+			},
+		},
+	}
+
+	err = c.Gateway.Read(ctx, &sendUpdate)
+	if err != nil {
+		// Failed to persist customer update
+		return
+	}
+
+}
+
 func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update) {
 
 	var (
@@ -1186,8 +1384,56 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 			Msg("whatsApp.onMessages")
 		return // RECIPIENT: Business Account's Phone Number NOT FOUND !
 	}
+	// FIXME: Unknown
+	// An array of error objects describing the error(s).
+	if len(update.Errors) > 0 {
+		c.whatsAppOnUnknown(ctx, update, recipient, nil)
+		return // OK
+	}
+	// [update.Statuses] webhook is triggered when
+	// a message is sent or delivered to a customer
+	// or the customer reads the delivered message sent by a business
+	if len(update.Statuses) > 0 {
+		c.whatsAppOnStatuses(ctx, update, recipient)
+		return // OK
+	}
+
 	// BATCH: Process message(s)...
 	for _, message := range update.Messages {
+		switch message.Type {
+		case "text":
+			// message.Text
+		case "image":
+			// message.Image
+		case "audio":
+			// message.Audio
+		case "video":
+			// message.Video
+		case "button":
+			// message.Button
+		case "document":
+			// message.Document
+		case "interactive":
+			// message.Interactive
+		case "order":
+			// message.Order
+		case "sticker":
+			// message.Sticker
+		case "system": // – for customer number change messages
+			// message.System
+			c.whatsAppOnSystemMsg(
+				ctx, recipient, message,
+			)
+			continue // OK: handled !
+
+		// case "unknown":
+		default:
+			// FIXME: len(update.Errors) == 0
+			c.whatsAppOnUnknown(
+				ctx, update, recipient, message,
+			)
+			continue // OK: handled !
+		}
 		// GET Sender as WA Customer contact name
 		sender := update.GetContact(message.From)
 		// if sender == nil {
@@ -1415,8 +1661,11 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 				replyContext = message.Context
 				interactive  = message.Interactive
 			)
-			sendMsg.ReplyToVariables = map[string]string{
-				chatID: replyContext.MID,
+			// Context MAY NOT be provided
+			if replyContext != nil {
+				sendMsg.ReplyToVariables = map[string]string{
+					chatID: replyContext.MID,
+				}
 			}
 
 			switch interactive.Type {
@@ -1533,6 +1782,21 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 					Msg("whatsApp.onNewMessage")
 				continue // next: message(s)
 			}
+		}
+		// CAN Forward ?
+		if sendMsg.Type == "" {
+			// NO reaction for message content type or is malformed
+			c.Log.Warn().
+				Str("error", "NO reaction for the message content received -or- is malformed").
+				Str("to", recipient.PhoneNumber).   // WhatsApp [PhoneNumber] Display
+				Str("to:wa", recipient.ID).         // WhatsApp [PhoneNumber] ID
+				Str("to:ba", recipient.Account.ID). // WhatsApp [BusinessAccount] ID
+				Str("chat", update.Product).        // "whatsapp"
+				Str("from", contact.Contact).       // PHONE_NUMBER
+				Str("user", contact.DisplayName()).
+				Msg("whatsApp.onNewMessage")
+			err = nil
+			continue // IGNORE
 		}
 
 		sendUpd := bot.Update{

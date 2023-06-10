@@ -1,15 +1,26 @@
 package sqlxrepo
 
 import (
-	"fmt"
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 )
 
+func (repo *sqlxRepository) UpdateClientChatID(ctx context.Context, id int64, externalId string) error {
+	if externalId == "" {
+		return fmt.Errorf("clients: missing external_id for update")
+	}
+	_, err := repo.db.ExecContext(ctx,
+		`UPDATE chat.client AS c SET external_id=coalesce(nullif($2,''),c.external_id) WHERE c.id=$1`,
+		id, externalId,
+	)
+	return err
+}
+
 func (repo *sqlxRepository) UpdateClientNumber(ctx context.Context, id int64, number string) error {
 	_, err := repo.db.ExecContext(ctx,
-		`UPDATE chat.client AS c SET number=$2 WHERE c.id=$1`,
+		`UPDATE chat.client AS c SET "number"=coalesce(nullif($2,''),c."number") WHERE c.id=$1`,
 		id, number,
 	)
 	return err
@@ -42,16 +53,15 @@ func (repo *sqlxRepository) GetClientByExternalID(ctx context.Context, externalI
 }
 
 func (repo *sqlxRepository) CreateClient(ctx context.Context, c *Client) error {
-	
+
 	c.ID = 0 // FROM: db shema sequence
-	
+
 	if c.CreatedAt.IsZero() {
 		c.CreatedAt = time.Now()
 	}
 	c.CreatedAt = c.CreatedAt.UTC()
 
-	for _, text := range
-	[]*sql.NullString{
+	for _, text := range []*sql.NullString{
 		&c.Name,
 		&c.Number,
 		&c.ExternalID,
@@ -59,13 +69,13 @@ func (repo *sqlxRepository) CreateClient(ctx context.Context, c *Client) error {
 	} {
 		text.Valid = text.String != ""
 	}
-	
+
 	// PERFORM
 	err := repo.db.GetContext(ctx, &c.ID,
 		"INSERT INTO chat.client (name, number, created_at, external_id, first_name, last_name) "+
-		"VALUES ($1, $2, $3, $4, $5, $6) "+
-		"RETURNING id",
-		
+			"VALUES ($1, $2, $3, $4, $5, $6) "+
+			"RETURNING id",
+
 		c.Name,
 		c.Number,
 		c.CreatedAt,
@@ -73,7 +83,7 @@ func (repo *sqlxRepository) CreateClient(ctx context.Context, c *Client) error {
 		c.FirstName,
 		c.LastName,
 	)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			err = fmt.Errorf("INSERT: no result")
@@ -81,20 +91,18 @@ func (repo *sqlxRepository) CreateClient(ctx context.Context, c *Client) error {
 		repo.log.Error().Err(err).Msg("CreateClient")
 		return err
 	}
-	
+
 	repo.log.Info().
-	
 		Int64("oid", c.ID).
 		Str("name", c.Name.String).
 		Str("phone", c.Number.String).
 		Str("contact", c.ExternalID.String).
 		Str("first_name", c.FirstName.String).
 		Str("last_name", c.LastName.String).
-
 		Msg("CONTACT")
-	
+
 	return nil
-	
+
 	// stmt, err := repo.db.PrepareNamed(
 	// 	"INSERT INTO chat.client (name, number, created_at, external_id, first_name, last_name) "+
 	// 	"VALUES (:name, :number, :created_at, :external_id, :first_name, :last_name) "+
