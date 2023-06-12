@@ -1144,27 +1144,36 @@ func (s *chatService) leaveChat(
 		return nil // OK
 	}
 
-	// PARALLEL
+	// SYNC // NOT PARALLEL
 	await := make(chan error, 2)
 	for _, async := range []func(){
 		func() {
+
+			// await <- s.flowClient.BreakBridge(
+			// 	sender.ConversationID, breakBridge,
+			// )
+			err := s.flowClient.BreakBridge(
+				sender.ConversationID, breakBridge,
+			)
+			if re := errors.FromError(err); re != nil {
+				if re.Detail == "bridge not found" {
+					err = nil // Acceptable; Ignore !
+				}
+			}
+			await <- err // DONE: workflow.BreakBridge();
+			// },
+			// func() {
 			// omitted ? populate breakBridge cause
 			if leftCause == "" {
 				if breakBridge != flow.LeaveConversationCause {
 					leftCause = string(breakBridge)
 				}
 			}
-
 			// NOTIFY: All related CHAT member(s) !
 			await <- s.eventRouter.RouteLeaveConversation(
 				closed, &sender.ConversationID, leftCause,
 			)
-			// },
-			// func() {
-			// FIXME: why ?
-			await <- s.flowClient.BreakBridge(
-				sender.ConversationID, breakBridge,
-			)
+
 		},
 	} {
 		go async()
