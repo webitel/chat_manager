@@ -594,6 +594,8 @@ func (c *Channel) Start(message *chat.Message) error {
 		Variables: c.Variables, // message.GetVariables(),
 	}
 
+	c.setPending("", "*") // clear: wait.token; affects on XFER start NEW schema
+
 	// if message != nil {
 
 	// 	if message.File != nil{
