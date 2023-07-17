@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package webitel.chat.bot;
 
-option go_package = "github.com/webitel/chat_manager/bot/facebook.v12/internal;proro";
+option go_package = "github.com/webitel/chat_manager/bot/facebook/internal;proro";
 
 message Messenger {
     repeated Page pages = 1;

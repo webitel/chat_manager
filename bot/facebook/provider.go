@@ -19,10 +19,10 @@ import (
 	"github.com/micro/micro/v3/service/errors"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
-	graph "github.com/webitel/chat_manager/bot/facebook.v12/graph/v12.0"
-	"github.com/webitel/chat_manager/bot/facebook.v12/messenger"
-	"github.com/webitel/chat_manager/bot/facebook.v12/webhooks"
-	"github.com/webitel/chat_manager/bot/facebook.v12/whatsapp"
+	graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
+	"github.com/webitel/chat_manager/bot/facebook/messenger"
+	"github.com/webitel/chat_manager/bot/facebook/webhooks"
+	"github.com/webitel/chat_manager/bot/facebook/whatsapp"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 )
@@ -96,19 +96,29 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 		return nil, fmt.Errorf("messenger: bot setup metadata is missing")
 	}
 
-	const version = "v15.0" // "v13.0"
+	apiVersion, _ := metadata["version"]
+	if apiVersion != "" && !IsVersion(apiVersion) {
+		return nil, errors.BadRequest(
+			"chat.bot.messenger.version.invalid",
+			"( version: %s ) invalid syntax; default: %s",
+			apiVersion, Latest,
+		)
+	}
+	if apiVersion == "" {
+		apiVersion = Latest
+	}
 
 	app := &Client{
 
 		Gateway: agent,
 
-		Version: version,
+		Version: apiVersion,
 		Config: oauth2.Config{
 			ClientID:     metadata["client_id"],
 			ClientSecret: metadata["client_secret"],
 			Endpoint: oauth2.Endpoint{
-				AuthURL:   "https://www.facebook.com" + path.Join("/", version, "/dialog/oauth"),
-				TokenURL:  "https://graph.facebook.com" + path.Join("/", version, "/oauth/access_token"),
+				AuthURL:   "https://www.facebook.com" + path.Join("/", apiVersion, "/dialog/oauth"),
+				TokenURL:  "https://graph.facebook.com" + path.Join("/", apiVersion, "/oauth/access_token"),
 				AuthStyle: oauth2.AuthStyleInParams,
 			},
 			RedirectURL: agent.CallbackURL(),

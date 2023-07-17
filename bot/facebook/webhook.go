@@ -17,8 +17,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
-	"github.com/webitel/chat_manager/bot/facebook.v12/messenger"
-	"github.com/webitel/chat_manager/bot/facebook.v12/webhooks"
+	"github.com/webitel/chat_manager/bot/facebook/messenger"
+	"github.com/webitel/chat_manager/bot/facebook/webhooks"
 )
 
 // RandomBase64String of given n characters length

@@ -7,7 +7,7 @@ import (
 	"path"
 
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/webitel/chat_manager/bot/facebook.v12/messenger"
+	"github.com/webitel/chat_manager/bot/facebook/messenger"
 )
 
 func (c *Client) Send(from *Page, send *messenger.SendRequest) (mid string, err error) {

@@ -1,6 +1,6 @@
 package messenger
 
-import graph "github.com/webitel/chat_manager/bot/facebook.v12/graph/v12.0"
+import graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
 
 // https://developers.facebook.com/docs/messenger-platform/reference/send-api/#response
 type SendResponse struct {

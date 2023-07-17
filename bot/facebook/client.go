@@ -17,9 +17,9 @@ import (
 
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/bot"
-	graph "github.com/webitel/chat_manager/bot/facebook.v12/graph/v12.0"
-	"github.com/webitel/chat_manager/bot/facebook.v12/webhooks"
-	"github.com/webitel/chat_manager/bot/facebook.v12/whatsapp"
+	graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
+	"github.com/webitel/chat_manager/bot/facebook/webhooks"
+	"github.com/webitel/chat_manager/bot/facebook/whatsapp"
 	"golang.org/x/oauth2"
 )
 

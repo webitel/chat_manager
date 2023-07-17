@@ -2,6 +2,7 @@ package facebook
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,7 @@ import (
 	"path"
 	"strings"
 
-	graph "github.com/webitel/chat_manager/bot/facebook.v12/graph/v12.0"
+	graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
 	"golang.org/x/oauth2"
 )
 
@@ -255,15 +256,122 @@ func (c *Client) getSubscribedFields(token *oauth2.Token, pages []*Page) error {
 	return nil
 }
 
+func (c *Client) fetchFacebookAccountPages(ctx context.Context, userToken string, pageID []string) ([]*Page, error) {
+
+	n := len(pageID)
+	if n == 0 {
+		return nil, nil
+	}
+
+	form := url.Values{
+		"ids": []string{strings.Join(pageID, ",")},
+		"fields": []string{strings.Join([]string{
+			"id", // default:core
+			"name",
+			"access_token",
+			// "subscribed_fields.as(fields)", // PAGE_TOKEN required(!)
+		}, ",")},
+	}
+	accessToken := userToken
+	form = c.requestForm(form, accessToken)
+	// Hide ?access_token= from query ...
+	delete(form, graph.ParamAccessToken)
+	// Add Authorization header BELOW ...
+
+	// https://developers.facebook.com/docs/graph-api/reference/whats-app-business-account/phone_numbers/#Reading
+	req, err := http.NewRequestWithContext(ctx,
+		http.MethodGet, "https://graph.facebook.com"+
+			path.Join("/", c.Version, "/")+
+			"?"+form.Encode(),
+		http.NoBody,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+	// Authorize GraphAPI Request
+	req.Header.Add("Authorization", "Bearer "+accessToken)
+
+	rsp, err := c.Client.Do(req)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rsp.Body.Close()
+
+	var (
+		res = struct {
+			// Private JSON result
+			raw json.RawMessage
+			// data map[id]node
+			data map[string]*Page
+			// Public JSON result
+			Error *graph.Error `json:"error,omitempty"`
+		}{
+			data: make(map[string]*Page, n),
+			// raw:  make(json.RawMessage, 0, res.ContentLength), // NO Content-Length Header provided !  =(
+		}
+	)
+
+	err = json.NewDecoder(rsp.Body).Decode(&res.raw)
+	if err != nil {
+		// ERR: Invalid JSON
+		return nil, err
+	}
+	// CHECK: for RPC `error` first
+	err = json.Unmarshal(res.raw, &res) // {"error"}
+	if err == nil && res.Error != nil {
+		// RPC: Result Error
+		err = res.Error
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(res.raw, &res.data)
+	if err != nil {
+		// ERR: Unexpected JSON result
+		return nil, err
+	}
+
+	data := make([]*Page, 0, len(res.data))
+	for _, node := range res.data {
+		data = append(data, node)
+	}
+	return data, nil
+}
+
+// e.g.: https://developers.facebook.com/docs/whatsapp/embedded-signup/manage-accounts#get-shared-waba-id-with-access-token
+func (c *Client) getSharedPagesMessaging(userToken *oauth2.Token) ([]*Page, error) {
+
+	token, err := c.inspectToken(userToken)
+	if err != nil {
+		return nil, err
+	}
+
+	var sharedPageID []string
+	for _, scope := range token.GranularScopes {
+		if scope.Permission == "pages_messaging" {
+			sharedPageID = append(sharedPageID, scope.TargetIDs...) // copy
+			break
+		}
+	}
+	return c.fetchFacebookAccountPages(
+		context.TODO(), userToken.AccessToken, sharedPageID,
+	)
+}
+
 // Retrive Facebook User profile and it's accounts (Pages) access granted
 // Refresh Pages webhook subscription state
-func (c *Client) getMessengerPages(token *oauth2.Token) (*UserAccounts, error) {
+func (c *Client) getMessengerPages(userToken *oauth2.Token) (*UserAccounts, error) {
 
 	// GET /me?fields=name,accounts{name,access_token}
 
 	form := c.requestForm(url.Values{
-		"fields": {"name,accounts{name,access_token}"},
-	}, token.AccessToken,
+		// "fields": {"name,accounts{name,access_token}"},
+		"fields": {"name"}, // + shared::user_token.granular_scope.pages_messaging
+	}, userToken.AccessToken,
 	)
 
 	req, err := http.NewRequest(http.MethodGet,
@@ -305,6 +413,26 @@ func (c *Client) getMessengerPages(token *oauth2.Token) (*UserAccounts, error) {
 		return nil, resMe.Accounts.Error
 	}
 
+	// FIXME: Don't know why, but some page(s) are not returned VIA /user/accounts edge
+	// so, we will try to GET shared node(page)s VIA user's account access_token granted.
+	// Similar TO: https://developers.facebook.com/docs/whatsapp/embedded-signup/manage-accounts#get-shared-waba-id-with-access-token
+	shared, err := c.getSharedPagesMessaging(userToken)
+	if err != nil {
+		// Failed to GET Page(s) shared VIA user(access_token) !
+		return nil, err
+	}
+	var n, e = len(pages), 0
+	for _, page := range shared {
+		for e = 0; e < n && pages[e].ID != page.ID; e++ {
+			// lookup: duplicates
+		}
+		if e < n {
+			// FOUND; provided VIA /me(user)/accounts
+			continue
+		}
+		pages = append(pages, page)
+	}
+
 	res := &UserAccounts{
 		User:  &resMe.User,
 		Pages: pages,
@@ -312,7 +440,7 @@ func (c *Client) getMessengerPages(token *oauth2.Token) (*UserAccounts, error) {
 	}
 
 	// GET Each Page's subscription state !
-	err = c.getSubscribedFields(token, pages)
+	err = c.getSubscribedFields(userToken, pages)
 
 	if err != nil {
 		// Failed to GET Page(s) subscribed_fields (subscription) state !
@@ -445,7 +573,7 @@ func (c *Client) subscribePages(pages []*Page, fields []string) error {
 			continue
 		}
 		// SUCCESS !
-		save = (save || len(page.SubscribedFields) == 0)
+		save = true                    // (save || len(page.SubscribedFields) == 0) // NOT Zero(0); Instagram: ["name"]
 		page.SubscribedFields = fields // subscribedPageFields
 	}
 

@@ -3,7 +3,7 @@ package graph_test
 import (
 	"encoding/json"
 
-	graph "github.com/webitel/chat_manager/bot/facebook.v12/graph/v12.0"
+	graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
 )
 
 // Example of PagedResults usage
@@ -12,14 +12,13 @@ func ExampleResult_success() {
 	const jsonb = `{"success":true}`
 
 	var (
-
 		res graph.Success
-		ret = graph.Result {
+		ret = graph.Result{
 			Data: &res,
 		}
 	)
 
-	err := json.Unmarshal([]byte(jsonb), &ret) 
+	err := json.Unmarshal([]byte(jsonb), &ret)
 
 	if err != nil {
 		// Failed to decode result structure
@@ -40,9 +39,8 @@ func ExampleResult_pagedResult() {
 	const jsonb = `{"data":[{"id":"12345678","name":"Full name to display"},{"id":"87654321","name":"Another name to display"}]}`
 
 	var (
-
 		items []interface{}
-		res = graph.PagedResult{
+		res   = graph.PagedResult{
 			Data: &items,
 		}
 		ret = graph.Result{

@@ -1,7 +1,7 @@
 package messenger
 
 import (
-	"github.com/webitel/chat_manager/bot/facebook.v12/webhooks"
+	"github.com/webitel/chat_manager/bot/facebook/webhooks"
 )
 
 // https://developers.facebook.com/docs/messenger-platform/reference/webhook-events#format

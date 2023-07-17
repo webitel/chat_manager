@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	"github.com/golang/protobuf/proto"
-	internal "github.com/webitel/chat_manager/bot/facebook.v12/internal"
+	internal "github.com/webitel/chat_manager/bot/facebook/internal"
 	protowire "google.golang.org/protobuf/proto"
 )
 

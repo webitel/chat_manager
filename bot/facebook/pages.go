@@ -5,8 +5,8 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/micro/micro/v3/service/errors"
-	graph "github.com/webitel/chat_manager/bot/facebook.v12/graph/v12.0"
-	internal "github.com/webitel/chat_manager/bot/facebook.v12/internal"
+	graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
+	internal "github.com/webitel/chat_manager/bot/facebook/internal"
 	protowire "google.golang.org/protobuf/proto"
 )
 

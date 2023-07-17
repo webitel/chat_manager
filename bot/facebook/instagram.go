@@ -15,8 +15,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
-	graph "github.com/webitel/chat_manager/bot/facebook.v12/graph/v12.0"
-	"github.com/webitel/chat_manager/bot/facebook.v12/messenger"
+	graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
+	"github.com/webitel/chat_manager/bot/facebook/messenger"
 	"golang.org/x/oauth2"
 )
 

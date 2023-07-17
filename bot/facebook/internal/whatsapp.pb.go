@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.28.1
 // 	protoc        v3.21.4
-// source: bot/facebook.v12/internal/whatsapp.proto
+// source: bot/facebook/internal/whatsapp.proto
 
 package proro
 

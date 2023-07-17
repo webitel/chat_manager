@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.28.1
 // 	protoc        v3.21.4
-// source: bot/facebook.v12/internal/messenger.proto
+// source: bot/facebook/internal/messenger.proto
 
 package proro
 
