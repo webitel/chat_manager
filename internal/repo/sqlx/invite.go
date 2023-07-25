@@ -8,6 +8,7 @@ import (
 	"database/sql"
 
 	"github.com/jackc/pgconn"
+	"github.com/jackc/pgtype"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/google/uuid"
@@ -23,7 +24,7 @@ import (
 // which indicates that .`next` result page exist !
 func InviteList(rows *sql.Rows, limit int) ([]*Invite, error) {
 
-	// 
+	//
 	if limit < 0 {
 		limit = 0
 	}
@@ -35,27 +36,36 @@ func InviteList(rows *sql.Rows, limit int) ([]*Invite, error) {
 	}
 	// alloc projection map
 	var (
-
-		obj *Invite // cursor: target for current tuple
-		plan = make([]func() interface{}, len(cols)) // , len(cols))
+		obj  *Invite                         // cursor: target for current tuple
+		plan = make([]func() any, len(cols)) // , len(cols))
 	)
 
 	for c, col := range cols {
 		switch col {
 		// id, inviter_channel_id, conversation_id, title, user_id, domain_id, timeout_sec, created_at, closed_at, props
-		case "id":                 plan[c] = func() interface{} { return &obj.ID }    // NOTNULL (!)
-		case "conversation_id":    plan[c] = func() interface{} { return &obj.ConversationID } // NOTNULL (!)
-		case "inviter_channel_id": plan[c] = func() interface{} { return &obj.InviterChannelID } // NULL: *sql.NullString
-		
-		case "title":              plan[c] = func() interface{} { return &obj.Title }  // NULL: *sql.NullString
-		case "user_id":            plan[c] = func() interface{} { return &obj.UserID } // NOTNULL: (!)
-		case "domain_id":          plan[c] = func() interface{} { return &obj.DomainID } // NOTNULL: (!)
-		
-		case "created_at":         plan[c] = func() interface{} { return ScanDatetime(&obj.CreatedAt) } // NOTNULL (!)
-		case "closed_at":          plan[c] = func() interface{} { return &obj.ClosedAt }                // NULL: *sql.NullTime
-		
-		case "timeout_sec":        plan[c] = func() interface{} { return ScanInteger(&obj.TimeoutSec) } // NULL: (!)
-		case "props":              plan[c] = func() interface{} { return &obj.Variables } // NULL: *Properties
+		case "id":
+			plan[c] = func() any { return &obj.ID } // NOTNULL (!)
+		case "conversation_id":
+			plan[c] = func() any { return &obj.ConversationID } // NOTNULL (!)
+		case "inviter_channel_id":
+			plan[c] = func() any { return &obj.InviterChannelID } // NULL: *sql.NullString
+
+		case "title":
+			plan[c] = func() any { return &obj.Title } // NULL: *sql.NullString
+		case "user_id":
+			plan[c] = func() any { return &obj.UserID } // NOTNULL: (!)
+		case "domain_id":
+			plan[c] = func() any { return &obj.DomainID } // NOTNULL: (!)
+
+		case "created_at":
+			plan[c] = func() any { return ScanDatetime(&obj.CreatedAt) } // NOTNULL (!)
+		case "closed_at":
+			plan[c] = func() any { return &obj.ClosedAt } // NULL: *sql.NullTime
+
+		case "timeout_sec":
+			plan[c] = func() any { return ScanInteger(&obj.TimeoutSec) } // NULL: (!)
+		case "props":
+			plan[c] = func() any { return &obj.Variables } // NULL: *Properties
 
 		default:
 
@@ -64,11 +74,9 @@ func InviteList(rows *sql.Rows, limit int) ([]*Invite, error) {
 		}
 	}
 
-
 	dst := make([]interface{}, len(cols))
 
 	var (
-
 		page []Invite  // mempage
 		list []*Invite // results
 	)
@@ -81,7 +89,7 @@ func InviteList(rows *sql.Rows, limit int) ([]*Invite, error) {
 	}
 
 	// var (
-		
+
 	// 	err error
 	// 	row *Message
 	// )
@@ -110,7 +118,7 @@ func InviteList(rows *sql.Rows, limit int) ([]*Invite, error) {
 		}
 
 		err = rows.Scan(dst...)
-		
+
 		if err != nil {
 			break
 		}
@@ -148,12 +156,20 @@ func schemaInviteError(err error) error {
 }
 
 func (repo *sqlxRepository) GetInviteByID(ctx context.Context, id string) (*Invite, error) {
+
+	var inviteId pgtype.UUID
+	err := inviteId.Set(id)
+	if err != nil {
+		// ERR: getInvite( id: uuid! ); input: invalid or missing
+		return nil, err
+	}
+
 	// Perform SELECT statement
 	rows, err := repo.db.QueryContext(ctx,
-		"SELECT id, inviter_channel_id, conversation_id, title, user_id, domain_id, timeout_sec, created_at, closed_at, props" +
-		" FROM chat.invite WHERE id=$1 AND closed_at ISNULL" +
-		" LIMIT 2", // NOTE: to be able to indicate result conflict(s)
-		 id,
+		"SELECT id, inviter_channel_id, conversation_id, title, user_id, domain_id, timeout_sec, created_at, closed_at, props"+
+			" FROM chat.invite WHERE id=$1 AND closed_at ISNULL"+
+			" LIMIT 2", // NOTE: to be able to indicate result conflict(s)
+		&inviteId,
 	)
 	// Check errors
 	if err = schemaInviteError(err); err != nil {
@@ -213,39 +229,77 @@ func (repo *sqlxRepository) GetInvites(ctx context.Context, userID int64) ([]*In
 	res := []*Invite{}
 	err := repo.db.SelectContext(ctx, &res,
 		"SELECT * FROM chat.invite WHERE user_id=$1",
-		 userID,
+		userID,
 	)
 	return res, err
 }
 
 func (repo *sqlxRepository) CreateInvite(ctx context.Context, m *Invite) (err error) {
-	
-	if m.ID == "" {
-		m.ID = uuid.New().String()
+
+	var (
+		threadId, inviteId, senderId pgtype.UUID
+		// isZero = func(uuid [16]byte) bool {
+		// 	const size = 16 // bytes
+		// 	for e := 0; e < size && uuid[e] != 0; e++ {
+		// 		return false // HAS non-zero byte(!)
+		// 	}
+		// 	return true // ALL are zero(!)
+		// }
+	)
+
+	err = threadId.Set(m.ConversationID)
+	if err != nil {
+		// ERR: invite( conversation_id: uuid! ); input: invalid or missing
+		return err
 	}
+	if m.ID == "" {
+		id := uuid.New()
+		m.ID = id.String()
+		_ = inviteId.Set([16]byte(id))
+	} else {
+		err = inviteId.Set(m.ID)
+		if err != nil {
+			// ERR: invite( id: uuid! ); input: invalid syntax
+			return err
+		}
+	}
+	senderId.Status = pgtype.Null
+	if m.InviterChannelID.Valid {
+		err = senderId.Set(
+			m.InviterChannelID.String,
+		)
+		if err != nil {
+			// ERR: invite( inviter_id: uuid! ); input: invalid syntax
+			return err
+		}
+	}
+
 	if m.CreatedAt.IsZero() {
 		m.CreatedAt = time.Now()
 	}
 	m.CreatedAt = m.CreatedAt.UTC()
-	
+
 	if m.Title.String == "" {
 		// TODO: get .FROM inviter channel contact display name
 		_, err = repo.db.ExecContext(ctx,
 			"WITH sender AS ("+
-			"SELECT COALESCE(contact.name, NULLIF(account.name,''), account.username, channel.name) AS display"+
-			" FROM chat.channel" +
-			" LEFT JOIN chat.client AS contact ON (contact.id, false) = (channel.user_id, channel.internal)"+
-			" LEFT JOIN directory.wbt_user AS account ON (account.id, true) = (channel.user_id, channel.internal)"+
-			" WHERE channel.id = $1"+
-			") "+
-			"INSERT INTO chat.invite ("+
-			  "id, conversation_id, user_id, title, timeout_sec, inviter_channel_id, created_at, domain_id, props" +
-			") VALUES ($1, $2, $3, COALESCE((SELECT display FROM sender), 'noname'), $4, $5, $6, $7, $8)",
-			m.ID,
-			m.ConversationID,
+				"SELECT COALESCE(contact.name, NULLIF(account.name,''), account.username, channel.name) AS display"+
+				" FROM chat.channel"+
+				" LEFT JOIN chat.client AS contact ON (contact.id, false) = (channel.user_id, channel.internal)"+
+				" LEFT JOIN directory.wbt_user AS account ON (account.id, true) = (channel.user_id, channel.internal)"+
+				" WHERE channel.id = $1"+
+				") "+
+				"INSERT INTO chat.invite ("+
+				"id, conversation_id, user_id, title, timeout_sec, inviter_channel_id, created_at, domain_id, props"+
+				") VALUES ($1, $2, $3, COALESCE((SELECT display FROM sender), 'noname'), $4, $5, $6, $7, $8)",
+			// m.ID,
+			&inviteId,
+			// m.ConversationID,
+			&threadId,
 			m.UserID,
 			m.TimeoutSec,
-			m.InviterChannelID,
+			// m.InviterChannelID,
+			&senderId,
 			m.CreatedAt,
 			m.DomainID,
 			NullMetadata(m.Variables),
@@ -255,14 +309,17 @@ func (repo *sqlxRepository) CreateInvite(ctx context.Context, m *Invite) (err er
 
 		_, err = repo.db.ExecContext(ctx,
 			"INSERT INTO chat.invite ("+
-			"id, conversation_id, user_id, title, timeout_sec, inviter_channel_id, created_at, domain_id, props" +
-			") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-			m.ID,
-			m.ConversationID,
+				"id, conversation_id, user_id, title, timeout_sec, inviter_channel_id, created_at, domain_id, props"+
+				") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+			// m.ID,
+			&inviteId,
+			// m.ConversationID,
+			&threadId,
 			m.UserID,
 			m.Title,
 			m.TimeoutSec,
-			m.InviterChannelID,
+			// m.InviterChannelID,
+			&senderId,
 			m.CreatedAt,
 			m.DomainID,
 			m.Variables,
@@ -282,11 +339,18 @@ func (repo *sqlxRepository) CloseInvite(ctx context.Context, inviteID string) (b
 
 func CloseInvite(ctx context.Context, dcx sqlx.ExtContext, inviteID string) (ok bool, err error) {
 
+	var inviteId pgtype.UUID
+	err = inviteId.Set(inviteID)
+	if err != nil {
+		// ERR: closeInvite( id: uuid! ); input: invalid or missing
+		return false, err
+	}
+
 	err = sqlx.GetContext(ctx, dcx, &ok,
-		"UPDATE chat.invite SET closed_at=$2" +
-		" WHERE id=$1 AND closed_at ISNULL" +
-		" RETURNING true", // Found AND Updated !
-		 inviteID, app.CurrentTime(),
+		"UPDATE chat.invite SET closed_at=$2"+
+			" WHERE id=$1 AND closed_at ISNULL"+
+			" RETURNING true", // Found AND Updated !
+		&inviteId, app.CurrentTime(),
 	)
 	// Handle sqlx.Get* -specific error
 	if err == sql.ErrNoRows {

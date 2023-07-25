@@ -36,6 +36,7 @@ ALTER TABLE chat.invite
 , DROP CONSTRAINT invite_conversation_fk -- FOREIGN KEY (conversation_id) REFERENCES chat.conversation(id) ON DELETE CASCADE ON UPDATE CASCADE
 , ALTER COLUMN id TYPE uuid USING id::uuid
 , ALTER COLUMN conversation_id TYPE uuid USING conversation_id::uuid
+, ALTER COLUMN inviter_channel_id TYPE uuid USING inviter_channel_id::uuid
 ;
 
 -- chat.channel --
