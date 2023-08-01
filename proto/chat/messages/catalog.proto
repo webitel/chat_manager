@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package webitel.chat; 
+
+option go_package = "github.com/webitel/chat_manager/api/proto/chat/messages";
+
+import "chat/messages/customer.proto";
+import "chat/messages/chat.proto";
+import "chat/messages/dialog.proto";
+import "chat/messages/history.proto";
+
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+
+// Messages service catalog
+service Catalog {
+
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_tag) = {
+    description: "**Messages** Service"
+    name: "Messages"
+  };
+
+  // Query of external chat customers
+  rpc GetCustomers(ChatCustomersRequest) returns (ChatCustomers) {
+    option (google.api.http) = {
+      get: "/chat/customers"
+    };
+  }
+  // Query of chat conversations
+  rpc GetDialogs(ChatDialogsRequest) returns (ChatDialogs) {
+    option (google.api.http) = {
+      get: "/chat/dialogs"
+    };
+  }
+  // Query of chat participants
+  rpc GetMembers(ChatMembersRequest) returns (ChatMembers) {
+    option (google.api.http) = {
+      get: "/chat/dialogs/{chat_id}/members"
+    };
+  }
+  // Query of chat messages history
+  rpc GetHistory(ChatMessagesRequest) returns (ChatMessages) {
+    option (google.api.http) = {
+      get: "/chat/dialogs/{chat_id}/messages"
+      additional_bindings: {
+        get: "/chat/{peer.type}/{peer.id}/messages"
+      };
+    };
+  }
+}

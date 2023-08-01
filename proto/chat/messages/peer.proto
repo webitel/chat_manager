@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package webitel.chat; 
+
+option go_package = "github.com/webitel/chat_manager/api/proto/chat/messages";
+
+// import "google/protobuf/wrappers.proto";
+
+// message Peer {
+//   message User {
+//     // Unique identifier for this user or bot.
+//     int64 id = 1;
+//     string name = 2;
+//   }
+//   message Contact {
+//     // Type-specific external id.
+//     string id = 1;
+//     // Type of the contact provider.
+//     // [internal]
+//     // -- user; (agent)
+//     // -- flow; (schema/bot)
+//     // [external]
+//     // -- viber
+//     // -- telegram
+//     // -- facebook
+//     // -- whatsapp
+//     // -- instagram
+//     // . . .
+//     string type = 2;
+//     // Display contact name.
+//     string name = 3;
+//   }
+//   // Type of the chat participant.
+//   oneof type {
+//     // User participant.
+//     User user = 1;
+//     // Flow, as a bot, participant.
+//     User flow = 2;
+//     // External contact participant.
+//     Contact contact = 3;
+//   }
+// }
+
+// Peer contact.
+message Peer {
+  // Contact unique **ID**entifier.
+  // Contact **type**-specific string.
+  string id = 1;
+  
+  // Type of contact provider.
+  // [internal]
+  // -- user; (agent)
+  // -- flow; (schema/bot)
+  // [external]
+  // -- viber
+  // -- telegram
+  // -- facebook
+  // -- whatsapp
+  // -- instagram
+  // . . .
+  
+  // Contact **type** provider.
+  string type = 2;
+  
+  // Contact display **name**.
+  string name = 3;
+}
+
+// InputPeer identity.
+message InputPeer {
+  // Type of the input peer.
+  oneof input {
+    // Unique chat identifier.
+    string chat_id = 1;
+    // Unique peer member of the chat.
+    Peer peer = 2;
+  }
+}

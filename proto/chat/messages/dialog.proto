@@ -1,0 +1,111 @@
+syntax = "proto3";
+
+package webitel.chat; 
+
+option go_package = "github.com/webitel/chat_manager/api/proto/chat/messages";
+
+import "chat/messages/peer.proto";
+import "chat/messages/chat.proto";
+import "chat/messages/message.proto";
+
+import "google/protobuf/wrappers.proto";
+
+// Chat Dialog. Conversation info.
+message Dialog {
+  
+  // [D]omain[C]omponent primary ID.
+  int64 dc = 1;
+  
+  // The Conversation thread unique ID.
+  string id = 2;
+
+  // [FROM]: Originator. Leg[A]. Contact / User.
+  // [TO]: Other party. Leg[A+]. Schema / Agent.
+
+  // [VIA] Text gateway [FROM] originated thru ...
+  Peer via = 3;
+  
+  // [FROM]: Originator.
+  // Leg[A]. Contact / User.
+  Peer from = 4;
+
+  // // [TO]: Other party.
+  // // Leg[B+]. Schema / Agent.
+  // Peer chat = 5;
+
+  // Timestamp of the latest activity.
+  int64 date = 6;
+
+  // Title of the dialog.
+  string title = 7;
+
+  // Timestamp when dialog was closed.
+  // Zero value means - connected (online)
+  // Otherwise - disconnected (offline)
+  int64 closed = 8;
+  // Timestamp when dialog started.
+  int64 started = 9;
+
+  // The latest (top) message.
+  Message message = 10;
+  // Context. Variables. Environment.
+  map<string, string> context = 11;
+  // [TO]: Participants.
+  // Leg[A+]. Schema / Agent.
+  repeated Chat members = 12;
+
+}
+
+// ChatDialogs dataset
+message ChatDialogs {
+  // Dataset page of Dialog(s).
+  repeated Dialog data = 1;
+  // Page number of results.
+  int32 page = 2;
+  // Next page available ?
+  bool next = 3;
+}
+
+message ChatDialogsRequest {
+  
+  // ----- Output ----- //
+  
+  // Page number to return. **default**: 1.
+  int32 page = 1;
+  // Page records limit. **default**: 16.
+  int32 size = 2;
+  // Search term: peer.name
+  string q = 5;
+  // Sort records by { fields } specification.
+  repeated string sort = 3;
+  // Fields [Q]uery to build result dataset record.
+  repeated string fields = 4;
+
+  // ------ Args ------ //
+  
+  // Set of unique chat IDentifier(s).
+  // Accept: dialog -or- member ID.
+  repeated string id = 6;
+  
+  // [VIA] Text gateway.
+  Peer via = 7;
+
+  // [PEER] Member of ...
+  Peer peer = 8;
+  
+  // Date within timerange.
+  Timerange date = 9;
+  
+  // Dialogs ONLY that are currently [not] active( closed: ? ).
+  google.protobuf.BoolValue online = 10;
+
+  // // Joined filters only those participants
+  // // who have [not] been connected to the chat.
+  // // ( join: * )
+  // google.protobuf.BoolValue joined = 11;
+  
+  // // Invite filters only those participants
+  // // who have [not] been invited to the chat.
+  // // ( invite: * )
+  // google.protobuf.BoolValue invite = 12;
+}

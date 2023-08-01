@@ -1,0 +1,1388 @@
+package sqlxrepo
+
+import (
+	"database/sql"
+	"encoding/hex"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	sq "github.com/Masterminds/squirrel"
+	"github.com/google/uuid"
+	"github.com/jackc/pgtype"
+	"github.com/micro/micro/v3/service/errors"
+	pb "github.com/webitel/chat_manager/api/proto/chat/messages"
+	"github.com/webitel/chat_manager/app"
+	dbx "github.com/webitel/chat_manager/store/database"
+	"github.com/webitel/chat_manager/store/postgres"
+)
+
+func isZeroUUID(uuid [16]byte) bool {
+	const max = 16
+	for e := 0; e < max && uuid[e] != 0; e++ {
+		return false // FOUND: non-zero(!) byte
+	}
+	return true // ALL(16) are zero(!)
+}
+
+type chatMessagesArgs struct {
+	// ----- Input ------ //
+	// Search term: message.text
+	Q string
+	// [D]omain[C]omponent primary ID.
+	// Mandatory(!)
+	DC int64
+	// Self peer.id
+	// If non-zero return common dialog(s) ONLY(!)
+	Self int64
+	// Peer, as a member of dialog(s).
+	Peer *pb.Peer
+	// ----- Output ----- //
+	// Fields to return into result.
+	Fields []string
+	// Offset messages history options.
+	Offset struct {
+		// Message ID
+		Id int64
+		// Message Date
+		Date *time.Time
+	}
+	// Limit count of messages to return.
+	Limit int
+}
+
+func (e *chatMessagesArgs) indexField(name string, alias ...string) int {
+	var a, c = 0, len(alias)
+	var i, n = 0, len(e.Fields)
+	for ; i < n && e.Fields[i] != name; i++ {
+		// match: by <name>
+		for a = 0; a < c && e.Fields[i] != alias[a]; a++ {
+			// match: by <alias>
+		}
+		if a < c {
+			return i
+		}
+	}
+	if i < n {
+		return i
+	}
+	return -1
+}
+
+type chatMessagesQuery struct {
+	Input chatMessagesArgs
+	SELECT
+	plan dataFetch[*pb.Message]
+}
+
+func getMessagesInput(req *app.SearchOptions) (args chatMessagesArgs, err error) {
+
+	args.Q = req.Term
+	if app.IsPresent(args.Q) {
+		args.Q = "" // clear; ignore
+	} else {
+		for _, kindOf := range []string{
+			"media", "file", "text",
+		} {
+			if strings.HasPrefix(
+				args.Q, kindOf+":",
+			) {
+				args.Q = "*" + args.Q + "*"
+				break
+			}
+		}
+	}
+	args.DC = req.Context.Creds.Dc
+	args.Limit = req.GetSize()
+	args.Fields = app.FieldsFunc(
+		req.Fields, // app.InlineFields,
+		app.SelectFields(
+			// application: default
+			[]string{
+				"id",
+				"from", // sender; user
+				"date",
+				"edit",
+				"text",
+				"file",
+			},
+			// operational
+			[]string{
+				"chat",   // chat dialog, that this message belongs to ..
+				"sender", // chat member, on behalf of the "chat" (dialog)
+				"context",
+			},
+		),
+	)
+
+	inputPeer := func(input *pb.Peer) error {
+		if args.Peer != nil {
+			return errors.BadRequest(
+				"messages.query.peer.input",
+				"messages( peer: peer! ); input: ambiguous; oneof{ chat, peer }",
+			)
+		}
+		if input.Id == "" {
+			return errors.BadRequest(
+				"messages.query.peer.input",
+				"messages( peer( id: string! ) ); input: required but missing",
+			)
+		}
+		if input.Type == "" {
+			return errors.BadRequest(
+				"messages.query.peer.input",
+				"messages( peer( type: string! ) ); input: required but missing",
+			)
+		}
+		args.Peer = input
+		return nil // OK
+	}
+
+	for param, input := range req.Filter {
+		switch param {
+		case "self":
+			args.Self = req.Creds.UserId
+		case "peer":
+			{
+				switch data := input.(type) {
+				case *pb.Peer:
+					err = inputPeer(data)
+				default:
+					err = errors.BadRequest(
+						"messages.query.peer.input",
+						"messages( peer: peer! ); input: convert %T into Peer",
+						input,
+					)
+				}
+				if err != nil {
+					return // args, err
+				}
+			}
+		case "chat.id":
+			{
+				var chatId uuid.UUID
+				switch data := input.(type) {
+				case uuid.UUID:
+					chatId = data
+				case string:
+					if data == "" {
+						break // omitted
+					}
+					chatId, err = uuid.Parse(data)
+					if err != nil {
+						err = errors.BadRequest(
+							"messages.query.peer.chat.input",
+							"messages( chat: id! ); input: %v",
+							err,
+						)
+					}
+				default:
+					err = errors.BadRequest(
+						"messages.query.chat.input",
+						"messages( chat: id ); input: convert %T into ID",
+						input,
+					)
+				}
+				if err == nil && !isZeroUUID(chatId) {
+					err = inputPeer(&pb.Peer{
+						Type: "chat",
+						Id:   hex.EncodeToString(chatId[:]),
+					})
+				}
+				if err != nil {
+					return // args, err
+				}
+			}
+		case "offset":
+			{
+				switch data := input.(type) {
+				case *pb.ChatMessagesRequest_Offset:
+					{
+						if data.GetId() > 0 {
+							args.Offset.Id = data.Id
+						} else if data.GetDate() > 0 {
+							date := app.EpochtimeDate(
+								data.Date, app.TimePrecision, // (milli)
+							)
+							args.Offset.Date = &date
+						} else {
+							// IGNORE(?)
+						}
+					}
+				// case int64:
+				// case int:
+				default:
+					err = errors.BadRequest(
+						"messages.query.offset.input",
+						"messages( offset: ! ); input: convert %T into Offset",
+						input,
+					)
+					return // args, err
+				}
+			}
+		default:
+			err = errors.BadRequest(
+				"messages.query.args.error",
+				"messages( %s: ? ); input: no such argument",
+				param,
+			)
+			return // args, err
+		}
+	}
+
+	if args.Peer.GetId() == "" {
+		err = errors.BadRequest(
+			"messages.peer.id.required",
+			"messages( peer.id: string! ); input: required",
+		)
+		return // nil, err
+	}
+
+	if args.Peer.GetType() == "" {
+		err = errors.BadRequest(
+			"messages.peer.type.required",
+			"messages( peer.type: string! ); input: required",
+		)
+		return // nil, err
+	}
+
+	return // args, nil
+}
+
+func getMessagesQuery(req *app.SearchOptions) (ctx chatMessagesQuery, err error) {
+
+	ctx.Input, err = getMessagesInput(req)
+	if err != nil {
+		return // nil, err
+	}
+
+	ctx.Params = params{
+		"pdc": ctx.Input.DC,
+	}
+
+	var left string
+	// region: ----- resolve: thread(s) -----
+	left = "t"
+	ctx.Query = postgres.PGSQL.
+		Select(
+			ident(left, "id"),
+		).
+		From(
+			"chat.conversation " + left,
+		).
+		Where(
+			ident(left, "domain_id") + " = :pdc",
+		).
+		GroupBy(
+			ident(left, "id"),
+		).
+		OrderBy(
+			ident(left, "created_at") + " DESC",
+		)
+
+	if ctx.Input.Self > 0 {
+		ctx.Params.set("self", ctx.Input.Self)
+		ctx.Query = ctx.Query.JoinClause(fmt.Sprintf(
+			// INNER; dialog(s) in common with current user, that has [been] joined !
+			"JOIN %[2]s %[3]s ON %[3]s.internal AND %[3]s.user_id = :self AND %[3]s.conversation_id = %[1]s.id",
+			left, "chat.channel", "self",
+		))
+	}
+
+	var (
+		// aliasBot     string // "b"
+		aliasChat string // "c"
+		// aliasUser    string // "u"
+		aliasContact string // "x"
+		// LEFT JOIN flow.acr_routing_scheme AS b
+		/*joinPeerBot = func() string {
+			if aliasBot != "" {
+				return aliasBot
+			}
+			// once
+			aliasBot = "b"
+			ctx.Query = ctx.Query.JoinClause(fmt.Sprintf(
+				"LEFT JOIN flow.acr_routing_scheme %[2]s ON %[2]s.id = (%[1]s.props->>'flow')::::int8",
+				left, aliasBot,
+			))
+			return aliasBot
+		}*/
+		// JOIN chat.channel AS c
+		joinChatPeer = func() string {
+			if aliasChat != "" {
+				return aliasChat
+			}
+			// once
+			aliasChat = "c"
+			ctx.Query = ctx.Query.JoinClause(fmt.Sprintf(
+				"JOIN chat.channel %[2]s ON %[2]s.conversation_id = %[1]s.id",
+				left, aliasChat,
+			))
+			return aliasChat
+		}
+		// LEFT JOIN directory.wbt_auth AS u
+		/*joinPeerUser = func() string {
+			if aliasUser != "" {
+				return aliasUser
+			}
+			// once
+			aliasUser = "u"
+			left, right := joinPeerChat(), aliasUser
+			ctx.Query = ctx.Query.JoinClause(fmt.Sprintf(
+				"LEFT JOIN directory.wbt_auth %[2]s ON %[1]s.internal AND %[2]s.id = %[1]s.user_id",
+				left, right,
+			))
+			return aliasUser
+		}*/
+		// LEFT JOIN chat.client AS x
+		joinPeerContact = func() string {
+			if aliasContact != "" {
+				return aliasContact
+			}
+			// once
+			aliasContact = "u"
+			left, right := joinChatPeer(), aliasContact
+			ctx.Query = ctx.Query.JoinClause(fmt.Sprintf(
+				"LEFT JOIN chat.client %[2]s ON NOT %[1]s.internal AND %[2]s.id = %[1]s.user_id",
+				left, right,
+			))
+			return aliasContact
+		}
+	)
+
+	switch ctx.Input.Peer.Type {
+	case "chat":
+		{
+			var chatId pgtype.UUID
+			err = chatId.Set(ctx.Input.Peer.Id)
+			if err != nil {
+				panic("messages.chat.id: " + err.Error())
+			}
+			ctx.Params.set("chat.id", &chatId)
+			ctx.Query = ctx.Query.Where(
+				ident(left, "id") + " = :chat.id",
+			)
+		}
+	case "user":
+		{
+			relChat := joinChatPeer()
+			ctx.Params.set("peer.id", ctx.Input.Peer.Id)
+			ctx.Query = ctx.Query.Where(sq.And{
+				sq.Expr(ident(relChat, "internal")), // true
+				sq.Expr(ident(relChat, "user_id") + "::::text LIKE :peer.id"),
+			})
+		}
+	case "bot":
+		{
+			relBot := left // joinPeerBot()
+			ctx.Params.set("peer.id", ctx.Input.Peer.Id)
+			ctx.Query = ctx.Query.Where(
+				ident(relBot, "props->>'flow'") + " LIKE :peer.id",
+			)
+		}
+	default:
+		// case "user":
+		// case "bot": // useless(!) Agent CANNOT text with bot !
+		relChat := joinChatPeer()
+		relPeer := joinPeerContact()
+		ctx.Params.set("peer.id", ctx.Input.Peer.Id)
+		ctx.Params.set("peer.type", ctx.Input.Peer.Type)
+		ctx.Query = ctx.Query.Where(sq.And{
+			sq.Expr(ident(relChat, "type") + " = :peer.type"),
+			sq.Expr(ident(relPeer, "external_id") + " LIKE :peer.id"),
+		})
+	}
+	if q := ctx.Input.Q; q != "" {
+		ctx.Params.set("q", app.Substring(q))
+		ctx.Query = ctx.Query.JoinClause(CompactSQL(fmt.Sprintf(
+			`JOIN LATERAL
+			(
+				SELECT
+					true
+				FROM
+					chat.message m
+				WHERE
+					m.conversation_id = %[1]s.id
+					AND FORMAT
+					(
+						'%%s%%s%%s'
+					, '; media::' || m.file_type
+					, '; file::' || m.file_name
+					, '; text::' || m.text
+					)
+					ILIKE :q COLLATE "default"
+				LIMIT 1
+			) m ON true`,
+			left,
+		)))
+	}
+
+	const (
+		threadView = "thread"
+	)
+	ctx.With(CTE{
+		Name: threadView,
+		Expr: ctx.Query,
+	})
+	// endregion: ----- resolve: thread(s) -----
+
+	// region: ----- select: message(s) -----
+	left = "m"
+	threadAlias := "q"
+	ctx.Query = postgres.PGSQL.
+		Select(
+			// mandatory(!)
+			ident(left, "id"),
+		).
+		From(
+			"chat.message " + left,
+		).
+		JoinClause(fmt.Sprintf(
+			"JOIN %[2]s %[3]s ON %[1]s.conversation_id = %[3]s.id",
+			left, threadView, threadAlias,
+		)).
+		OrderBy(
+			ident(left, "id") + " DESC", // NEWest..to..OLDest
+		)
+	// mandatory(!)
+	ctx.plan = append(ctx.plan,
+		func(node *pb.Message) any {
+			return postgres.Int8{Value: &node.Id}
+		},
+	)
+
+	var (
+		cols   []string
+		column = func(name string) bool {
+			var e, n = 0, len(cols)
+			for ; e < n && cols[e] != name; e++ {
+				// lookup: already selected ?
+			}
+			if e < n {
+				// FOUND; selected !
+				return false
+			}
+			cols = append(cols, name)
+			return true
+		}
+	)
+	fields := ctx.Input.Fields // req.Fields
+	if ctx.Input.indexField("sender") < 0 {
+		fields = append(fields, "sender") // REFERENCE sender_chat.from
+	}
+	for _, field := range fields {
+		switch field {
+		case "id":
+			// mandatory(!)
+		case "date":
+			{
+				if !column(field) {
+					break // switch; duplicate!
+				}
+				ctx.Query = ctx.Query.Column(
+					ident(left, "created_at") + " date",
+				)
+				ctx.plan = append(ctx.plan,
+					func(node *pb.Message) any {
+						return postgres.Epochtime{
+							Value: &node.Date, Precision: app.TimePrecision,
+						}
+					},
+				)
+			}
+		case "edit":
+			{
+				if !column(field) {
+					break // switch; duplicate!
+				}
+				ctx.Query = ctx.Query.Column(
+					ident(left, "updated_at") + " edit",
+				)
+				ctx.plan = append(ctx.plan,
+					func(node *pb.Message) any {
+						return postgres.Epochtime{
+							Precision: app.TimePrecision,
+							Value:     &node.Edit,
+						}
+					},
+				)
+			}
+		case "from":
+			// TODO: below ...
+		case "chat":
+			{
+				if !column("chat_id") {
+					break // switch; duplicate!
+				}
+				ctx.Query = ctx.Query.Column(
+					ident(left, "conversation_id") + " chat_id",
+				)
+				ctx.plan = append(ctx.plan,
+					func(node *pb.Message) any {
+						// return postgres.Int8{&node.Chat}
+						return DecodeText(func(src []byte) error {
+
+							chat := node.Chat
+							node.Chat = nil // NULLify
+
+							var id pgtype.UUID
+							err := id.DecodeText(nil, src)
+							if err != nil || id.Status != pgtype.Present {
+								return err // err|nil
+							}
+
+							if chat == nil {
+								chat = new(pb.Chat)
+							}
+							*(chat) = pb.Chat{
+								Id: hex.EncodeToString(id.Bytes[:]),
+							}
+
+							node.Chat = chat
+							return nil
+						})
+					},
+				)
+			}
+		case "sender":
+			{
+				if !column("sender_chat_id") {
+					break // switch; duplicate!
+				}
+				ctx.Query = ctx.Query.Column(fmt.Sprintf(
+					"coalesce(%[1]s.channel_id, %[1]s.conversation_id) sender_chat_id",
+					left,
+				))
+				ctx.plan = append(ctx.plan,
+					func(node *pb.Message) any {
+						// return postgres.Int8{&node.SenderChat}
+						return DecodeText(func(src []byte) error {
+
+							sender := node.Sender
+							node.Sender = nil // NULLify
+
+							var id pgtype.UUID
+							err := id.DecodeText(nil, src)
+							if err != nil || id.Status != pgtype.Present {
+								return err // err|nil
+							}
+
+							if sender == nil {
+								sender = new(pb.Chat)
+							}
+							*(sender) = pb.Chat{
+								Id: hex.EncodeToString(id.Bytes[:]),
+							}
+
+							node.Sender = sender
+							return nil
+						})
+					},
+				)
+			}
+		case "text":
+			{
+				if !column(field) {
+					break // switch; duplicate!
+				}
+				ctx.Query = ctx.Query.Column(
+					ident(left, "text"),
+				)
+				ctx.plan = append(ctx.plan,
+					func(node *pb.Message) any {
+						return postgres.Text{Value: &node.Text}
+					},
+				)
+			}
+		case "file":
+			{
+				if !column(field) {
+					break // switch; duplicate!
+				}
+				ctx.Query = ctx.Query.JoinClause(
+					CompactSQL(fmt.Sprintf(
+						`LEFT JOIN LATERAL(
+						SELECT
+							%[1]s.file_id id,
+							%[1]s.file_size size,
+							%[1]s.file_type "type",
+							%[1]s.file_name "name"
+						WHERE
+						%[1]s.file_id NOTNULL
+					) %[2]s ON true`,
+						left, "file",
+					)))
+				ctx.Query = ctx.Query.Column(
+					"(file)", // ROW(file)
+				)
+				ctx.plan = append(ctx.plan,
+					func(node *pb.Message) any {
+						return fetchFileRow(&node.File)
+					},
+				)
+			}
+		case "context":
+			{
+				if !column(field) {
+					break // switch; duplicate!
+				}
+				ctx.Query = ctx.Query.Column(
+					ident(left, "variables") + " context",
+				)
+				ctx.plan = append(ctx.plan,
+					func(node *pb.Message) any {
+						return dbx.ScanJSONBytes(&node.Context)
+					},
+				)
+			}
+		default:
+			err = errors.BadRequest(
+				"messages.query.fields.error",
+				"messages{ %s }; input: no such field",
+				field,
+			)
+			return // ctx, err
+		}
+	}
+	// PATTERN: Q
+	if q := ctx.Input.Q; q != "" {
+		// ctx.Params.set("q", app.Substring(q)) // DONE: above(!)
+		ctx.Query = ctx.Query.Where(CompactSQL(fmt.Sprintf(
+			`FORMAT
+			(
+				'%%s%%s%%s'
+			, '; media::' || %[1]s.file_type
+			, '; file::' || %[1]s.file_name
+			, '; text::' || %[1]s.text
+			)
+			ILIKE :q COLLATE "default"`,
+			left,
+		)))
+	}
+	// OFFSET
+	if ctx.Input.Offset.Id > 0 {
+		ctx.Params.set(
+			"offset.id", ctx.Input.Offset.Id,
+		)
+		ctx.Query = ctx.Query.Where(
+			ident(left, "id") + " < :offset.id",
+		)
+	} else if ctx.Input.Offset.Date != nil {
+		var date pgtype.Timestamp
+		err = date.Set(
+			ctx.Input.Offset.Date.UTC(),
+		)
+		if err != nil {
+			return // ctx, err
+		}
+		ctx.Params.set(
+			"offset.date", &date,
+		)
+		ctx.Query = ctx.Query.Where(
+			ident(left, "created_at") + " AT TIME ZONE 'UTC' < :offset.date",
+		)
+	}
+	// LIMIT
+	if ctx.Input.Limit > 0 {
+		ctx.Query = ctx.Query.Limit(
+			uint64(ctx.Input.Limit),
+		)
+	}
+
+	const messageView = "message"
+	ctx.With(CTE{
+		Name: messageView,
+		Expr: ctx.Query,
+	})
+	// endregion: ----- select: message(s) -----
+
+	// region: ----- select: sender(s) -----
+	ctx.Query = postgres.PGSQL.
+		Select(
+			ident(left, "sender_chat_id") + " id",
+		).
+		From(
+			messageView + " " + left,
+		).
+		GroupBy(
+			ident(left, "sender_chat_id"),
+		)
+
+	const (
+		senderChatView = "sender_chat"
+	)
+	ctx.With(CTE{
+		Name: senderChatView,
+		Expr: ctx.Query,
+	})
+
+	left = "c"
+	ctx.Query = postgres.PGSQL.
+		Select(
+			ident(left, "id"),
+			ident(left, "type"),
+			ident(left, "name"),
+			"array_agg("+ident(left, "chat_id")+") chat_id",
+		).
+		FromSelect(
+			postgres.PGSQL.
+				Select(
+					"c.id chat_id",
+					"'bot' \"type\"",
+					"c.props->>'flow' id", // text
+					"b.name::::text \"name\"",
+				).
+				From(
+					"chat.conversation c",
+				).
+				JoinClause(fmt.Sprintf(
+					// INNER
+					"JOIN %[2]s %[3]s ON %[1]s.id = %[3]s.id",
+					"c", senderChatView, "q",
+				)).
+				JoinClause(fmt.Sprintf(
+					"LEFT JOIN %[2]s %[3]s ON %[3]s.id = (%[1]s.props->>'flow')::::int8",
+					"c", "flow.acr_routing_scheme", "b",
+				)).
+				Suffix(
+					"UNION ALL",
+				).
+				SuffixExpr(postgres.PGSQL.
+					Select(
+						"c.id chat_id",
+						"(case when not c.internal then c.type else 'user' end) \"type\"",
+						"(case when c.internal then c.user_id::::text else x.external_id end) id", // NULL -if- deleted
+						"coalesce(x.name, u.name, u.auth::::text, '[deleted]') \"name\"",
+					).
+					From(
+						"chat.channel c",
+					).
+					JoinClause(fmt.Sprintf( // INNER
+						"JOIN %[2]s %[3]s ON %[1]s.id = %[3]s.id",
+						"c", senderChatView, "q",
+					)).
+					JoinClause(fmt.Sprintf( // external
+						"LEFT JOIN %[2]s %[3]s ON NOT %[1]s.internal AND %[3]s.id = %[1]s.user_id",
+						"c", "chat.client", "x",
+					)).
+					JoinClause(fmt.Sprintf( // internal
+						"LEFT JOIN %[2]s %[3]s ON %[1]s.internal AND %[3]s.id = %[1]s.user_id",
+						"c", "directory.wbt_auth", "u",
+					)),
+				),
+			left,
+		).
+		GroupBy(
+			ident(left, "id"),
+			ident(left, "type"),
+			ident(left, "name"),
+		)
+
+	const (
+		senderView = "sender"
+	)
+	ctx.With(CTE{
+		Name: senderView,
+		Expr: ctx.Query,
+	})
+	// endregion: ----- select: sender(s) -----
+
+	// region: ----- select: result(page) -----
+	ctx.Query = postgres.PGSQL.
+		Select(
+			fmt.Sprintf(
+				"ARRAY( SELECT %[2]s from %[1]s %[2]s ) peers",
+				senderView, "c",
+			),
+			fmt.Sprintf(
+				"ARRAY( SELECT %[2]s from %[1]s %[2]s ) messages",
+				messageView, "m",
+			),
+		)
+	// endregion: ----- select: result(page) -----
+
+	return // ctx, nil
+}
+
+func (ctx chatMessagesQuery) scanRows(rows *sql.Rows, into *pb.ChatMessages) error {
+
+	type (
+		UUID [16]byte
+		peer struct {
+			alias pb.Peer
+			node  *pb.Peer
+		}
+		chat struct {
+			id    UUID
+			peer  *peer
+			node  *pb.Chat
+			alias pb.Chat
+		}
+	)
+
+	var (
+		chats     []*chat
+		peers     []*peer
+		outFrom   = !(ctx.Input.indexField("from") < 0)
+		outSender = !(ctx.Input.indexField("sender") < 0)
+		equalUUID = func(this, that UUID) bool {
+			var e int
+			const max = 16
+			for ; e < max && this[e] == that[e]; e++ {
+				// advance: bytes are equal(!)
+			}
+			return e == max
+		}
+		getSender = func(chatId UUID) *chat {
+			var e, n = 0, len(chats)
+			for ; e < n && !equalUUID(chatId, chats[e].id); e++ {
+				// lookup: match by original chat( id: uuid! )
+			}
+			if e == n {
+				panic(fmt.Errorf("chat( id: %x ); not fetched", chatId))
+			}
+			return chats[e]
+		}
+	)
+
+	var (
+		fetch = []any{
+			// peers
+			DecodeText(func(src []byte) error {
+				// parse: array(row(sender))
+				rows, err := pgtype.ParseUntypedTextArray(string(src))
+				if err != nil {
+					return err
+				}
+
+				var (
+					node *pb.Peer
+					heap []pb.Peer
+
+					page = into.GetPeers() // input
+					// data []*pb.Peer        // output
+
+					// eval = make([]any, 4) // len(ctx.plan))
+					size = len(rows.Elements)
+
+					text   pgtype.Text
+					chatId pgtype.UUIDArray
+
+					scan = []TextDecoder{
+						// id
+						DecodeText(func(src []byte) error {
+							err := text.DecodeText(nil, src)
+							if err != nil {
+								return err
+							}
+							node.Id = text.String
+							// ok = ok || text.String != "" // && str.Status == pgtype.Present
+							return nil
+						}),
+						// type
+						DecodeText(func(src []byte) error {
+							err := text.DecodeText(nil, src)
+							if err != nil {
+								return err
+							}
+							node.Type = text.String
+							// ok = ok || text.String != "" // && str.Status == pgtype.Present
+							return nil
+						}),
+						// name
+						DecodeText(func(src []byte) error {
+							err := text.DecodeText(nil, src)
+							if err != nil {
+								return err
+							}
+							node.Name = text.String
+							// ok = ok || text.String != "" // && str.Status == pgtype.Present
+							return nil
+						}),
+						// chat_id
+						DecodeText(func(src []byte) error {
+							err := chatId.DecodeText(nil, src)
+							if err != nil {
+								return err
+							}
+							// ok = ok || text.String != "" // && str.Status == pgtype.Present
+							return nil
+						}),
+					}
+				)
+
+				if 0 < size {
+					// data = make([]*pb.Peer, 0, size)
+					peers = make([]*peer, 0, size)
+				}
+
+				if n := size - len(page); 1 < n {
+					heap = make([]pb.Peer, n) // mempage; tidy
+				}
+
+				var (
+					// c   int // column
+					raw *pgtype.CompositeTextScanner
+				)
+				for r, row := range rows.Elements {
+					raw = pgtype.NewCompositeTextScanner(nil, []byte(row))
+					// RECORD
+					node = nil // NEW
+					if r < len(page) {
+						// [INTO] given page records
+						// [NOTE] order matters !
+						node = page[r]
+					} else if len(heap) > 0 {
+						node = &heap[0]
+						heap = heap[1:]
+					}
+					// ALLOC
+					if node == nil {
+						node = new(pb.Peer)
+					}
+
+					for _, col := range scan {
+						raw.ScanDecoder(col)
+						err = raw.Err()
+						if err != nil {
+							return err
+						}
+					}
+
+					// data = append(data, node)
+					peer := &peer{
+						node: node, alias: pb.Peer{
+							Id: strconv.Itoa(len(peers) + 1),
+						},
+					}
+					peers = append(peers, peer)
+					if outFrom { // output: peers
+						into.Peers = append(into.Peers, node)
+					}
+
+					for _, chatId := range chatId.Elements {
+						// TODO: disclose peer(node).chat_id relation !
+						chatRow := &pb.Chat{
+							Id:   hex.EncodeToString(chatId.Bytes[:]),
+							Peer: &peer.alias,
+						}
+						chatRef := &chat{
+							// data
+							peer: peer,
+							node: chatRow,
+							// refs
+							id: chatId.Bytes,
+							alias: pb.Chat{
+								Id: strconv.Itoa(len(chats) + 1),
+							},
+						}
+						chats = append(chats, chatRef)
+						if outSender { // output: chats
+							into.Chats = append(into.Chats, chatRow)
+						}
+					}
+				}
+				return nil
+			}),
+			// messages
+			DecodeText(func(src []byte) error {
+				// parse: array(row(message))
+				rows, err := pgtype.ParseUntypedTextArray(
+					string(src),
+				)
+				if err != nil {
+					return err
+				}
+
+				var (
+					node *pb.Message
+					heap []pb.Message
+
+					page = into.GetMessages() // input
+					data []*pb.Message        // output
+
+					eval = make([]any, len(ctx.plan))
+					size = len(rows.Elements)
+				)
+
+				if 0 < size {
+					data = make([]*pb.Message, 0, size)
+				}
+
+				if n := size - len(page); 1 < n {
+					heap = make([]pb.Message, n) // mempage; tidy
+				}
+
+				var (
+					c   int // column
+					raw *pgtype.CompositeTextScanner
+				)
+				for r, row := range rows.Elements {
+					raw = pgtype.NewCompositeTextScanner(nil, []byte(row))
+					// RECORD
+					node = nil // NEW
+					if r < len(page) {
+						// [INTO] given page records
+						// [NOTE] order matters !
+						node = page[r]
+					} else if len(heap) > 0 {
+						node = &heap[0]
+						heap = heap[1:]
+					}
+					// ALLOC
+					if node == nil {
+						node = new(pb.Message)
+					}
+					// [BIND] data fields to scan row
+					c = 0
+					for _, bind := range ctx.plan {
+
+						df := bind(node)
+						if df != nil {
+							eval[c] = df
+							c++
+							continue
+						}
+						// (df == nil)
+						// omit; pseudo calc
+					}
+
+					for _, col := range eval {
+						raw.ScanDecoder(col.(TextDecoder))
+						err = raw.Err()
+						if err != nil {
+							return err
+						}
+					}
+					// REFERENCES
+					senderId := uuid.MustParse(node.Sender.Id)
+					senderChat := getSender(UUID(senderId))
+					node.From = &senderChat.peer.alias
+					if outSender {
+						node.Sender = &senderChat.alias
+					} else {
+						node.Sender = nil
+					}
+					data = append(data, node)
+				}
+
+				into.Messages = data
+				return nil
+			}),
+		}
+	)
+
+	for rows.Next() {
+		err := rows.Scan(fetch...)
+		if err != nil {
+			return err
+		}
+		// once; MUST: single row
+		break
+	}
+
+	return rows.Err()
+}
+
+func selectHistoryQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch[*pb.Message], err error) {
+
+	const (
+		left = "m" // alias
+	)
+
+	ctx = &SELECT{
+		Params: params{
+			// "date": &pgtype.Timestamp{
+			// 	Time:   req.Localtime().UTC(),
+			// 	Status: pgtype.Present,
+			// },
+			// "user": req.Authorization.Creds.UserId,
+			"pdc": req.Authorization.Creds.Dc,
+		},
+	}
+
+	for param, input := range req.Filter {
+		switch param {
+		case "chat.id":
+			{
+				var chatId pgtype.UUID
+				err = chatId.Set(input)
+				if err != nil {
+					err = errors.BadRequest(
+						"messages.chat.id.input",
+						"messages( chat: id ); input: %v",
+						err,
+					)
+					return // nil, nil, err
+				}
+				// switch data := input.(type) {
+				// case uuid.UUID:
+				// case [16]byte:
+				// case string:
+				// default:
+				// }
+			}
+		case "peer":
+			{
+				// TODO:
+			}
+		case "self":
+			{
+				// TODO:
+			}
+		default:
+			// ERR: getHistory( $param: ? ); no such argument
+		}
+	}
+
+	ctx.Query = postgres.PGSQL.
+		Select(
+			// core:id
+			ident(left, "id"), // id
+			fmt.Sprintf("coalesce(%[1]s.channel_id, %[1]s.conversation_id)", left), // sender_chat_id
+			ident(left, "created_at"), // date
+			ident(left, "updated_at"), // edit
+			ident(left, "text"),       // message
+			"(file)",
+			ident(left, "variables"), // context
+		).
+		From(
+			"chat.message " + left,
+		).
+		JoinClause(CompactSQL(fmt.Sprintf(
+			`LEFT JOIN LATERAL (
+	SELECT
+		%[1]s.file_id id
+	, %[1]s.file_size size
+	, %[1]s.file_type "type"
+	, %[1]s.file_name "name"
+--, %[1]s.file_url url
+	WHERE
+		%[1]s.file_id NOTNULL
+) file on true`, left,
+		))).
+		Where(
+			ident(left, "conversation_id") + " = :chat.id",
+		).
+		OrderBy(
+			ident(left, "id") + " DESC", // NEWest..to..OLDest
+		)
+
+	plan = dataFetch[*pb.Message]{
+		// core:id
+		func(node *pb.Message) any {
+			return ScanFunc(func(src interface{}) error {
+				var val pgtype.Int8
+				err := val.Scan(src)
+				if err == nil && val.Status == pgtype.Present {
+					node.Id = val.Int
+				}
+				return err
+			})
+		},
+		// from_chat_id::participant
+		func(node *pb.Message) any {
+			return ScanFunc(func(src interface{}) error {
+				var val pgtype.UUID
+				err := val.Scan(src)
+
+				sender := node.Sender
+				node.Sender = nil // NULLify
+				if err == nil && val.Status == pgtype.Present {
+					if sender == nil {
+						sender = new(pb.Chat)
+					}
+					*(sender) = pb.Chat{
+						Id: hex.EncodeToString(val.Bytes[:]),
+					}
+					node.Sender = sender
+				}
+				return err
+			})
+		},
+		// date
+		func(node *pb.Message) any {
+			return ScanFunc(func(src interface{}) error {
+				var val pgtype.Timestamptz
+				err := val.Scan(src)
+				if err == nil && val.Status == pgtype.Present {
+					node.Date = app.DateEpochtime(val.Time, app.TimePrecision)
+				}
+				return err
+			})
+		},
+		// edit
+		func(node *pb.Message) any {
+			return ScanFunc(func(src interface{}) error {
+				var val pgtype.Timestamptz
+				err := val.Scan(src)
+				if err == nil && val.Status == pgtype.Present {
+					node.Edit = app.DateEpochtime(val.Time, app.TimePrecision)
+				}
+				return err
+			})
+		},
+		// text
+		func(node *pb.Message) any {
+			return ScanFunc(func(src interface{}) error {
+				var val pgtype.Text
+				err := val.Scan(src)
+				if err == nil && val.Status == pgtype.Present {
+					node.Text = val.String
+				}
+				return err
+			})
+		},
+		// file
+		func(node *pb.Message) any {
+			return fetchFileRow(&node.File)
+		},
+		// context
+		func(node *pb.Message) any {
+			return dbx.ScanJSONBytes(&node.Context)
+		},
+	}
+
+	for param, value := range req.Filter {
+		if value == nil {
+			continue
+		}
+		switch param {
+		case "offset":
+			{
+				switch offset := value.(type) {
+				case *pb.ChatMessagesRequest_Offset:
+					{
+						if offset == nil {
+							break // NULL
+						}
+						// offset( mid: int )
+						if offset.Id > 0 {
+							ctx.Params.set("offset.id", offset.Id)
+							ctx.Query = ctx.Query.Where(
+								ident(left, "id") + " < :offset.id",
+							)
+						}
+						// offset( date: int )
+						if offset.Date > 0 {
+							date := pgtype.Timestamptz{
+								Status: pgtype.Present,
+								Time:   app.EpochtimeDate(offset.Date, app.TimePrecision).UTC(),
+							}
+							ctx.Params.set("offset.date", &date)
+							ctx.Query = ctx.Query.Where(
+								ident(left, "created_at") + " < :offset.date",
+							)
+						}
+					}
+				default:
+
+				}
+			}
+		default:
+			// ERR: no argument support
+		}
+	}
+
+	limit := req.Size // GetSize()
+	switch {
+	case limit < 0:
+		limit = -1 // ALL: NO LIMIT !
+	case limit > 0:
+		// CHECK for too big values !
+	case limit == 0:
+		limit = 32 // Default
+	}
+
+	if limit > 0 {
+		// LIMIT (size+1) -- to indicate whether there are more result entries
+		ctx.Query = ctx.Query.Limit((uint64)(limit + 1))
+	}
+
+	return // cte, nil
+}
+
+func fetchHistoryRows(rows *sql.Rows, plan dataFetch[*pb.Message], into *pb.ChatMessages, limit int) (err error) {
+	var (
+		node *pb.Message
+		heap []pb.Message
+
+		page = into.GetMessages() // input
+		data []*pb.Message        // output
+
+		eval = make([]any, len(plan))
+	)
+
+	if 0 < limit {
+		data = make([]*pb.Message, 0, limit)
+	}
+
+	if n := limit - len(page); 1 < n {
+		heap = make([]pb.Message, n) // mempage; tidy
+	}
+
+	var r, c int // [r]ow, [c]olumn
+	for rows.Next() {
+		// LIMIT
+		if 0 < limit && len(data) == limit {
+			into.Next = true
+			if into.Page < 1 {
+				into.Page = 1
+			}
+			break
+		}
+		// RECORD
+		node = nil // NEW
+		if r < len(page) {
+			// [INTO] given page records
+			// [NOTE] order matters !
+			node = page[r]
+		} else if len(heap) > 0 {
+			node = &heap[0]
+			heap = heap[1:]
+		}
+		// ALLOC
+		if node == nil {
+			node = new(pb.Message)
+		}
+
+		// [BIND] data fields to scan row
+		c = 0
+		for _, bind := range plan {
+
+			df := bind(node)
+			if df != nil {
+				eval[c] = df
+				c++
+				continue
+			}
+			// (df == nil)
+			// omit; pseudo calc
+		}
+
+		err = rows.Scan(eval[0:c]...)
+		if err != nil {
+			break
+		}
+
+		data = append(data, node)
+		r++ // advance
+	}
+
+	if err == nil {
+		err = rows.Err()
+	}
+
+	if err != nil {
+		return err
+	}
+
+	if !into.Next && into.Page <= 1 {
+		// The first page with NO more results !
+		into.Page = 0 // Hide: NO paging !
+	}
+
+	into.Messages = data
+	return nil
+}

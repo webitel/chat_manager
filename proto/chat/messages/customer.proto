@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package webitel.chat; 
+
+option go_package = "github.com/webitel/chat_manager/api/proto/chat/messages";
+
+import "chat/messages/peer.proto";
+
+// Customer is external chat contact.
+message Customer {
+  // Customer unique **ID**entifier.
+  // Account **type**-specific string.
+  string id = 1;
+
+  // Account type.
+  // [external]
+  // -- viber
+  // -- telegram
+  // -- facebook
+  // -- whatsapp
+  // -- instagram
+  // . . .
+  
+  // Customer account **type**.
+  string type = 2;
+  
+  // Customer account **name**.
+  string name = 3;
+
+  // [VIA] Text gateway associations.
+  repeated Peer via = 4;
+}
+
+// ChatCustomers dataset
+message ChatCustomers {
+  // Dataset page of Customer(s).
+  repeated Customer peers = 1;
+  // List of unique text gateways, mentioned in peers. [VIA]
+  repeated Peer vias = 2;
+  // Page number of results.
+  int32 page = 5;
+  // Next page is available ?
+  bool next = 6;
+}
+
+message ChatCustomersRequest {
+  // ----- Output ----- //
+  
+  // Page number to return. **default**: 1.
+  int32 page = 1;
+  // Page records limit. **default**: 16.
+  int32 size = 2;
+  // Search term: peer{id,name}
+  string q = 5;
+  // Sort records by { fields } specification.
+  repeated string sort = 3;
+  // Fields [Q]uery to build result dataset record.
+  repeated string fields = 4;
+
+  // ------ Args ------ //
+  
+  // Set of unique contact **ID**entifier(s).
+  repeated string id = 6;
+
+  // The type of contact to filter.
+  string type = 7;
+  
+  // [VIA] Text gateway Contact provider.
+  Peer via = 8;
+
+}

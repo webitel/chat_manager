@@ -1,11 +1,12 @@
 package sqlxrepo
 
 import (
-
-	"bytes"
-	"unicode"
+	"fmt"
+	"io"
+	"strings"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/jackc/pgtype"
 )
 
 // StatementBuilder is a parent builder for other builders, e.g. SelectBuilder.
@@ -19,72 +20,409 @@ type (
 	DeleteStmt = sq.DeleteBuilder
 )
 
-// reformat to compact SQL text
+type (
+	TextDecoder = pgtype.TextDecoder
+	DecodeText  func(src []byte) error
+)
+
+var (
+	_ TextDecoder = DecodeText(nil)
+)
+
+func (fn DecodeText) Scan(src any) error {
+	if src == nil {
+		return fn.DecodeText(nil, nil)
+	}
+
+	switch data := src.(type) {
+	case string:
+		return fn.DecodeText(nil, []byte(data))
+	case []byte:
+		text := make([]byte, len(data))
+		copy(text, data)
+		return fn.DecodeText(nil, text)
+	}
+
+	return fmt.Errorf("pgx: cannot scan %T value %[1]v into %T", src, fn)
+}
+
+func (fn DecodeText) DecodeText(_ *pgtype.ConnInfo, src []byte) error {
+	if fn != nil {
+		return fn(src)
+	}
+	// IGNORE
+	return nil
+}
+
+type Sqlizer interface {
+	sq.Sqlizer
+}
+
+type CTE struct {
+	MATERIALIZED *bool
+	Name         string
+	Cols         []string
+	Expr         Sqlizer
+}
+
+func (e *CTE) ToSql() (CTE string, _ []interface{}, err error) {
+	query, args, err := e.Expr.ToSql() // convertToSql(e.Source)
+	if err != nil {
+		return "", nil, err
+	}
+	CTE = e.Name
+	// if e.Recursive {
+	// 	CTE = "RECURSIVE " + CTE
+	// }
+	if len(e.Cols) > 0 {
+		CTE += "(" + strings.Join(e.Cols, ",") + ")"
+	}
+	CTE += " AS"
+	if is := e.MATERIALIZED; is != nil {
+		if !(*is) {
+			CTE += " NOT"
+		}
+		CTE += " MATERIALIZED"
+	}
+	return CTE + " (" + query + ")", args, nil
+}
+
+type WITH struct {
+	RECURSIVE bool
+	tables    []*CTE
+	nx        map[string]int
+}
+
+func (c *WITH) index(name string) int {
+	if name != "" && c != nil {
+		if e, ok := c.nx[name]; ok {
+			return e
+		}
+	}
+	return -1
+}
+
+func (c *WITH) Has(name string) bool {
+	// return -1 < c.index(name)
+	_, ok := c.nx[name]
+	return ok
+}
+
+func (c *WITH) With(table CTE) bool {
+	if table.Expr == nil {
+		panic("WITH CTE( AS:expr! ) required")
+	}
+	name := table.Name
+	if name == "" {
+		panic("WITH CTE( name:string! ) required")
+	}
+	if c.Has(name) {
+		return false
+	}
+	e := len(c.tables)
+	if e < 1 && c.nx == nil {
+		c.nx = make(map[string]int)
+	}
+	c.nx[name] = e
+	c.tables = append(c.tables, &table)
+	return true
+}
+
+func (c *WITH) ToSql() (WITH string, _ []interface{}, err error) {
+	var CTE string
+	for e, cte := range c.tables {
+		CTE, _, err = cte.ToSql()
+		if err != nil {
+			return "", nil, err
+		}
+		if e > 0 {
+			WITH += ", "
+		} else {
+			WITH = "WITH "
+			if c.RECURSIVE {
+				WITH += " RECURSIVE "
+			}
+		}
+		WITH += CTE
+	}
+	return WITH, nil, nil
+}
+
+type SELECT struct {
+	WITH
+	Query sq.SelectBuilder
+	// JOIN   map[string]Sqlizer // map[alias]expr
+	Params params
+}
+
+var _ Sqlizer = (*SELECT)(nil)
+
+func (e *SELECT) SQLText() (query string, err error) {
+	var (
+		WITH   string
+		SELECT = e.Query.Suffix("") // shallowcopy
+	)
+	WITH, _, err = e.WITH.ToSql()
+	if err != nil {
+		return // "", nil, err
+	}
+	if WITH != "" {
+		SELECT = SELECT.Prefix(WITH)
+	}
+	query, _, err = SELECT.ToSql()
+	return
+}
+
+func (e *SELECT) ToSql() (query string, args []interface{}, err error) {
+	query, err = e.SQLText()
+	if err == nil && len(e.Params) > 0 {
+		query, args, err = NamedParams(query, e.Params)
+		query = CompactSQL(query)
+	}
+	return // query, args, err
+}
+
+func coalesce(text string, args ...string) string {
+	if text != "" {
+		return text
+	}
+	for _, text := range args {
+		if text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+type JOIN struct {
+	Kind  string  // [INNER|CROSS|LEFT|RIGHT[ OUTER] ]JOIN
+	Table Sqlizer // RIGHT: [schema.]table(type)|[LATERAL](SELECT)
+	Alias string  // AS
+	Pred  Sqlizer // ON
+}
+
+func (rel *JOIN) SQL() string {
+	var err error
+	parts := make([]string, 2, 6)
+	parts[0] = rel.Kind
+	parts[1], _, err = rel.Table.ToSql()
+	if err != nil {
+		panic(err)
+	}
+	if rel.Alias != "" {
+		parts = append(
+			parts, "AS", rel.Alias,
+		)
+	}
+	var ON string
+	if rel.Pred != nil {
+		ON, _, err = rel.Pred.ToSql()
+		if err != nil {
+			panic(err)
+		}
+	}
+	parts = append(
+		parts, "ON", coalesce(ON, "true"),
+	)
+	return strings.Join(parts, " ")
+}
+
+func (rel *JOIN) ToSql() (join string, _ []interface{}, err error) {
+	return rel.SQL(), nil, nil
+}
+
+// CompactSQL formats given SQL text to compact form.
+// - replaces consecutive white-space(s) with single SPACE(' ')
+// - suppress single-line comment(s), started with -- up to [E]nd[o]f[L]ine
+// - suppress multi-line comment(s), enclosed into /* ... */ pairs
+// - transmits literal '..' or ".." sources in their original form
+// https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-OPERATORS
 func CompactSQL(s string) string {
 
 	var (
-		
-		eol int // index: endOfLine
-		txt []byte // line: text
-
-		src = []byte(s)
-		dst = make([]byte, 0, len(src))
-
-		commentLine = []byte("--")
-		// commentStart = []byte("/*")
-		// commentClose = []byte("*/")
+		r = strings.NewReader(s)
+		w strings.Builder
 	)
 
-	const LF = '\n'
+	w.Grow(int(r.Size()))
 
-	for len(src) != 0 {
+	var (
+		err  error
+		char rune
+		last rune
+		hold rune
 
-		eol = bytes.IndexByte(src, LF)
-		if eol == -1 {
-			eol = len(src) // EOF
+		isSpace = func() (is bool) {
+			switch char {
+			case '\t', '\n', '\v', '\f', '\r', ' ', 0x85, 0xA0:
+				is = true
+			}
+			return // false
 		}
-
-		// read line
-		txt = src[:eol] // line
-		if eol < len(src) {
-			(eol)++ // advance '\n'
+		isPunct = func(char rune) (is bool) {
+			switch char {
+			// none; start of text
+			case 0:
+				is = true
+			// special
+			// ':' USES [squirrel] for :named parameters,
+			//     so we need to keep SPACE if there were any
+			case ',', '(', ')', '[', ']', ';', '\'', '"': // , ':':
+				is = true
+			// operators
+			case '+', '-', '*', '/', '<', '>', '=', '~', '!', '@', '#', '%', '^', '&', '|':
+				is = true
+			}
+			return // false
 		}
-		// advance line
-		src = src[eol:]
-		
-		// trim comment
-		eol = bytes.Index(txt, commentLine)
-		if eol != -1 {
-			txt = txt[:eol]
+		isQuote = func() (is bool) {
+			switch char {
+			case '\'', '"': // SQUOTE, DQUOTE:
+				is = true
+			}
+			return // false
 		}
-
-		// compress whitespace(s)
-		txt = bytes.TrimSpace(txt)
-
-		r, w := 0, 0
-		for w = bytes.IndexFunc(txt[r:], unicode.IsSpace); w != -1;
-			w = bytes.IndexFunc(txt[r:], unicode.IsSpace) {
-
-			w += r
-			txt[w] = ' '
-			(w)++
-			
-			txt = append(txt[:w], bytes.TrimLeftFunc(txt[w:], unicode.IsSpace)...)
-
-			r = w
+		// context
+		space   bool // [IN] [w]hite[sp]ace(s)
+		quote   rune // [IN] [l]i[t]eral(s); *QUOTE(s)
+		comment rune // [IN] [c]o[m]ment; [-|*]
+		// helpers
+		isComment = func() bool {
+			switch comment {
+			case '-':
+				{
+					// comment: close(\n)
+					if char == '\n' { // EOL
+						space = true // inject
+						comment = 0  // close
+						hold = 0     // clear
+					}
+					return true // still IN ...
+				}
+			case '*':
+				{
+					// comment: close(*/)
+					if hold == 0 && char == '*' {
+						// MAY: close(*/)
+						hold = char
+						// need more data ...
+					} else if hold == '*' && char == '/' {
+						space = true // inject
+						comment = 0  // close
+						hold = 0     // clear
+					}
+					return true // still IN ...
+				}
+				// default: 0
+			}
+			// NOTE: (comment == 0)
+			switch hold {
+			// comment: start(--)
+			case '-': // single-line
+				{
+					if char == hold {
+						hold = 0       // clear
+						comment = char // start
+						return true
+					}
+					return false
+				}
+			// comment: start(/*)
+			case '/': // multi-line
+				{
+					if char == '*' {
+						hold = 0       // clear
+						comment = char // start
+						return true
+					}
+					return false
+				}
+			case 0:
+				{
+					// NOTE: (hold == 0)
+					switch char {
+					case '-':
+					case '/':
+					default:
+						// NOT alike ...
+						return false
+					}
+					// need more data ...
+					hold = char
+					// DO NOT write(!)
+					return true
+				}
+			default:
+				{
+					// NO match
+					// need to write hold[ed] char
+					return false
+				}
+			}
 		}
+		isLiteral = func() bool {
+			if !isQuote() || last == '\\' { // ESC(\')
+				return quote > 0 // We are IN ?
+			}
+			// close(?)
+			if quote == char { // inLiteral(?)
+				quote = 0
+				return true // as last
+			}
+			// start(!)
+			quote = char
+			return true
+		}
+		// [re]write
+		output = func() {
+			if hold > 0 {
+				w.WriteRune(hold)
+				last = hold
+				hold = 0
+			}
+			if space {
+				space = false
+				if !isPunct(last) && !isPunct(char) {
+					w.WriteRune(' ') // INJECT SPACE(' ')
+				}
+			}
+			w.WriteRune(char)
+			last = char
+		}
+	)
 
-		// has command text ?
-		if len(txt) == 0 {
+	var e int
+	for {
+
+		char, _, err = r.ReadRune()
+		if err != nil {
+			break
+		}
+		e++ // char index position
+
+		if isComment() {
+			// suppress; DO NOT write(!)
 			continue
 		}
 
-		// write command text
-		if len(dst) != 0 {
-			dst = append(dst, ' ') // space
+		if isLiteral() {
+			// [re]write: as is (!)
+			output()
+			continue
 		}
-		dst = append(dst, txt...)
+
+		if isSpace() {
+			// fold sequence ...
+			space = true
+			continue
+		}
+		// [re]write: [hold]char
+		output()
 	}
 
-	return string(dst)
+	if err != io.EOF {
+		panic(err)
+	}
+
+	return w.String()
 }

@@ -1,0 +1,1010 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Webitel Messages ReSTfull API",
+    "version": "v23.07",
+    "contact": {
+      "name": "Webitel LLC",
+      "url": "https://www.webitel.com",
+      "email": "support@webitel.com"
+    },
+    "license": {
+      "name": "MIT"
+    }
+  },
+  "tags": [
+    {
+      "name": "Catalog",
+      "description": "**Messages** Service"
+    }
+  ],
+  "host": "nx.webitel.org",
+  "basePath": "/api",
+  "schemes": [
+    "https"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/chat/customers": {
+      "get": {
+        "summary": "Query of external chat customers",
+        "operationId": "Catalog_GetCustomers",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/webitel.chat.ChatCustomers"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "page",
+            "description": "Page number to return. **default**: 1.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "size",
+            "description": "Page records limit. **default**: 16.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "q",
+            "description": "Search term: peer{id,name}",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "sort",
+            "description": "Sort records by { fields } specification.",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "fields",
+            "description": "Fields [Q]uery to build result dataset record.",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "id",
+            "description": "Set of unique contact **ID**entifier(s).",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "type",
+            "description": "The type of contact to filter.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "via.id",
+            "description": "Contact unique **ID**entifier.\nContact **type**-specific string.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "via.type",
+            "description": "Contact **type** provider.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "via.name",
+            "description": "Contact display **name**.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/chat/dialogs": {
+      "get": {
+        "summary": "Query of chat conversations",
+        "operationId": "Catalog_GetDialogs",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/webitel.chat.ChatDialogs"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "page",
+            "description": "Page number to return. **default**: 1.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "size",
+            "description": "Page records limit. **default**: 16.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "q",
+            "description": "Search term: peer.name",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "sort",
+            "description": "Sort records by { fields } specification.",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "fields",
+            "description": "Fields [Q]uery to build result dataset record.",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "id",
+            "description": "Set of unique chat IDentifier(s).\nAccept: dialog -or- member ID.",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "via.id",
+            "description": "Contact unique **ID**entifier.\nContact **type**-specific string.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "via.type",
+            "description": "Contact **type** provider.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "via.name",
+            "description": "Contact display **name**.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "peer.id",
+            "description": "Contact unique **ID**entifier.\nContact **type**-specific string.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "peer.type",
+            "description": "Contact **type** provider.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "peer.name",
+            "description": "Contact display **name**.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "date.since",
+            "description": "Since epochtime (milli).\n**Match**: greater than ..",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "date.until",
+            "description": "Until epochtime (milli).\n**Match**: less or equal ..",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "online",
+            "description": "Dialogs ONLY that are currently [not] active( closed: ? ).",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          }
+        ],
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/chat/dialogs/{chat_id}/members": {
+      "get": {
+        "summary": "Query of chat participants",
+        "operationId": "Catalog_GetMembers",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/webitel.chat.ChatMembers"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "description": "ID of the chat dialog.",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "page",
+            "description": "Page number to return. **default**: 1.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "size",
+            "description": "Page records limit. **default**: 16.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "q",
+            "description": "Search term: peer(type;name)",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "sort",
+            "description": "Sort records by { fields } specification.",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "fields",
+            "description": "Fields [Q]uery to build result dataset record.",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "id",
+            "description": "Set of unique chat member ID.",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "via.id",
+            "description": "Contact unique **ID**entifier.\nContact **type**-specific string.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "via.type",
+            "description": "Contact **type** provider.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "via.name",
+            "description": "Contact display **name**.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "peer.id",
+            "description": "Contact unique **ID**entifier.\nContact **type**-specific string.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "peer.type",
+            "description": "Contact **type** provider.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "peer.name",
+            "description": "Contact display **name**.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "date.since",
+            "description": "Since epochtime (milli).\n**Match**: greater than ..",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "date.until",
+            "description": "Until epochtime (milli).\n**Match**: less or equal ..",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "online",
+            "description": "Participants ONLY who are currently [not] connected to the chat.\n( left: ( 0 ? online : offline ) )",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "joined",
+            "description": "Participants ONLY who have [not] been connected to the chat.\n( join: ( 0 ? [request|abandoned] : connected ) )",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          }
+        ],
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/chat/dialogs/{chat_id}/messages": {
+      "get": {
+        "summary": "Query of chat messages history",
+        "operationId": "Catalog_GetHistory",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/webitel.chat.ChatMessages"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "description": "Unique chat dialog",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "offset.id",
+            "description": "Messages ONLY starting from the specified message ID",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "offset.date",
+            "description": "Messages ONLY been sent before the specified epochtime(milli).",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "limit",
+            "description": "Number of messages to return.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "q",
+            "description": "Search term: message.text",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "fields",
+            "description": "Fields to return into result.",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "peer.id",
+            "description": "Contact unique **ID**entifier.\nContact **type**-specific string.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "peer.type",
+            "description": "Contact **type** provider.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "peer.name",
+            "description": "Contact display **name**.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/chat/{peer.type}/{peer.id}/messages": {
+      "get": {
+        "summary": "Query of chat messages history",
+        "operationId": "Catalog_GetHistory2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/webitel.chat.ChatMessages"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "peer.type",
+            "description": "Contact **type** provider.",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "peer.id",
+            "description": "Contact unique **ID**entifier.\nContact **type**-specific string.",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "offset.id",
+            "description": "Messages ONLY starting from the specified message ID",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "offset.date",
+            "description": "Messages ONLY been sent before the specified epochtime(milli).",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "limit",
+            "description": "Number of messages to return.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "q",
+            "description": "Search term: message.text",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "fields",
+            "description": "Fields to return into result.",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "chat_id",
+            "description": "Unique chat dialog",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "peer.name",
+            "description": "Contact display **name**.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Catalog"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "webitel.chat.Chat": {
+      "type": "object",
+      "properties": {
+        "dc": {
+          "type": "string",
+          "format": "int64",
+          "description": "[D]omain[C]omponent primary ID."
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for this chat.\n[FROM] Member / Channel ID.\n\n// [TO] Group. Conversation ID.\n string chat_id = 2;"
+        },
+        "via": {
+          "$ref": "#/definitions/webitel.chat.Peer",
+          "description": "[FROM] VIA text gateway profile."
+        },
+        "peer": {
+          "$ref": "#/definitions/webitel.chat.Peer",
+          "description": "[FROM]: User identity. Seed."
+        },
+        "title": {
+          "type": "string",
+          "description": "[TO]: Chat title."
+        },
+        "left": {
+          "type": "string",
+          "format": "int64",
+          "title": "OPTIONAL. A non-zero value indicates that\nthe participant has left the chat. OFFLINE(!)"
+        },
+        "join": {
+          "type": "string",
+          "format": "int64",
+          "description": "OPTIONAL. A non-zero value indicates that\nthe participant has joined the chat."
+        },
+        "invite": {
+          "$ref": "#/definitions/webitel.chat.Chat.Invite",
+          "description": "OPTIONAL. Invite[d] BY member info."
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Context. Variables."
+        }
+      },
+      "description": "The Chat info.\nAlias: participant, subscriber, member, peer, leg."
+    },
+    "webitel.chat.Chat.Invite": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "format": "int64",
+          "title": "Timestamp when the invitation to join the chat was sent"
+        },
+        "from": {
+          "type": "string",
+          "title": "Chat member ID who invited to join the chat"
+        }
+      }
+    },
+    "webitel.chat.ChatCustomers": {
+      "type": "object",
+      "properties": {
+        "peers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/webitel.chat.Customer"
+          },
+          "description": "Dataset page of Customer(s)."
+        },
+        "vias": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/webitel.chat.Peer"
+          },
+          "title": "List of unique text gateways, mentioned in peers. [VIA]"
+        },
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Page number of results."
+        },
+        "next": {
+          "type": "boolean",
+          "title": "Next page is available ?"
+        }
+      },
+      "title": "ChatCustomers dataset"
+    },
+    "webitel.chat.ChatDialogs": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/webitel.chat.Dialog"
+          },
+          "description": "Dataset page of Dialog(s)."
+        },
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Page number of results."
+        },
+        "next": {
+          "type": "boolean",
+          "title": "Next page available ?"
+        }
+      },
+      "title": "ChatDialogs dataset"
+    },
+    "webitel.chat.ChatMembers": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/webitel.chat.Chat"
+          },
+          "description": "Page of the chat participants."
+        },
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Page number of results."
+        },
+        "next": {
+          "type": "boolean",
+          "title": "Next page available ?"
+        }
+      },
+      "title": "ChatMembers dataset"
+    },
+    "webitel.chat.ChatMessages": {
+      "type": "object",
+      "properties": {
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/webitel.chat.Message"
+          },
+          "description": "Dataset page of messages."
+        },
+        "chats": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/webitel.chat.Chat"
+          },
+          "title": "List of chats mentioned in messages. [FROM]"
+        },
+        "peers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/webitel.chat.Peer"
+          },
+          "title": "List of peers mentioned in messages. [FROM]"
+        },
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Dataset page number."
+        },
+        "next": {
+          "type": "boolean",
+          "title": "Next page is available ?"
+        }
+      },
+      "title": "ChatMessages dataset"
+    },
+    "webitel.chat.ChatMessagesRequest.Offset": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "int64",
+          "title": "Messages ONLY starting from the specified message ID"
+        },
+        "date": {
+          "type": "string",
+          "format": "int64",
+          "description": "Messages ONLY been sent before the specified epochtime(milli)."
+        }
+      },
+      "title": "Offset options"
+    },
+    "webitel.chat.Customer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Customer unique **ID**entifier.\nAccount **type**-specific string."
+        },
+        "type": {
+          "type": "string",
+          "description": "Customer account **type**."
+        },
+        "name": {
+          "type": "string",
+          "description": "Customer account **name**."
+        },
+        "via": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/webitel.chat.Peer"
+          },
+          "description": "[VIA] Text gateway associations."
+        }
+      },
+      "description": "Customer is external chat contact."
+    },
+    "webitel.chat.Dialog": {
+      "type": "object",
+      "properties": {
+        "dc": {
+          "type": "string",
+          "format": "int64",
+          "description": "[D]omain[C]omponent primary ID."
+        },
+        "id": {
+          "type": "string",
+          "description": "The Conversation thread unique ID."
+        },
+        "via": {
+          "$ref": "#/definitions/webitel.chat.Peer",
+          "description": "[VIA] Text gateway [FROM] originated thru ..."
+        },
+        "from": {
+          "$ref": "#/definitions/webitel.chat.Peer",
+          "description": "[FROM]: Originator.\nLeg[A]. Contact / User."
+        },
+        "date": {
+          "type": "string",
+          "format": "int64",
+          "description": "Timestamp of the latest activity."
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the dialog."
+        },
+        "closed": {
+          "type": "string",
+          "format": "int64",
+          "title": "Timestamp when dialog was closed.\nZero value means - connected (online)\nOtherwise - disconnected (offline)"
+        },
+        "started": {
+          "type": "string",
+          "format": "int64",
+          "description": "Timestamp when dialog started."
+        },
+        "message": {
+          "$ref": "#/definitions/webitel.chat.Message",
+          "description": "The latest (top) message."
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Context. Variables. Environment."
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/webitel.chat.Chat"
+          },
+          "description": "[TO]: Participants.\nLeg[A+]. Schema / Agent."
+        }
+      },
+      "description": "Chat Dialog. Conversation info."
+    },
+    "webitel.chat.File": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "int64",
+          "description": "Unique media file identifier."
+        },
+        "size": {
+          "type": "string",
+          "format": "int64",
+          "title": "Size of the media file. Bytes"
+        },
+        "type": {
+          "type": "string",
+          "description": "MIME-Type of the media content."
+        },
+        "name": {
+          "type": "string",
+          "description": "Filename."
+        }
+      },
+      "description": "Media File."
+    },
+    "webitel.chat.Message": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "int64",
+          "description": "Unique message identifier inside this chat."
+        },
+        "date": {
+          "type": "string",
+          "format": "int64",
+          "description": "Timestamp when this message was sent (published)."
+        },
+        "from": {
+          "$ref": "#/definitions/webitel.chat.Peer",
+          "description": "Sender of the message."
+        },
+        "chat": {
+          "$ref": "#/definitions/webitel.chat.Chat",
+          "description": "Conversation the message belongs to .."
+        },
+        "sender": {
+          "$ref": "#/definitions/webitel.chat.Chat",
+          "description": "Chat Sender of the message, sent on behalf of a chat (member)."
+        },
+        "edit": {
+          "type": "string",
+          "format": "int64",
+          "description": "Timestamp when this message was last edited."
+        },
+        "text": {
+          "type": "string",
+          "description": "Message Text."
+        },
+        "file": {
+          "$ref": "#/definitions/webitel.chat.File",
+          "description": "Message Media. Attachment."
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Context. Variables. Environment."
+        }
+      },
+      "description": "Chat Message."
+    },
+    "webitel.chat.Peer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Contact unique **ID**entifier.\nContact **type**-specific string."
+        },
+        "type": {
+          "type": "string",
+          "description": "Contact **type** provider."
+        },
+        "name": {
+          "type": "string",
+          "description": "Contact display **name**."
+        }
+      },
+      "description": "Peer contact."
+    },
+    "webitel.chat.Timerange": {
+      "type": "object",
+      "properties": {
+        "since": {
+          "type": "string",
+          "format": "int64",
+          "description": "Since epochtime (milli).\n**Match**: greater than .."
+        },
+        "until": {
+          "type": "string",
+          "format": "int64",
+          "description": "Until epochtime (milli).\n**Match**: less or equal .."
+        }
+      },
+      "description": "Timerange filter value."
+    }
+  },
+  "securityDefinitions": {
+    "AccessToken": {
+      "type": "apiKey",
+      "name": "X-Webitel-Access",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "AccessToken": []
+    }
+  ]
+}

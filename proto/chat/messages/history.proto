@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package webitel.chat; 
+
+option go_package = "github.com/webitel/chat_manager/api/proto/chat/messages";
+
+import "chat/messages/peer.proto";
+import "chat/messages/chat.proto";
+import "chat/messages/message.proto";
+
+// ChatMessages dataset
+message ChatMessages {
+  // Dataset page of messages.
+  repeated Message messages = 1;
+  // List of chats mentioned in messages. [FROM]
+  repeated Chat chats = 2;
+  // List of peers mentioned in messages. [FROM]
+  repeated Peer peers = 3;
+  // Dataset page number.
+  int32 page = 5;
+  // Next page is available ?
+  bool next = 6;
+}
+
+message ChatMessagesRequest {
+  // Offset options
+  message Offset {
+    // Messages ONLY starting from the specified message ID
+    int64 id = 1;
+    // Messages ONLY been sent before the specified epochtime(milli).
+    int64 date = 2;
+  }
+  // Offset messages.
+  Offset offset = 1;
+  // Number of messages to return.
+  int32 limit = 2;
+  // Search term: message.text
+  string q = 5;
+  // Fields to return into result.
+  repeated string fields = 3;
+
+  // Input peer identity
+  oneof chat {
+    // Unique chat dialog
+    string chat_id = 6;
+    // Unique peer contact
+    Peer peer = 7;
+  }
+}

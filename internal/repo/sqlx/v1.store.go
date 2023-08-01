@@ -11,7 +11,7 @@ type ChatStore interface {
 	// GetSession in front of the unique chatID member
 	GetSession(ctx context.Context, chatID string) (chat *app.Session, err error)
 	// GetSession(ctx context.Context, req *SearchOptions) (chat *app.Session, err error)
-	
+
 	// BindChannel merges given vars with corresponding channel unique identifier
 	BindChannel(ctx context.Context, chatID string, vars map[string]string) (env map[string]string, err error)
 	// GetMessages(ctx context.Context, search *SearchOptions) ([]*Message, error)
@@ -27,7 +27,7 @@ type ChatStore interface {
 	GetMessage(ctx context.Context, oid int64, senderChatID string, targetChatID string, searchProps map[string]string) (*Message, error)
 }
 
-
 type Store interface {
+	CatalogStore
 	ChatStore
 }

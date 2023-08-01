@@ -1,6 +1,7 @@
 package app
 
 import (
+	"database/sql/driver"
 	"strings"
 )
 
@@ -39,7 +40,6 @@ type Substrings []string
 
 // Substring MASK defaults
 const (
-
 	SubstringAny = '*'
 	SubstringOne = '?'
 )
@@ -124,7 +124,7 @@ func (subs Substrings) Final() (string, bool) {
 
 func (subs Substrings) Any() []string {
 	if n := len(subs); n > 2 {
-		return subs[1:n-1] // inner::any
+		return subs[1 : n-1] // inner::any
 	}
 	return nil
 }
@@ -150,7 +150,7 @@ func (m Substrings) Match(s string) bool {
 			term = term[a:]
 
 			i := indexFunc(text) // strings.Index(s, part)
-			if i < 0 { // NOT MATCH (!)
+			if i < 0 {           // NOT MATCH (!)
 				return false
 			}
 			// MATCH (!) advance
@@ -206,14 +206,14 @@ func (m Substrings) Match(s string) bool {
 			return false
 		}
 	}
-	
+
 	if suffix, ok := m.Final(); ok {
 		// if suffix == "" {
 		// 	s = "" // MATCH: ANY(*)
-		// } else 
+		// } else
 		if len(s) >= len(suffix) {
 			// MATCH: SUFFIX (?)
-			s = s[len(s)-len(suffix):] 
+			s = s[len(s)-len(suffix):]
 			index := func(term string) int {
 				if term == "" {
 					// MATCH: ONE(?)
@@ -232,6 +232,21 @@ func (m Substrings) Match(s string) bool {
 	}
 	// MATCH: ALL (?)
 	return s == ""
+}
+
+func (m Substrings) Value() (driver.Value, error) {
+	if len(m) == 0 {
+		return "", nil
+	}
+	// TODO: escape(%)
+	v := m.Copy()
+	const escape = "\\" // https://postgrespro.ru/docs/postgresql/12/functions-matching#FUNCTIONS-LIKE
+	for i := 0; i < len(v); i++ {
+		v[i] = strings.ReplaceAll(v[i], "_", escape+"_") // escape control '_' (single char entry)
+		v[i] = strings.ReplaceAll(v[i], "?", "_")        // propagate '?' char for PostgreSQL purpose
+		v[i] = strings.ReplaceAll(v[i], "%", escape+"%") // escape control '%' (any char(s) or none)
+	}
+	return strings.Join(v, "%"), nil
 }
 
 func SubstringMatch(pattern, value string) bool {

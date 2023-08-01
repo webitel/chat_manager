@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+package webitel.chat; 
+
+option go_package = "github.com/webitel/chat_manager/api/proto/chat/messages";
+
+import "chat/messages/peer.proto";
+import "google/protobuf/wrappers.proto";
+
+// The Chat info.
+// Alias: participant, subscriber, member, peer, leg.
+message Chat {
+  // [D]omain[C]omponent primary ID.
+  int64 dc = 1;
+  // Unique identifier for this chat.
+  // [FROM] Member / Channel ID.
+  string id = 2;
+  // // [TO] Group. Conversation ID.
+  // string chat_id = 2;
+
+  // [FROM] VIA text gateway profile.
+  Peer via = 5;
+  // [FROM]: User identity. Seed.
+  Peer peer = 6;
+  
+  // // [TO]: Chat identity. Peer.
+  // // Transport, e.g.: webchat, websocket, telegram, etc.
+  // string type = 7;
+  // Peer chat = 7;
+  
+  // [TO]: Chat title.
+  string title = 8;
+
+  // ------- Timing ------- //
+
+  // OPTIONAL. A non-zero value indicates that
+  // the participant has left the chat. OFFLINE(!)
+  int64 left = 10;
+  // OPTIONAL. A non-zero value indicates that
+  // the participant has joined the chat.
+  int64 join = 11;
+  
+  // // OPTIONAL. A non-zero value indicates that the participant was invite[d] to join the chat.
+  // int64 req = 12;
+
+  message Invite {
+    // Timestamp when the invitation to join the chat was sent
+    int64 date = 1;
+    // Chat member ID who invited to join the chat
+    string from = 2;
+  }
+  // OPTIONAL. Invite[d] BY member info.
+  Invite invite = 13;
+
+  // Context. Variables.
+  map<string, string> context = 15;
+}
+
+// Timerange filter value.
+message Timerange {
+  // Since epochtime (milli).
+  // **Match**: greater than ..
+  int64 since = 1;
+  // Until epochtime (milli).
+  // **Match**: less or equal ..
+  int64 until = 2;
+}
+
+message ChatMembersRequest {
+
+  // ----- Output ----- //
+
+  // Page number to return. **default**: 1.
+  int32 page = 1;
+  // Page records limit. **default**: 16.
+  int32 size = 2;
+  // Search term: peer(type;name)
+  string q = 6;
+  // Sort records by { fields } specification.
+  repeated string sort = 3;
+  // Fields [Q]uery to build result dataset record.
+  repeated string fields = 4;
+
+  // ID of the chat dialog.
+  string chat_id = 5;
+
+  // ------ Args ------ //
+
+  // Set of unique chat member ID.
+  repeated string id = 7;
+  // [VIA] Text gateway.
+  Peer via = 8;
+  // [PEER] Member of ...
+  Peer peer = 9;
+  // Date within timerange.
+  Timerange date = 10;
+  
+  // Participants ONLY who are currently [not] connected to the chat.
+  // ( left: ( 0 ? online : offline ) )
+  google.protobuf.BoolValue online = 11;
+
+  // Participants ONLY who have [not] been connected to the chat.
+  // ( join: ( 0 ? [request|abandoned] : connected ) )
+  google.protobuf.BoolValue joined = 12;
+  
+  // // Invite filters only those participants
+  // // who have [not] been invited to the chat.
+  // // ( invite: * )
+  // google.protobuf.BoolValue invite = 13;
+
+}
+
+// ChatMembers dataset
+message ChatMembers {
+  // Page of the chat participants.
+  repeated Chat data = 1;
+  // Page number of results.
+  int32 page = 5;
+  // Next page available ?
+  bool next = 6;
+}

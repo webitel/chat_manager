@@ -11,12 +11,14 @@ import (
 	pbauth "github.com/webitel/chat_manager/api/proto/auth"
 	pbbot "github.com/webitel/chat_manager/api/proto/bot"
 	pb "github.com/webitel/chat_manager/api/proto/chat"
+	pb2 "github.com/webitel/chat_manager/api/proto/chat/messages"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	pbmanager "github.com/webitel/chat_manager/api/proto/workflow"
 
 	"github.com/webitel/chat_manager/cmd"
 	"github.com/webitel/chat_manager/log"
 
+	authN "github.com/webitel/chat_manager/auth"
 	"github.com/webitel/chat_manager/internal/auth"
 	event "github.com/webitel/chat_manager/internal/event_router"
 	"github.com/webitel/chat_manager/internal/flow"
@@ -147,6 +149,24 @@ func Run(ctx *cli.Context) error {
 		return err
 	}
 	if err := pb.RegisterMessagesHandler(service.Server(), serv); err != nil {
+		logger.Fatal().
+			Str("app", "failed to register service").
+			Msg(err.Error())
+		return err
+	}
+
+	catalog := NewCatalog(
+		CatalogLogs(&logger),
+		CatalogAuthN(authN.NewClient(
+			authN.ClientService(service),
+			authN.ClientCache(authN.NewLru(4096)),
+		)),
+		CatalogStore(store),
+	)
+
+	if err := pb2.RegisterCatalogHandler(
+		service.Server(), catalog,
+	); err != nil {
 		logger.Fatal().
 			Str("app", "failed to register service").
 			Msg(err.Error())

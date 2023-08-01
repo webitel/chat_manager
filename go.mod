@@ -5,9 +5,10 @@ go 1.18
 require (
 	github.com/Masterminds/squirrel v1.5.2
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
-	github.com/golang/protobuf v1.4.3
-	github.com/google/uuid v1.1.2
+	github.com/golang/protobuf v1.5.3
+	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.4.2
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.16.0
 	github.com/hashicorp/consul/api v1.13.0
 	github.com/jackc/pgconn v1.12.1
 	github.com/jackc/pgtype v1.11.0
@@ -20,8 +21,10 @@ require (
 	github.com/streadway/amqp v1.0.0
 	github.com/urfave/cli/v2 v2.3.0
 	github.com/yuin/goldmark v1.4.0
-	golang.org/x/oauth2 v0.0.0-20220411215720-9780585627b5
-	google.golang.org/protobuf v1.25.0
+	golang.org/x/oauth2 v0.8.0
+	google.golang.org/genproto/googleapis/api v0.0.0-20230530153820-e85fd2cbaebc
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20230530153820-e85fd2cbaebc
+	google.golang.org/protobuf v1.30.0
 )
 
 require (
@@ -84,13 +87,13 @@ require (
 	go.uber.org/multierr v1.8.0
 	go.uber.org/zap v1.23.0
 	golang.org/x/crypto v0.0.0-20211215165025-cf75a172585e // indirect
-	golang.org/x/net v0.0.0-20220812174116-3211cb980234 // indirect
+	golang.org/x/net v0.10.0 // indirect
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 // indirect
-	golang.org/x/sys v0.0.0-20220728004956-3c1f35247d10 // indirect
-	golang.org/x/text v0.3.7 // indirect
-	google.golang.org/appengine v1.6.6 // indirect
-	google.golang.org/genproto v0.0.0-20200825200019-8632dd797987
-	google.golang.org/grpc v1.40.0
+	golang.org/x/sys v0.8.0 // indirect
+	golang.org/x/text v0.9.0 // indirect
+	google.golang.org/appengine v1.6.7 // indirect
+	google.golang.org/genproto v0.0.0-20230526203410-71b5a4ffd15e // indirect
+	google.golang.org/grpc v1.55.0
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

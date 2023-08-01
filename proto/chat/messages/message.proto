@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package webitel.chat; 
+
+option go_package = "github.com/webitel/chat_manager/api/proto/chat/messages";
+
+import "chat/messages/peer.proto";
+import "chat/messages/chat.proto";
+
+// Chat Message.
+message Message {
+  
+  // Unique message identifier inside this chat.
+  int64 id = 1;
+
+  // Timestamp when this message was sent (published).
+  int64 date = 2;
+  
+  // Sender of the message.
+  Peer from = 3;
+
+  // Conversation the message belongs to ..
+  Chat chat = 4;
+  
+  // Chat Sender of the message, sent on behalf of a chat (member).
+  Chat sender = 5;
+
+  // Timestamp when this message was last edited.
+  int64 edit = 6;
+
+  // // MIME Type of the message, e.g.: text, file, read, status etc.
+  // string type = 5;
+  
+  // Message Text.
+  string text = 7;
+  
+  // Message Media. Attachment. 
+  File file = 8;
+  
+  // Context. Variables. Environment.
+  map<string, string> context = 9;
+  
+  // MIME Type specific content.
+
+  // // Contact info shared.
+  // Account contact = 9;
+
+  // // Optional. If the message is a reply,
+  // // this is the ID of the original message
+  // int64 reply_to_message_id = 10;
+  // // External message sent-binding to be able to identify corresponding internal message
+  // map<string,string> reply_to_variables = 11;
+  // // Unique identifier for the chat where the original message was sent
+  // string forward_from_chat_id = 12;
+  // // Message identifier in the chat specified in from_chat_id
+  // int64 forward_from_message_id = 13;
+  // // External message sent-binding to be able to identify corresponding internal message
+  // map<string,string> forward_from_variables = 14;
+  // // Reply Markup Buttons SET
+  // repeated Buttons buttons = 6;
+  // // Inline Keyboard Buttons SET
+  // repeated Buttons inline = 15;
+  
+
+  // // NewChatMembers description for {"type":"joined"} notification
+  // repeated Account new_chat_members = 20;
+  // // LeftChatMember description for {"type":"left"} notification
+  // Account left_chat_member = 21;
+}
+
+// Media File.
+message File {
+
+  // Unique media file identifier.
+  int64 id = 1;
+  
+  // string url = 2;
+
+  // Size of the media file. Bytes
+  int64 size = 3;
+
+  // MIME-Type of the media content.
+  string type = 4;
+
+  // Filename.
+  string name = 5;
+}
