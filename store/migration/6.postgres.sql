@@ -3,13 +3,15 @@ ALTER SEQUENCE chat.profile_id_seq
   OWNED BY chat.bot.id
 ;
 
-DROP TABLE chat."_profile";
-DROP TABLE chat.active_channel;
+DROP VIEW IF EXISTS chat.channels;
+DROP TABLE IF EXISTS chat.profile;
+DROP TABLE IF EXISTS chat."_profile";
+DROP TABLE IF EXISTS chat.active_channel;
 
-DROP SEQUENCE chat.bot_id_seq;
-DROP SEQUENCE chat.channel_id_seq;
-DROP SEQUENCE chat.conversation_id_seq;
-DROP SEQUENCE chat.invite_id_seq;
+DROP SEQUENCE IF EXISTS chat.bot_id_seq;
+DROP SEQUENCE IF EXISTS chat.channel_id_seq;
+DROP SEQUENCE IF EXISTS chat.conversation_id_seq;
+DROP SEQUENCE IF EXISTS chat.invite_id_seq;
 
 -- chat.conversation_node --
 
