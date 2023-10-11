@@ -267,7 +267,9 @@ func BuildVKKeyboard(in []*chat.Buttons) (*VKKeyboard, error) {
 			switch button.Type {
 			case "clear", "remove", "remove_keyboard":
 				return &VKKeyboard{OneTime: true, Buttons: make([][]Button, 0)}, nil
-
+			case "message":
+				result.IsInline = true
+				result.OneTime = false
 			}
 			result.Buttons[i] = append(result.Buttons[i], *ConvertInternalToVKButton(button))
 		}
