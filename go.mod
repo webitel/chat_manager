@@ -4,6 +4,7 @@ go 1.18
 
 require (
 	github.com/Masterminds/squirrel v1.5.2
+	github.com/SevereCloud/vksdk/v2 v2.16.0
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/golang/protobuf v1.5.3
 	github.com/google/uuid v1.3.0
@@ -25,6 +26,11 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20230530153820-e85fd2cbaebc
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230530153820-e85fd2cbaebc
 	google.golang.org/protobuf v1.30.0
+)
+
+require (
+	github.com/vmihailenco/msgpack/v5 v5.3.5 // indirect
+	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 )
 
 require (
