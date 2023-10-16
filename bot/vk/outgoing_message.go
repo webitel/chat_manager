@@ -135,7 +135,7 @@ func (v *VKKeyboard) String() (string, error) {
 	return keyboard, nil
 }
 
-// ConvertInternalToOutcomingMessage performs a conversion of an incoming FROM WEBITEL message to the VK message structure
+// ConvertInternalToOutcomingMessage performs a conversion of an incoming FROM [WEBITEL] message to the VK message structure
 func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*OutgoingMessage, error) {
 	message := update.Message
 	// region PREPARING STRUCT
@@ -214,9 +214,9 @@ func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*Outgoing
 				Str("update", message.Type).
 				Msg("vk/bot.updateChatMember")
 		}
-		if text != "" {
-			result.Text = text
-		}
+		//if text != "" {
+		result.Text = text
+		//}
 
 	case "left":
 		peer := contactPeer(message.LeftChatMember)
@@ -227,9 +227,9 @@ func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*Outgoing
 				Str("update", message.Type).
 				Msg("vk/bot.updateChatMember")
 		}
-		if text != "" {
-			result.Text = text
-		}
+		//if text != "" {
+		result.Text = text
+		//}
 	case "closed":
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("close", nil)
@@ -238,9 +238,9 @@ func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*Outgoing
 				Str("update", message.Type).
 				Msg("vk/bot.updateChatMember")
 		}
-		if text != "" {
-			result.Text = text
-		}
+		//if text != "" {
+		result.Text = text
+		//}
 	default:
 		messageText := strings.TrimSpace(
 			message.GetText(),
