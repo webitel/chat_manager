@@ -231,7 +231,9 @@ func (c *VKBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 	if err != nil {
 		return err
 	}
-	if re := vkMessage.IsValid(); re != nil {
+	if re, t := vkMessage.IsValid(), notify.Message.Type; re != nil && (t == "closed" || t == "joined" || t == "left") {
+		return nil
+	} else if re != nil {
 		return re
 	}
 	sendUpdate, err = vkMessage.Params()
@@ -554,9 +556,9 @@ func (c *VKBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	case "confirmation":
 		reply.Write([]byte(c.creds.ConfirmationCode))
 	default:
-		code := http.StatusNotImplemented
-		reply.WriteHeader(code)
-		return
+		// UNKNOWN type !
+		// Accept to skip event...
+		reply.Write([]byte("ok"))
 	}
 	code := http.StatusOK
 	reply.WriteHeader(code)
