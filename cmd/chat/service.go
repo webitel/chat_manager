@@ -3040,6 +3040,7 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 
 	originator := chat.Channel                 // Mostly: call-center operator (channelId)
 	conversation := chat.GetMember(chatFlowID) // MUST: schema@workflow (conversationId)
+	_ = conversation.ID                        // NOTNULL
 
 	/*var userToID int64 = 72
 	if userToID != 0 {
@@ -3119,7 +3120,7 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 		chatFlowID, originator,
 		schemaToID, userToID,
 		// merge channel.variables latest state
-		conversation.Variables,
+		req.Variables,
 	)
 
 	if err != nil {
