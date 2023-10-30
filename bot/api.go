@@ -1274,6 +1274,49 @@ func metadataHash(md map[string]string) []byte {
 	return hash.Sum(nil)
 }
 
+func (srv *Service) SendUserAction(ctx context.Context, req *bot.SendUserActionRequest, rsp *pbchat.SendUserActionResponse) error {
+
+	// Lookup running profile by id !
+	pid := req.GetProfileId()
+	via, err := srv.Gateway(ctx, pid, "")
+
+	if err != nil {
+		return err
+	}
+
+	if via == nil || via.GetId() != pid {
+		return errors.BadRequest(
+			"chat.action.via.not_found",
+			"sendChatAction: via profile.id=%d not found",
+			pid,
+		)
+	}
+
+	// Does provider support .SendUserAction method ?
+	provider := via.External
+	sender, is := provider.(interface {
+		SendUserAction(ctx context.Context, chatId string, action pbchat.UserAction) (bool, error)
+	})
+
+	if !is {
+		// Not implemented
+		rsp.Ok = false
+		return nil
+		// return errors.BadRequest(
+		// 	"chat.action.via.not_supported",
+		// 	"sendChatAction: via profile.type=%s not supported",
+		// 	via.External.String(),
+		// )
+	}
+
+	ok, err := sender.SendUserAction(ctx, req.GetExternalUserId(), req.GetAction())
+	if err != nil {
+		return err
+	}
+	rsp.Ok = ok
+	return nil
+}
+
 type (
 	BroadcastMessageRequest  = pbchat.BroadcastMessageRequest
 	BroadcastMessageResponse = pbchat.BroadcastMessageResponse

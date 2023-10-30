@@ -6,7 +6,7 @@ package bot
 import (
 	fmt "fmt"
 	proto "github.com/golang/protobuf/proto"
-	_ "github.com/webitel/chat_manager/api/proto/chat"
+	chat "github.com/webitel/chat_manager/api/proto/chat"
 	math "math"
 )
 
@@ -55,6 +55,10 @@ type BotsService interface {
 	DeleteBot(ctx context.Context, in *SearchBotRequest, opts ...client.CallOption) (*SearchBotResponse, error)
 	// Search returns list of bots, posibly filtered out with search conditions
 	SearchBot(ctx context.Context, in *SearchBotRequest, opts ...client.CallOption) (*SearchBotResponse, error)
+	// Sends user action event to a conversation partner.
+	SendUserAction(ctx context.Context, in *SendUserActionRequest, opts ...client.CallOption) (*chat.SendUserActionResponse, error)
+	// Broadcast message `from` given bot profile to `peer` recipient(s)
+	BroadcastMessage(ctx context.Context, in *chat.BroadcastMessageRequest, opts ...client.CallOption) (*chat.BroadcastMessageResponse, error)
 }
 
 type botsService struct {
@@ -129,6 +133,26 @@ func (c *botsService) SearchBot(ctx context.Context, in *SearchBotRequest, opts 
 	return out, nil
 }
 
+func (c *botsService) SendUserAction(ctx context.Context, in *SendUserActionRequest, opts ...client.CallOption) (*chat.SendUserActionResponse, error) {
+	req := c.c.NewRequest(c.name, "Bots.SendUserAction", in)
+	out := new(chat.SendUserActionResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *botsService) BroadcastMessage(ctx context.Context, in *chat.BroadcastMessageRequest, opts ...client.CallOption) (*chat.BroadcastMessageResponse, error) {
+	req := c.c.NewRequest(c.name, "Bots.BroadcastMessage", in)
+	out := new(chat.BroadcastMessageResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for Bots service
 
 type BotsHandler interface {
@@ -144,6 +168,10 @@ type BotsHandler interface {
 	DeleteBot(context.Context, *SearchBotRequest, *SearchBotResponse) error
 	// Search returns list of bots, posibly filtered out with search conditions
 	SearchBot(context.Context, *SearchBotRequest, *SearchBotResponse) error
+	// Sends user action event to a conversation partner.
+	SendUserAction(context.Context, *SendUserActionRequest, *chat.SendUserActionResponse) error
+	// Broadcast message `from` given bot profile to `peer` recipient(s)
+	BroadcastMessage(context.Context, *chat.BroadcastMessageRequest, *chat.BroadcastMessageResponse) error
 }
 
 func RegisterBotsHandler(s server.Server, hdlr BotsHandler, opts ...server.HandlerOption) error {
@@ -154,6 +182,8 @@ func RegisterBotsHandler(s server.Server, hdlr BotsHandler, opts ...server.Handl
 		UpdateBot(ctx context.Context, in *UpdateBotRequest, out *Bot) error
 		DeleteBot(ctx context.Context, in *SearchBotRequest, out *SearchBotResponse) error
 		SearchBot(ctx context.Context, in *SearchBotRequest, out *SearchBotResponse) error
+		SendUserAction(ctx context.Context, in *SendUserActionRequest, out *chat.SendUserActionResponse) error
+		BroadcastMessage(ctx context.Context, in *chat.BroadcastMessageRequest, out *chat.BroadcastMessageResponse) error
 	}
 	type Bots struct {
 		bots
@@ -188,4 +218,12 @@ func (h *botsHandler) DeleteBot(ctx context.Context, in *SearchBotRequest, out *
 
 func (h *botsHandler) SearchBot(ctx context.Context, in *SearchBotRequest, out *SearchBotResponse) error {
 	return h.BotsHandler.SearchBot(ctx, in, out)
+}
+
+func (h *botsHandler) SendUserAction(ctx context.Context, in *SendUserActionRequest, out *chat.SendUserActionResponse) error {
+	return h.BotsHandler.SendUserAction(ctx, in, out)
+}
+
+func (h *botsHandler) BroadcastMessage(ctx context.Context, in *chat.BroadcastMessageRequest, out *chat.BroadcastMessageResponse) error {
+	return h.BotsHandler.BroadcastMessage(ctx, in, out)
 }

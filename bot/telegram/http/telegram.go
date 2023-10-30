@@ -1490,3 +1490,48 @@ func (c *TelegramBot) BroadcastMessage(ctx context.Context, req *chat.BroadcastM
 	// rsp.Peers[].Erro detailed
 	return nil
 }
+
+func (c *TelegramBot) SendUserAction(ctx context.Context, peerId string, action chat.UserAction) (ok bool, err error) {
+
+	var chatAction string
+	switch action {
+	case chat.UserAction_Typing:
+		chatAction = telegram.ChatTyping
+	default:
+		// case chat.UserAction_Cancel:
+	}
+
+	if chatAction == "" {
+		c.Log.Warn().
+			Str("chat_id", peerId).
+			Str("action", fmt.Sprintf("(%d) %[1]s", action)).
+			Str("error", "no such [re]action").
+			Msg("telegram.bot.sendChatAction")
+		return // false, err
+	}
+
+	chatId, err := strconv.ParseInt(peerId, 10, 64)
+	if err != nil {
+		// ERR: Peer NOT Acceptable !
+		err = errors.BadRequest(
+			"chat.telegram.peer.id.invalid",
+			"telegram: invalid chat_id=%s input",
+			peerId,
+		)
+		return // false, err
+	}
+
+	sendMessage := telegram.NewChatAction(
+		chatId, chatAction,
+	)
+
+	var sentMessage *telegram.APIResponse
+	sentMessage, err = c.BotAPI.Request(sendMessage)
+
+	if err != nil {
+		return // false, err
+	}
+
+	ok = sentMessage.Ok
+	return // true, nil
+}

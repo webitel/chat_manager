@@ -5,6 +5,7 @@ package webitel.chat.bot;
 option go_package = "github.com/webitel/chat_manager/api/proto/bot";
 
 import "message.proto";
+import "messages.proto";
 
 // Reference
 message Refer {
@@ -73,6 +74,7 @@ message Bot {
 
 // Bots service API
 service Bots {
+
   // SendMessage [FROM] bot's profile [TO] external client communication
   rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {}
 
@@ -86,6 +88,22 @@ service Bots {
   rpc DeleteBot(SearchBotRequest) returns (SearchBotResponse) {}
   // Search returns list of bots, posibly filtered out with search conditions
   rpc SearchBot(SearchBotRequest) returns (SearchBotResponse) {}
+
+  // Sends user action event to a conversation partner.
+  rpc SendUserAction(SendUserActionRequest) returns (webitel.chat.server.SendUserActionResponse) {}
+  // Broadcast message `from` given bot profile to `peer` recipient(s)
+  rpc BroadcastMessage(webitel.chat.server.BroadcastMessageRequest) returns (webitel.chat.server.BroadcastMessageResponse) {}
+}
+
+message SendUserActionRequest {
+  // [FROM] Sender peer channel id.
+  string channel_id = 1;
+  // Type of action.
+  webitel.chat.server.UserAction action = 2;
+  // [TO] recepient identification ...
+  string external_user_id = 3;
+  // [VIA] text gateway account id.
+  int64 profile_id = 4;
 }
 
 message SearchBotRequest {
