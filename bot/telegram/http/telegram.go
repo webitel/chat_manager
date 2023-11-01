@@ -271,8 +271,9 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 
 	var (
 		chatAction  string
-		sentMessage telegram.Message
 		sendUpdate  telegram.Chattable
+		sendOptions *telegram.BaseChat
+		sentMessage telegram.Message // result
 	)
 	// TODO: resolution for various notify content !
 	switch message.Type { // notify.Event {
@@ -293,61 +294,6 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		// // sendMessage.ParseMode = parseMode
 		// sendMessage.Entities = textEntities
 
-		// Inline: Next to this specific message ONLY !
-		// Reply:  Persistent keyboard buttons, under the input ! (Location, Contact, Persistent Text postback)
-		if message.Buttons != nil { // NOT <nil> BUT <zero>: designed to clear all persistent menu (keyboard buttons)
-			// Prepare SEND Telegram (Inline|Reply)Keyboard(Markup|Remove)
-			// https://core.telegram.org/bots/api#sendmessage
-			// https://core.telegram.org/bots/api#updating-messages
-			quickReplies, keyboardMenu := newKeyboardMarkup(message.Buttons)
-			if len(quickReplies) != 0 {
-				sendMessage.ReplyMarkup = telegram.InlineKeyboardMarkup{
-					InlineKeyboard: quickReplies,
-				}
-				if keyboardMenu != nil {
-					c.Log.Warn().
-						Str("error", "reply_markup: single message supports one of (Inline|Reply)Keyboard(Markup|Remove) only").
-						Str("hint", "spread different types of keyboard buttons into separate messages").
-						Msg("TELEGRAM: SEND")
-				}
-			} else if keyboardMenu != nil {
-				sendMessage.ReplyMarkup = keyboardMenu
-			}
-
-			// if keyboardMenu != nil {
-			// 	// Quiet [RE]SET OR REMOVE keyboard buttons !
-			// 	sendMessage.ReplyMarkup = keyboardMenu
-			// 	if len(quickReplies) != 0 {
-			// 		// FIXME: According to https://core.telegram.org/bots/api#sendmessage
-			// 		// we cannot send different types of keyboad markup together,
-			// 		// for example: InlineKeyboardMarkup with ReplyKeyboardMarkup
-			// 		// NOTE: So, first we setup persistent ReplyKeyboard buttons
-			// 		//       And than edit sent message with InlineKeyboard buttons set
-			// 		// BUT https://core.telegram.org/bots/api#updating-messages
-			// 		// Please note, that it is currently only possible to edit messages
-			// 		// without reply_markup or with inline keyboards.
-			// 		defer func() {
-			// 			sentMessageID := sentMessage.MessageID
-			// 			if sentMessageID == 0 {
-			// 				return // ERR SEND ! DO NOTHING !
-			// 			}
-			// 			editInlineKeyboard := telegram.NewEditMessageReplyMarkup(
-			// 				chatID, sentMessageID, telegram.InlineKeyboardMarkup{
-			// 					InlineKeyboard: quickReplies,
-			// 				},
-			// 			)
-			// 			// EDIT: {"reply_markup": InlineKeyboardMarkup{}}
-			// 			// {"ok":false,"error_code":400,"description":"Bad Request: message can't be edited"}
-			// 			_, _ = c.BotAPI.Send(editInlineKeyboard)
-			// 		} ()
-			// 	}
-			// } else {
-			// 	sendMessage.ReplyMarkup = telegram.InlineKeyboardMarkup{
-			// 		InlineKeyboard: quickReplies,
-			// 	}
-			// }
-		}
-
 		// if message.Buttons != nil {
 		// 	if len(message.Buttons) == 0 { // CLEAR Buttons
 		// 		sendMessage.ReplyMarkup = telegram.NewRemoveKeyboard(false)
@@ -360,7 +306,8 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		// // 	sendMessage.ReplyMarkup = newInlineKeyboard(message.Inline)
 		// // }
 
-		sendUpdate = sendMessage
+		sendOptions = &sendMessage.BaseChat
+		sendUpdate = &sendMessage
 		// if props != nil {
 		// 	title := props["interlocutor"]
 		// 	_, title = decodeInterlocutorInfo(title)
@@ -390,28 +337,32 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 				chatID, sendFile{doc.Url, doc.Name},
 			)
 			sendPhoto.Caption = notify.Message.GetText()
-			sendUpdate = sendPhoto
+			sendOptions = &sendPhoto.BaseChat
+			sendUpdate = &sendPhoto
 			chatAction = "upload_photo"
 		case "audio":
 			sendAudio := telegram.NewAudio(
 				chatID, sendFile{doc.Url, doc.Name},
 			)
 			sendAudio.Caption = notify.Message.GetText()
-			sendUpdate = sendAudio
+			sendOptions = &sendAudio.BaseChat
+			sendUpdate = &sendAudio
 			chatAction = "upload_voice"
 		case "video":
 			sendVideo := telegram.NewVideo(
 				chatID, sendFile{doc.Url, doc.Name},
 			)
 			sendVideo.Caption = notify.Message.GetText()
-			sendUpdate = sendVideo
+			sendOptions = &sendVideo.BaseChat
+			sendUpdate = &sendVideo
 			chatAction = "upload_video"
 		default:
 			sendDocument := telegram.NewDocument(
 				chatID, sendFile{doc.Url, doc.Name},
 			)
 			sendDocument.Caption = notify.Message.GetText()
-			sendUpdate = sendDocument
+			sendOptions = &sendDocument.BaseChat
+			sendUpdate = &sendDocument
 			chatAction = "upload_document"
 		}
 		//                    b/Kb/Mb
@@ -514,6 +465,62 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 			Str("error", "reaction not implemented").
 			Msg("TELEGRAM: SEND")
 		return nil
+	}
+
+	// Inline: Next to this specific message ONLY !
+	// Reply:  Persistent keyboard buttons, under the input ! (Location, Contact, Persistent Text postback)
+	if message.Buttons != nil && sendOptions != nil {
+		// NOT <nil> BUT <zero>: designed to clear all persistent menu (keyboard buttons)
+		// Prepare SEND Telegram (Inline|Reply)Keyboard(Markup|Remove)
+		// https://core.telegram.org/bots/api#sendmessage
+		// https://core.telegram.org/bots/api#updating-messages
+		quickReplies, keyboardMenu := newKeyboardMarkup(message.Buttons)
+		if len(quickReplies) != 0 {
+			sendOptions.ReplyMarkup = telegram.InlineKeyboardMarkup{
+				InlineKeyboard: quickReplies,
+			}
+			if keyboardMenu != nil {
+				c.Log.Warn().
+					Str("error", "reply_markup: single message supports one of (Inline|Reply)Keyboard(Markup|Remove) only").
+					Str("hint", "spread different types of keyboard buttons into separate messages").
+					Msg("TELEGRAM: SEND")
+			}
+		} else if keyboardMenu != nil {
+			sendOptions.ReplyMarkup = keyboardMenu
+		}
+
+		// if keyboardMenu != nil {
+		// 	// Quiet [RE]SET OR REMOVE keyboard buttons !
+		// 	sendMessage.ReplyMarkup = keyboardMenu
+		// 	if len(quickReplies) != 0 {
+		// 		// FIXME: According to https://core.telegram.org/bots/api#sendmessage
+		// 		// we cannot send different types of keyboad markup together,
+		// 		// for example: InlineKeyboardMarkup with ReplyKeyboardMarkup
+		// 		// NOTE: So, first we setup persistent ReplyKeyboard buttons
+		// 		//       And than edit sent message with InlineKeyboard buttons set
+		// 		// BUT https://core.telegram.org/bots/api#updating-messages
+		// 		// Please note, that it is currently only possible to edit messages
+		// 		// without reply_markup or with inline keyboards.
+		// 		defer func() {
+		// 			sentMessageID := sentMessage.MessageID
+		// 			if sentMessageID == 0 {
+		// 				return // ERR SEND ! DO NOTHING !
+		// 			}
+		// 			editInlineKeyboard := telegram.NewEditMessageReplyMarkup(
+		// 				chatID, sentMessageID, telegram.InlineKeyboardMarkup{
+		// 					InlineKeyboard: quickReplies,
+		// 				},
+		// 			)
+		// 			// EDIT: {"reply_markup": InlineKeyboardMarkup{}}
+		// 			// {"ok":false,"error_code":400,"description":"Bad Request: message can't be edited"}
+		// 			_, _ = c.BotAPI.Send(editInlineKeyboard)
+		// 		} ()
+		// 	}
+		// } else {
+		// 	sendMessage.ReplyMarkup = telegram.InlineKeyboardMarkup{
+		// 		InlineKeyboard: quickReplies,
+		// 	}
+		// }
 	}
 
 retry:
