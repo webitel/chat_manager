@@ -323,3 +323,97 @@ func (c *eventRouter) SendMessageToGateway(target *app.Channel, message *chat.Me
 
 	return nil
 }
+
+func (c *eventRouter) SendUserActionToGateway(target *app.Channel, sender *chat.SendUserActionRequest) (bool, error) {
+
+	// profile[@svhost]
+	pid, host, err := contact.ContactObjectNode(target.Contact)
+
+	if err != nil {
+		// invalid <pid[@node]> contact string
+		err = errors.Wrapf(err, "%s: invalid channel contact %q;", target.Chat.Channel, target.Contact)
+		return false, err
+	}
+
+	if pid == 0 {
+		err = errors.New("send: TO profile <zero> ID")
+		return false, err
+	}
+
+	sendMessageAction := gate.SendUserActionRequest{
+		// [FROM] Sender peer.
+		ChannelId: sender.GetChannelId(),
+		Action:    sender.GetAction(),
+		// [TO] Target peer.
+		ProfileId:      pid,
+		ExternalUserId: target.User.Contact,
+	}
+
+	recepient := channel{
+		trace: c.log,
+		// simple transform to store.Channel
+		Channel: &store.Channel{
+			ID:             target.Chat.ID,
+			Type:           target.Chat.Channel,
+			ConversationID: target.Chat.Invite,
+			UserID:         target.User.ID,
+			// Connection: sql.NullString{
+			// 	String: strconv.FormatInt(profileID),
+			// 	Valid:  true,
+			// },
+			ServiceHost: sql.NullString{
+				String: host,
+				Valid:  host != "",
+			},
+			// CreatedAt: time.Time{},
+			// Internal:  false,
+			// ClosedAt: sql.NullTime{
+			// 	Time:  time.Time{},
+			// 	Valid: false,
+			// },
+			// UpdatedAt:  time.Time{},
+			DomainID: target.DomainID,
+			// FlowBridge: false,
+			// Name:       target.User.DisplayName(),
+			// ClosedCause: sql.NullString{
+			// 	String: "",
+			// 	Valid:  false,
+			// },
+			// JoinedAt: sql.NullTime{
+			// 	Time:  time.Time{},
+			// 	Valid: false,
+			// },
+			// Properties: map[string]string{
+			// 	"": "",
+			// },
+		},
+	}
+
+	requestNode := recepient.Hostname()
+	affected, err := c.botClient.SendUserAction(
+		context.TODO(), &sendMessageAction,
+		// callOptions ...
+		recepient.callOpts,
+	)
+
+	if err != nil {
+		// FIXME: clear running .host ? got an error !
+		return false, err
+	}
+
+	respondNode := recepient.Hostname()
+	if requestNode != respondNode {
+		// RE-HOSTED! TODO: update DB channel state .host
+		err := c.repo.UpdateChannelHost(context.TODO(), recepient.ID, respondNode)
+		if err != nil {
+			c.log.Error().Err(err).
+				Str("chat-id", target.User.Contact). // client.ExternalID.String).
+				Str("channel-id", target.Chat.ID).   // client.ExternalID.String).
+
+				Msg("RELOCATE")
+			// panic(err)
+		}
+	}
+
+	return affected.GetOk(), nil
+}

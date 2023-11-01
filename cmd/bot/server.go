@@ -162,7 +162,6 @@ func Run(ctx *cli.Context) error {
 
 	for _, regErr := range []error{
 		pb.RegisterBotsHandler(service.Server(), srv),
-		pbchat.RegisterMessagesHandler(service.Server(), srv),
 	} {
 		if regErr != nil {
 			logger.Fatal().

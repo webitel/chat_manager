@@ -41,6 +41,7 @@ type Router interface {
 	SendUpdateChannel(channel *store.Channel, updated_at int64) error
 	// Override
 	SendMessageToGateway(target *app.Channel, message *chat.Message) error
+	SendUserActionToGateway(target *app.Channel, sender *chat.SendUserActionRequest) (bool, error)
 }
 
 func NewRouter(

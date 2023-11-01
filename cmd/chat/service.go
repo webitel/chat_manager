@@ -55,6 +55,7 @@ type Service interface {
 	SetVariables(ctx context.Context, in *pb.SetVariablesRequest, out *pb.ChatVariablesResponse) error
 	BlindTransfer(ctx context.Context, in *pb.ChatTransferRequest, out *pb.ChatTransferResponse) error
 
+	SendUserAction(ctx context.Context, in *pb.SendUserActionRequest, out *pb.SendUserActionResponse) error
 	BroadcastMessage(ctx context.Context, in *pb.BroadcastMessageRequest, out *pb.BroadcastMessageResponse) error
 }
 
@@ -1689,14 +1690,18 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 	}
 
 	// profileStr := strconv.Itoa(int(req.GetProfileId()))
-	profileStr := strconv.FormatInt(req.GetProfileId(), 10)
-	if err != nil {
-		s.log.Error().Msg(err.Error())
-		return err
+	var profileOf *string
+	if oid := req.GetProfileId(); oid > 0 {
+		profileId := strconv.FormatInt(oid, 10)
+		if err != nil {
+			s.log.Error().Msg(err.Error())
+			return err
+		}
+		profileOf = &profileId
 	}
 
 	externalBool := false
-	channels, err := s.repo.GetChannels(ctx, &contact.ID, nil, &profileStr, &externalBool, nil)
+	channels, err := s.repo.GetChannels(ctx, &contact.ID, nil, profileOf, &externalBool, nil)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
@@ -3133,6 +3138,74 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 func (c *chatService) BroadcastMessage(ctx context.Context, req *pb.BroadcastMessageRequest, res *pb.BroadcastMessageResponse) error {
 	// Proxy: "webitel.chat.bot" service
 	gRPClient := client.DefaultClient
-	fwdRequest := gRPClient.NewRequest("webitel.chat.bot", "Messages.BroadcastMessage", req)
+	fwdRequest := gRPClient.NewRequest("webitel.chat.bot", "Bots.BroadcastMessage", req)
 	return gRPClient.Call(ctx, fwdRequest, res) // , opts...)
+}
+
+func (c *chatService) SendUserAction(ctx context.Context, req *pb.SendUserActionRequest, res *pb.SendUserActionResponse) error {
+
+	senderChatID := req.GetChannelId()
+	if senderChatID == "" {
+		return errors.BadRequest(
+			"chat.send.action.from.required",
+			"send: action sender chat ID required",
+		)
+	}
+
+	// region: lookup target chat session by unique sender chat channel id
+	chat, err := c.repo.GetSession(ctx, senderChatID)
+
+	if err != nil {
+		// lookup operation error
+		return err
+	}
+
+	if chat == nil || chat.ID != senderChatID {
+		// sender channel ID not found
+		return errors.BadRequest(
+			"chat.send.action.from.not_found",
+			"send: FROM channel ID=%s sender not found or been closed",
+			senderChatID,
+		)
+	}
+
+	if chat.IsClosed() {
+		// sender channel is already closed !
+		return errors.BadRequest(
+			"chat.send.action.from.closed",
+			"send: FROM chat channel ID=%s is closed",
+			senderChatID,
+		)
+	}
+	// FROM
+	// sender := chat.Channel
+	// TO
+	if len(chat.Members) == 0 {
+		// NO group partners
+		res.Ok = false
+		return nil
+	}
+
+	for _, member := range chat.Members {
+
+		if member.IsClosed() {
+			continue // omit send TO channel: closed !
+		}
+
+		switch member.Channel {
+		case "websocket": // TO: engine (internal)
+		case "chatflow": // TO: workflow (internal)
+		default: // TO: webitel.chat.bot (external)
+			{
+				ok, err := c.eventRouter.SendUserActionToGateway(member, req)
+				if err != nil {
+					c.log.Warn().Err(err).Msg("ACTION [TO]")
+					continue
+				}
+				res.Ok = (res.Ok || ok)
+			}
+		}
+	}
+
+	return nil
 }

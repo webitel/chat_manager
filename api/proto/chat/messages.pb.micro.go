@@ -43,6 +43,8 @@ func NewMessagesEndpoints() []*api.Endpoint {
 // Client API for Messages service
 
 type MessagesService interface {
+	// Sends a current user action event to a conversation partners.
+	SendUserAction(ctx context.Context, in *SendUserActionRequest, opts ...client.CallOption) (*SendUserActionResponse, error)
 	// Broadcast message `from` given bot profile to `peer` recipient(s)
 	BroadcastMessage(ctx context.Context, in *BroadcastMessageRequest, opts ...client.CallOption) (*BroadcastMessageResponse, error)
 }
@@ -59,6 +61,16 @@ func NewMessagesService(name string, c client.Client) MessagesService {
 	}
 }
 
+func (c *messagesService) SendUserAction(ctx context.Context, in *SendUserActionRequest, opts ...client.CallOption) (*SendUserActionResponse, error) {
+	req := c.c.NewRequest(c.name, "Messages.SendUserAction", in)
+	out := new(SendUserActionResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *messagesService) BroadcastMessage(ctx context.Context, in *BroadcastMessageRequest, opts ...client.CallOption) (*BroadcastMessageResponse, error) {
 	req := c.c.NewRequest(c.name, "Messages.BroadcastMessage", in)
 	out := new(BroadcastMessageResponse)
@@ -72,12 +84,15 @@ func (c *messagesService) BroadcastMessage(ctx context.Context, in *BroadcastMes
 // Server API for Messages service
 
 type MessagesHandler interface {
+	// Sends a current user action event to a conversation partners.
+	SendUserAction(context.Context, *SendUserActionRequest, *SendUserActionResponse) error
 	// Broadcast message `from` given bot profile to `peer` recipient(s)
 	BroadcastMessage(context.Context, *BroadcastMessageRequest, *BroadcastMessageResponse) error
 }
 
 func RegisterMessagesHandler(s server.Server, hdlr MessagesHandler, opts ...server.HandlerOption) error {
 	type messages interface {
+		SendUserAction(ctx context.Context, in *SendUserActionRequest, out *SendUserActionResponse) error
 		BroadcastMessage(ctx context.Context, in *BroadcastMessageRequest, out *BroadcastMessageResponse) error
 	}
 	type Messages struct {
@@ -89,6 +104,10 @@ func RegisterMessagesHandler(s server.Server, hdlr MessagesHandler, opts ...serv
 
 type messagesHandler struct {
 	MessagesHandler
+}
+
+func (h *messagesHandler) SendUserAction(ctx context.Context, in *SendUserActionRequest, out *SendUserActionResponse) error {
+	return h.MessagesHandler.SendUserAction(ctx, in, out)
 }
 
 func (h *messagesHandler) BroadcastMessage(ctx context.Context, in *BroadcastMessageRequest, out *BroadcastMessageResponse) error {
