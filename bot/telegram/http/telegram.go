@@ -955,10 +955,11 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 	// FIXME: TODO !!!
 	if recvUpdate.CallbackQuery != nil {
-		// TODO Button
-		recvMessage = recvUpdate.CallbackQuery.Message
-		recvMessage.Text = recvUpdate.CallbackQuery.Data
-		recvMessage.From = recvUpdate.CallbackQuery.From
+		// Button has been pressed ! callback ..
+		sentMessage := *recvUpdate.CallbackQuery.Message // snap
+		sentMessage.Text = recvUpdate.CallbackQuery.Data
+		sentMessage.From = recvUpdate.CallbackQuery.From
+		recvMessage = &sentMessage
 		// NOTE:
 		// callback_query.from => is our recepient (*tg.User) !
 		// callback_query.message.from => is our bot account,
@@ -974,6 +975,7 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		if _, err = c.BotAPI.Send(inlineKeyboardRemove); err != nil {
 			c.Log.Warn().Str("error", "InlineKeyboardRemove: "+err.Error()).Msg("TELEGRAM: INLINE")
 		}
+
 	}
 
 	if recvMessage == nil {
@@ -1055,7 +1057,18 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// } else {}
 	// endregion
 
-	if animation := recvMessage.Animation; animation != nil {
+	if callback := recvUpdate.CallbackQuery; callback != nil {
+		// Prepare internal message content
+		//
+		// Data associated with the callback button.
+		sendMessage.Type = "text"
+		sendMessage.Text = callback.Data
+		// Be aware that a bad client can send arbitrary data in this field.
+		if sendMessage.Text == "" {
+			sendMessage.Text = "#callback"
+		}
+
+	} else if animation := recvMessage.Animation; animation != nil {
 
 		// Message is an animation, information about the animation.
 		// For backward compatibility, when this field is set,
