@@ -594,9 +594,17 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 		thread, _ := channel.Properties.(*Chat)
 		props[paramFacebookPage] = thread.Page.ID
 		props[paramFacebookName] = thread.Page.Name
+		var p = make(map[string]string)
+		p[paramFacebookPage] = thread.Page.ID
+		p[paramFacebookName] = thread.Page.Name
+		p["facebook.psid"] = userPSID
+		channel.Properties = p
 		if instagram := thread.Page.Instagram; instagram != nil {
 			props[paramInstagramPage] = instagram.ID
 			props[paramInstagramUser] = instagram.Username
+			p[paramInstagramPage] = instagram.ID
+			p[paramInstagramUser] = instagram.Username
+			channel.Properties = p
 		}
 	} // else { // BIND Message SENT properties ! }
 	sendMsg.Variables = props
@@ -850,9 +858,17 @@ func (c *Client) WebhookPostback(event *messenger.Messaging) error {
 		thread, _ := channel.Properties.(*Chat)
 		props[paramFacebookPage] = thread.Page.ID
 		props[paramFacebookName] = thread.Page.Name
+		var p = make(map[string]string)
+		p[paramFacebookPage] = thread.Page.ID
+		p[paramFacebookName] = thread.Page.Name
+		p["facebook.psid"] = userPSID
+		channel.Properties = p
 		if instagram := thread.Page.Instagram; instagram != nil {
 			props[paramInstagramPage] = instagram.ID
 			props[paramInstagramUser] = instagram.Username
+			p[paramInstagramPage] = instagram.ID
+			p[paramInstagramUser] = instagram.Username
+			channel.Properties = p
 		}
 	} // else { // BIND Message SENT properties ! }
 	sendMsg.Variables = props

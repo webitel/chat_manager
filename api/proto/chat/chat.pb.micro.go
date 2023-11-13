@@ -62,6 +62,7 @@ type ChatService interface {
 	CheckSession(ctx context.Context, in *CheckSessionRequest, opts ...client.CallOption) (*CheckSessionResponse, error)
 	WaitMessage(ctx context.Context, in *WaitMessageRequest, opts ...client.CallOption) (*WaitMessageResponse, error)
 	UpdateChannel(ctx context.Context, in *UpdateChannelRequest, opts ...client.CallOption) (*UpdateChannelResponse, error)
+	GetChannelByPeer(ctx context.Context, in *GetChannelByPeerRequest, opts ...client.CallOption) (*Channel, error)
 	GetConversations(ctx context.Context, in *GetConversationsRequest, opts ...client.CallOption) (*GetConversationsResponse, error)
 	GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, opts ...client.CallOption) (*GetConversationByIDResponse, error)
 	GetHistoryMessages(ctx context.Context, in *GetHistoryMessagesRequest, opts ...client.CallOption) (*GetHistoryMessagesResponse, error)
@@ -192,6 +193,16 @@ func (c *chatService) UpdateChannel(ctx context.Context, in *UpdateChannelReques
 	return out, nil
 }
 
+func (c *chatService) GetChannelByPeer(ctx context.Context, in *GetChannelByPeerRequest, opts ...client.CallOption) (*Channel, error) {
+	req := c.c.NewRequest(c.name, "ChatService.GetChannelByPeer", in)
+	out := new(Channel)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *chatService) GetConversations(ctx context.Context, in *GetConversationsRequest, opts ...client.CallOption) (*GetConversationsResponse, error) {
 	req := c.c.NewRequest(c.name, "ChatService.GetConversations", in)
 	out := new(GetConversationsResponse)
@@ -265,6 +276,7 @@ type ChatServiceHandler interface {
 	CheckSession(context.Context, *CheckSessionRequest, *CheckSessionResponse) error
 	WaitMessage(context.Context, *WaitMessageRequest, *WaitMessageResponse) error
 	UpdateChannel(context.Context, *UpdateChannelRequest, *UpdateChannelResponse) error
+	GetChannelByPeer(context.Context, *GetChannelByPeerRequest, *Channel) error
 	GetConversations(context.Context, *GetConversationsRequest, *GetConversationsResponse) error
 	GetConversationByID(context.Context, *GetConversationByIDRequest, *GetConversationByIDResponse) error
 	GetHistoryMessages(context.Context, *GetHistoryMessagesRequest, *GetHistoryMessagesResponse) error
@@ -286,6 +298,7 @@ func RegisterChatServiceHandler(s server.Server, hdlr ChatServiceHandler, opts .
 		CheckSession(ctx context.Context, in *CheckSessionRequest, out *CheckSessionResponse) error
 		WaitMessage(ctx context.Context, in *WaitMessageRequest, out *WaitMessageResponse) error
 		UpdateChannel(ctx context.Context, in *UpdateChannelRequest, out *UpdateChannelResponse) error
+		GetChannelByPeer(ctx context.Context, in *GetChannelByPeerRequest, out *Channel) error
 		GetConversations(ctx context.Context, in *GetConversationsRequest, out *GetConversationsResponse) error
 		GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, out *GetConversationByIDResponse) error
 		GetHistoryMessages(ctx context.Context, in *GetHistoryMessagesRequest, out *GetHistoryMessagesResponse) error
@@ -345,6 +358,10 @@ func (h *chatServiceHandler) WaitMessage(ctx context.Context, in *WaitMessageReq
 
 func (h *chatServiceHandler) UpdateChannel(ctx context.Context, in *UpdateChannelRequest, out *UpdateChannelResponse) error {
 	return h.ChatServiceHandler.UpdateChannel(ctx, in, out)
+}
+
+func (h *chatServiceHandler) GetChannelByPeer(ctx context.Context, in *GetChannelByPeerRequest, out *Channel) error {
+	return h.ChatServiceHandler.GetChannelByPeer(ctx, in, out)
 }
 
 func (h *chatServiceHandler) GetConversations(ctx context.Context, in *GetConversationsRequest, out *GetConversationsResponse) error {
