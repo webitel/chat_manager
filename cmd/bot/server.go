@@ -24,6 +24,7 @@ import (
 )
 
 const (
+	// Change to REname
 	name  = "webitel.chat.bot" // "chat.bot"
 	usage = "Run a chat gateways service"
 )

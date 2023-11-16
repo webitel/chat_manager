@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	"net/http"
 	"net/url"
 	"path"
@@ -107,7 +108,6 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 	if apiVersion == "" {
 		apiVersion = Latest
 	}
-
 	app := &Client{
 
 		Gateway: agent,
@@ -124,6 +124,7 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 			RedirectURL: agent.CallbackURL(),
 			Scopes:      []string{"public_profile"},
 		},
+		peerCache: *expirable.NewLRU[string, *chat.Channel](1000, nil, time.Hour*1),
 
 		webhook: webhooks.WebHook{
 			URL:   agent.CallbackURL(), // "https://dev.webitel.com" + path.Join("/chat/ws8/messenger"),
@@ -1185,6 +1186,75 @@ func (c *Client) SubscribeObjects(ctx context.Context, uri string) error {
 		}
 	}
 
+	return nil
+}
+
+func (c *Client) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
+	peers := req.GetPeer()
+	text := req.GetMessage().GetText()
+	var channel *chat.Channel
+	for _, peer := range peers {
+		// check CACHE !
+		if v, ok := c.peerCache.Get(peer); !ok {
+			resp, err := c.Gateway.Internal.Client.GetChannelByPeer(ctx, &chat.GetChannelByPeerRequest{PeerId: peer, FromId: req.GetFrom()})
+			if err != nil {
+				return err
+			}
+
+			c.peerCache.Add(peer, resp)
+		} else {
+			channel = v
+		}
+		var props map[string]string
+		err := json.Unmarshal([]byte(channel.Props), &props)
+		if err != nil {
+			return errors.InternalServerError("facebook.broadcast.unmarshal_props.error", err.Error())
+		}
+		// PSID | IGSID | WAID required
+		switch channel.Type {
+		case "instagram":
+			if p := c.instagram.getPage(props[paramInstagramPage]); p != nil {
+				_, err := c.SendInstagramText(p, peer, text)
+				if err != nil {
+					return err // nil
+				}
+			} else {
+				return errors.BadRequest("facebook.provider.broadcast_message.instagram.page_not_found.error", fmt.Sprintf("instagram page not found (IGSID - %s)", p.IGSID()))
+			}
+		case "facebook":
+			v, ok := props[paramFacebookPage]
+			if !ok {
+				return errors.BadRequest("facebook.provider.broadcast_message.facebook.missing_args.error", "facebook page id not specified !")
+			}
+			_, err := c.SendText(v, peer, text)
+			if err != nil {
+				return err
+			}
+		case "whatsapp":
+			v, ok := props[paramWhatsAppNumberID]
+			if !ok {
+				return errors.BadRequest("facebook.provider.broadcast_message.whatsapp.missing_args.error", "whatsapp page number id not specified !")
+			}
+			sendMsg := &whatsapp.SendMessage{
+				MessagingProduct: "whatsapp",
+				RecipientType:    "individual",
+				Status:           "",
+				TO:               peer,
+				Text: &whatsapp.Text{
+					Body: text,
+				},
+				Type: "text",
+			}
+			account := c.whatsApp.GetPhoneNumber(v)
+			if account == nil {
+				return errors.BadRequest("facebook.provider.broadcast_message.missing_args.error", "whatsapp page number not specified !")
+			}
+			_, err := c.whatsAppSendMessage(ctx, account, sendMsg)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 

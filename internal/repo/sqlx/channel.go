@@ -65,6 +65,45 @@ func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Cha
 	return obj, nil
 }
 
+func (repo *sqlxRepository) GetChannelByPeer(ctx context.Context, peerId, fromId string) (*Channel, error) {
+	rows, err := repo.db.QueryContext(ctx,
+		`select
+			chat.*
+			from chat.client peer
+		join lateral
+		(
+		select m.id,
+		m.conversation_id,
+		m."connection"::int8,
+		m.type,
+			m.props
+		from chat.channel m
+		where not m.internal
+		and m.user_id = peer.id
+		and m.connection = ($1::text) -- :from_id::text
+		order by m.created_at desc -- last
+		limit 1
+		) chat on true
+		where peer.external_id = $2 -- :peer_id)
+		;`, fromId, peerId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+	// Fetch !
+	list, err := ChannelList(rows, 1)
+	// Error ?
+	err = schemaChannelError(err)
+
+	if len(list) == 0 {
+		return nil, errs.NotFound("sql.channel.get_channel_by_peer.error", "peer not found")
+	}
+
+	return list[0], err
+}
+
 /*func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Channel, error) {
 
 	res := &Channel{}

@@ -129,7 +129,7 @@ func Run(ctx *cli.Context) error {
 	sender := wrapper.FromService(
 		service.Name(), service.Server().Options().Id, service.Client(),
 	)
-
+	// REdirect server requests !
 	botClient = pbbot.NewBotsService("webitel.chat.bot", sender)
 	// botClient = pbbot.NewBotsService("chat.bot", sender)
 	authClient = pbauth.NewAuthService("go.webitel.app", sender)

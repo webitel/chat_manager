@@ -51,6 +51,7 @@ type Service interface {
 	WaitMessage(ctx context.Context, req *pb.WaitMessageRequest, res *pb.WaitMessageResponse) error
 	CheckSession(ctx context.Context, req *pb.CheckSessionRequest, res *pb.CheckSessionResponse) error
 	UpdateChannel(ctx context.Context, req *pb.UpdateChannelRequest, res *pb.UpdateChannelResponse) error
+	GetChannelByPeer(ctx context.Context, request *pb.GetChannelByPeerRequest, res *pb.Channel) error
 
 	SetVariables(ctx context.Context, in *pb.SetVariablesRequest, out *pb.ChatVariablesResponse) error
 	BlindTransfer(ctx context.Context, in *pb.ChatTransferRequest, out *pb.ChatTransferResponse) error
@@ -89,6 +90,25 @@ func NewChatService(
 		storageClient,
 		eventRouter,
 	}
+}
+
+func (s *chatService) GetChannelByPeer(ctx context.Context, req *pb.GetChannelByPeerRequest, res *pb.Channel) error {
+	fromId := strconv.FormatInt(req.GetFromId(), 10)
+	channel, err := s.repo.GetChannelByPeer(ctx, req.GetPeerId(), fromId)
+	if err != nil {
+		return err
+	}
+	res.Id = channel.ID
+	res.Internal = channel.Internal
+	res.Connection = channel.Connection.String
+	res.Type = channel.Type
+
+	md, err := json.Marshal(channel.Variables)
+	if err != nil {
+		return err
+	}
+	res.Props = string(md)
+	return nil
 }
 
 func (s *chatService) UpdateChannel(

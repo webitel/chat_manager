@@ -27,6 +27,7 @@ service ChatService {
   rpc CheckSession(CheckSessionRequest) returns (CheckSessionResponse) {}
   rpc WaitMessage(WaitMessageRequest) returns (WaitMessageResponse) {}
   rpc UpdateChannel(UpdateChannelRequest) returns (UpdateChannelResponse) {}
+  rpc GetChannelByPeer(GetChannelByPeerRequest) returns (Channel) {}
 
   rpc GetConversations(GetConversationsRequest) returns (GetConversationsResponse) {}
   rpc GetConversationByID(GetConversationByIDRequest) returns (GetConversationByIDResponse) {}
@@ -60,6 +61,11 @@ message Conversation {
 //  int32 unread_messages = 10;
 }
 
+message GetChannelByPeerRequest {
+  string peer_id = 1;
+  int64 from_id = 2;
+}
+
 message Member {
   string channel_id = 1;
   int64 user_id = 2;
@@ -80,7 +86,8 @@ message Channel {
   bool internal = 5;
   int64 domain_id = 6;
   string connection = 7;
-  int64 user_id = 8;  
+  int64 user_id = 8;
+  string props = 9;
 }
 
 message User {

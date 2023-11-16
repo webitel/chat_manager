@@ -88,3 +88,23 @@ func (c *Client) SendText(senderPageId, recepientUserId, messageText string) (mi
 
 	return c.Send(senderPage, &send)
 }
+
+// A page access token with `pages_messaging` permission is required to interact with this endpoint.
+// https://developers.facebook.com/docs/messenger-platform/reference/send-api
+func (c *Client) SendInstagramText(igpage *Page, recepientUserId, messageText string) (mid string, err error) {
+
+	send := messenger.SendRequest{
+		// https://developers.facebook.com/docs/messenger-platform/send-messages/#messaging_types
+		Type: "RESPONSE",
+		Recipient: &messenger.SendRecipient{
+			ID: recepientUserId,
+		},
+		Message: &messenger.SendMessage{
+			Text: messageText,
+		},
+		// Notify: "REGULAR",
+		// Tag: "",
+	}
+
+	return c.Send(igpage, &send)
+}

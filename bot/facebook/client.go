@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/webitel/chat_manager/api/proto/chat"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	cache "github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/bot"
 	graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
@@ -40,6 +42,8 @@ type Client struct {
 	pages     *messengerPages // App Messenger Product Config
 	instagram *messengerPages // App Messenger Product Config
 	whatsApp  *whatsapp.Manager
+
+	peerCache cache.LRU[string, *chat.Channel]
 
 	chatMx *sync.RWMutex   // guards c.chats
 	chats  map[string]Chat // map[userPSID]{.user,.page}
