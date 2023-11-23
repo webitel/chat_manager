@@ -3,10 +3,13 @@ package chat
 import (
 	"context"
 	"encoding/hex"
+	"strconv"
 
 	"github.com/google/uuid"
+	"github.com/micro/micro/v3/service/context/metadata"
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/rs/zerolog"
+	oauth "github.com/webitel/chat_manager/api/proto/auth"
 	pb "github.com/webitel/chat_manager/api/proto/chat/messages"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/auth"
@@ -54,6 +57,29 @@ var _ pb.CatalogHandler = (*Catalog)(nil)
 
 const scopeChats = "chats"
 
+func (srv *Catalog) bindNativeClient(ctx *app.Context) error {
+	authZ := &ctx.Authorization
+	if authZ.Creds == nil && authZ.Native != nil {
+		md, _ := metadata.FromContext(
+			ctx.Context,
+		)
+		dc, _ := strconv.ParseInt(
+			md["X-Webitel-Domain"], 10, 64,
+		)
+		authZ.Creds = &oauth.Userinfo{
+			Dc: dc,
+			Permissions: []*oauth.Permission{
+				&auth.PermissionSelectAny,
+			},
+			Scope: []*oauth.Objclass{{
+				Class:  scopeChats,
+				Access: "r",
+			}},
+		}
+	}
+	return nil
+}
+
 // Query of external chat customers
 func (srv *Catalog) GetCustomers(ctx context.Context, req *pb.ChatCustomersRequest, res *pb.ChatCustomers) error {
 
@@ -62,6 +88,7 @@ func (srv *Catalog) GetCustomers(ctx context.Context, req *pb.ChatCustomersReque
 		ctx, app.AuthorizationRequire(
 			srv.authN.GetAuthorization,
 		),
+		srv.bindNativeClient,
 	)
 
 	if err != nil {
@@ -147,6 +174,7 @@ func (srv *Catalog) GetDialogs(ctx context.Context, req *pb.ChatDialogsRequest, 
 		ctx, app.AuthorizationRequire(
 			srv.authN.GetAuthorization,
 		),
+		srv.bindNativeClient,
 	)
 
 	if err != nil {
@@ -357,7 +385,7 @@ func (srv *Catalog) GetMembers(ctx context.Context, req *pb.ChatMembersRequest, 
 	return nil
 }
 
-// Query of chat messages history
+// Query of the chat history
 func (srv *Catalog) GetHistory(ctx context.Context, req *pb.ChatMessagesRequest, res *pb.ChatMessages) error {
 	// region: ----- Validation -----
 	var peer *pb.Peer // mandatory(!)
@@ -405,6 +433,7 @@ func (srv *Catalog) GetHistory(ctx context.Context, req *pb.ChatMessagesRequest,
 		ctx, app.AuthorizationRequire(
 			srv.authN.GetAuthorization,
 		),
+		srv.bindNativeClient,
 	)
 	if err != nil {
 		return err // 401
@@ -496,6 +525,168 @@ func (srv *Catalog) GetHistory(ctx context.Context, req *pb.ChatMessagesRequest,
 	}
 
 	list, re := srv.store.GetHistory(&search)
+	if err = re; err != nil {
+		return err
+	}
+
+	// *(res) = *(list)
+	res.Messages = list.Messages
+	res.Chats = list.Chats
+	res.Peers = list.Peers
+	res.Page = list.Page
+	res.Next = list.Next
+
+	// TODO: Output sanitizer ...
+
+	return nil
+}
+
+// Query of the chat updates ; forward history
+func (srv *Catalog) GetUpdates(ctx context.Context, req *pb.ChatMessagesRequest, res *pb.ChatMessages) error {
+	// region: ----- Validation -----
+	var peer *pb.Peer // mandatory(!)
+	switch input := req.GetChat().(type) {
+	case *pb.ChatMessagesRequest_Peer:
+		{
+			peer = input.Peer
+		}
+	case *pb.ChatMessagesRequest_ChatId:
+		{
+			if input.ChatId != "" {
+				chatId, err := uuid.Parse(input.ChatId)
+				if err != nil { // || chatId.IsZero() {
+					return errors.BadRequest(
+						"messages.updates.chat.id.input",
+						"updates( chat: %s ); input: invalid id",
+						input.ChatId,
+					)
+				}
+				peer = &pb.Peer{
+					Type: "chat",
+					Id:   hex.EncodeToString(chatId[:]),
+				}
+			}
+		}
+	}
+
+	if peer.GetId() == "" {
+		return errors.BadRequest(
+			"messages.updates.peer.id.required",
+			"updates( peer.id: string! ); input: required",
+		)
+	}
+
+	if peer.GetType() == "" {
+		return errors.BadRequest(
+			"messages.updates.peer.type.required",
+			"updates( peer.type: string! ); input: required",
+		)
+	}
+
+	offset := req.Offset
+	const methodEpoch = 1700505300000 // GMT: Monday, 20 November 2023, 18:35:00
+	if offset == nil || (offset.Id < 1 && offset.Date < methodEpoch) {
+		return errors.BadRequest(
+			"messages.updates.offset.required",
+			"updates( offset: object! ); input: required",
+		)
+	}
+	// endregion: ----- Validation -----
+
+	// region: ----- Authentication -----
+	authN, err := app.GetContext(
+		ctx, app.AuthorizationRequire(
+			srv.authN.GetAuthorization,
+		),
+		srv.bindNativeClient,
+	)
+	if err != nil {
+		return err // 401
+	}
+	// ctx = authN.Context // wrapped
+	// endregion: ----- Authentication -----
+
+	// region: ----- Authorization -----
+	scope := authN.Authorization.HasObjclass(scopeChats)
+	if scope == nil {
+		return errors.Forbidden(
+			"chat.objclass.access.denied",
+			"denied: require r:chats access but not granted",
+		) // (403) Forbidden
+	}
+	search := app.SearchOptions{
+		Context: *(authN),
+		// ID:   []int64{},
+		Term: req.Q,
+		Filter: map[string]any{
+			// mandatory(!)
+			"peer":   peer,
+			"offset": offset,
+		},
+		Access: auth.READ,
+		Fields: app.FieldsFunc(
+			req.Fields, // app.InlineFields,
+			app.SelectFields(
+				// default
+				[]string{
+					"id",
+					"from", // sender; user
+					"date",
+					"edit",
+					"text",
+					"file",
+				},
+				// extra
+				[]string{
+					"chat",   // chat dialog, that this message belongs to ..
+					"sender", // chat member, on behalf of the "chat" (dialog)
+					"context",
+				},
+			),
+		),
+		// Order: app.FieldsFunc(
+		// 	req.Sort, app.InlineFields,
+		// ),
+		// Size: int(req.GetSize()),
+		// Page: int(req.GetPage()),
+		Size: int(req.GetLimit()),
+	}
+	// Can SELECT ANY object(s) ?
+	super := &auth.PermissionSelectAny
+	if !authN.HasPermission(super.Id) {
+		// SELF related ONLY (!)
+		search.FilterAND("self", authN.Creds.GetUserId())
+	}
+	indexField := func(name string) int {
+		var e, n = 0, len(search.Fields)
+		for ; e < n && search.Fields[e] != name; e++ {
+			// lookup: field specified ?
+		}
+		if e < n {
+			return e // FOUND !
+		}
+		return -1 // NOT FOUND !
+	}
+	switch peer.Type {
+	case "chat":
+		// Hide: { chat }; Input given, will be the same for all messages !
+		e := indexField("chat")
+		for e >= 0 {
+			search.Fields = append(
+				search.Fields[0:e], search.Fields[e+1:]...,
+			)
+			e = indexField("chat")
+		}
+	default:
+		// [ bot, user, viber, telegram, ... ]
+		// Query: { chat }; To be able to distinguish individual chat dialogs
+		if indexField("chat") < 0 {
+			search.Fields = append(search.Fields, "chat")
+		}
+	}
+	// endregion: ----- Authorization -----
+
+	list, re := srv.store.GetUpdates(&search)
 	if err = re; err != nil {
 		return err
 	}

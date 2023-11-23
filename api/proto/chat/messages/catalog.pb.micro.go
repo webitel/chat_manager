@@ -75,8 +75,12 @@ type CatalogService interface {
 	GetDialogs(ctx context.Context, in *ChatDialogsRequest, opts ...client.CallOption) (*ChatDialogs, error)
 	// Query of chat participants
 	GetMembers(ctx context.Context, in *ChatMembersRequest, opts ...client.CallOption) (*ChatMembers, error)
-	// Query of chat messages history
+	// Query of the chat history
 	GetHistory(ctx context.Context, in *ChatMessagesRequest, opts ...client.CallOption) (*ChatMessages, error)
+	// Query of the chat(peer) updates since last state(offset)
+	// REQUIRE: peer, offset.
+	// INVALIDATE: search q.
+	GetUpdates(ctx context.Context, in *ChatMessagesRequest, opts ...client.CallOption) (*ChatMessages, error)
 }
 
 type catalogService struct {
@@ -131,6 +135,16 @@ func (c *catalogService) GetHistory(ctx context.Context, in *ChatMessagesRequest
 	return out, nil
 }
 
+func (c *catalogService) GetUpdates(ctx context.Context, in *ChatMessagesRequest, opts ...client.CallOption) (*ChatMessages, error) {
+	req := c.c.NewRequest(c.name, "Catalog.GetUpdates", in)
+	out := new(ChatMessages)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for Catalog service
 
 type CatalogHandler interface {
@@ -140,8 +154,12 @@ type CatalogHandler interface {
 	GetDialogs(context.Context, *ChatDialogsRequest, *ChatDialogs) error
 	// Query of chat participants
 	GetMembers(context.Context, *ChatMembersRequest, *ChatMembers) error
-	// Query of chat messages history
+	// Query of the chat history
 	GetHistory(context.Context, *ChatMessagesRequest, *ChatMessages) error
+	// Query of the chat(peer) updates since last state(offset)
+	// REQUIRE: peer, offset.
+	// INVALIDATE: search q.
+	GetUpdates(context.Context, *ChatMessagesRequest, *ChatMessages) error
 }
 
 func RegisterCatalogHandler(s server.Server, hdlr CatalogHandler, opts ...server.HandlerOption) error {
@@ -150,6 +168,7 @@ func RegisterCatalogHandler(s server.Server, hdlr CatalogHandler, opts ...server
 		GetDialogs(ctx context.Context, in *ChatDialogsRequest, out *ChatDialogs) error
 		GetMembers(ctx context.Context, in *ChatMembersRequest, out *ChatMembers) error
 		GetHistory(ctx context.Context, in *ChatMessagesRequest, out *ChatMessages) error
+		GetUpdates(ctx context.Context, in *ChatMessagesRequest, out *ChatMessages) error
 	}
 	type Catalog struct {
 		catalog
@@ -200,4 +219,8 @@ func (h *catalogHandler) GetMembers(ctx context.Context, in *ChatMembersRequest,
 
 func (h *catalogHandler) GetHistory(ctx context.Context, in *ChatMessagesRequest, out *ChatMessages) error {
 	return h.CatalogHandler.GetHistory(ctx, in, out)
+}
+
+func (h *catalogHandler) GetUpdates(ctx context.Context, in *ChatMessagesRequest, out *ChatMessages) error {
+	return h.CatalogHandler.GetUpdates(ctx, in, out)
 }

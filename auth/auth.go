@@ -5,16 +5,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/micro/micro/v3/service/registry"
 	authN "github.com/webitel/chat_manager/api/proto/auth"
 	// "github.com/webitel/chat_manager/app" import cycle
 )
 
 // Authorization Credentials
 type Authorization struct {
-	 Service string
-	 Method string
-	 Token string
-	 Creds *authN.Userinfo
+	Service string
+	Method  string
+	Native  *registry.Node
+	Token   string
+	Creds   *authN.Userinfo
 }
 
 func IsExpired(expiry int64, date time.Time) bool {
@@ -30,7 +32,7 @@ func (authZ *Authorization) HasPermission(code string) bool {
 	if code == "" {
 		return false
 	}
-	
+
 	for _, granted := range authZ.Creds.GetPermissions() {
 		if code == granted.Id {
 			return true
@@ -45,7 +47,7 @@ func (authZ *Authorization) HasObjclass(name string) *authN.Objclass {
 	if name == "" {
 		return nil
 	}
-	
+
 	for _, granted := range authZ.Creds.GetScope() {
 		if name == granted.Class {
 			return granted
@@ -64,18 +66,17 @@ func (authZ *Authorization) CanAccess(scope *authN.Objclass, mode AccessMode) bo
 	}
 
 	var (
-		
 		bypass, require string
 	)
 
 	switch mode {
-	case ADD, READ|ADD:
+	case ADD, READ | ADD:
 		require, bypass = "x", "add"
 	case READ, NONE: // default
 		require, bypass = "r", "read"
-	case WRITE, READ|WRITE:
+	case WRITE, READ | WRITE:
 		require, bypass = "w", "write"
-	case DELETE, READ|DELETE:
+	case DELETE, READ | DELETE:
 		require, bypass = "d", "delete"
 	}
 
@@ -84,7 +85,7 @@ func (authZ *Authorization) CanAccess(scope *authN.Objclass, mode AccessMode) bo
 		return true
 	}
 	// Check has requested access mode GRANTED ?
-	for i := len(require)-1; i >= 0; i-- {
+	for i := len(require) - 1; i >= 0; i-- {
 		mode := require[i]
 		if strings.IndexByte(scope.Access, mode) < 0 {
 			// break // ERR: require MODE access TO scope.Class but NOT GRANTED !
@@ -111,7 +112,6 @@ func (authZ *Authorization) CanAccess(scope *authN.Objclass, mode AccessMode) bo
 type Method func(context.Context) (*Authorization, error)
 
 var (
-	
 	methods []Method
 )
 
@@ -122,7 +122,7 @@ func NewContext(ctx context.Context, authZ *Authorization) context.Context {
 }
 
 func GetAuthorization(ctx context.Context) (authZ *Authorization, err error) {
-	
+
 	for _, authN := range methods {
 		authZ, err = authN(ctx)
 		if authZ != nil && err == nil {
@@ -132,4 +132,3 @@ func GetAuthorization(ctx context.Context) (authZ *Authorization, err error) {
 
 	return nil, err
 }
-
