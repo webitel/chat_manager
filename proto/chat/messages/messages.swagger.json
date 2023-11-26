@@ -429,7 +429,7 @@
     },
     "/chat/dialogs/{chat_id}/messages": {
       "get": {
-        "summary": "Query of chat messages history",
+        "summary": "Query of the chat history",
         "operationId": "Catalog_GetHistory",
         "responses": {
           "200": {
@@ -518,7 +518,7 @@
     },
     "/chat/{peer.type}/{peer.id}/messages": {
       "get": {
-        "summary": "Query of chat messages history",
+        "summary": "Query of the chat history",
         "operationId": "Catalog_GetHistory2",
         "responses": {
           "200": {

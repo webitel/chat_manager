@@ -333,15 +333,18 @@ func (c *Agent) SendMessageV1(target *app.Channel, message *chat.Message) error 
 
 	if channel.ProfileID == 0 {
 		// RESTORE: recepient processing ...
-		// NOTE: sender for now is webitel.chat.bot channel only !
-		schemaProfileID, serviceNode, err := contact.ContactObjectNode(target.Contact)
-		// schemaProfileID, err := strconv.ParseInt(sender.Connection.String, 10, 64)
-		if err != nil {
-			return err
-		}
-		// preset: resolved !
-		channel.ProfileID = schemaProfileID
-		channel.Host = serviceNode
+		channel.ProfileID, channel.Host, _ =
+			contact.ContactObjectNode(target.Contact)
+		// [NOW] Except webitel.chat.bot there is webitel.chat.portal with no such profile !
+		// // NOTE: sender for now is webitel.chat.bot channel only !
+		// schemaProfileID, serviceNode, err := contact.ContactObjectNode(target.Contact)
+		// // schemaProfileID, err := strconv.ParseInt(sender.Connection.String, 10, 64)
+		// if err != nil {
+		// 	return err
+		// }
+		// // preset: resolved !
+		// channel.ProfileID = schemaProfileID
+		// channel.Host = serviceNode
 	}
 	// endregion
 

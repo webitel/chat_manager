@@ -216,13 +216,36 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 
 	ctx = &SELECT{
 		Params: params{
-			// "date": &pgtype.Timestamp{
-			// 	Time:   req.Localtime().UTC(),
-			// 	Status: pgtype.Present,
-			// },
-			// "user": req.Authorization.Creds.UserId,
-			"pdc": req.Authorization.Creds.Dc,
+			// // "date": &pgtype.Timestamp{
+			// // 	Time:   req.Localtime().UTC(),
+			// // 	Status: pgtype.Present,
+			// // },
+			// // "user": req.Authorization.Creds.UserId,
+			// "pdc": req.Authorization.Creds.Dc,
 		},
+	}
+
+	var (
+		authN     = &req.Authorization
+		endUser   = authN.Creds
+		primaryDc int64 // 0 ; invalid
+	)
+	if endUser != nil {
+		primaryDc = endUser.Dc
+	}
+	if authN.Native != nil && primaryDc <= 0 {
+		// Native service node client Authenticated !
+		// Allow search in .. ANY domain !
+		var e, n = 0, len(req.Fields)
+		for ; e < n && req.Fields[e] != "dc"; e++ {
+			// lookup: requested ?
+		}
+		if e == n {
+			req.Fields = append(req.Fields, "dc")
+		}
+	} else {
+		// mandatory: filter !
+		ctx.Params["pdc"] = primaryDc
 	}
 
 	threadQ, re := selectChatThread(args, ctx.Params)
@@ -328,6 +351,7 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 				memberQ.
 					Select(
 						"id",
+						"dc",
 						"via",
 						"type",
 						"user_id",
@@ -355,6 +379,7 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 	chatQ.Order = nil
 	chatQ.Fields = []string{
 		"id",
+		"!dc",
 		"leg",
 		"title",
 		"chat_id", // ORDER BY, JOIN; thread_id
@@ -474,7 +499,7 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 		case "dc":
 			{
 				ctx.Query = ctx.Query.Column(
-					":pdc", // ident(left, "dc"),
+					ident(left, "dc"), // ":pdc",
 				)
 				plan = append(plan, func(node *api.Dialog) any {
 					return postgres.Int8{Value: &node.Dc}

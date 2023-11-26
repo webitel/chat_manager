@@ -13,6 +13,8 @@ type CatalogStore interface {
 	GetDialogs(req *app.SearchOptions, res *api.ChatDialogs) error
 	// Query of chat participants
 	GetMembers(req *app.SearchOptions) (*api.ChatMembers, error)
-	// Query of chat messages history
+	// Query of the chat history ; offset: backwards
 	GetHistory(req *app.SearchOptions) (*api.ChatMessages, error)
+	// Query of the chat updates ; offset: forward
+	GetUpdates(req *app.SearchOptions) (*api.ChatMessages, error)
 }

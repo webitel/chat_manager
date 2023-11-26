@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package webitel.chat.server; 
+
+option go_package = "github.com/webitel/chat_manager/api/proto/chat";
+
+import "google/protobuf/timestamp.proto";
+import "message.proto";
+
+// Messaging Service Contact Provider interface
+service Updates {
+
+  // OnUpdate message event handler
+  rpc OnUpdate(Update) returns (ACK);
+
+}
+
+// Chat
+message Chat {
+  string id = 1;
+  Account peer = 2;
+}
+
+// Update event message details
+message Update {
+
+  // Timestamp when this Update was sent.
+  google.protobuf.Timestamp date = 1;
+  
+  // Target recipient(chat:member) of this update.
+  Chat chat = 2;
+  
+  // The message ; RECV Update
+  Message message = 3;
+}
+
+// Update [ACK]nowledge.
+message ACK {
+  // [OK] -OR- [Err]or
+}

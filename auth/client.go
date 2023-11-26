@@ -11,6 +11,7 @@ import (
 	"github.com/micro/micro/v3/service/broker"
 	"github.com/micro/micro/v3/service/context/metadata"
 	"github.com/micro/micro/v3/service/errors"
+	"github.com/micro/micro/v3/service/registry"
 
 	// "github.com/webitel/chat_manager/api/proto/auth"
 	"github.com/webitel/chat_manager/api/proto/auth"
@@ -101,13 +102,13 @@ func microContextAuthZ(ctx context.Context) (*Authorization, error) {
 
 	authN := microMetadataAuthZ(md)
 
-	switch authN.Service {
-	case serviceChatFlow,
-		serviceChatBot,
-		serviceChatSrv: // NOTE: webitel.chat.bot passthru original context while searching for gateways URI
-
-		// return nil, nil
-	}
+	// switch authN.Service {
+	// case serviceChatFlow,
+	// 	serviceChatBot,
+	// 	serviceChatSrv, // NOTE: webitel.chat.bot passthru original context while searching for gateways URI
+	// 	"go.webitel.portal":
+	// // return nil, nil
+	// }
 
 	return authN, nil
 }
@@ -255,6 +256,55 @@ func (c *Client) GetAuthorization(ctx context.Context) (*Authorization, error) {
 
 	if authN == nil || authN.Token == "" {
 		return nil, nil // ErrNoAuthorization
+	}
+
+	// Native Client Authorization
+	if authN.Service != "" && authN.Token != "" {
+		switch authN.Method {
+		case "Bearer": // "service":
+			// CHECK: go.webitel.portal-$id service registry exists
+			serviceId := authN.Token
+			services, err := registry.DefaultRegistry.GetService(authN.Service)
+			if err != nil {
+				// ERR: Unauthorized; Could not proof service client node registration
+				rpcErr := errors.FromError(err)
+				return nil, errors.Unauthorized(
+					"oauth.service.unauthorized",
+					"oauth: failed to confirm service authorization; "+rpcErr.Detail,
+				)
+			}
+			var client *registry.Node
+		lookup:
+			for _, service := range services {
+				for _, node := range service.Nodes {
+					id := node.Id
+					if !strings.HasPrefix(id, authN.Service) {
+						continue
+					}
+					id = strings.TrimPrefix(id, authN.Service)
+					if len(id) > 1 && id[0] == '-' {
+						id = id[1:]
+					}
+					if id == serviceId {
+						client = node
+						break lookup
+					}
+				}
+			}
+			// if client == nil {
+			// 	return nil, errors.Unauthorized(
+			// 		"oauth.service.unauthorized",
+			// 		"oauth: invalid service authorization",
+			// 	)
+			// }
+			// authN.Token = "" // Approved(!)
+			// authN.Native = client
+			if client != nil {
+				// authN.Token = "" // Approved(!)
+				authN.Native = client
+				return authN, err
+			}
+		}
 	}
 
 	dc := authN.Creds.GetDc()

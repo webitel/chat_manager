@@ -83,12 +83,12 @@ func compileNamedQuery(qs []byte, bindType int) (query string, names []string, e
 					// MUST: be at least as last !
 					if param == names[p] {
 						// index as position
-						currentVar = (p)+1
+						currentVar = (p) + 1
 						// param: already bound ?
 						// are we at the middle of the list ?
 						if currentVar != len(names) {
 							// duplicate: remove last !
-							names = names[:len(names)-1] 
+							names = names[:len(names)-1]
 						}
 						break
 					}

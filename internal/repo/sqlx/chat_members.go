@@ -142,6 +142,8 @@ func (q *chatMemberQ) Select(columns ...string) sq.SelectBuilder {
 
 		case "id": // uuid
 			cte = cte.Column("coalesce(c.id, r.id) id")
+		case "dc": // int8
+			cte = cte.Column("coalesce(c.domain_id, r.domain_id) dc")
 		case "via": // int8
 			cte = cte.Column("c.\"connection\"::::int8 via")
 		case "type": // (peer).type::text
@@ -302,7 +304,8 @@ func selectChatQuery(ctx *SELECT, req *app.SearchOptions) (plan dataFetch[*api.C
 			}
 			right, _ := joinGateVia() // MUST: ensure
 			expr := fmt.Sprintf(
-				"LEFT JOIN LATERAL (SELECT %[1]s.via id, coalesce(%[2]s.provider,'unknown') \"type\", coalesce(%[2]s.name,'[deleted]') \"name\"	WHERE %[1]s.via NOTNULL) gate ON true",
+				// NULLIF(via, 0) -- invalidate VIA('0') portal's gateway.id
+				"LEFT JOIN LATERAL (SELECT %[1]s.via id, coalesce(%[2]s.provider,'unknown') \"type\", coalesce(%[2]s.name,'[deleted]') \"name\"	WHERE NULLIF(%[1]s.via, 0) NOTNULL) gate ON true",
 				left, right,
 			)
 			ctx.Query = ctx.Query.JoinClause(expr)
@@ -395,6 +398,21 @@ func selectChatQuery(ctx *SELECT, req *app.SearchOptions) (plan dataFetch[*api.C
 
 		case "id": // core(!)
 		// ---------- [PSEUDO] ---------- //
+		case "dc":
+			{
+				ctx.Query = ctx.Query.Column(
+					ident(left, "dc"),
+				)
+				fetch := !no
+				plan = append(plan, func(node *api.Chat) any {
+					return DecodeText(func(src []byte) error {
+						if !fetch {
+							return nil
+						}
+						return postgres.Int8{Value: &node.Dc}.DecodeText(nil, src)
+					})
+				})
+			}
 		case "leg":
 			{
 				ctx.Query = ctx.Query.Column(
@@ -533,10 +551,15 @@ func selectChatMember(req searchChatArgs, params params) (cte chatMemberQ, err e
 
 	var (
 		where = sq.And{
-			sq.Expr(ident(left, "domain_id") + " = :pdc"),
+			// sq.Expr(ident(left, "domain_id") + " = :pdc"),
 		}
 		// id = make([]pgtype.UUID, 0, len(req.MemberID) + len(req.ThreadID))
 	)
+	if _, has := params["pdc"]; has {
+		where = append(where, // AND
+			sq.Expr(ident(left, "domain_id")+" = :pdc"),
+		)
+	}
 	// chat( id: [id!] )
 	if n := len(req.ID); n > 0 {
 		var id pgtype.UUIDArray
@@ -852,6 +875,7 @@ func selectChatThread(req searchChatArgs, params params) (cte sq.SelectBuilder, 
 			// "c.domain_id dc",
 
 			"c.id",
+			"c.domain_id dc",
 			"NULL::::int8 via",
 			"'bot' \"type\"",
 			"(c.props->>'flow')::::int8 user_id",
@@ -871,9 +895,9 @@ func selectChatThread(req searchChatArgs, params params) (cte sq.SelectBuilder, 
 		JoinClause( // host
 			"LEFT JOIN chat.conversation_node h ON h.conversation_id = c.id",
 		).
-		Where(
-			"c.domain_id = :pdc",
-		).
+		// Where(
+		// 	"c.domain_id = :pdc",
+		// ).
 		OrderBy(
 			"c.closed_at NOTNULL", // ONLINE FIRST
 			"c.created_at DESC",   // NEWest..to..OLDest
@@ -881,6 +905,10 @@ func selectChatThread(req searchChatArgs, params params) (cte sq.SelectBuilder, 
 		Limit(
 			64,
 		)
+
+	if _, has := params["pdc"]; has {
+		cte = cte.Where("c.domain_id = :pdc")
+	}
 
 	// chat( id: [id!] )
 	if vs := req.ThreadID; len(vs) > 0 {
@@ -931,13 +959,29 @@ func searchChatMembersQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 
 	ctx = &SELECT{
 		Params: params{
-			// "date": &pgtype.Timestamp{
-			// 	Time:   req.Localtime().UTC(),
-			// 	Status: pgtype.Present,
-			// },
-			// "user": req.Authorization.Creds.UserId,
-			"pdc": req.Authorization.Creds.Dc,
+			// // "date": &pgtype.Timestamp{
+			// // 	Time:   req.Localtime().UTC(),
+			// // 	Status: pgtype.Present,
+			// // },
+			// // "user": req.Authorization.Creds.UserId,
+			// "pdc": req.Authorization.Creds.Dc,
 		},
+	}
+
+	var (
+		authN     = &req.Authorization
+		endUser   = authN.Creds
+		primaryDc int64 // 0 ; invalid
+	)
+	if endUser != nil {
+		primaryDc = endUser.Dc
+	}
+	if authN.Native != nil && primaryDc < 1 {
+		// Native service node client Authenticated !
+		// Allow search in .. ANY domain !
+	} else {
+		// mandatory: filter !
+		ctx.Params["pdc"] = primaryDc
 	}
 
 	threadQ, re := selectChatThread(args, ctx.Params)
