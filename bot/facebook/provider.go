@@ -1202,6 +1202,7 @@ func (c *Client) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessag
 			}
 
 			c.peerCache.Add(peer, resp)
+			channel = resp
 		} else {
 			channel = v
 		}
