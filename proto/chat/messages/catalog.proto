@@ -38,7 +38,7 @@ service Catalog {
       get: "/chat/dialogs/{chat_id}/members"
     };
   }
-  // Query of chat messages history
+  // Query of the chat history
   rpc GetHistory(ChatMessagesRequest) returns (ChatMessages) {
     option (google.api.http) = {
       get: "/chat/dialogs/{chat_id}/messages"
@@ -47,4 +47,9 @@ service Catalog {
       };
     };
   }
+
+  // Query of the chat(peer) updates since last state(offset)
+  // REQUIRE: peer, offset.
+  // INVALIDATE: search q.
+  rpc GetUpdates(ChatMessagesRequest) returns (ChatMessages);
 }
