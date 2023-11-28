@@ -1205,7 +1205,7 @@ func (c *Client) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessag
 		} else {
 			channel = v
 		}
-		var props map[string]string
+		props := make(map[string]string)
 		err := json.Unmarshal([]byte(channel.Props), &props)
 		if err != nil {
 			return errors.InternalServerError("facebook.broadcast.unmarshal_props.error", err.Error())
