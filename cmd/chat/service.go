@@ -454,6 +454,7 @@ func (s *chatService) StartConversation(
 	// FIXME:
 	if serviceProvider != "webitel.chat.bot" {
 		// LOG: this is the only case expected for now !..
+		// "go.webitel.portal" !!!
 	}
 
 	metadata := req.GetProperties()
@@ -2695,7 +2696,7 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 			if member == sender { // e == 0
 				continue
 			}
-			err = c.eventRouter.SendMessageToGateway(member, notify)
+			err = c.eventRouter.SendMessageToGateway(sender, member, notify)
 			// Merge SENT message external binding (variables)
 			if notify.Id == 0 {
 				// NOTE: there was a service-level message notification
@@ -2872,7 +2873,7 @@ func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session,
 				}
 			}
 
-			err = c.eventRouter.SendMessageToGateway(member, notice)
+			err = c.eventRouter.SendMessageToGateway(sender, member, notice)
 		}
 
 		(sent)++ // calc active recepients !

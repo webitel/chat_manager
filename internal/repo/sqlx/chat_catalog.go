@@ -117,11 +117,42 @@ func (c *sqlxRepository) GetMembers(req *app.SearchOptions) (*api.ChatMembers, e
 	return &res, nil
 }
 
-// Query of chat messages history
+// Query of the chat history messages ; back in time
 func (c *sqlxRepository) GetHistory(req *app.SearchOptions) (*api.ChatMessages, error) {
 
 	ctx := req.Context.Context
-	cte, err := getMessagesQuery(req)
+	cte, err := getHistoryQuery(req, false)
+	if err != nil {
+		return nil, err
+	}
+
+	query, args, err := cte.ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := c.db.QueryContext(
+		ctx, query, args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var page api.ChatMessages
+	err = cte.scanRows(rows, &page)
+	if err != nil {
+		return nil, err
+	}
+
+	return &page, nil
+}
+
+// Query of the chat history updates ; forward offset
+func (c *sqlxRepository) GetUpdates(req *app.SearchOptions) (*api.ChatMessages, error) {
+
+	ctx := req.Context.Context
+	cte, err := getHistoryQuery(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -510,7 +541,7 @@ func fetchPeerRow(value **api.Peer) any {
 						return err
 					}
 					res.Id = str.String
-					ok = ok || str.String != "" // && str.Status == pgtype.Present
+					ok = ok || (str.String != "" && str.String != "0") // && str.Status == pgtype.Present
 					return nil
 				}),
 				DecodeText(func(src []byte) error {
@@ -519,7 +550,7 @@ func fetchPeerRow(value **api.Peer) any {
 						return err
 					}
 					res.Type = str.String
-					ok = ok || str.String != "" // && str.Status == pgtype.Present
+					ok = ok || (str.String != "" && str.String != "unknown") // && str.Status == pgtype.Present
 					return nil
 				}),
 				DecodeText(func(src []byte) error {
@@ -528,7 +559,7 @@ func fetchPeerRow(value **api.Peer) any {
 						return err
 					}
 					res.Name = str.String
-					ok = ok || str.String != "" // && str.Status == pgtype.Present
+					ok = ok || (str.String != "" && str.String != "[deleted]") // && str.Status == pgtype.Present
 					return nil
 				}),
 			}

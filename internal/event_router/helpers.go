@@ -51,6 +51,11 @@ func (c *eventRouter) sendEventToWebitelUser(from *store.Channel, to *store.Chan
 
 func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channel, message *chat.Message) error {
 
+	switch to.Type {
+	case "portal":
+		return c.portalSendUpdate(from, to, message)
+	}
+
 	// // profile[@svhost]
 	// profileID, serviceHost, err := ContactProfileNode(to.Connection.String)
 
@@ -164,7 +169,13 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 	return nil
 }
 
-func (c *eventRouter) SendMessageToGateway(target *app.Channel, message *chat.Message) error {
+func (c *eventRouter) SendMessageToGateway(sender, target *app.Channel, message *chat.Message) error {
+
+	switch target.User.Channel {
+	case "portal":
+		return c.portalSendMessage(sender, target, message)
+		// default:
+	}
 
 	// profile[@svhost]
 	profileID, serviceHost, err := contact.ContactObjectNode(target.Contact)

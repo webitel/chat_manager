@@ -203,10 +203,13 @@ var psqlChatSessionQ = CompactSQL(
 		'chatflow'          as chat_channel,
 		chat.connection||coalesce('@'||service.node_id,'') as chat_contact,
 		(false)             as flow_bridge, -- chat.flow_bridge,
-		bot.flow_id         as user_id,
+		-- bot.flow_id         as user_id,
+		coalesce(bot.flow_id, flow.id) user_id,
 		'bot'               as user_channel,
-		bot.flow_id::text   as user_contact,
-		bot.name            as user_name,
+		-- bot.flow_id::text   as user_contact,
+		(channel.props->>'flow') user_contact,
+		-- bot.name            as user_name,
+		coalesce(bot.name, flow.name::text) user_name,
 		-- coalesce(contact.name, nullif(account.name, ''), account.username, chat.name) as chat_title,
 		channel.props,
 
@@ -219,7 +222,8 @@ var psqlChatSessionQ = CompactSQL(
 	join chat.channel as chat on chat.conversation_id = channel.id and chat.connection similar to '\d+'
 																		-- MUST chat@gateway as originator, created earlier this chat.conversation
 																		and chat.created_at <= channel.created_at + '3 millisecond'
-	join chat.bot on (chat.connection::int8) = bot.id
+	left join chat.bot on (chat.connection::int8) = bot.id -- type:portal has no gateway assigned !
+	join flow.acr_routing_scheme flow ON flow.id = (channel.props->>'flow')::int8 and flow.domain_id = channel.domain_id
 	left join chat.conversation_node as service on channel.id = service.conversation_id
 --  -- to be able to resolve CHAT title !
 --  left join chat.client as contact on not chat.internal and chat.user_id = contact.id -- external

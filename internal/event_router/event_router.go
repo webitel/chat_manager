@@ -40,7 +40,7 @@ type Router interface {
 	SendDeclineInviteToWebitelUser(domainID *int64, conversationID *string, userID *int64, inviteID *string, cause string) error
 	SendUpdateChannel(channel *store.Channel, updated_at int64) error
 	// Override
-	SendMessageToGateway(target *app.Channel, message *chat.Message) error
+	SendMessageToGateway(sender, target *app.Channel, message *chat.Message) error
 	SendUserActionToGateway(target *app.Channel, sender *chat.SendUserActionRequest) (bool, error)
 }
 
