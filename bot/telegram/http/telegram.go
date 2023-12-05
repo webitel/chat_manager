@@ -37,7 +37,21 @@ func init() {
 type TelegramBot struct {
 	*bot.Gateway
 	*telegram.BotAPI
-	contacts map[int64]*bot.Account
+	contacts            map[int64]*bot.Account
+	lastSentMessageInfo map[string]*MessageInfo
+}
+
+type MessageInfo struct {
+	MessageId int
+	IsInline  bool
+}
+
+func (c *TelegramBot) GetLastChannelMessageInfo(chatId string) (*MessageInfo, bool) {
+	info, ok := c.lastSentMessageInfo[chatId]
+	if ok {
+		return info, ok
+	}
+	return nil, false
 }
 
 func (_ *TelegramBot) Close() error {
@@ -242,6 +256,8 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		message = notify.Message
 
 		binding map[string]string
+
+		inlineMarkup *telegram.InlineKeyboardMarkup
 	)
 
 	// region: recover latest chat channel state
@@ -476,9 +492,10 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		// https://core.telegram.org/bots/api#updating-messages
 		quickReplies, keyboardMenu := newKeyboardMarkup(message.Buttons)
 		if len(quickReplies) != 0 {
-			sendOptions.ReplyMarkup = telegram.InlineKeyboardMarkup{
+			inlineMarkup = &telegram.InlineKeyboardMarkup{
 				InlineKeyboard: quickReplies,
 			}
+			sendOptions.ReplyMarkup = inlineMarkup
 			if keyboardMenu != nil {
 				c.Log.Warn().
 					Str("error", "reply_markup: single message supports one of (Inline|Reply)Keyboard(Markup|Remove) only").
@@ -531,6 +548,14 @@ retry:
 				chatID, chatAction,
 			),
 		)
+	}
+	if info, ok := c.GetLastChannelMessageInfo(channel.ChatID); ok && info.IsInline && inlineMarkup != nil {
+		chatId, err := strconv.ParseInt(channel.ChatID, 10, 64)
+		if err == nil {
+			sendUpdate = telegram.NewEditMessageTextAndMarkup(chatId, info.MessageId, message.Text, *inlineMarkup)
+		} else {
+			err = nil
+		}
 	}
 
 	if err == nil {
@@ -597,6 +622,7 @@ retry:
 		// [optional] STORE external SENT message binding
 		message.Variables = binding
 	}
+	c.lastSentMessageInfo[channel.ChatID] = &MessageInfo{MessageId: sentMessage.MessageID, IsInline: inlineMarkup != nil}
 	// +OK
 	return nil
 }
