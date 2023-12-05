@@ -158,9 +158,10 @@ func NewTelegramBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 	}
 
 	return &TelegramBot{
-		Gateway:  agent,
-		BotAPI:   botAPI,
-		contacts: make(map[int64]*bot.Account),
+		Gateway:             agent,
+		BotAPI:              botAPI,
+		contacts:            make(map[int64]*bot.Account),
+		lastSentMessageInfo: map[string]*MessageInfo{},
 	}, nil
 }
 
