@@ -893,21 +893,20 @@
       "properties": {
         "id": {
           "type": "string",
-          "format": "int64",
-          "description": "Unique media file identifier."
+          "title": "File location"
         },
         "size": {
           "type": "string",
           "format": "int64",
-          "title": "Size of the media file. Bytes"
+          "title": "Size in bytes"
         },
         "type": {
           "type": "string",
-          "description": "MIME-Type of the media content."
+          "title": "MIME media type"
         },
         "name": {
           "type": "string",
-          "description": "Filename."
+          "title": "Filename"
         }
       },
       "description": "Media File."

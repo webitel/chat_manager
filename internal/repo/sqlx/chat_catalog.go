@@ -755,7 +755,7 @@ func fetchFileRow(value **api.File) any {
 				DecodeText(func(src []byte) error {
 					err := int8.DecodeText(nil, src)
 					if err == nil && int8.Status == pgtype.Present {
-						res.Id = int8.Int
+						res.Id = strconv.FormatInt(int8.Int, 10) // int8.Int
 						ok = true
 					}
 					return err
@@ -772,7 +772,7 @@ func fetchFileRow(value **api.File) any {
 				// type
 				DecodeText(func(src []byte) error {
 					err := text.DecodeText(nil, src)
-					if err == nil && int8.Status == pgtype.Present {
+					if err == nil && text.Status == pgtype.Present {
 						res.Type = text.String
 						ok = true
 					}
@@ -781,7 +781,7 @@ func fetchFileRow(value **api.File) any {
 				// name
 				DecodeText(func(src []byte) error {
 					err := text.DecodeText(nil, src)
-					if err == nil && int8.Status == pgtype.Present {
+					if err == nil && text.Status == pgtype.Present {
 						res.Name = text.String
 						ok = true
 					}

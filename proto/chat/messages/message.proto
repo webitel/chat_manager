@@ -71,17 +71,17 @@ message Message {
 // Media File.
 message File {
 
-  // Unique media file identifier.
-  int64 id = 1;
-  
+  // File location
+  string id = 1;
+
   // string url = 2;
 
-  // Size of the media file. Bytes
+  // Size in bytes
   int64 size = 3;
 
-  // MIME-Type of the media content.
+  // MIME media type
   string type = 4;
 
-  // Filename.
+  // Filename
   string name = 5;
 }
