@@ -53,6 +53,7 @@ type Messaging struct {
 	TakeThreadControl    *take_thread_control    `json:"take_thread_control,omitempty"`
 	RequestThreadControl *request_thread_control `json:"request_thread_control,omitempty"`
 	AppRoles             app_roles               `json:"app_roles,omitempty"`
+	LinkRef              *LinkReferral           `json:"referral,omitempty"`
 }
 
 type Account struct {
@@ -60,6 +61,12 @@ type Account struct {
 	ID string `json:"id,omitempty"`
 	// The user_ref of the user that triggered the webhook event. This is only available for webhook event from the chat plugin.
 	UserRef string `json:"user_ref,omitempty"`
+}
+
+type LinkReferral struct {
+	Ref    string `json:"ref"`
+	Source string `json:"source"`
+	Type   string `json:"type"`
 }
 
 // Postbacks occur when a postback button, Get Started button, or persistent menu item is tapped.
@@ -78,7 +85,7 @@ type Postback struct {
 	Payload string `json:"payload,omitempty"`
 	// Referral information for how the user got into the thread. Structure follows referral event:
 	// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/messaging_referrals#referral
-	Referral interface{} `json:"referral,omitempty"`
+	Referral *LinkReferral `json:"referral,omitempty"`
 }
 
 // Message callback will occur when a message has been sent to your Page.

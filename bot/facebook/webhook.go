@@ -247,6 +247,9 @@ func (c *Client) WebhookPage(batch []*messenger.Entry) {
 					// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/messaging_postbacks
 					on = "facebook.onPostback"
 					err = c.WebhookPostback(event)
+				} else if event.LinkRef != nil {
+					//on = "facebook.onPostback"
+					err = c.WebhookReferral(event)
 				} // else {
 				// https://developers.facebook.com/docs/messenger-platform/reference/webhook-events#event_list
 				// }
@@ -612,6 +615,13 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 	// Defaults ...
 	sendMsg.Type = "text"
 	sendMsg.Text = sentMsg.Text
+	//if event.Postback != nil && event.Postback.Referral != nil {
+	//	ref := event.Postback.Referral
+	//	switch ref.Source {
+	//	case "SHORTLINK", "ADS":
+	//		sendMsg.Text = ref.Ref
+	//	}
+	//}
 
 	// A quick_reply payload is only provided with a text message
 	// when the user tap on a Quick Replies button.
@@ -842,7 +852,12 @@ func (c *Client) WebhookPostback(event *messenger.Messaging) error {
 	// Defaults ...
 	sendMsg.Type = "text"
 	sendMsg.Text = sentMsg.Title
-	if sentMsg.Payload != "" {
+	if ref := sentMsg.Referral; ref != nil { // referral links come first https://developers.facebook.com/docs/messenger-platform/discovery/m-me-links
+		switch ref.Source {
+		case "SHORTLINK", "ADS":
+			sendMsg.Text = ref.Ref
+		}
+	} else if sentMsg.Payload != "" {
 		sendMsg.Text = sentMsg.Payload
 	}
 
@@ -850,6 +865,72 @@ func (c *Client) WebhookPostback(event *messenger.Messaging) error {
 	props := map[string]string{
 		// ChatID: MessageID
 		chatID: sentMsg.MessageID,
+	}
+
+	// Facebook Chat Bindings ...
+	if channel.IsNew() {
+		// BIND Channel START properties !
+		thread, _ := channel.Properties.(*Chat)
+		props[paramFacebookPage] = thread.Page.ID
+		props[paramFacebookName] = thread.Page.Name
+		var p = make(map[string]string)
+		p[paramFacebookPage] = thread.Page.ID
+		p[paramFacebookName] = thread.Page.Name
+		p["facebook.psid"] = userPSID
+		channel.Properties = p
+		if instagram := thread.Page.Instagram; instagram != nil {
+			props[paramInstagramPage] = instagram.ID
+			props[paramInstagramUser] = instagram.Username
+			p[paramInstagramPage] = instagram.ID
+			p[paramInstagramUser] = instagram.Username
+			channel.Properties = p
+		}
+	} // else { // BIND Message SENT properties ! }
+	sendMsg.Variables = props
+
+	// Forward Bot received Message !
+	err = c.Gateway.Read(ctx, &update)
+
+	if err != nil {
+		log.Error().Msg(err.Error())
+		// http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
+		return err // 502 Bad Gateway
+	}
+
+	return nil
+}
+
+func (c *Client) WebhookReferral(event *messenger.Messaging) error {
+
+	userPSID := event.Sender.ID    // [P]age-[s]coped [ID]
+	pageASID := event.Recipient.ID // [A]pp-[s]coped [ID]
+
+	ctx := context.TODO()
+	channel, err := c.getInternalThread(
+		ctx, pageASID, userPSID,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	//chatID := userPSID
+	update := bot.Update{
+		Title:   channel.Title,
+		Chat:    channel,
+		User:    &channel.Account,
+		Message: new(chat.Message),
+	}
+
+	sentMsg := event.Referral
+	sendMsg := update.Message
+	// Defaults ...
+	sendMsg.Type = "text"
+	sendMsg.Text = sentMsg.Ref
+	// Facebook Message SENT Mapping !
+	props := map[string]string{
+		// ChatID: MessageID
+		//chatID: event.,
 	}
 
 	// Facebook Chat Bindings ...
