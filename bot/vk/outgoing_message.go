@@ -70,7 +70,13 @@ func (m *OutgoingMessage) Params() (*vk.Params, error) {
 		if err != nil {
 			return nil, err
 		}
-		res["keyboard"] = fmt.Sprintf("{\"one_time\": %s, \"buttons\": %s}", strconv.FormatBool(m.Keyboard.OneTime), stringKeyboard)
+		//if m.Keyboard.IsInline == false {
+		//	res["keyboard"] = fmt.Sprintf("{\"one_time\": %s, \"buttons\": %s}", strconv.FormatBool(m.Keyboard.OneTime), stringKeyboard)
+		//
+		//} else {
+		//	res["keyboard"] = fmt.Sprintf("{ \"inline\": %s, \"buttons\": %s}", strconv.FormatBool(m.Keyboard.IsInline), stringKeyboard)
+		//}
+		res["keyboard"] = stringKeyboard
 	}
 	if len(m.Attachments) != 0 {
 		att := strings.Join(m.Attachments, ",")
@@ -127,7 +133,10 @@ type DocUploadResponse struct {
 // String converts VK Buttons to the string format with this preparing them to send
 func (v *VKKeyboard) String() (string, error) {
 	var keyboard string
-	bytes, err := json.Marshal(v.Buttons)
+	if len(v.Buttons) == 0 {
+		return "{\"buttons\":[]}", nil
+	}
+	bytes, err := json.Marshal(v)
 	if err != nil {
 		return "", err
 	}
@@ -258,7 +267,7 @@ func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*Outgoing
 // BuildVKKeyboard performs full conversion FROM [WEBITEL] TO [VK] buttons
 func BuildVKKeyboard(in []*chat.Buttons) (*VKKeyboard, error) {
 	var (
-		result = &VKKeyboard{OneTime: true, Buttons: make([][]Button, 0)}
+		result = &VKKeyboard{OneTime: false, Buttons: make([][]Button, 0)}
 	)
 
 	for i, buttons := range in {
@@ -266,10 +275,9 @@ func BuildVKKeyboard(in []*chat.Buttons) (*VKKeyboard, error) {
 		for _, button := range buttons.Button {
 			switch button.Type {
 			case "clear", "remove", "remove_keyboard":
-				return &VKKeyboard{OneTime: true, Buttons: make([][]Button, 0)}, nil
-			case "message":
+				return &VKKeyboard{Buttons: make([][]Button, 0)}, nil
+			case "message", "reply", "url":
 				result.IsInline = true
-				result.OneTime = false
 			}
 			result.Buttons[i] = append(result.Buttons[i], *ConvertInternalToVKButton(button))
 		}

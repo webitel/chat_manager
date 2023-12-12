@@ -240,8 +240,6 @@ func (c *VKBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 	if err != nil {
 		return err
 	}
-	bt, _ := json.Marshal(sendUpdate)
-	fmt.Println(bt)
 	sentMessageId, err := c.BotApi.MessagesSend(*sendUpdate)
 	if err != nil {
 		return err
