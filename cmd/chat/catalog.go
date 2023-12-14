@@ -252,6 +252,11 @@ func (srv *Catalog) GetDialogs(ctx context.Context, req *pb.ChatDialogsRequest, 
 		online := vs.GetValue()
 		search.FilterAND("online", &online)
 	}
+	if vs := req.Group; len(vs) > 0 {
+		if delete(vs, ""); len(vs) > 0 {
+			search.FilterAND("group", vs)
+		}
+	}
 	// PERFORM
 	err = srv.store.GetDialogs(&search, res)
 
@@ -523,6 +528,11 @@ func (srv *Catalog) GetHistory(ctx context.Context, req *pb.ChatMessagesRequest,
 	if vs := req.Offset; vs != nil {
 		search.FilterAND("offset", vs)
 	}
+	if vs := req.Group; len(vs) > 0 {
+		if delete(vs, ""); len(vs) > 0 {
+			search.FilterAND("group", vs)
+		}
+	}
 
 	list, re := srv.store.GetHistory(&search)
 	if err = re; err != nil {
@@ -685,6 +695,13 @@ func (srv *Catalog) GetUpdates(ctx context.Context, req *pb.ChatMessagesRequest,
 		}
 	}
 	// endregion: ----- Authorization -----
+
+	// ------- Filter(s) ------- //
+	if vs := req.Group; len(vs) > 0 {
+		if delete(vs, ""); len(vs) > 0 {
+			search.FilterAND("group", vs)
+		}
+	}
 
 	list, re := srv.store.GetUpdates(&search)
 	if err = re; err != nil {

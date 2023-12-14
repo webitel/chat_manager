@@ -46,4 +46,9 @@ message ChatMessagesRequest {
     // Unique peer contact
     Peer peer = 7;
   }
+
+  // Includes the history of ONLY those dialogs
+  // whose member channel(s) contain
+  // a specified set of variables.
+  map<string,string> group = 8;
 }

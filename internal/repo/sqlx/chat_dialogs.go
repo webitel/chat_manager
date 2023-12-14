@@ -26,10 +26,10 @@ type searchChatArgs struct {
 	Via *api.Peer
 	// Peer *-like participant(s).
 	Peer *api.Peer
-	// Date timerange within ...
-	Date *api.Timerange
 	// Self filter dialogs in common with current user.
 	Self int64
+	// Date timerange within ...
+	Date *api.Timerange
 	// Online participants.
 	// <nil> -- any; whatevent
 	// <true> -- NOT disconnected; ( left: 0 )
@@ -48,6 +48,9 @@ type searchChatArgs struct {
 	ThreadID []string
 	// Participants (member) IDs
 	MemberID []string
+	// Include chat dialogs ONLY whose
+	// member channel(s) contain a specified SET of variables
+	Group map[string]string
 }
 
 // searchChatRequest decode input req.Filter into supported query arguments
@@ -131,6 +134,23 @@ func searchChatRequest(req *app.SearchOptions) (args searchChatArgs, err error) 
 			}
 		case "self":
 			args.Self = req.Creds.UserId
+		case "group":
+			switch data := input.(type) {
+			case map[string]string:
+				if len(data) > 0 {
+					delete(data, "")
+				}
+				if len(data) > 0 {
+					args.Group = data
+				}
+			default:
+				err = errors.BadRequest(
+					"chat.query.group.input",
+					"chat( group: %[1]v ) convert %[1]T into variables",
+					input,
+				)
+				return // err
+			}
 		case "online":
 			{
 				switch data := input.(type) {
@@ -277,6 +297,7 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 		// GroupBy("coalesce(c.conversation_id, r.conversation_id)"), // thread_id
 	})
 	memberQ, err = selectChatMember(
+		// WITHOUT filters from now on ..
 		searchChatArgs{DC: args.DC}, ctx.Params,
 	)
 	if err != nil {

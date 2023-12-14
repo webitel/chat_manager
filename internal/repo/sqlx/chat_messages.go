@@ -38,6 +38,9 @@ type chatMessagesArgs struct {
 	Self int64
 	// Peer, as a member of dialog(s).
 	Peer *pb.Peer
+	// Includes the history of ONLY those dialogs
+	// whose member channel(s) contain a specified set of variables
+	Group map[string]string
 	// ----- Output ----- //
 	// Fields to return into result.
 	Fields []string
@@ -157,6 +160,24 @@ func getMessagesInput(req *app.SearchOptions) (args chatMessagesArgs, err error)
 				}
 				if err != nil {
 					return // args, err
+				}
+			}
+		case "group":
+			{
+				switch data := input.(type) {
+				case map[string]string:
+					if len(data) > 0 {
+						delete(data, "")
+					}
+					if len(data) > 0 {
+						args.Group = data
+					}
+				default:
+					err = errors.BadRequest(
+						"messages.query.group.input",
+						"messages( group: {variables} ); input: convert %T into variables",
+						input,
+					)
 				}
 			}
 		case "chat.id":
@@ -442,6 +463,29 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 			) m ON true`,
 			left,
 		)))
+	}
+	// Includes the history of ONLY those dialogs
+	// whose member channel(s) contain a specified set of variables
+	if len(ctx.Input.Group) > 0 {
+		group := pgtype.JSONB{
+			Bytes: dbx.NullJSONBytes(ctx.Input.Group),
+		}
+		// set: status.Present
+		group.Set(group.Bytes)
+		ctx.Params.set("group", &group)
+		// t.props
+		expr := ident(left, "props")
+		// coalesce(c.props,t.props)
+		if aliasChat != "" {
+			expr = fmt.Sprintf(
+				"coalesce(%s.props,%s.props)",
+				aliasChat, left,
+			)
+		}
+		// @>  Does the first JSON value contain the second ?
+		ctx.Query = ctx.Query.Where(
+			expr + "@>:group",
+		)
 	}
 
 	const (

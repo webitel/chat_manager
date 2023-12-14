@@ -108,4 +108,9 @@ message ChatDialogsRequest {
   // // who have [not] been invited to the chat.
   // // ( invite: * )
   // google.protobuf.BoolValue invite = 12;
+
+  // Includes ONLY those chat dialogs
+  // whose member channel(s) contain
+  // a specified set of variables.
+  map<string,string> group = 13; // 10
 }

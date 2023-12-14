@@ -822,6 +822,21 @@ func selectChatMember(req searchChatArgs, params params) (cte chatMemberQ, err e
 				left, "chat.invite", "self",
 			))
 	}
+	// chat( group: {variables} )
+	if len(req.Group) > 0 {
+		group := pgtype.JSONB{
+			Bytes: dbx.NullJSONBytes(req.Group),
+		}
+		// set( status: present )
+		group.Set(group.Bytes)
+		params.set("group", &group)
+		cte.member.query = cte.member.query.Where(
+			ident(left, "props") + "@>:group",
+		)
+		cte.invite.query = cte.invite.query.Where(
+			ident(left, "props") + "@>:group",
+		)
+	}
 	// chat( online: bool )
 	if req.Online != nil {
 		const (
