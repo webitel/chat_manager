@@ -31,6 +31,8 @@ type Gateway struct {
 	// communication
 	Internal *Service // Local CHAT service client
 	External Provider // Remote CHAT service client Receiver|Sender
+	// protects the load of the GetChannel(s) queries
+	loadMx *sync.Mutex
 	// cache: memory
 	*sync.RWMutex
 	internal map[int64]*Channel  // map[internal.user.id]
@@ -305,8 +307,14 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 	)
 
 	if contact == nil {
-		contact = &Account{}
+		contact = &Account{
+			Channel: c.GetProvider(),
+			Contact: chatID,
+		}
 	}
+
+	c.loadMx.Lock()
+	defer c.loadMx.Unlock()
 
 	if !ok && contact.ID != 0 {
 
@@ -415,6 +423,14 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 					Int64("contact-id", chat.ClientId).
 					Logger(),
 			}
+
+			c.Lock() // +RW
+			c.external[channel.ChatID] = channel
+			c.internal[channel.Account.ID] = channel // [channel.ContactID] = channel
+			c.Unlock()                               // -RW
+
+			channel.Log.Info().Msg("PREPARE")
+
 			// // .IsNew() == true
 			// return channel, nil
 		}

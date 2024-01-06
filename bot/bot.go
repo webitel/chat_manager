@@ -164,6 +164,9 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 
 	var state Provider
 	if ok && run != nil {
+		// share the load of the channel(s) mutex
+		agent.loadMx = run.loadMx
+		// share internal:cache store state
 		run.Lock() // +RW
 		agent.RWMutex = run.RWMutex
 		agent.internal = run.internal
@@ -171,7 +174,9 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 		run.Unlock() // -RW
 		state = run.External
 	} else {
-		// // CACHE Store
+		// mutex to protect the load of the channel(s)
+		agent.loadMx = new(sync.Mutex)
+		// NEW CACHE Store init
 		agent.RWMutex = new(sync.RWMutex)
 		agent.internal = make(map[int64]*Channel)  // map[internal.user.id]
 		agent.external = make(map[string]*Channel) // map[provider.user.id]

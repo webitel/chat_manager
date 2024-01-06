@@ -38,6 +38,8 @@ type Service struct {
 
 	// persistent store
 	store Store
+	// protects the load of the Gateway(s) queries
+	loadMx sync.Mutex
 	// local cache store
 	indexMx  sync.RWMutex
 	gateways map[string]int64   // map[URI]profile.id
@@ -53,11 +55,12 @@ func NewService(
 
 	return &Service{
 
-		store:  store,
 		Log:    *(logger),
 		Client: client, // chat.NewChatService("webitel.chat.server"),
 
 		exit: make(chan chan error),
+
+		store: store,
 
 		gateways: make(map[string]int64),
 		profiles: make(map[int64]*Gateway),
@@ -283,6 +286,9 @@ func (srv *Service) HostURL() string {
 // Gateway returns profile's runtime gateway instance
 // If profile exists but not yet running, performs lazy startup process
 func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gateway, error) {
+
+	srv.loadMx.Lock()
+	defer srv.loadMx.Unlock()
 
 	// if uri != "" {
 	// 	// make relative !
@@ -854,81 +860,3 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	return // 200
 }
-
-// ServeHTTP handler to deal with external chat channel notifications
-/*func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
-	srv.Log.Debug().
-		Str("uri", r.URL.Path).
-		Str("method", r.Method).
-		Msg("<<<<< WEBHOOK <<<<<")
-
-	uri := strings.TrimLeft(r.URL.Path, "/")
-
-	srv.indexMx.RLock()   // +R
-	pid, ok := srv.gateways[uri]
-	srv.indexMx.RUnlock() // -R
-
-	if !ok {
-
-		res, err := srv.Client.GetProfileByID(
-
-			r.Context(),
-			&chat.GetProfileByIDRequest{
-				Uri: uri,
-			},
-		)
-
-		if err != nil {
-			re := errors.FromError(err)
-			switch re.Code {
-			case 404: // NOT FOUND
-				// Failed to lookup profile by URI
-				http.Error(w, err.Error(), http.StatusNotFound)
-			default:
-				// Failed to lookup profile by URI
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-			return
-		}
-
-		profile := res.GetItem()
-		if profile == nil || profile.UrlId != uri {
-			// Profile NOT FOUND !
-			http.NotFound(w, r)
-			return
-		}
-		// STARTUP !
-		pid = profile.GetId()
-		// FIXME: omit profile.Register(!) operation
-		err = srv.AddProfile(
-			r.Context(),
-			&gate.AddProfileRequest{
-				Profile: profile,
-			},
-			&gate.AddProfileResponse{},
-		)
-
-		if err != nil {
-			re := errors.FromError(err)
-			http.Error(w, re.Detail, (int)(re.Code))
-			return
-		}
-
-	}
-
-	// ensure running !
-	srv.indexMx.RLock()   // +R
-	gateway, ok := srv.profiles[pid]
-	srv.indexMx.RUnlock() // -R
-
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-
-	// Passthru callback handler
-	gateway.WebHook(w, r)
-
-	return // 200
-}*/
