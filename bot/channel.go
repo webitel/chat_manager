@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -33,6 +34,8 @@ type Channel struct {
 	// Username string // chat channel username
 	// ContactID int64   // internal.user.id
 
+	// protects the method Recv() as a main onNewMessage handler
+	recvMx sync.Mutex
 	// Closed indicates that .this channel was previously closed at timestamp
 	Closed int64
 
@@ -346,6 +349,9 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 	// // 	return c.Close("") // (commandClose)
 	// // }
 	// // endregion
+
+	c.recvMx.Lock()
+	defer c.recvMx.Unlock()
 
 	if c.IsNew() { // || c.Closed != 0 {
 
