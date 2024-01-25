@@ -1047,6 +1047,7 @@ func searchChatMembersQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 				memberQ.
 					Select(
 						"id",
+						"dc",
 						"via",
 						"type",
 						"user_id",
