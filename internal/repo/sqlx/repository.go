@@ -84,6 +84,7 @@ type ChannelRepository interface {
 		connection *string,
 		internal *bool,
 		exceptID *string,
+		active *bool,
 	) ([]*Channel, error)
 	CreateChannel(ctx context.Context, c *Channel) error
 	GetChannelByID(ctx context.Context, id string) (*Channel, error)

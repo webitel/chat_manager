@@ -66,7 +66,8 @@ func NewRouter(
 // `channel` represents close process initiator.
 // `cause` overrides default "Conversation closed" message text
 func (e *eventRouter) RouteCloseConversation(channel *store.Channel, cause string) error {
-	otherChannels, err := e.repo.GetChannels(context.Background(), nil, &channel.ConversationID, nil, nil, nil) //&channel.ID)
+	active := true
+	otherChannels, err := e.repo.GetChannels(context.Background(), nil, &channel.ConversationID, nil, nil, nil, &active) //&channel.ID)
 	if err != nil {
 		return err
 	}
@@ -125,7 +126,8 @@ func (e *eventRouter) RouteCloseConversation(channel *store.Channel, cause strin
 //
 // NOTE:  that is NOT the truth !  =(
 func (e *eventRouter) RouteCloseConversationFromFlow(conversationID *string, cause string) error {
-	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil)
+	active := true
+	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil, &active)
 	if err != nil {
 		return err
 	}
@@ -180,7 +182,8 @@ func (e *eventRouter) RouteCloseConversationFromFlow(conversationID *string, cau
 }
 
 func (e *eventRouter) RouteDeclineInvite(userID *int64, conversationID *string) error {
-	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil)
+	active := true
+	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil, &active)
 	if err != nil {
 		return err
 	}
@@ -217,7 +220,8 @@ func (e *eventRouter) RouteDeclineInvite(userID *int64, conversationID *string) 
 }
 
 func (e *eventRouter) RouteInvite(conversationID *string, userID *int64) error {
-	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil)
+	active := true
+	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil, &active)
 	if err != nil {
 		return err
 	}
@@ -439,8 +443,8 @@ func (e *eventRouter) SendUpdateChannel(channel *store.Channel, updated_at int64
 }
 
 func (e *eventRouter) RouteJoinConversation(channel *store.Channel, conversationID *string) error {
-
-	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil)
+	active := true
+	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil, &active)
 	if err != nil {
 		return err
 	}
@@ -550,8 +554,9 @@ func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversatio
 			Msg("FAILED To NOTIFY Channel")
 	}
 	// Get CHAT related member(s) TO notify ...
+	active := true
 	members, err := e.repo.GetChannels(
-		context.Background(), nil, conversationID, nil, nil, nil,
+		context.Background(), nil, conversationID, nil, nil, nil, &active,
 	)
 
 	if err != nil {
@@ -621,8 +626,8 @@ func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversatio
 }
 
 func (e *eventRouter) RouteMessage(sender *store.Channel, message *chat.Message) (bool, error) {
-
-	members, err := e.repo.GetChannels(context.TODO(), nil, &sender.ConversationID, nil, nil, nil) //&channel.ID)
+	active := true
+	members, err := e.repo.GetChannels(context.TODO(), nil, &sender.ConversationID, nil, nil, nil, &active) //&channel.ID)
 
 	if err != nil {
 		return false, err
@@ -720,8 +725,8 @@ func (e *eventRouter) RouteMessage(sender *store.Channel, message *chat.Message)
 // conversationID unifies [chat@bot] channel identification
 // so, conversationID - unique chat channel sender ID (routine@workflow)
 func (e *eventRouter) RouteMessageFromFlow(conversationID *string, message *chat.Message) error {
-
-	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil)
+	active := true
+	otherChannels, err := e.repo.GetChannels(context.Background(), nil, conversationID, nil, nil, nil, &active)
 
 	if err != nil {
 		return err

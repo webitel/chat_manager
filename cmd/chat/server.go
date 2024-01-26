@@ -14,6 +14,7 @@ import (
 	pb2 "github.com/webitel/chat_manager/api/proto/chat/messages"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	pbmanager "github.com/webitel/chat_manager/api/proto/workflow"
+	pbcontact "github.com/webitel/protos/gateway/contacts"
 
 	"github.com/webitel/chat_manager/cmd"
 	"github.com/webitel/chat_manager/log"
@@ -29,6 +30,8 @@ import (
 const (
 	name  = "webitel.chat.server" // "chat.srv"
 	usage = "Run a chat messages service"
+
+	webitelGo = "go.webitel.app"
 )
 
 var (
@@ -132,9 +135,12 @@ func Run(ctx *cli.Context) error {
 	// REdirect server requests !
 	botClient = pbbot.NewBotsService("webitel.chat.bot", sender)
 	// botClient = pbbot.NewBotsService("chat.bot", sender)
-	authClient = pbauth.NewAuthService("go.webitel.app", sender)
+	authClient = pbauth.NewAuthService(webitelGo, sender)
 	storageClient = pbstorage.NewFileService("storage", sender)
 	flowClient = pbmanager.NewFlowChatServerService("workflow", sender) // wrapper.FromService(service.Name(), service.Server().Options().Id, service.Client()),
+
+	imClientsClient := pbcontact.NewIMClientsService(webitelGo, sender)
+	contactsClient := pbcontact.NewContactsService(webitelGo, sender)
 
 	flow := flow.NewClient(&logger, store, flowClient)
 	auth := auth.NewClient(&logger, authClient)
@@ -166,6 +172,27 @@ func Run(ctx *cli.Context) error {
 
 	if err := pb2.RegisterCatalogHandler(
 		service.Server(), catalog,
+	); err != nil {
+		logger.Fatal().
+			Str("app", "failed to register service").
+			Msg(err.Error())
+		return err
+	}
+
+	contactLinking := NewContactLinkingService(
+		ContactLinkingServiceLogs(&logger),
+		ContactLinkingServiceAuthN(authN.NewClient(
+			authN.ClientService(service),
+			authN.ClientCache(authN.NewLru(4096)),
+		)),
+		ContactLinkingServiceChannelStore(store),
+		ContactLinkingServiceClientStore(store),
+		ContactsLinkingServiceIMClient(imClientsClient),
+		ContactsLinkingServiceContactClient(contactsClient),
+	)
+
+	if err := pb2.RegisterContactLinkingServiceHandler(
+		service.Server(), contactLinking,
 	); err != nil {
 		logger.Fatal().
 			Str("app", "failed to register service").

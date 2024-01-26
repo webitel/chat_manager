@@ -1722,7 +1722,8 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 	}
 
 	externalBool := false
-	channels, err := s.repo.GetChannels(ctx, &contact.ID, nil, profileOf, &externalBool, nil)
+	active := false
+	channels, err := s.repo.GetChannels(ctx, &contact.ID, nil, profileOf, &externalBool, nil, &active)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err

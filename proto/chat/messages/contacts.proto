@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package webitel.chat;
+
+option go_package = "github.com/webitel/chat_manager/api/proto/chat/messages";
+
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+
+// Messages service catalog
+service ContactLinkingService {
+  // Query of the chat history
+  rpc LinkContactToClient(LinkContactToClientRequest) returns (EmptyResponse) {
+    option (google.api.http) = {
+      post: "/chat/{conversation_id}/link"
+    };
+  }
+
+  // Query of the chat history
+  rpc CreateContactFromConversation(CreateContactFromConversationRequest) returns (EmptyResponse) {
+    option (google.api.http) = {
+      post: "/chat/{conversation_id}/contact"
+    };
+  }
+}
+
+
+
+message LinkContactToClientRequest {
+  string conversation_id = 1;
+  string contact_id = 2;
+}
+
+message CreateContactFromConversationRequest {
+  string conversation_id = 1;
+}
+
+message EmptyResponse {}

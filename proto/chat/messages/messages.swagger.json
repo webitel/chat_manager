@@ -16,6 +16,9 @@
     {
       "name": "Catalog",
       "description": "**Messages** Service"
+    },
+    {
+      "name": "ContactLinkingService"
     }
   ],
   "host": "nx.webitel.org",
@@ -266,6 +269,13 @@
             "in": "query",
             "required": false,
             "type": "boolean"
+          },
+          {
+            "name": "group[string]",
+            "description": "This is a request variable of the map type. The query format is \"map_name[key]=value\", e.g. If the map name is Age, the key type is string, and the value type is integer, the query parameter is expressed as Age[\"bob\"]=18",
+            "in": "query",
+            "required": false,
+            "type": "string"
           }
         ],
         "tags": [
@@ -509,10 +519,73 @@
             "in": "query",
             "required": false,
             "type": "string"
+          },
+          {
+            "name": "group[string]",
+            "description": "This is a request variable of the map type. The query format is \"map_name[key]=value\", e.g. If the map name is Age, the key type is string, and the value type is integer, the query parameter is expressed as Age[\"bob\"]=18",
+            "in": "query",
+            "required": false,
+            "type": "string"
           }
         ],
         "tags": [
           "Catalog"
+        ]
+      }
+    },
+    "/chat/{conversation_id}/contact": {
+      "post": {
+        "summary": "Query of the chat history",
+        "operationId": "ContactLinkingService_CreateContactFromConversation",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/webitel.chat.EmptyResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ContactLinkingService"
+        ]
+      }
+    },
+    "/chat/{conversation_id}/link": {
+      "post": {
+        "summary": "Query of the chat history",
+        "operationId": "ContactLinkingService_LinkContactToClient",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/webitel.chat.EmptyResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ContactLinkingService"
         ]
       }
     },
@@ -595,6 +668,13 @@
           {
             "name": "peer.name",
             "description": "Contact display **name**.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "group[string][string]",
+            "description": "This is a request variable of the map type. The query format is \"map_name[key]=value\", e.g. If the map name is Age, the key type is string, and the value type is integer, the query parameter is expressed as Age[\"bob\"]=18",
             "in": "query",
             "required": false,
             "type": "string"
@@ -887,6 +967,9 @@
         }
       },
       "description": "Chat Dialog. Conversation info."
+    },
+    "webitel.chat.EmptyResponse": {
+      "type": "object"
     },
     "webitel.chat.File": {
       "type": "object",

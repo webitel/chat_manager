@@ -25,6 +25,7 @@ dst=$src
 protos="\
 $src/openapiv2.proto \
 $src/catalog.proto \
+$src/contacts.proto \
 "
 
 #openapiv2_format=yaml
