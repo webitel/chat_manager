@@ -32,6 +32,7 @@ require (
 require (
 	github.com/vmihailenco/msgpack/v5 v5.3.5 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
+	github.com/webitel/protos v1.0.1-0.20240126101752-2fb8232fc996 // indirect
 )
 
 require (

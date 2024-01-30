@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package webitel.chat;
+
+option go_package = "github.com/webitel/chat_manager/api/proto/chat/messages";
+
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+
+// API used to connect the external user to our internal contact
+service ContactLinkingService {
+  // LinkContactToClient creates connection between existing internal contact and external client.
+  rpc LinkContactToClient(LinkContactToClientRequest) returns (EmptyResponse) {
+    option (google.api.http) = {
+      post: "/chat/{conversation_id}/link"
+    };
+  }
+  // CreateContactFromConversation creates new contact from the data existing in the conversation and after that links this contact to the external user.
+  rpc CreateContactFromConversation(CreateContactFromConversationRequest) returns (EmptyResponse) {
+    option (google.api.http) = {
+      post: "/chat/{conversation_id}/contact"
+    };
+  }
+}
+
+
+
+message LinkContactToClientRequest {
+  string conversation_id = 1;
+  string contact_id = 2;
+}
+
+message CreateContactFromConversationRequest {
+  string conversation_id = 1;
+}
+
+message EmptyResponse {}

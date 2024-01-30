@@ -131,6 +131,7 @@ func (repo *sqlxRepository) GetChannels(
 	connection *string,
 	internal *bool,
 	exceptID *string,
+	active *bool,
 ) ([]*Channel, error) {
 
 	search := SearchOptions{
@@ -168,6 +169,9 @@ func (repo *sqlxRepository) GetChannels(
 	}
 	if exceptID != nil {
 		searchFilter("except", *exceptID)
+	}
+	if active != nil {
+		searchFilter("active", *active)
 	}
 	// PERFORM: SELECT
 	list, err := GetChannels(repo.db, ctx, &search)
@@ -824,9 +828,18 @@ func ChannelRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 			return SelectStmt{}, nil, err
 		}
 	}
-	// VIEW: OPENED ONLY !
-	if len(params) != 0 {
-		stmt = stmt.Where("c.closed_at ISNULL")
+	if q, ok := req.Params["active"]; ok && q != nil {
+		switch q := q.(type) {
+		case bool:
+			if q {
+				stmt = stmt.Where("c.closed_at ISNULL")
+			} else {
+				stmt = stmt.Where("c.closed_at IS NOT NULL")
+			}
+		default:
+			err = errors.Errorf("search=channel filter=active convert=%#v", q)
+			return SelectStmt{}, nil, err
+		}
 	}
 	// endregion
 
