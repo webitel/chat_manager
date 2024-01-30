@@ -535,7 +535,7 @@
     },
     "/chat/{conversation_id}/contact": {
       "post": {
-        "summary": "Query of the chat history",
+        "summary": "CreateContactFromConversation creates new contact from the data existing in the conversation and after that links this contact to the external user.",
         "operationId": "ContactLinkingService_CreateContactFromConversation",
         "responses": {
           "200": {
@@ -560,7 +560,7 @@
     },
     "/chat/{conversation_id}/link": {
       "post": {
-        "summary": "Query of the chat history",
+        "summary": "LinkContactToClient creates connection between existing internal contact and external client.",
         "operationId": "ContactLinkingService_LinkContactToClient",
         "responses": {
           "200": {

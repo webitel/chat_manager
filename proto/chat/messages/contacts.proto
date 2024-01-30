@@ -7,16 +7,15 @@ option go_package = "github.com/webitel/chat_manager/api/proto/chat/messages";
 import "google/api/annotations.proto";
 import "protoc-gen-openapiv2/options/annotations.proto";
 
-// Messages service catalog
+// API used to connect the external user to our internal contact
 service ContactLinkingService {
-  // Query of the chat history
+  // LinkContactToClient creates connection between existing internal contact and external client.
   rpc LinkContactToClient(LinkContactToClientRequest) returns (EmptyResponse) {
     option (google.api.http) = {
       post: "/chat/{conversation_id}/link"
     };
   }
-
-  // Query of the chat history
+  // CreateContactFromConversation creates new contact from the data existing in the conversation and after that links this contact to the external user.
   rpc CreateContactFromConversation(CreateContactFromConversationRequest) returns (EmptyResponse) {
     option (google.api.http) = {
       post: "/chat/{conversation_id}/contact"
