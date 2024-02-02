@@ -1437,6 +1437,10 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	}
 	if channel.IsNew() { // && contact.Username != "" {
 		sendMessage.Variables["username"] = sender.UserName // contact.Username
+		splitted := strings.Split(recvMessage.Text, " ")
+		if len(splitted) > 1 {
+			sendMessage.Variables["ref"] = splitted[1]
+		}
 	}
 
 	err = c.Gateway.Read(notice.Context(), &sendUpdate)
