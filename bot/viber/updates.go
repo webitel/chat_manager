@@ -293,6 +293,9 @@ func (c *Bot) onNewDialog(ctx context.Context, event *Update) error {
 			Text: "/welcome",
 		},
 	}
+	if event.NewDialog.Context != "" {
+		sendUpdate.Message.Variables = map[string]string{"ref": event.NewDialog.Context}
+	}
 	// Start new dialog
 	err = c.Gateway.Read(ctx, &sendUpdate)
 
