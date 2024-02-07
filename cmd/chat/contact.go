@@ -136,8 +136,7 @@ func (srv *ContactLinkingService) LinkContactToClient(ctx context.Context, req *
 	domainId := authN.Authorization.Creds.Dc
 
 	// PERFORM
-	active := false
-	channels, err := srv.channelStore.GetChannels(ctx, nil, &req.ConversationId, nil, &internal, nil, &active)
+	channels, err := srv.channelStore.GetChannels(ctx, nil, &req.ConversationId, nil, &internal, nil, nil)
 	if err != nil {
 		return err
 	}
