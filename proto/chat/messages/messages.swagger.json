@@ -541,7 +541,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/webitel.chat.EmptyResponse"
+              "$ref": "#/definitions/webitel.chat.Lookup"
             }
           }
         },
@@ -550,6 +550,54 @@
             "name": "conversation_id",
             "in": "path",
             "required": true,
+            "type": "string"
+          },
+          {
+            "name": "timezone.id",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "timezone.name",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "owner.id",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "owner.name",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "label",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "description",
+            "in": "query",
+            "required": false,
             "type": "string"
           }
         ],
@@ -993,6 +1041,18 @@
         }
       },
       "description": "Media File."
+    },
+    "webitel.chat.Lookup": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "int64"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
     },
     "webitel.chat.Message": {
       "type": "object",

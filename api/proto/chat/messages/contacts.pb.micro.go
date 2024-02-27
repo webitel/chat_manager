@@ -59,10 +59,10 @@ func NewContactLinkingServiceEndpoints() []*api.Endpoint {
 // Client API for ContactLinkingService service
 
 type ContactLinkingService interface {
-	// Query of the chat history
+	// LinkContactToClient creates connection between existing internal contact and external client.
 	LinkContactToClient(ctx context.Context, in *LinkContactToClientRequest, opts ...client.CallOption) (*EmptyResponse, error)
-	// Query of the chat history
-	CreateContactFromConversation(ctx context.Context, in *CreateContactFromConversationRequest, opts ...client.CallOption) (*EmptyResponse, error)
+	// CreateContactFromConversation creates new contact from the data existing in the conversation and after that links this contact to the external user.
+	CreateContactFromConversation(ctx context.Context, in *CreateContactFromConversationRequest, opts ...client.CallOption) (*Lookup, error)
 }
 
 type contactLinkingService struct {
@@ -87,9 +87,9 @@ func (c *contactLinkingService) LinkContactToClient(ctx context.Context, in *Lin
 	return out, nil
 }
 
-func (c *contactLinkingService) CreateContactFromConversation(ctx context.Context, in *CreateContactFromConversationRequest, opts ...client.CallOption) (*EmptyResponse, error) {
+func (c *contactLinkingService) CreateContactFromConversation(ctx context.Context, in *CreateContactFromConversationRequest, opts ...client.CallOption) (*Lookup, error) {
 	req := c.c.NewRequest(c.name, "ContactLinkingService.CreateContactFromConversation", in)
-	out := new(EmptyResponse)
+	out := new(Lookup)
 	err := c.c.Call(ctx, req, out, opts...)
 	if err != nil {
 		return nil, err
@@ -100,16 +100,16 @@ func (c *contactLinkingService) CreateContactFromConversation(ctx context.Contex
 // Server API for ContactLinkingService service
 
 type ContactLinkingServiceHandler interface {
-	// Query of the chat history
+	// LinkContactToClient creates connection between existing internal contact and external client.
 	LinkContactToClient(context.Context, *LinkContactToClientRequest, *EmptyResponse) error
-	// Query of the chat history
-	CreateContactFromConversation(context.Context, *CreateContactFromConversationRequest, *EmptyResponse) error
+	// CreateContactFromConversation creates new contact from the data existing in the conversation and after that links this contact to the external user.
+	CreateContactFromConversation(context.Context, *CreateContactFromConversationRequest, *Lookup) error
 }
 
 func RegisterContactLinkingServiceHandler(s server.Server, hdlr ContactLinkingServiceHandler, opts ...server.HandlerOption) error {
 	type contactLinkingService interface {
 		LinkContactToClient(ctx context.Context, in *LinkContactToClientRequest, out *EmptyResponse) error
-		CreateContactFromConversation(ctx context.Context, in *CreateContactFromConversationRequest, out *EmptyResponse) error
+		CreateContactFromConversation(ctx context.Context, in *CreateContactFromConversationRequest, out *Lookup) error
 	}
 	type ContactLinkingService struct {
 		contactLinkingService
@@ -140,6 +140,6 @@ func (h *contactLinkingServiceHandler) LinkContactToClient(ctx context.Context, 
 	return h.ContactLinkingServiceHandler.LinkContactToClient(ctx, in, out)
 }
 
-func (h *contactLinkingServiceHandler) CreateContactFromConversation(ctx context.Context, in *CreateContactFromConversationRequest, out *EmptyResponse) error {
+func (h *contactLinkingServiceHandler) CreateContactFromConversation(ctx context.Context, in *CreateContactFromConversationRequest, out *Lookup) error {
 	return h.ContactLinkingServiceHandler.CreateContactFromConversation(ctx, in, out)
 }

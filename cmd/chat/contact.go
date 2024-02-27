@@ -12,7 +12,7 @@ import (
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/auth"
 	store "github.com/webitel/chat_manager/internal/repo/sqlx"
-	contacts "github.com/webitel/protos/gateway/contacts"
+	"github.com/webitel/protos/gateway/contacts"
 )
 
 type ContactLinkingService struct {
@@ -164,7 +164,7 @@ func (srv *ContactLinkingService) LinkContactToClient(ctx context.Context, req *
 	return nil
 }
 
-func (srv *ContactLinkingService) CreateContactFromConversation(ctx context.Context, req *pb.CreateContactFromConversationRequest, res *pb.EmptyResponse) error {
+func (srv *ContactLinkingService) CreateContactFromConversation(ctx context.Context, req *pb.CreateContactFromConversationRequest, res *pb.Lookup) error {
 	// region: ----- Authentication -----
 	authN, err := app.GetContext(
 		ctx, app.AuthorizationRequire(
@@ -194,6 +194,26 @@ func (srv *ContactLinkingService) CreateContactFromConversation(ctx context.Cont
 		externalUserId int64
 	)
 
+	var (
+		convertLookup = func(input *pb.Lookup) *contacts.Lookup {
+			if input == nil {
+				return nil
+			}
+			return &contacts.Lookup{
+				Id:   strconv.FormatInt(input.Id, 10),
+				Name: input.Name,
+			}
+		}
+		coalesce = func(strings ...string) string {
+			for _, s := range strings {
+				if s != "" {
+					return s
+				}
+			}
+			return ""
+		}
+	)
+
 	// PERFORM
 	active := true
 	channels, err := srv.channelStore.GetChannels(ctx, nil, &req.ConversationId, nil, &internal, nil, &active)
@@ -207,34 +227,29 @@ func (srv *ContactLinkingService) CreateContactFromConversation(ctx context.Cont
 	channel := channels[0]
 	externalUserId = channels[0].UserID
 
-	client, err := srv.clientStore.GetClientByID(ctx, externalUserId)
-
-	// TODO: what if contact already exists? Everytime Api called contact will be created!
-	creationResp, err := srv.contactClient.CreateContact(ctx, &contacts.InputContactRequest{
-		Input: &contacts.InputContact{
-			Name: &contacts.InputName{
-				Verified:   false,
-				GivenName:  client.FirstName.String,
-				MiddleName: "",
-				FamilyName: client.LastName.String,
-				CommonName: client.Name.String,
-			},
+	inputContact := &contacts.InputContact{
+		Name: &contacts.InputName{
+			GivenName: req.Name,
 		},
-	},
-	)
+		Timezones: []*contacts.InputTimezone{{
+			Timezone: convertLookup(req.Timezone),
+		}},
+		Managers: []*contacts.InputManager{{
+			User: convertLookup(req.Owner),
+		}},
+		About: req.Description,
+	}
+	for _, s := range req.Label {
+		inputContact.Labels = append(inputContact.Labels, &contacts.InputLabel{Label: s})
+	}
+
+	// TODO: Everytime Api called contact will be created!
+	creationResp, err := srv.contactClient.CreateContact(ctx, &contacts.InputContactRequest{
+		Input: inputContact,
+	})
 	if err != nil {
 		return err
 	}
-
-	srv.contactIMClientClient.ListIMClients(ctx, &contacts.ListIMClientsRequest{
-		Page:      1,
-		Size:      1,
-		Q:         "",
-		Sort:      nil,
-		Fields:    nil,
-		ContactId: "",
-		Id:        nil,
-	})
 
 	_, err = srv.contactIMClientClient.CreateIMClients(ctx, &contacts.CreateIMClientsRequest{
 		ContactId: creationResp.Id,
@@ -249,8 +264,18 @@ func (srv *ContactLinkingService) CreateContactFromConversation(ctx context.Cont
 		},
 	})
 	if err != nil {
+		srv.contactClient.DeleteContact(ctx, &contacts.DeleteContactRequest{
+			Etag: creationResp.Id,
+		})
 		return err
 	}
+	id, err := strconv.ParseInt(creationResp.Id, 10, 64)
+	if err != nil {
+		return err
+	}
+
+	res.Id = id
+	res.Name = coalesce(creationResp.Name.CommonName, creationResp.Name.GivenName, creationResp.Name.FamilyName)
 
 	return nil
 }
