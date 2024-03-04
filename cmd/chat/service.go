@@ -644,6 +644,8 @@ func (s *chatService) StartConversation(
 		}
 		res.ConversationId = conversation.ID
 		res.ChannelId = channel.ID
+		// sentMessage := startMessage
+		res.Message = startMessage
 		// TODO: return error from s.flowClient.Init(..) !!!!!!!!!!!!!!!
 		//       to be able to ROLLBACK DB changes
 		//       when got "go.micro.client; service: not found" error
