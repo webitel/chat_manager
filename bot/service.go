@@ -18,6 +18,7 @@ import (
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/auth"
+	audit "github.com/webitel/chat_manager/logger"
 )
 
 // Service intercomunnication proxy
@@ -44,15 +45,16 @@ type Service struct {
 	indexMx  sync.RWMutex
 	gateways map[string]int64   // map[URI]profile.id
 	profiles map[int64]*Gateway // map[profile.id]gateway
+	audit    *audit.Client
 }
 
 func NewService(
 	store Store,
 	logger *zerolog.Logger,
 	client chat.ChatService,
+	auditClient *audit.Client,
 	// router *mux.Router,
 ) *Service {
-
 	return &Service{
 
 		Log:    *(logger),
@@ -64,6 +66,7 @@ func NewService(
 
 		gateways: make(map[string]int64),
 		profiles: make(map[int64]*Gateway),
+		audit:    auditClient,
 	}
 }
 

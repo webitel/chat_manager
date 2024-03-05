@@ -1,0 +1,186 @@
+syntax = "proto3";
+
+package logger;
+
+option go_package = "webitel_logger/proto";
+
+import "import.proto";
+import "google/api/annotations.proto";
+
+
+service ConfigService {
+
+  rpc UpdateConfig(UpdateConfigRequest) returns (Config) {
+    option (google.api.http) = {
+      put: "/logger/config/{config_id}"
+      body: "*"
+    };
+  }
+
+  rpc PatchConfig(PatchConfigRequest) returns (Config) {
+    option (google.api.http) = {
+      patch: "/logger/config/{config_id}"
+      body: "*"
+    };
+  }
+
+  rpc CreateConfig(CreateConfigRequest) returns (Config) {
+    option (google.api.http) = {
+      post: "/logger/config"
+      body: "*"
+    };
+  }
+
+  rpc DeleteConfig(DeleteConfigRequest) returns (Empty) {
+    option (google.api.http) = {
+      delete: "/logger/config/{config_id}"
+    };
+  }
+
+  rpc DeleteConfigBulk(DeleteConfigBulkRequest) returns (Empty) {
+    option (google.api.http) = {
+      delete: "/logger/config"
+      body: "*"
+    };
+  }
+
+  rpc ReadConfigByObjectId(ReadConfigByObjectIdRequest) returns (Config) {
+  }
+
+  rpc CheckConfigStatus(CheckConfigStatusRequest) returns (ConfigStatus) {
+  }
+
+  rpc ReadSystemObjects(ReadSystemObjectsRequest) returns (SystemObjects) {
+    option (google.api.http) = {
+      get: "/logger/available_objects"
+    };
+  }
+
+  rpc ReadConfig(ReadConfigRequest) returns (Config) {
+    option (google.api.http) = {
+      get: "/logger/config/{config_id}"
+    };
+  }
+
+  rpc SearchConfig(SearchConfigRequest) returns (Configs) {
+    option (google.api.http) = {
+      get: "/logger/config"
+    };
+  }
+
+}
+
+
+message Configs {
+  int32 page = 1;
+  bool next = 2;
+  repeated Config items = 3;
+}
+
+message SystemObjects {
+  repeated Lookup items = 3;
+}
+
+message ReadSystemObjectsRequest {
+  bool include_existing = 1;
+}
+
+message Empty {
+}
+
+message Config {
+  int32 id = 1;
+  Lookup object = 2;
+  bool enabled = 3;
+  int32 days_to_store = 4;
+  int32 period = 5;
+  Lookup storage = 6;
+  string description = 7;
+}
+
+
+
+message DeleteConfigRequest {
+  int32 config_id = 1;
+}
+
+message ConfigStatus {
+  bool is_enabled = 1;
+}
+
+message DeleteConfigBulkRequest {
+  repeated int32 ids = 1;
+}
+
+message ReadConfigByObjectIdRequest {
+  //  int32 page = 1;
+  //  int32 size = 2;
+  //  string q = 3;
+  //
+  //  string sort = 5;
+  //  repeated string fields = 6;
+
+  int32 object_id = 1;
+  int32 domain_id = 2;
+}
+
+message CheckConfigStatusRequest {
+  string object_name = 1;
+  int64 domain_id = 2;
+}
+
+message ReadConfigRequest {
+  //  int32 page = 1;
+  //  int32 size = 2;
+  //  string q = 3;
+  //
+  //  string sort = 5;
+  //  repeated string fields = 6;
+
+  int32 config_id = 1;
+  //  int32 domainId = 8;
+}
+
+
+
+message SearchConfigRequest {
+  int32 page = 1;
+  int32 size = 2;
+  string q = 3;
+
+  string sort = 4;
+  repeated string fields = 5;
+
+  // NOT USED
+  repeated AvailableSystemObjects object = 6;
+
+  //  int32 domainId = 7;
+}
+
+message UpdateConfigRequest {
+  int32 config_id = 1;
+  bool enabled = 2;
+  int32 days_to_store = 3;
+  int32 period = 4;
+  Lookup storage = 5;
+  string description = 6;
+}
+
+message PatchConfigRequest {
+  int32 config_id = 1;
+  bool enabled = 2;
+  int32 days_to_store = 3;
+  int32 period = 4;
+  Lookup storage = 5;
+  string description = 6;
+  repeated string fields = 7;
+}
+
+message CreateConfigRequest {
+  Lookup object = 1;
+  bool enabled = 2;
+  int32 days_to_store = 3;
+  int32 period = 4;
+  Lookup storage = 5;
+  string description = 6;
+}

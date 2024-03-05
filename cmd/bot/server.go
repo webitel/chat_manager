@@ -1,6 +1,8 @@
 package bot
 
 import (
+	audProto "github.com/webitel/chat_manager/api/proto/logger"
+	aud "github.com/webitel/chat_manager/logger"
 	"net"
 	"net/url"
 	"os"
@@ -8,15 +10,14 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 
+	micro "github.com/micro/micro/v3/service"
+	"github.com/urfave/cli/v2"
 	"github.com/webitel/chat_manager/auth"
 	"github.com/webitel/chat_manager/bot"
 	sqlxrepo "github.com/webitel/chat_manager/internal/repo/sqlx"
 	"github.com/webitel/chat_manager/internal/wrapper"
 	"github.com/webitel/chat_manager/log"
 	"github.com/webitel/chat_manager/store/postgres"
-
-	micro "github.com/micro/micro/v3/service"
-	"github.com/urfave/cli/v2"
 
 	pb "github.com/webitel/chat_manager/api/proto/bot"
 	pbchat "github.com/webitel/chat_manager/api/proto/chat"
@@ -152,7 +153,18 @@ func Run(ctx *cli.Context) error {
 
 	// configure
 	store := sqlxrepo.NewBotStore(&logger, dbo.DB)
-	srv = bot.NewService(store, &logger, agent)
+	var audit *aud.Client
+	if ctx.String("broker") == "rabbitmq" && ctx.String("registry") == "consul" {
+		audit = aud.NewClient(ctx.String("broker_address"), audProto.NewConfigService("logger", sender))
+		if err != nil {
+			return err
+		}
+		err = audit.Open()
+		if err != nil {
+			return err
+		}
+	}
+	srv = bot.NewService(store, &logger, agent, audit)
 	srv.WebRoot = webRoot // Static assets base folder
 
 	// AUTH: go.webitel.app

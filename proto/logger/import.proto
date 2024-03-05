@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package logger;
+
+option go_package = "webitel_logger/proto";
+
+
+enum AvailableSystemObjects {
+  cc_queue = 0;
+  schema = 1;
+  users = 2;
+  devices = 3;
+  calendars = 4;
+  cc_list = 5;
+  cc_team = 6;
+  cc_agent = 7;
+  cc_resource = 8;
+  cc_resource_group = 9;
+  chat_bots = 10;
+  skills = 11;
+  buckets = 12;
+
+}
+
+message Lookup {
+  int32 id = 1;
+  string name = 2;
+}
