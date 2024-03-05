@@ -16,7 +16,7 @@ service ContactLinkingService {
     };
   }
   // CreateContactFromConversation creates new contact from the data existing in the conversation and after that links this contact to the external user.
-  rpc CreateContactFromConversation(CreateContactFromConversationRequest) returns (EmptyResponse) {
+  rpc CreateContactFromConversation(CreateContactFromConversationRequest) returns (Lookup) {
     option (google.api.http) = {
       post: "/chat/{conversation_id}/contact"
     };
@@ -32,6 +32,17 @@ message LinkContactToClientRequest {
 
 message CreateContactFromConversationRequest {
   string conversation_id = 1;
+  Lookup timezone = 2;
+  Lookup owner = 3;
+  repeated string label = 4;
+  string name = 5;
+  string description = 6;
 }
 
 message EmptyResponse {}
+
+
+message Lookup {
+  int64 id = 1;
+  string name = 2;
+}

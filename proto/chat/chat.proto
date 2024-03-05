@@ -188,6 +188,8 @@ message StartConversationRequest {
 message StartConversationResponse {
   string conversation_id = 1;
   string channel_id = 2;
+  // Sent "start" message !
+  Message message = 3;
 }
 
 message CloseConversationRequest {
