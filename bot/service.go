@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"net/http/pprof"
@@ -19,6 +20,8 @@ import (
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/auth"
 )
+
+const CaptchaSuffix = "/captcha"
 
 // Service intercomunnication proxy
 type Service struct {
@@ -725,6 +728,10 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if "/favicon.ico" == uri {
 		http.NotFound(w, r)
 		return
+	}
+
+	if strings.HasSuffix(uri, CaptchaSuffix) { // the CAPTCHA check ! Find the underlying gateway...
+		uri = strings.TrimSuffix(uri, CaptchaSuffix)
 	}
 
 	gate, err := srv.Gateway(r.Context(), 0, uri)
