@@ -33,6 +33,12 @@ import (
 
 // webChat room with external client
 // posibly with multiple peer connections
+
+type CaptchaHandler interface {
+	HandleCaptcha(rsp http.ResponseWriter, req *http.Request)
+	GetEnabled() bool
+}
+
 type webChat struct {
 	// Chat Service (internal) connection
 	Bot *WebChatBot
@@ -95,6 +101,8 @@ func (pttn originWildcard) match(origin string) bool {
 type WebChatBot struct {
 	// Service Gateway
 	*bot.Gateway
+
+	Captcha CaptchaHandler
 	// Websocket configuration options
 	Websocket websocket.Upgrader
 	// ReadTimeout duration allowed to wait for
@@ -313,6 +321,13 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 
 		} else {
 			// FIXME: assume no PING
+		}
+	}
+
+	if s, ok := profile["captcha"]; ok && s != "" {
+		svhost.Captcha, err = NewRecaptchaHandler(s)
+		if err != nil {
+			return nil, errors.Wrap(err, "[captcha_creation]: %s")
 		}
 	}
 
@@ -1022,6 +1037,23 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 	)
 	responseHeader.Set("Access-Control-Allow-Origin", origin)
 
+	if strings.HasSuffix(req.URL.Path, bot.CaptchaSuffix) {
+		if c.Captcha != nil && c.Captcha.GetEnabled() {
+
+			switch req.Method {
+			case http.MethodGet:
+			// legal
+			default:
+				rsp.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			c.Captcha.HandleCaptcha(rsp, req)
+			return
+		} else {
+			rsp.WriteHeader(http.StatusNotImplemented)
+			return
+		}
+	}
 	// POST /media?filename=
 	if req.Method == http.MethodPost {
 		c.uploadMultiMedia(rsp, req)
