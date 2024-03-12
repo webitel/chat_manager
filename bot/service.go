@@ -720,21 +720,21 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "(405) Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	uri := r.URL.Path
+	if strings.HasSuffix(uri, CaptchaSuffix) { // the CAPTCHA check ! Find the underlying gateway...
+		uri = strings.TrimSuffix(uri, CaptchaSuffix)
+	}
 
 	srv.Log.Debug().
 		Str("uri", r.URL.Path).
 		Str("method", r.Method).
 		Msg("<<<<< WEBHOOK <<<<<")
 
-	uri := r.URL.Path // strings.TrimLeft(r.URL.Path, "/")
+	//uri := r.URL.Path // strings.TrimLeft(r.URL.Path, "/")
 
 	if "/favicon.ico" == uri {
 		http.NotFound(w, r)
 		return
-	}
-
-	if strings.HasSuffix(uri, CaptchaSuffix) { // the CAPTCHA check ! Find the underlying gateway...
-		uri = strings.TrimSuffix(uri, CaptchaSuffix)
 	}
 
 	gate, err := srv.Gateway(r.Context(), 0, uri)
