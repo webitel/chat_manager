@@ -5,7 +5,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	audit "github.com/webitel/chat_manager/logger"
-	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/metadata"
 	"net/http"
 	"sort"
 	"strconv"
@@ -432,8 +432,7 @@ func (srv *Service) CreateBot(ctx context.Context, add *bot.Bot, obj *bot.Bot) e
 	*(obj) = *(add)
 
 	if srv.audit != nil {
-		p, _ := peer.FromContext(ctx)
-		srv.audit.CreateAction(authN.Creds.GetDc(), objclassBots, int(authN.Creds.GetUserId()), p.Addr.String()).One(&audit.InputRecord{Id: obj.Id, Object: obj}).SendContext(ctx)
+		srv.audit.CreateAction(authN.Creds.GetDc(), objclassBots, int(authN.Creds.GetUserId()), getClientIp(ctx)).One(&audit.InputRecord{Id: obj.Id, Object: obj}).SendContext(ctx)
 	}
 	// Sanitize Result
 	obj.Dc = nil
@@ -846,8 +845,7 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 	// Sanitize
 	rsp.Dc = nil // == authN.Creds.GetDc()
 	if srv.audit != nil {
-		p, _ := peer.FromContext(ctx)
-		srv.audit.UpdateAction(authN.Creds.GetDc(), objclassBots, int(authN.Creds.GetUserId()), p.Addr.String()).One(&audit.InputRecord{Id: rsp.Id, Object: rsp}).SendContext(ctx)
+		srv.audit.UpdateAction(authN.Creds.GetDc(), objclassBots, int(authN.Creds.GetUserId()), getClientIp(ctx)).One(&audit.InputRecord{Id: rsp.Id, Object: rsp}).SendContext(ctx)
 	}
 	// Success
 	return nil
@@ -979,12 +977,11 @@ next:
 	}
 	// srv.indexMx.Unlock() // -RW
 	if srv.audit != nil {
-		p, _ := peer.FromContext(ctx)
 		var records []*audit.InputRecord
 		for _, item := range rsp.Items {
 			records = append(records, &audit.InputRecord{Id: item.Id})
 		}
-		srv.audit.DeleteAction(authN.Creds.GetDc(), objclassBots, int(authN.Creds.GetUserId()), p.Addr.String()).Many(records).SendContext(ctx)
+		srv.audit.DeleteAction(authN.Creds.GetDc(), objclassBots, int(authN.Creds.GetUserId()), getClientIp(ctx)).Many(records).SendContext(ctx)
 
 	}
 
@@ -1410,4 +1407,21 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbchat.BroadcastM
 	}
 
 	return sender.BroadcastMessage(ctx, req, rsp)
+}
+
+func getClientIp(ctx context.Context) string {
+	v := ctx.Value("grpc_ctx")
+	info, ok := v.(metadata.MD)
+	if !ok {
+		info, ok = metadata.FromIncomingContext(ctx)
+	}
+	if !ok {
+		return ""
+	}
+	ip := strings.Join(info.Get("x-real-ip"), ",")
+	if ip == "" {
+		ip = strings.Join(info.Get("x-forwarded-for"), ",")
+	}
+
+	return ip
 }
