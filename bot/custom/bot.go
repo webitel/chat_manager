@@ -220,7 +220,7 @@ func (c *CustomBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 
 	}
 	// Make the request model for the event
-	req, err := event.Requestify(http.MethodPost, c.params.CustomerWebHook, c.params.Secret)
+	req, err := event.Requestify(ctx, http.MethodPost, c.params.CustomerWebHook, c.params.Secret)
 	if err != nil {
 		c.Gateway.Log.Err(err).
 			Str("update", message.Type).

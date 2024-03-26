@@ -2,6 +2,7 @@ package custom
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -13,7 +14,7 @@ type Event struct {
 	Close   *Close   `json:"close"`
 }
 
-func (e *Event) Requestify(method string, url string, secret string) (*http.Request, error) {
+func (e *Event) Requestify(ctx context.Context, method string, url string, secret string) (*http.Request, error) {
 	var (
 		buf  bytes.Buffer
 		copy bytes.Buffer
@@ -23,7 +24,7 @@ func (e *Event) Requestify(method string, url string, secret string) (*http.Requ
 		return nil, err
 	}
 	copy.Write(buf.Bytes())
-	req, err := http.NewRequest(method, url, &buf)
+	req, err := http.NewRequestWithContext(ctx, method, url, &buf)
 	if err != nil {
 		return nil, err
 	}
