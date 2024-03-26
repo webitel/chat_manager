@@ -7,6 +7,7 @@ import (
 
 	// Register Chat Bot Provider(s) ...
 	_ "github.com/webitel/chat_manager/bot/corezoid"
+	_ "github.com/webitel/chat_manager/bot/custom"
 	_ "github.com/webitel/chat_manager/bot/facebook"      // messenger
 	_ "github.com/webitel/chat_manager/bot/telegram/gotd" // telegram-app [gotd]
 	_ "github.com/webitel/chat_manager/bot/telegram/http" // telegram-bot [telegram]
