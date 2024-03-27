@@ -22,7 +22,11 @@ import (
 	audit "github.com/webitel/chat_manager/logger"
 )
 
-const CaptchaSuffix = "/captcha"
+const (
+	CaptchaSuffix = "/captcha"
+	TextType      = "text"
+	FileType      = "file"
+)
 
 // Service intercomunnication proxy
 type Service struct {
