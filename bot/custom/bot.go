@@ -310,18 +310,20 @@ func (c *CustomBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		channel, err := c.getChannel(
 			notice.Context(), messageEvent,
 		)
-		internalMessage := update.Message
 
 		update = &bot.Update{
-			Chat:  channel,
-			Title: channel.Title,
-			User:  &channel.Account,
-
+			Chat:    channel,
+			Title:   channel.Title,
+			User:    &channel.Account,
 			Message: new(chat.Message),
 		}
-		if messageEvent.Sender.Type != "" {
+		internalMessage := update.Message
+
+		if channel.IsNew() {
+			internalMessage.Variables = messageEvent.Sender.Metadata
 			update.Message.Variables["source"] = messageEvent.Sender.Type
 		}
+
 		if file := messageEvent.File; file != nil {
 
 			internalMessage.Type = bot.FileType
