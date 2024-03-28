@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	provider   = "custom_bot"
+	provider   = "custom"
 	HashHeader = "X-Webitel-Sign"
 )
 
@@ -77,7 +77,7 @@ func NewCustomBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 	}
 	if err != nil {
 		return nil, errors.BadRequest(
-			"chat.bot.custom_bot.updates.invalid",
+			"chat.bot.custom.updates.invalid",
 			err.Error(),
 		)
 	}
@@ -125,8 +125,8 @@ func getCustomBotParamsFromMetadata(profile map[string]string) (*CustomBotParame
 		res.Secret = v
 	} else {
 		return nil, errors.BadRequest(
-			"chat.bot.custom_bot.secret.required",
-			"custom_bot: secret required",
+			"chat.bot.custom.secret.required",
+			"custom: secret required",
 		)
 	}
 
@@ -134,8 +134,8 @@ func getCustomBotParamsFromMetadata(profile map[string]string) (*CustomBotParame
 		res.CustomerWebHook = v
 	} else {
 		return nil, errors.BadRequest(
-			"chat.bot.custom_bot.webhook.required",
-			"custom_bot: webhook required",
+			"chat.bot.custom.webhook.required",
+			"custom: webhook required",
 		)
 	}
 	return &res, nil
@@ -440,7 +440,7 @@ func returnErrorStringToResp(rsp http.ResponseWriter, code int, err string) {
 }
 
 func formatErrorString(error string) string {
-	return fmt.Sprintf("custom_bot: %s", error)
+	return fmt.Sprintf("custom: %s", error)
 }
 
 func contactPeer(peer *chat.Account) *chat.Account {
