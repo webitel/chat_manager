@@ -14,6 +14,7 @@ import (
 	"github.com/webitel/chat_manager/bot"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -131,6 +132,13 @@ func getCustomBotParamsFromMetadata(profile map[string]string) (*CustomBotParame
 	}
 
 	if v, ok := profile["webhook"]; ok {
+		_, err := url.ParseRequestURI(v)
+		if err != nil {
+			return nil, errors.BadRequest(
+				"custom.bot.get_custom_bot_params.parse_url.error",
+				err.Error(),
+			)
+		}
 		res.CustomerWebHook = v
 	} else {
 		return nil, errors.BadRequest(
@@ -151,11 +159,6 @@ func (c *CustomBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		// outgoing event
 		event = &Event{Message: webhookMessage}
 	)
-
-	if channel.Title == "" {
-		// FIXME: .GetChannel() does not provide full contact info on recover,
-		//                      just it's unique identifier ...  =(
-	}
 
 	webhookMessage.ChatId = channel.ChatID
 	switch message.Type {
@@ -186,6 +189,7 @@ func (c *CustomBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 			c.Gateway.Log.Err(err).
 				Str("update", message.Type).
 				Msg("custom/bot.updateChatMember")
+			return errors.InternalServerError("custom.bot.send_notify.joined_type.error", err.Error())
 		}
 		if text == "" {
 			return nil
@@ -201,6 +205,7 @@ func (c *CustomBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 			c.Gateway.Log.Err(err).
 				Str("update", message.Type).
 				Msg("custom/bot.updateLeftMember")
+			return errors.InternalServerError("custom.bot.send_notify.left_type.error", err.Error())
 		}
 
 		webhookMessage.Text = messageText
@@ -213,11 +218,12 @@ func (c *CustomBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 			c.Gateway.Log.Err(err).
 				Str("update", message.Type).
 				Msg("custom/bot.updateChatClose")
+			return errors.BadRequest("custom.bot.send_notify.closed_type.error", err.Error())
 		}
 		webhookMessage.Text = messageText
 
 	default:
-
+		return errors.BadRequest("custom.bot.send_notify.parse_type.wrong", "unsupported message type")
 	}
 	// Make the request model for the event
 	req, err := event.Requestify(ctx, http.MethodPost, c.params.CustomerWebHook, c.params.Secret)
@@ -225,12 +231,14 @@ func (c *CustomBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		c.Gateway.Log.Err(err).
 			Str("update", message.Type).
 			Msg("custom/bot.updateChatError")
+		return errors.InternalServerError("custom.bot.send_notify.construct_request.error", err.Error())
 	}
 	_, err = http.DefaultClient.Do(req)
 	if err != nil {
 		c.Gateway.Log.Err(err).
 			Str("update", message.Type).
 			Msg("custom/bot.updateChatRequest")
+		return errors.InternalServerError("custom.bot.send_notify.do_request.error", err.Error())
 	}
 	// SUCCESS
 	return nil
@@ -241,13 +249,13 @@ func (c *CustomBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	case http.MethodPost:
 	// allowed
 	default:
-
 		returnErrorToResp(reply, http.StatusMethodNotAllowed, nil)
 		return
 	}
 
 	var (
 		bodyBuf bytes.Buffer
+		sender  *bot.Account
 	)
 	_, err := bodyBuf.ReadFrom(notice.Body)
 	if !errors2.Is(err, io.EOF) {
@@ -257,6 +265,9 @@ func (c *CustomBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// check hash
 	suspiciousHash := notice.Header.Get(HashHeader)
 	if calculateHash(bodyBuf.Bytes(), c.params.Secret) != suspiciousHash { // threat or no sign
+		c.Gateway.Log.Err(errors2.New(fmt.Sprintf("wrong hash for the webhook, provided %s exp"+suspiciousHash))).
+			Str("suspicious", suspiciousHash).
+			Msg("custom/bot.hashCheck")
 		returnErrorToResp(reply, http.StatusForbidden, nil)
 		return
 	}
@@ -279,8 +290,9 @@ func (c *CustomBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			return
 		}
 		// search for the channel to close (contact probably will be in the cache)
+		sender = c.contacts[closeEvent.ChatId]
 		channel, err := c.Gateway.GetChannel(
-			context.Background(), closeEvent.ChatId, c.contacts[closeEvent.ChatId],
+			context.Background(), closeEvent.ChatId, sender,
 		)
 		if err != nil {
 			returnErrorToResp(reply, http.StatusBadRequest, err)
@@ -318,10 +330,12 @@ func (c *CustomBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			Message: new(chat.Message),
 		}
 		internalMessage := update.Message
-
+		internalMessage.CreatedAt = messageEvent.Date
 		if channel.IsNew() {
-			internalMessage.Variables = messageEvent.Sender.Metadata
-			update.Message.Variables["source"] = messageEvent.Sender.Type
+			internalMessage.Variables = messageEvent.Metadata
+			if sender := messageEvent.Sender; sender != nil && sender.Type != "" {
+				update.Message.Variables["source"] = sender.Type
+			}
 		}
 
 		if file := messageEvent.File; file != nil {

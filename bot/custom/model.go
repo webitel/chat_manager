@@ -55,6 +55,8 @@ type Message struct {
 	Text string `json:"text"`
 	// File if exists
 	File *File `json:"file"`
+	// Variables (set only on first message of new chat)
+	Metadata map[string]string `json:"metadata"`
 }
 
 func (c *Message) Normalize() error {
@@ -75,39 +77,26 @@ func (c *Message) Normalize() error {
 }
 
 type Close struct {
-	Sender *Sender `json:"sender,omitempty"`
-	ChatId string  `json:"chatId"`
-	Date   int64   `json:"date,omitempty"`
+	ChatId string `json:"chatId"`
 }
 
 func (c *Close) Normalize() error {
-	if c.Sender == nil {
-		return errors.New("sender is empty")
-	}
-	err := c.Sender.Normalize()
-	if err != nil {
-		return err
-	}
-	if c.Date == 0 {
-		c.Date = time.Now().Unix()
+	if c.ChatId == "" {
+		return errors.New("chat id is empty")
 	}
 	return nil
 }
 
 type Sender struct {
-	Id       string            `json:"id"`
-	Type     string            `json:"type"`
-	Name     string            `json:"name"`
-	Nickname string            `json:"nickname"`
-	Metadata map[string]string `json:"metadata"`
+	Id       string `json:"id"`
+	Type     string `json:"type"`
+	Name     string `json:"name"`
+	Nickname string `json:"nickname"`
 }
 
 func (s *Sender) Normalize() error {
 	if s.Id == "" {
 		return errors.New("sender id is empty")
-	}
-	if s.Name == "" {
-		s.Name = "Anonymous"
 	}
 	return nil
 }
