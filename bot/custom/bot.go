@@ -258,7 +258,9 @@ func (c *CustomBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		sender  *bot.Account
 	)
 	_, err := bodyBuf.ReadFrom(notice.Body)
-	if !errors2.Is(err, io.EOF) {
+	if err != nil && !errors2.Is(err, io.EOF) {
+		c.Gateway.Log.Err(err).
+			Msg("custom/bot.readBody")
 		returnErrorToResp(reply, http.StatusBadRequest, nil)
 		return
 	}
