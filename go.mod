@@ -23,7 +23,7 @@ require (
 	github.com/rs/zerolog v1.26.1
 	github.com/streadway/amqp v1.1.0
 	github.com/urfave/cli/v2 v2.3.0
-	github.com/webitel/protos v1.0.1-0.20240126101752-2fb8232fc996
+	github.com/webitel/protos v1.0.1-0.20240401102913-c962ca253de4
 	github.com/yuin/goldmark v1.4.0
 	golang.org/x/oauth2 v0.10.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20230731193218-e0aa005b6bdf

@@ -187,6 +187,7 @@ func (srv *ContactLinkingService) CreateContactFromConversation(ctx context.Cont
 			"denied: require r:chats access but not granted",
 		) // (403) Forbidden
 	}
+	// endregion: ----- Authorization -----
 	internal := false
 	domainId := authN.Authorization.Creds.Dc
 	var (
@@ -213,7 +214,7 @@ func (srv *ContactLinkingService) CreateContactFromConversation(ctx context.Cont
 		}
 	)
 
-	// PERFORM
+	// region: ----- Perform -----
 	active := true
 	channels, err := srv.channelStore.GetChannels(ctx, nil, &req.ConversationId, nil, &internal, nil, &active)
 	if err != nil {
@@ -250,7 +251,7 @@ func (srv *ContactLinkingService) CreateContactFromConversation(ctx context.Cont
 		return err
 	}
 
-	_, err = srv.contactIMClientClient.CreateIMClients(ctx, &contacts.CreateIMClientsRequest{
+	_, err = srv.contactIMClientClient.UpsertIMClients(ctx, &contacts.UpsertIMClientsRequest{
 		ContactId: creationResp.Id,
 		DomainId:  domainId,
 		Input: []*contacts.InputIMClient{
