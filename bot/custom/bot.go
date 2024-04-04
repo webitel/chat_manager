@@ -336,7 +336,10 @@ func (c *CustomBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		if channel.IsNew() {
 			internalMessage.Variables = messageEvent.Metadata
 			if sender := messageEvent.Sender; sender != nil && sender.Type != "" {
-				update.Message.Variables["source"] = sender.Type
+				if internalMessage.Variables == nil {
+					internalMessage.Variables = map[string]string{}
+				}
+				internalMessage.Variables["source"] = sender.Type
 			}
 		}
 
