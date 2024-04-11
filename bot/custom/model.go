@@ -10,53 +10,53 @@ import (
 )
 
 type Event struct {
-	Message *Message `json:"message"`
-	Close   *Close   `json:"close"`
+	Message *Message `json:"message,omitempty"`
+	Close   *Close   `json:"close,omitempty"`
 }
 
-func (e *Event) Requestify(ctx context.Context, method string, url string, secret string) (*http.Request, error) {
+func (e *Event) Requestify(ctx context.Context, method string, url string, secret string) (*http.Request, []byte, error) {
 	var (
 		buf  bytes.Buffer
 		copy bytes.Buffer
 	)
 	err := json.NewEncoder(&buf).Encode(e)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	copy.Write(buf.Bytes())
 	req, err := http.NewRequestWithContext(ctx, method, url, &buf)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	req.Header.Set("X-Webitel-Sign", calculateHash(copy.Bytes(), secret))
 	//req.Header.Set("Content-Type", "application/json")
 	//req.Header.Set("Content-Length", strconv.Itoa(buf.Len()))
-	return req, nil
+	return req, buf.Bytes(), nil
 }
 
 type File struct {
-	Url  string `json:"url"`
-	Mime string `json:"mime"`
-	Size int64  `json:"size"`
-	Name string `json:"name"`
+	Url  string `json:"url,omitempty"`
+	Mime string `json:"mime,omitempty"`
+	Size int64  `json:"size,omitempty"`
+	Name string `json:"name,omitempty"`
 }
 
 type Message struct {
 	// Message id
-	Id string `json:"id"`
+	Id string `json:"id,omitempty"`
 	// Chat id
-	ChatId string `json:"chatId"`
+	ChatId string `json:"chatId,omitempty"`
 	// Origin
-	Sender *Sender `json:"sender"`
+	Sender *Sender `json:"sender,omitempty"`
 	// Date
-	Date int64 `json:"date"`
+	Date int64 `json:"date,omitempty"`
 	// Text of message (not required)
-	Text string `json:"text"`
+	Text string `json:"text,omitempty"`
 	// File if exists
-	File *File `json:"file"`
+	File *File `json:"file,omitempty"`
 	// Variables (set only on first message of new chat)
-	Metadata map[string]string `json:"metadata"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 func (c *Message) Normalize() error {
@@ -88,10 +88,10 @@ func (c *Close) Normalize() error {
 }
 
 type Sender struct {
-	Id       string `json:"id"`
-	Type     string `json:"type"`
-	Name     string `json:"name"`
-	Nickname string `json:"nickname"`
+	Id       string `json:"id,omitempty"`
+	Type     string `json:"type,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Nickname string `json:"nickname,omitempty"`
 }
 
 func (s *Sender) Normalize() error {

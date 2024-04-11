@@ -160,7 +160,6 @@ func (c *CustomBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		event = &Event{Message: webhookMessage}
 	)
 
-	webhookMessage.ChatId = channel.ChatID
 	switch message.Type {
 	case "text":
 
@@ -226,20 +225,23 @@ func (c *CustomBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		return errors.BadRequest("custom.bot.send_notify.parse_type.wrong", "unsupported message type")
 	}
 	// Make the request model for the event
-	req, err := event.Requestify(ctx, http.MethodPost, c.params.CustomerWebHook, c.params.Secret)
+	req, body, err := event.Requestify(ctx, http.MethodPost, c.params.CustomerWebHook, c.params.Secret)
 	if err != nil {
 		c.Gateway.Log.Err(err).
 			Str("update", message.Type).
 			Msg("custom/bot.updateChatError")
 		return errors.InternalServerError("custom.bot.send_notify.construct_request.error", err.Error())
 	}
-	_, err = http.DefaultClient.Do(req)
+	rsp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		c.Gateway.Log.Err(err).
 			Str("update", message.Type).
-			Msg("custom/bot.updateChatRequest")
+			Msg("custom/bot.updateChatHttpRequestError")
 		return errors.InternalServerError("custom.bot.send_notify.do_request.error", err.Error())
 	}
+	c.Gateway.Log.Info().
+		Str("update", message.Type).
+		Msg(fmt.Sprintf("custom/bot.updateChatRequest; http response status=%s; update request=%s", rsp.Status, string(body)))
 	// SUCCESS
 	return nil
 }
@@ -266,8 +268,8 @@ func (c *CustomBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	}
 	// check hash
 	suspiciousHash := notice.Header.Get(HashHeader)
-	if calculateHash(bodyBuf.Bytes(), c.params.Secret) != suspiciousHash { // threat or no sign
-		c.Gateway.Log.Err(errors2.New(fmt.Sprintf("wrong hash for the webhook, provided %s exp"+suspiciousHash))).
+	if validHash := calculateHash(bodyBuf.Bytes(), c.params.Secret); validHash != suspiciousHash { // threat or no sign
+		c.Gateway.Log.Err(errors2.New(fmt.Sprintf("wrong hash for the webhook, provided - %s expected - %s", suspiciousHash, validHash))).
 			Str("suspicious", suspiciousHash).
 			Msg("custom/bot.hashCheck")
 		returnErrorToResp(reply, http.StatusForbidden, nil)
