@@ -241,7 +241,7 @@ func (c *CustomBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 	}
 	c.Gateway.Log.Info().
 		Str("update", message.Type).
-		Msg(fmt.Sprintf("custom/bot.updateChatRequest; http response status=%s; update request=%s", rsp.Status, string(body)))
+		Msg(fmt.Sprintf("custom/bot.updateChatRequest; url = %s; http response status=%s; update request=%s", req.URL.String(), rsp.Status, string(body)))
 	// SUCCESS
 	return nil
 }
