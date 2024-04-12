@@ -242,6 +242,9 @@ func (c *CustomBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 				Msg(fmt.Sprintf("custom/bot.updateChatRequest; url = %s; http response status=%s; update request=%s", req.URL.String(), rsp.Status, string(body)))
 
 		}
+		if channel.Closed != 0 {
+			return nil
+		}
 		event = &Event{Close: &Close{ChatId: channel.ChatID}}
 
 	default:
