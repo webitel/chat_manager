@@ -21,8 +21,9 @@ import (
 )
 
 const (
-	provider   = "custom"
-	HashHeader = "X-Webitel-Sign"
+	provider           = "custom"
+	HashHeader         = "X-Webitel-Sign"
+	sourceVariableName = "source"
 )
 
 func init() {
@@ -219,7 +220,29 @@ func (c *CustomBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 				Msg("custom/bot.updateChatClose")
 			return errors.BadRequest("custom.bot.send_notify.closed_type.error", err.Error())
 		}
-		webhookMessage.Text = messageText
+		if messageText != "" {
+			webhookMessage.Text = messageText
+			// Make the request model for the event
+			req, body, err := event.Requestify(ctx, http.MethodPost, c.params.CustomerWebHook, c.params.Secret)
+			if err != nil {
+				c.Gateway.Log.Err(err).
+					Str("update", message.Type).
+					Msg("custom/bot.updateChatError")
+				return errors.InternalServerError("custom.bot.send_notify.closed_type.construct_request.error", err.Error())
+			}
+			rsp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				c.Gateway.Log.Err(err).
+					Str("update", message.Type).
+					Msg("custom/bot.updateChatHttpRequestError")
+				return errors.InternalServerError("custom.bot.send_notify.closed_type.do_request", err.Error())
+			}
+			c.Gateway.Log.Info().
+				Str("update", message.Type).
+				Msg(fmt.Sprintf("custom/bot.updateChatRequest; url = %s; http response status=%s; update request=%s", req.URL.String(), rsp.Status, string(body)))
+
+		}
+		event = &Event{Close: &Close{ChatId: channel.ChatID}}
 
 	default:
 		return errors.BadRequest("custom.bot.send_notify.parse_type.wrong", "unsupported message type")
@@ -341,7 +364,12 @@ func (c *CustomBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 				if internalMessage.Variables == nil {
 					internalMessage.Variables = map[string]string{}
 				}
-				internalMessage.Variables["source"] = sender.Type
+				internalMessage.Variables[sourceVariableName] = sender.Type
+				//metadata, _ := channel.Properties.(map[string]string)
+				//if metadata == nil {
+				//	metadata = make(map[string]string, 4)
+				//}
+				//metadata[sourceVariableName] = sender.Type
 			}
 		}
 
@@ -413,7 +441,7 @@ func (c *CustomBot) getChannel(ctx context.Context, message *Message) (*bot.Chan
 			ID: 0, // LOOKUP
 
 			Channel: provider,
-			Contact: sender.Id,
+			Contact: chatId,
 
 			FirstName: sender.Name,
 
