@@ -27,42 +27,43 @@ const (
 )
 
 func init() {
-	bot.Register(provider, NewCustomBot)
+	bot.Register(provider, NewCustomGateway)
 }
 
-type CustomBot struct {
+type CustomGateway struct {
 	*bot.Gateway
-	params   *CustomBotParameters
-	contacts map[string]*bot.Account
+	params     *CustomBotParameters
+	contacts   map[string]*bot.Account
+	closeQueue []string
 }
 
-func (c *CustomBot) String() string {
+func (c *CustomGateway) String() string {
 	return provider
 }
 
-func (c *CustomBot) Deregister(ctx context.Context) error {
+func (c *CustomGateway) Deregister(ctx context.Context) error {
 	return nil
 }
 
-func (c *CustomBot) Register(ctx context.Context, uri string) error {
+func (c *CustomGateway) Register(ctx context.Context, uri string) error {
 	// not needed
 	return nil
 }
 
-func (c *CustomBot) Close() error {
+func (c *CustomGateway) Close() error {
 	// ?
 	return nil
 }
 
 type CustomBotParameters struct {
-	// secret for this group
+	// secret exchanged between two apps
 	Secret string
-	// confirmation code used for [WebHook] confirmation
+	// webhook the messages send on
 	CustomerWebHook string
 }
 
 // Initialization of custom gateway
-func NewCustomBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
+func NewCustomGateway(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 
 	config := agent.Bot
 	metadata := config.GetMetadata()
@@ -84,7 +85,7 @@ func NewCustomBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 		)
 	}
 
-	parameters, err := getCustomBotParamsFromMetadata(metadata)
+	parameters, err := getCustomGatewayParamsFromMetadata(metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -114,14 +115,42 @@ func NewCustomBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 		}
 	}
 
-	return &CustomBot{
-		Gateway:  agent,
-		params:   parameters,
-		contacts: make(map[string]*bot.Account),
+	return &CustomGateway{
+		Gateway:    agent,
+		params:     parameters,
+		contacts:   make(map[string]*bot.Account),
+		closeQueue: make([]string, 0),
 	}, nil
 }
 
-func getCustomBotParamsFromMetadata(profile map[string]string) (*CustomBotParameters, error) {
+func (c *CustomGateway) processCloseQueueByChatId(chatId string) bool {
+	var (
+		present bool
+		index   int
+	)
+	c.RLock()
+	if present, index = contains(c.closeQueue, chatId); present {
+		c.closeQueue = remove(c.closeQueue, index)
+	}
+	c.RUnlock()
+	return present
+}
+
+func remove(s []string, i int) []string {
+	s[i] = s[len(s)-1]
+	return s[:len(s)-1]
+}
+
+func contains(s []string, i string) (bool, int) {
+	for index, val := range s {
+		if i == val {
+			return true, index
+		}
+	}
+	return false, 0
+}
+
+func getCustomGatewayParamsFromMetadata(profile map[string]string) (*CustomBotParameters, error) {
 	var res CustomBotParameters
 	if v, ok := profile["secret"]; ok {
 		res.Secret = v
@@ -150,7 +179,7 @@ func getCustomBotParamsFromMetadata(profile map[string]string) (*CustomBotParame
 	return &res, nil
 }
 
-func (c *CustomBot) SendNotify(ctx context.Context, notify *bot.Update) error {
+func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) error {
 	var (
 		channel = notify.Chat
 		message = notify.Message
@@ -242,9 +271,14 @@ func (c *CustomBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 				Msg(fmt.Sprintf("custom/bot.updateChatRequest; url = %s; http response status=%s; update request=%s", req.URL.String(), rsp.Status, string(body)))
 
 		}
-		if channel.Closed != 0 {
+
+		present := c.processCloseQueueByChatId(channel.ChatID)
+		// if event was present -- the external close of chat
+		if present {
 			return nil
 		}
+
+		// close was initiated by the operator -- send close event
 		event = &Event{Close: &Close{ChatId: channel.ChatID}}
 
 	default:
@@ -272,7 +306,7 @@ func (c *CustomBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 	return nil
 }
 
-func (c *CustomBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
+func (c *CustomGateway) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	switch notice.Method {
 	case http.MethodPost:
 	// allowed
@@ -328,9 +362,13 @@ func (c *CustomBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			returnErrorToResp(reply, http.StatusBadRequest, err)
 			return
 		}
+		c.RLock()
+		c.closeQueue = append(c.closeQueue, closeEvent.ChatId)
+		c.RUnlock()
 		// close channel
 		err = channel.Close()
 		if err != nil {
+			c.processCloseQueueByChatId(closeEvent.ChatId)
 			returnErrorToResp(reply, http.StatusBadRequest, err)
 			return
 		}
@@ -412,7 +450,7 @@ func (c *CustomBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	// return // HTTP/1.1 200 OK
 }
 
-func (c *CustomBot) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
+func (c *CustomGateway) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
 
 	return nil
 }
@@ -425,7 +463,7 @@ func calculateHash(body []byte, secret string) string {
 	return trueHash
 }
 
-func (c *CustomBot) getChannel(ctx context.Context, message *Message) (*bot.Channel, error) {
+func (c *CustomGateway) getChannel(ctx context.Context, message *Message) (*bot.Channel, error) {
 	sender := message.Sender
 	if sender == nil {
 		return nil, errors2.New("sender is empty")
