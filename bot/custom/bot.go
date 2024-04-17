@@ -390,6 +390,11 @@ func (c *CustomGateway) WebHook(reply http.ResponseWriter, notice *http.Request)
 		channel, err := c.getChannel(
 			notice.Context(), messageEvent,
 		)
+		if err != nil {
+			c.Log.Err(err)
+			returnErrorToResp(reply, http.StatusBadRequest, err)
+			return
+		}
 
 		update = &bot.Update{
 			Chat:    channel,
