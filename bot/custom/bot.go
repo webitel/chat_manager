@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/beevik/guid"
+	lru "github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/micro/micro/v3/service/errors"
 	errors2 "github.com/pkg/errors"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
@@ -35,6 +37,9 @@ type CustomGateway struct {
 	params     *CustomBotParameters
 	contacts   map[string]*bot.Account
 	closeQueue []string
+	//broadcastEvents map[string][]*Lookup
+
+	broadcastEvents *lru.LRU[string, []*Lookup]
 }
 
 func (c *CustomGateway) String() string {
@@ -115,11 +120,17 @@ func NewCustomGateway(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) 
 		}
 	}
 
+	cache := lru.NewLRU[string, []*Lookup](500, nil, time.Minute*10)
+	if err != nil {
+		return nil, err
+	}
+
 	return &CustomGateway{
-		Gateway:    agent,
-		params:     parameters,
-		contacts:   make(map[string]*bot.Account),
-		closeQueue: make([]string, 0),
+		Gateway:         agent,
+		params:          parameters,
+		contacts:        make(map[string]*bot.Account),
+		closeQueue:      make([]string, 0),
+		broadcastEvents: cache,
 	}, nil
 }
 
@@ -184,11 +195,33 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 		channel = notify.Chat
 		message = notify.Message
 
+		chatId string
+		//senderType string
+
 		// the message of the event
-		webhookMessage = &Message{ChatId: channel.ChatID, Date: time.Now().Unix()}
+		webhookMessage = &Message{Date: time.Now().Unix()}
 		// outgoing event
-		event = &Event{Message: webhookMessage}
+		event = &SendEvent{Message: webhookMessage}
 	)
+
+	splittedChatId := strings.Split(channel.ChatID, "|")
+	switch len(splittedChatId) {
+	case 0:
+		err := errors2.New("empty chat id")
+		c.Gateway.Log.Err(err).
+			Str("update", message.Type).
+			Msg("custom/bot.updateChatMember")
+		return errors.InternalServerError("custom.bot.send_notify.joined_type.error", err.Error())
+	case 1:
+		// there was no type of sender
+		chatId = splittedChatId[0]
+	case 2:
+		//senderType = splittedChatId[0]
+		chatId = splittedChatId[1]
+	default:
+		chatId = channel.ChatID
+	}
+	webhookMessage.ChatId = chatId
 
 	switch message.Type {
 	case "text":
@@ -252,7 +285,7 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 		if messageText != "" {
 			webhookMessage.Text = messageText
 			// Make the request model for the event
-			req, body, err := event.Requestify(ctx, http.MethodPost, c.params.CustomerWebHook, c.params.Secret)
+			req, body, err := Requestify(ctx, event, http.MethodPost, c.params.CustomerWebHook, c.params.Secret)
 			if err != nil {
 				c.Gateway.Log.Err(err).
 					Str("update", message.Type).
@@ -272,20 +305,20 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 
 		}
 
-		present := c.processCloseQueueByChatId(channel.ChatID)
+		present := c.processCloseQueueByChatId(chatId)
 		// if event was present -- the external close of chat
 		if present {
 			return nil
 		}
 
 		// close was initiated by the operator -- send close event
-		event = &Event{Close: &Close{ChatId: channel.ChatID}}
+		event = &SendEvent{Close: &SendClose{ChatId: chatId}}
 
 	default:
 		return errors.BadRequest("custom.bot.send_notify.parse_type.wrong", "unsupported message type")
 	}
 	// Make the request model for the event
-	req, body, err := event.Requestify(ctx, http.MethodPost, c.params.CustomerWebHook, c.params.Secret)
+	req, body, err := Requestify(ctx, event, http.MethodPost, c.params.CustomerWebHook, c.params.Secret)
 	if err != nil {
 		c.Gateway.Log.Err(err).
 			Str("update", message.Type).
@@ -299,7 +332,7 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 			Msg("custom/bot.updateChatHttpRequestError")
 		return errors.InternalServerError("custom.bot.send_notify.do_request.error", err.Error())
 	}
-	c.Gateway.Log.Info().
+	c.Gateway.Log.Trace().
 		Str("update", message.Type).
 		Msg(fmt.Sprintf("custom/bot.updateChatRequest; url = %s; http response status=%s; update request=%s", req.URL.String(), rsp.Status, string(body)))
 	// SUCCESS
@@ -337,7 +370,7 @@ func (c *CustomGateway) WebHook(reply http.ResponseWriter, notice *http.Request)
 	}
 
 	// decode event
-	var event Event
+	var event ReceiveEvent
 	err = json.Unmarshal(bodyBuf.Bytes(), &event)
 	if err != nil {
 		returnErrorToResp(reply, http.StatusInternalServerError, err)
@@ -373,6 +406,16 @@ func (c *CustomGateway) WebHook(reply http.ResponseWriter, notice *http.Request)
 			return
 		}
 
+	} else if broadcastEvent := event.Broadcast; broadcastEvent != nil {
+		eventId := broadcastEvent.EventId
+		if broadcastEvent != nil && len(broadcastEvent.FailedReceivers) != 0 {
+			var errMessage = ""
+			for _, lookup := range broadcastEvent.FailedReceivers {
+				errMessage += fmt.Sprintf("receiver %s|%s error: %s; ", lookup.Type, lookup.Id, lookup.Error)
+			}
+			c.Log.Warn().Msg(errMessage)
+		}
+		c.broadcastEvents.Remove(eventId)
 	} else if messageEvent := event.Message; messageEvent != nil { // message to the new or existing chat
 		var (
 			update         *bot.Update
@@ -434,6 +477,7 @@ func (c *CustomGateway) WebHook(reply http.ResponseWriter, notice *http.Request)
 			internalMessage.Type = bot.TextType
 			internalMessage.Text = messageEvent.Text
 		}
+		// TODO id is empty!
 		update.Message.Variables = map[string]string{
 			conversationId: messageEvent.Id,
 		}
@@ -456,7 +500,73 @@ func (c *CustomGateway) WebHook(reply http.ResponseWriter, notice *http.Request)
 }
 
 func (c *CustomGateway) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
-
+	var (
+		eventId   = guid.New().String()
+		broadcast = &SendBroadcast{EventId: eventId, Recipients: make([]*Lookup, 0)}
+		event     = &SendEvent{Broadcast: broadcast}
+	)
+	peers := req.GetPeer()
+	if len(peers) == 0 {
+		description := "no peers were received"
+		c.Gateway.Log.Warn().
+			Str("broadcast", eventId).
+			Msg("custom/bot.broadcastGetPeers")
+		return errors.InternalServerError("custom.bot.broadcast.get_peers.error", description)
+	}
+	for _, peer := range peers {
+		var receiverId, receiverType string
+		splittedSenderId := strings.Split(peer, "|")
+		switch len(splittedSenderId) {
+		case 0:
+			err := errors2.New("empty chat id")
+			c.Gateway.Log.Err(err).
+				Str("broadcast", peer).
+				Msg("custom/bot.broadcastGetPeers")
+			return errors.InternalServerError("custom.bot.broadcast.split_receiver.error", err.Error())
+		case 1:
+			// there was no type of sender
+			receiverId = splittedSenderId[0]
+		case 2:
+			receiverType = splittedSenderId[0]
+			receiverId = splittedSenderId[1]
+		default:
+			continue
+		}
+		broadcast.Recipients = append(broadcast.Recipients, &Lookup{
+			Id:   receiverId,
+			Type: receiverType,
+		})
+	}
+	if message := req.GetMessage(); message != nil {
+		broadcast.Text = message.Text
+		broadcast.Metadata = message.Variables
+	}
+	err := broadcast.Normalize()
+	if err != nil {
+		c.Gateway.Log.Err(err).
+			Str("broadcast", eventId).
+			Msg("custom/bot.broadcastRequestify")
+		return errors.InternalServerError("custom.bot.broadcast.normalize_event.error", err.Error())
+	}
+	httpRequest, body, err := Requestify(ctx, event, http.MethodPost, c.params.CustomerWebHook, c.params.Secret)
+	if err != nil {
+		c.Gateway.Log.Err(err).
+			Str("broadcast", eventId).
+			Msg("custom/bot.broadcastRequestify")
+		return errors.InternalServerError("custom.bot.broadcast.construct_request.error", err.Error())
+	}
+	httpResponse, err := http.DefaultClient.Do(httpRequest)
+	if err != nil {
+		c.Gateway.Log.Err(err).
+			Str("broadcast", eventId).
+			Msg("custom/bot.broadcastHttpRequest")
+		return errors.InternalServerError("custom.bot.broadcast.do_request.error", err.Error())
+	}
+	c.broadcastEvents.Add(eventId, broadcast.Recipients)
+	c.Gateway.Log.Trace().
+		Str("broadcast", eventId).
+		Msg(fmt.Sprintf("custom/bot.broadcastRequest; url = %s; http response status=%s; update request=%s", httpRequest.URL.String(), httpResponse.Status, string(body)))
+	// SUCCESS
 	return nil
 }
 
@@ -487,7 +597,7 @@ func (c *CustomGateway) getChannel(ctx context.Context, message *Message) (*bot.
 			ID: 0, // LOOKUP
 
 			Channel: provider,
-			Contact: chatId,
+			Contact: sender.Id,
 
 			FirstName: sender.Name,
 
@@ -544,4 +654,23 @@ func contactPeer(peer *chat.Account) *chat.Account {
 			bot.FirstLastName(peer.FirstName)
 	}
 	return peer
+}
+
+func Requestify(ctx context.Context, body any, method string, url string, secret string) (*http.Request, []byte, error) {
+	var (
+		buf  bytes.Buffer
+		copy bytes.Buffer
+	)
+	err := json.NewEncoder(&buf).Encode(body)
+	if err != nil {
+		return nil, nil, err
+	}
+	copy.Write(buf.Bytes())
+	req, err := http.NewRequestWithContext(ctx, method, url, &buf)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	req.Header.Set("X-Webitel-Sign", calculateHash(copy.Bytes(), secret))
+	return req, buf.Bytes(), nil
 }

@@ -1,40 +1,20 @@
 package custom
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"errors"
-	"net/http"
+	"fmt"
 	"time"
 )
 
-type Event struct {
-	Message *Message `json:"message,omitempty"`
-	Close   *Close   `json:"close,omitempty"`
+// region Send types
+
+type SendEvent struct {
+	Message   *Message       `json:"message,omitempty"`
+	Close     *SendClose     `json:"close,omitempty"`
+	Broadcast *SendBroadcast `json:"broadcast,omitempty"`
 }
 
-func (e *Event) Requestify(ctx context.Context, method string, url string, secret string) (*http.Request, []byte, error) {
-	var (
-		buf  bytes.Buffer
-		copy bytes.Buffer
-	)
-	err := json.NewEncoder(&buf).Encode(e)
-	if err != nil {
-		return nil, nil, err
-	}
-	copy.Write(buf.Bytes())
-	req, err := http.NewRequestWithContext(ctx, method, url, &buf)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	req.Header.Set("X-Webitel-Sign", calculateHash(copy.Bytes(), secret))
-	//req.Header.Set("Content-Type", "application/json")
-	//req.Header.Set("Content-Length", strconv.Itoa(buf.Len()))
-	return req, buf.Bytes(), nil
-}
-
+// File represents file in message
 type File struct {
 	Url  string `json:"url,omitempty"`
 	Mime string `json:"mime,omitempty"`
@@ -42,21 +22,88 @@ type File struct {
 	Name string `json:"name,omitempty"`
 }
 
-type Message struct {
+// SendBroadcast type for sending broadcast event [TO] the customer webhook
+type SendBroadcast struct {
 	// Message id
-	Id string `json:"id,omitempty"`
+	EventId string `json:"eventId"`
 	// Chat id
-	ChatId string `json:"chatId,omitempty"`
-	// Origin
-	Sender *Sender `json:"sender,omitempty"`
-	// Date
-	Date int64 `json:"date,omitempty"`
-	// Text of message (not required)
-	Text string `json:"text,omitempty"`
-	// File if exists
-	File *File `json:"file,omitempty"`
-	// Variables (set only on first message of new chat)
+	Recipients []*Lookup `json:"recipients,omitempty"`
+
 	Metadata map[string]string `json:"metadata,omitempty"`
+
+	Text string `json:"text,omitempty"`
+}
+
+func (c *SendBroadcast) Normalize() error {
+	if c.Text == "" {
+		return errors.New("empty text message")
+	}
+	if len(c.Recipients) == 0 {
+		return errors.New("empty recipients")
+	}
+	for i, recipient := range c.Recipients {
+		if recipient.Id == "" {
+			return errors.New(fmt.Sprintf("recipient [%d] has no id", i))
+		}
+	}
+
+	return nil
+}
+
+func (c *SendClose) Normalize() error {
+	if c.ChatId == "" {
+		return errors.New("chat id is empty")
+	}
+	return nil
+}
+
+type SendClose struct {
+	ChatId string `json:"chatId"`
+}
+
+// endregion
+
+//region Receive types
+
+type ReceiveEvent struct {
+	Message   *Message          `json:"message,omitempty"`
+	Close     *ReceiveClose     `json:"close,omitempty"`
+	Broadcast *ReceiveBroadcast `json:"broadcast,omitempty"`
+}
+
+// ReceiveBroadcast type for receiving broadcast event [FROM] the customer webhook
+type ReceiveBroadcast struct {
+	// Message id
+	EventId string `json:"eventId"`
+	// Chat id
+	FailedReceivers []*FailedRecipient `json:"recipients,omitempty"`
+}
+
+type FailedRecipient struct {
+	Id    string `json:"id,omitempty"`
+	Type  string `json:"type,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+func (c *ReceiveClose) Normalize() error {
+	if c.ChatId == "" {
+		return errors.New("chat id is empty")
+	}
+	return nil
+}
+
+type ReceiveClose struct {
+	ChatId string `json:"chatId"`
+}
+
+// endregion
+
+// region General
+
+type Lookup struct {
+	Id   string `json:"id,omitempty"`
+	Type string `json:"type,omitempty"`
+	Name string `json:"name,omitempty"`
 }
 
 func (c *Message) Normalize() error {
@@ -73,18 +120,29 @@ func (c *Message) Normalize() error {
 	if c.Date == 0 {
 		c.Date = time.Now().Unix()
 	}
-	return nil
-}
-
-type Close struct {
-	ChatId string `json:"chatId"`
-}
-
-func (c *Close) Normalize() error {
-	if c.ChatId == "" {
-		return errors.New("chat id is empty")
+	// combine sender type and id to recognize in future
+	if c.Sender.Type != "" {
+		c.Sender.Id = fmt.Sprintf("%s|%s", c.Sender.Type, c.Sender.Id)
 	}
 	return nil
+}
+
+// Message identifies message FROM/TO customer
+type Message struct {
+	// Message id
+	Id string `json:"id,omitempty"`
+	// Chat id
+	ChatId string `json:"chatId,omitempty"`
+	// Origin
+	Sender *Sender `json:"sender,omitempty"`
+	// Date
+	Date int64 `json:"date,omitempty"`
+	// Text of message (not required)
+	Text string `json:"text,omitempty"`
+	// File if exists
+	File *File `json:"file,omitempty"`
+	// Variables (set only on first message of new chat)
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 type Sender struct {
@@ -105,3 +163,5 @@ type Response struct {
 	Success bool   `json:"success,omitempty"`
 	Error   string `json:"error,omitempty"`
 }
+
+// endregion

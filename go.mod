@@ -32,6 +32,7 @@ require (
 )
 
 require (
+	github.com/beevik/guid v1.0.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.3.5 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	google.golang.org/grpc/examples v0.0.0-20230327223622-a357bafad155 // indirect
