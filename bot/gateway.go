@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	errors2 "errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -20,6 +21,8 @@ import (
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/app"
 )
+
+const ExternalChatPropertyName = "externalChatID"
 
 // Gateway service agent
 type Gateway struct {
@@ -307,16 +310,20 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 	)
 
 	if contact == nil {
-		contact = &Account{
-			Channel: c.GetProvider(),
-			Contact: chatID,
+		if chatID != "" {
+			contact = &Account{
+				Channel: c.GetProvider(),
+				Contact: chatID,
+			}
+		} else {
+			return nil, errors2.New("not enough information to form/get channel")
 		}
 	}
 
 	c.loadMx.Lock()
 	defer c.loadMx.Unlock()
 
-	if !ok && contact.ID != 0 {
+	if contact.ID != 0 {
 
 		c.RLock() // +R
 		channel, ok = c.internal[contact.ID]
@@ -331,8 +338,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 		c.RUnlock() // -R
 
 	}
-
-	if !ok && chatID != "" {
+	if !ok {
 
 		// if contact.GetUsername() == "noname" {
 		// 	panic("channel: contact required")
@@ -342,7 +348,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 			// gateway profile identity
 			ProfileId: c.Bot.Id,
 			// external client contact
-			ExternalId: chatID,
+			ExternalId: contact.Contact,
 			Username:   title,
 		}
 		// passthru request cancellation context
@@ -356,7 +362,12 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 		if chat.Exists && chat.ChannelId != "" {
 			// populate
 			contact.ID = chat.ClientId
-
+			externalChatId, found := chat.Properties[ExternalChatPropertyName]
+			if found {
+				chatID = externalChatId
+			} else if chatID == "" {
+				chatID = contact.Contact
+			}
 			channel = &Channel{
 				// RECOVER
 				Title:  title,  // contact.username,
@@ -389,7 +400,9 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 
 			// created: client !
 			contact.ID = chat.ClientId
-
+			if chatID == "" {
+				chatID = contact.Contact
+			}
 			// NO Channel FOUND !
 			// CHECK: Can we accept NEW one ?
 			if !c.Bot.GetEnabled() {
@@ -414,6 +427,9 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 				ChatID: chatID, // .provider.chat
 
 				Gateway: c, // .profile.id
+
+				// add
+				Properties: map[string]string{ExternalChatPropertyName: chatID},
 
 				Log: c.Log.With().
 					Str("chat-id", chatID).
@@ -469,6 +485,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 		newChatId := contact.Contact
 		updateChatId := (newChatId != "" && chatID != "" && newChatId != chatID)
 		// Does customer profile ID changed ?
+		// This condition consider that senderId = chatId (but what if user deleted chat? then new [out side] client will be created? )
 		// NOTE: whatsapp.update.messages.system.type.customer_changed_number
 		if updateChatId {
 
@@ -660,6 +677,8 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 	}
 
 	// lookup: active channel by external chat.id
+
+	// external user id!!
 	chatID := notify.GetExternalUserId() // ExternalID
 	recepient, err := c.GetChannel(ctx, chatID, nil)
 	if err != nil {
