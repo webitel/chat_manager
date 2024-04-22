@@ -1,42 +1,27 @@
 package logger
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"github.com/micro/micro/v3/service/broker"
 	proto "github.com/webitel/chat_manager/api/proto/logger"
-	"time"
 )
 
 type Client struct {
-	rabbit RabbitClient
+	rabbit broker.Broker
 	grpc   GrpcClient
-}
-
-func (c *Client) IsOpened() bool {
-	return c.rabbit.IsOpened()
 }
 
 // ! NewClient creates new client for logger.
 // * rabbitUrl - connection string to rabbit server
 // * consulAddress - address to connect to consul server
-func NewClient(brokerConn string, grpcClient proto.ConfigService) *Client {
-	cli := &Client{grpc: NewGrpcClient(grpcClient)}
-	rab := NewRabbitClient(brokerConn, cli)
-	cli.rabbit = rab
+func NewClient(rabbit broker.Broker, grpc proto.ConfigService) *Client {
+	cli := &Client{grpc: NewGrpcClient(grpc), rabbit: rabbit}
 	return cli
 }
 
-func (c *Client) Open() error {
-	err := c.rabbit.Open()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *Client) Close() {
-	c.rabbit.Close()
-}
-
-func (c *Client) Rabbit() RabbitClient {
+func (c *Client) Rabbit() broker.Broker {
 	return c.rabbit
 }
 
@@ -44,38 +29,30 @@ func (c *Client) Grpc() GrpcClient {
 	return c.grpc
 }
 
-func (c *Client) CreateAction(domainId int64, objectName string, userId int, userIp string) *Message {
-	mess := &Message{RequiredFields: RequiredFields{
-		UserId:     userId,
-		UserIp:     userIp,
-		Action:     string(CREATE_ACTION),
-		Date:       time.Now().Unix(),
-		DomainId:   domainId,
-		ObjectName: objectName,
-	}, client: c.Rabbit()}
-	return mess
-}
+func (c *Client) SendContext(ctx context.Context, message *Message) error {
+	//if !c.IsOpened() {
+	//	return fmt.Errorf("connection not opened")
+	//}
+	enabled, err := c.Grpc().Config().CheckIsActive(ctx, message.RequiredFields.DomainId, message.RequiredFields.ObjectName)
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return nil
+	}
 
-func (c *Client) UpdateAction(domainId int64, objectName string, userId int, userIp string) *Message {
-	mess := &Message{RequiredFields: RequiredFields{
-		UserId:     userId,
-		UserIp:     userIp,
-		Action:     string(UPDATE_ACTION),
-		Date:       time.Now().Unix(),
-		DomainId:   domainId,
-		ObjectName: objectName,
-	}, client: c.Rabbit()}
-	return mess
-}
+	if err := message.checkRecordsValidity(); err != nil {
+		return err
+	}
 
-func (c *Client) DeleteAction(domainId int64, objectName string, userId int, userIp string) *Message {
-	mess := &Message{RequiredFields: RequiredFields{
-		UserId:     userId,
-		UserIp:     userIp,
-		Action:     string(DELETE_ACTION),
-		Date:       time.Now().Unix(),
-		DomainId:   domainId,
-		ObjectName: objectName,
-	}, client: c.Rabbit()}
-	return mess
+	result, err := json.Marshal(message)
+	if err != nil {
+		return err
+	}
+
+	err = c.rabbit.Publish(fmt.Sprintf("logger.%d.%s", message.RequiredFields.DomainId, message.RequiredFields.ObjectName), &broker.Message{Body: result}, broker.PublishContext(ctx))
+	if err != nil {
+		return err
+	}
+	return nil
 }

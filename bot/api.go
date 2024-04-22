@@ -432,7 +432,7 @@ func (srv *Service) CreateBot(ctx context.Context, add *bot.Bot, obj *bot.Bot) e
 	*(obj) = *(add)
 
 	if srv.audit != nil {
-		srv.audit.CreateAction(authN.Creds.GetDc(), objclassBots, int(authN.Creds.GetUserId()), getClientIp(ctx)).One(&audit.InputRecord{Id: obj.Id, Object: obj}).SendContext(ctx)
+		srv.LogAction(ctx, audit.NewCreateMessage(authN, getClientIp(ctx), objclassBots).One(&audit.Record{Id: obj.Id, NewState: obj}))
 	}
 	// Sanitize Result
 	obj.Dc = nil
@@ -844,9 +844,7 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 	app.MergeProto(rsp, res) // ALL
 	// Sanitize
 	rsp.Dc = nil // == authN.Creds.GetDc()
-	if srv.audit != nil {
-		srv.audit.UpdateAction(authN.Creds.GetDc(), objclassBots, int(authN.Creds.GetUserId()), getClientIp(ctx)).One(&audit.InputRecord{Id: rsp.Id, Object: rsp}).SendContext(ctx)
-	}
+	srv.LogAction(ctx, audit.NewUpdateMessage(authN, getClientIp(ctx), objclassBots).One(&audit.Record{Id: rsp.Id, NewState: rsp}))
 	// Success
 	return nil
 }
@@ -976,15 +974,11 @@ next:
 		}
 	}
 	// srv.indexMx.Unlock() // -RW
-	if srv.audit != nil {
-		var records []*audit.InputRecord
-		for _, item := range rsp.Items {
-			records = append(records, &audit.InputRecord{Id: item.Id})
-		}
-		srv.audit.DeleteAction(authN.Creds.GetDc(), objclassBots, int(authN.Creds.GetUserId()), getClientIp(ctx)).Many(records).SendContext(ctx)
-
+	var records []*audit.Record
+	for _, item := range rsp.Items {
+		records = append(records, &audit.Record{Id: item.Id})
 	}
-
+	srv.LogAction(ctx, audit.NewDeleteMessage(authN, getClientIp(ctx), objclassBots).Many(records))
 	return nil
 
 	// panic("not implemented") // TODO: Implement

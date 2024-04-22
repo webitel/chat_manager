@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"github.com/micro/micro/v3/service/broker"
 	audProto "github.com/webitel/chat_manager/api/proto/logger"
 	aud "github.com/webitel/chat_manager/logger"
 	"net"
@@ -153,18 +154,8 @@ func Run(ctx *cli.Context) error {
 
 	// configure
 	store := sqlxrepo.NewBotStore(&logger, dbo.DB)
-	var audit *aud.Client
-	if ctx.String("broker") == "rabbitmq" && ctx.String("registry") == "consul" {
-		audit = aud.NewClient(ctx.String("broker_address"), audProto.NewConfigService("logger", sender))
-		if err != nil {
-			return err
-		}
-		err = audit.Open()
-		if err != nil {
-			return err
-		}
-	}
-	srv = bot.NewService(store, &logger, agent, audit)
+	auditor := aud.NewClient(broker.DefaultBroker, audProto.NewConfigService("logger", sender))
+	srv = bot.NewService(store, &logger, agent, auditor)
 	srv.WebRoot = webRoot // Static assets base folder
 
 	// AUTH: go.webitel.app
