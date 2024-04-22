@@ -431,9 +431,7 @@ func (srv *Service) CreateBot(ctx context.Context, add *bot.Bot, obj *bot.Bot) e
 	// Prepare Result: shallowcopy !
 	*(obj) = *(add)
 
-	if srv.audit != nil {
-		srv.LogAction(ctx, audit.NewCreateMessage(authN, getClientIp(ctx), objclassBots).One(&audit.Record{Id: obj.Id, NewState: obj}))
-	}
+	srv.LogAction(ctx, audit.NewCreateMessage(authN, getClientIp(ctx), objclassBots).One(&audit.Record{Id: obj.Id, NewState: obj}))
 	// Sanitize Result
 	obj.Dc = nil
 
