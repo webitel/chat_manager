@@ -672,5 +672,6 @@ func Requestify(ctx context.Context, body any, method string, url string, secret
 	}
 
 	req.Header.Set("X-Webitel-Sign", calculateHash(copy.Bytes(), secret))
+	req.Header.Set("Content-Type", "application/json")
 	return req, buf.Bytes(), nil
 }
