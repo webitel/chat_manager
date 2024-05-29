@@ -575,7 +575,7 @@ func (c *CustomGateway) BroadcastMessage(ctx context.Context, req *chat.Broadcas
 		Str("broadcast", eventId).
 		Msg(fmt.Sprintf("custom/bot.broadcastRequest; url = %s; http response status=%s; update request=%s", httpRequest.URL.String(), httpResponse.Status, string(body)))
 
-	failedBroadcast := c.WaitForTheBroadcastChannelOrTimeout(time.Duration(req.Timeout)*time.Second, eventId)
+	failedBroadcast := c.WaitForTheBroadcastChannelOrTimeout(time.Duration(req.Timeout)*time.Millisecond, eventId)
 	if failedBroadcast != nil {
 		// broadcast returned
 		rsp.Failure = make([]*chat.BroadcastPeer, 0)
