@@ -83,6 +83,8 @@ message BroadcastMessageRequest {
   // telegram - user.id (int64) which contacted the `from` bot.
   // gotd - phone numbers according to the E.164 standard
   repeated string peer = 3;
+  //
+  int64 timeout = 4;
 }
 
 // Broadcast recepient status
@@ -95,4 +97,5 @@ message BroadcastPeer {
 
 message BroadcastMessageResponse {
   repeated BroadcastPeer failure = 1;
+  map<string, string> variables = 2;
 }

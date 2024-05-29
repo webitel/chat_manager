@@ -14,6 +14,7 @@ import (
 	errors2 "github.com/pkg/errors"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
+	"google.golang.org/genproto/googleapis/rpc/status"
 	"io"
 	"net/http"
 	"net/url"
@@ -37,8 +38,12 @@ type CustomGateway struct {
 	params     *CustomBotParameters
 	contacts   map[string]*bot.Account
 	closeQueue []string
-	//broadcastEvents map[string][]*Lookup
+	// broadcastSync is the channel used to synchronize the webhook method and broadcast method of the gateway
+	//
+	// (used in flow schemas to get the results of the async broadcast in scheme variables )
+	broadcastSync chan ReceiveBroadcast
 
+	// broadcastEvents used to cache the data of the broadcast messages by key-value = eventId-event receivers
 	broadcastEvents *lru.LRU[string, []*Lookup]
 }
 
@@ -131,6 +136,7 @@ func NewCustomGateway(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) 
 		contacts:        make(map[string]*bot.Account),
 		closeQueue:      make([]string, 0),
 		broadcastEvents: cache,
+		broadcastSync:   make(chan ReceiveBroadcast),
 	}, nil
 }
 
@@ -408,11 +414,13 @@ func (c *CustomGateway) WebHook(reply http.ResponseWriter, notice *http.Request)
 
 	} else if broadcastEvent := event.Broadcast; broadcastEvent != nil {
 		eventId := broadcastEvent.EventId
-		if broadcastEvent != nil && len(broadcastEvent.FailedReceivers) != 0 {
+		if broadcastEvent != nil {
 			var errMessage = ""
 			for _, lookup := range broadcastEvent.FailedReceivers {
 				errMessage += fmt.Sprintf("receiver %s|%s error: %s; ", lookup.Type, lookup.Id, lookup.Error)
+
 			}
+			c.broadcastSync <- *broadcastEvent
 			c.Log.Warn().Msg(errMessage)
 		}
 		c.broadcastEvents.Remove(eventId)
@@ -566,7 +574,36 @@ func (c *CustomGateway) BroadcastMessage(ctx context.Context, req *chat.Broadcas
 	c.Gateway.Log.Trace().
 		Str("broadcast", eventId).
 		Msg(fmt.Sprintf("custom/bot.broadcastRequest; url = %s; http response status=%s; update request=%s", httpRequest.URL.String(), httpResponse.Status, string(body)))
+
+	failedBroadcast := c.WaitForTheBroadcastChannelOrTimeout(time.Duration(req.Timeout)*time.Second, eventId)
+	if failedBroadcast != nil {
+		// broadcast returned
+		rsp.Failure = make([]*chat.BroadcastPeer, 0)
+		for _, receiver := range failedBroadcast.FailedReceivers {
+			rsp.Failure = append(rsp.Failure, &chat.BroadcastPeer{
+				Peer:  receiver.Id,
+				Error: &status.Status{Message: receiver.Error},
+			})
+		}
+	} else {
+		// timeout
+	}
 	// SUCCESS
+	return nil
+}
+
+func (c *CustomGateway) WaitForTheBroadcastChannelOrTimeout(timeout time.Duration, originalEventId string) *ReceiveBroadcast {
+	shouldEnd := time.Now().Add(timeout)
+	select {
+	case <-time.After(timeout): // requested timeout
+	// don't do anything and return nil
+	case failedBroadcast := <-c.broadcastSync: // broadcast client - answer
+		if failedBroadcast.EventId == originalEventId {
+			return &failedBroadcast
+		} else {
+			return c.WaitForTheBroadcastChannelOrTimeout(shouldEnd.Sub(time.Now()), originalEventId)
+		}
+	}
 	return nil
 }
 
