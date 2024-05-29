@@ -145,12 +145,43 @@ func (srv *ContactLinkingService) LinkContactToClient(ctx context.Context, req *
 		return errors.BadRequest("cmd.chat.link_contact_to_client.get_channel.no_channel", "no such conversation")
 	}
 
-	_, err = srv.contactIMClientClient.CreateIMClients(ctx, &contacts.CreateIMClientsRequest{
+	_, err = srv.contactIMClientClient.UpsertIMClients(ctx, &contacts.UpsertIMClientsRequest{
 		ContactId: req.ContactId,
 		DomainId:  domainId,
 		Input: []*contacts.InputIMClient{
 			{
 				CreatedBy:    strconv.FormatInt(authN.Authorization.Creds.UserId, 10),
+				ExternalUser: strconv.FormatInt(channels[0].UserID, 10),
+				GatewayId:    channels[0].Connection.String,
+			},
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (srv *ContactLinkingService) LinkContactToClientNA(ctx context.Context, req *pb.LinkContactToClientNARequest, res *pb.LinkContactToClientNAResponse) error {
+
+	internal := false
+
+	// PERFORM
+	channels, err := srv.channelStore.GetChannels(ctx, nil, &req.ConversationId, nil, &internal, nil, nil)
+	if err != nil {
+		return err
+	}
+
+	if len(channels) <= 0 {
+		return errors.BadRequest("cmd.chat.link_contact_to_client_no_auth.get_channel.no_channel", "no such conversation")
+	}
+
+	_, err = srv.contactIMClientClient.CreateIMClients(ctx, &contacts.CreateIMClientsRequest{
+		ContactId: req.ContactId,
+		DomainId:  channels[0].DomainID,
+		Input: []*contacts.InputIMClient{
+			{
 				ExternalUser: strconv.FormatInt(channels[0].UserID, 10),
 				GatewayId:    channels[0].Connection.String,
 			},

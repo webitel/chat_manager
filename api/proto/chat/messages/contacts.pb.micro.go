@@ -5,9 +5,9 @@ package messages
 
 import (
 	fmt "fmt"
-	proto "github.com/golang/protobuf/proto"
 	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
+	proto "google.golang.org/protobuf/proto"
 	math "math"
 )
 
@@ -23,12 +23,6 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
-
 // Reference imports to suppress errors if they are not otherwise used.
 var _ api.Endpoint
 var _ context.Context
@@ -39,18 +33,16 @@ var _ server.Option
 
 func NewContactLinkingServiceEndpoints() []*api.Endpoint {
 	return []*api.Endpoint{
-		&api.Endpoint{
+		{
 			Name:    "ContactLinkingService.LinkContactToClient",
 			Path:    []string{"/chat/{conversation_id}/link"},
 			Method:  []string{"POST"},
-			Body:    "",
 			Handler: "rpc",
 		},
-		&api.Endpoint{
+		{
 			Name:    "ContactLinkingService.CreateContactFromConversation",
 			Path:    []string{"/chat/{conversation_id}/contact"},
 			Method:  []string{"POST"},
-			Body:    "",
 			Handler: "rpc",
 		},
 	}
@@ -63,6 +55,8 @@ type ContactLinkingService interface {
 	LinkContactToClient(ctx context.Context, in *LinkContactToClientRequest, opts ...client.CallOption) (*EmptyResponse, error)
 	// CreateContactFromConversation creates new contact from the data existing in the conversation and after that links this contact to the external user.
 	CreateContactFromConversation(ctx context.Context, in *CreateContactFromConversationRequest, opts ...client.CallOption) (*Lookup, error)
+	// CreateContactFromConversation[No Authorization] creates new contact from the data existing in the conversation and after that links this contact to the external user.
+	LinkContactToClientNA(ctx context.Context, in *LinkContactToClientNARequest, opts ...client.CallOption) (*LinkContactToClientNAResponse, error)
 }
 
 type contactLinkingService struct {
@@ -97,6 +91,16 @@ func (c *contactLinkingService) CreateContactFromConversation(ctx context.Contex
 	return out, nil
 }
 
+func (c *contactLinkingService) LinkContactToClientNA(ctx context.Context, in *LinkContactToClientNARequest, opts ...client.CallOption) (*LinkContactToClientNAResponse, error) {
+	req := c.c.NewRequest(c.name, "ContactLinkingService.LinkContactToClientNA", in)
+	out := new(LinkContactToClientNAResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for ContactLinkingService service
 
 type ContactLinkingServiceHandler interface {
@@ -104,12 +108,15 @@ type ContactLinkingServiceHandler interface {
 	LinkContactToClient(context.Context, *LinkContactToClientRequest, *EmptyResponse) error
 	// CreateContactFromConversation creates new contact from the data existing in the conversation and after that links this contact to the external user.
 	CreateContactFromConversation(context.Context, *CreateContactFromConversationRequest, *Lookup) error
+	// CreateContactFromConversation[No Authorization] creates new contact from the data existing in the conversation and after that links this contact to the external user.
+	LinkContactToClientNA(context.Context, *LinkContactToClientNARequest, *LinkContactToClientNAResponse) error
 }
 
 func RegisterContactLinkingServiceHandler(s server.Server, hdlr ContactLinkingServiceHandler, opts ...server.HandlerOption) error {
 	type contactLinkingService interface {
 		LinkContactToClient(ctx context.Context, in *LinkContactToClientRequest, out *EmptyResponse) error
 		CreateContactFromConversation(ctx context.Context, in *CreateContactFromConversationRequest, out *Lookup) error
+		LinkContactToClientNA(ctx context.Context, in *LinkContactToClientNARequest, out *LinkContactToClientNAResponse) error
 	}
 	type ContactLinkingService struct {
 		contactLinkingService
@@ -119,14 +126,12 @@ func RegisterContactLinkingServiceHandler(s server.Server, hdlr ContactLinkingSe
 		Name:    "ContactLinkingService.LinkContactToClient",
 		Path:    []string{"/chat/{conversation_id}/link"},
 		Method:  []string{"POST"},
-		Body:    "",
 		Handler: "rpc",
 	}))
 	opts = append(opts, api.WithEndpoint(&api.Endpoint{
 		Name:    "ContactLinkingService.CreateContactFromConversation",
 		Path:    []string{"/chat/{conversation_id}/contact"},
 		Method:  []string{"POST"},
-		Body:    "",
 		Handler: "rpc",
 	}))
 	return s.Handle(s.NewHandler(&ContactLinkingService{h}, opts...))
@@ -142,4 +147,8 @@ func (h *contactLinkingServiceHandler) LinkContactToClient(ctx context.Context, 
 
 func (h *contactLinkingServiceHandler) CreateContactFromConversation(ctx context.Context, in *CreateContactFromConversationRequest, out *Lookup) error {
 	return h.ContactLinkingServiceHandler.CreateContactFromConversation(ctx, in, out)
+}
+
+func (h *contactLinkingServiceHandler) LinkContactToClientNA(ctx context.Context, in *LinkContactToClientNARequest, out *LinkContactToClientNAResponse) error {
+	return h.ContactLinkingServiceHandler.LinkContactToClientNA(ctx, in, out)
 }
