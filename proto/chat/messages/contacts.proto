@@ -21,9 +21,16 @@ service ContactLinkingService {
       post: "/chat/{conversation_id}/contact"
     };
   }
+  // CreateContactFromConversation[No Authorization] creates new contact from the data existing in the conversation and after that links this contact to the external user.
+  rpc LinkContactToClientNA(LinkContactToClientNARequest) returns (LinkContactToClientNAResponse) {}
 }
 
+message LinkContactToClientNARequest {
+  string conversation_id = 1;
+  string contact_id = 2;
+}
 
+message LinkContactToClientNAResponse {}
 
 message LinkContactToClientRequest {
   string conversation_id = 1;
