@@ -412,7 +412,11 @@ func createBotRequest(req *app.CreateOptions, obj *bot.Bot) (stmtQ SelectStmt, p
 	params["dc"] = obj.GetDc().GetId()
 	params.set("uri", obj.GetUri())
 	params.set("name", obj.GetName())
-	params.set("flow_id", obj.GetFlow().GetId())
+	if obj.GetFlow() != nil && obj.GetFlow().GetId() != 0 {
+		params.set("flow_id", obj.GetFlow().GetId())
+	} else {
+		params.set("flow_id", nil)
+	}
 	params.set("enabled", obj.GetEnabled())
 	params.set("updates", dbl.NullJSONBytes(
 		nullChatUpdates(obj.GetUpdates()),
