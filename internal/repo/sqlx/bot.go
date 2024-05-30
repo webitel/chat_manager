@@ -412,8 +412,8 @@ func createBotRequest(req *app.CreateOptions, obj *bot.Bot) (stmtQ SelectStmt, p
 	params["dc"] = obj.GetDc().GetId()
 	params.set("uri", obj.GetUri())
 	params.set("name", obj.GetName())
-	if obj.GetFlow() != nil && obj.GetFlow().GetId() != 0 {
-		params.set("flow_id", obj.GetFlow().GetId())
+	if flow := obj.GetFlow(); flow != nil && flow.GetId() != 0 {
+		params.set("flow_id", flow.GetId())
 	} else {
 		params.set("flow_id", nil)
 	}
@@ -926,7 +926,11 @@ func updateBotRequest(req *app.UpdateOptions, set *bot.Bot) (stmt SelectStmt, pa
 			params.set("name", set.GetName())
 			update = update.Set("name", dbl.Expr(":name"))
 		case "flow", "flow.id", "flow_id":
-			params.set("flow_id", set.GetFlow().GetId())
+			if flow := set.GetFlow(); flow != nil && flow.GetId() != 0 {
+				params.set("flow_id", flow.GetId())
+			} else {
+				params.set("flow_id", nil)
+			}
 			update = update.Set("flow_id", dbl.Expr(":flow_id"))
 		case "enabled":
 			params.set("enabled", set.GetEnabled())
