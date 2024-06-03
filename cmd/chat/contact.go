@@ -145,7 +145,7 @@ func (srv *ContactLinkingService) LinkContactToClient(ctx context.Context, req *
 		return errors.BadRequest("cmd.chat.link_contact_to_client.get_channel.no_channel", "no such conversation")
 	}
 
-	_, err = srv.contactIMClientClient.UpsertIMClients(ctx, &contacts.UpsertIMClientsRequest{
+	_, err = srv.contactIMClientClient.CreateIMClients(ctx, &contacts.CreateIMClientsRequest{
 		ContactId: req.ContactId,
 		DomainId:  domainId,
 		Input: []*contacts.InputIMClient{
