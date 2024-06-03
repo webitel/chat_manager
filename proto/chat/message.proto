@@ -61,6 +61,13 @@ message Message {
     repeated Buttons inline = 15;
     // From sender user account
     Account from = 16;
+    // Postback. Reply Button Click[ed].
+    Postback postback = 17;
+    // An option used to block input to force the user
+    // to respond with one of the `Buttons`.
+    // Instructs client agents to disable input capabilities.
+    // Can only be used with a set of `Buttons`.
+    bool no_input = 18;
 
     // NewChatMembers description for {"type":"joined"} notification
     repeated Account new_chat_members = 20;
@@ -96,3 +103,13 @@ message Button {
 
 //     string phone_number  = 1;
 // }
+
+// Postback. Reply Button Click[ed].
+message Postback {
+    // Message ID of the button.
+    int64 mid = 1;
+    // Button's callback data associated.
+    string code = 2;
+    // Button's caption. Text to display.
+    string text = 3;
+}

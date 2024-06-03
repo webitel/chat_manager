@@ -8,6 +8,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/webitel/chat_manager/internal/contact"
+	"github.com/webitel/chat_manager/internal/repo/sqlx/proto"
 
 	"github.com/jmoiron/sqlx/types"
 )
@@ -281,6 +282,7 @@ type Message struct {
 	// Text                 sql.NullString `db:"text" json:"text,omitempty"`
 	Text                 string    `db:"text" json:"text,omitempty"`
 	File                 *Document `db:"-"    json:"file,omitempty"`
+	proto.Content                  // embedded
 	ReplyToMessageID     int64     `db:"-"    json:"reply_to_message_id,omitempty"`
 	ForwardFromMessageID int64     `db:"-"    json:"forward_from_message_id,omitempty"`
 	// TODO: Variables map[string]string

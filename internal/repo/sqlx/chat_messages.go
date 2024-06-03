@@ -14,6 +14,7 @@ import (
 	"github.com/micro/micro/v3/service/errors"
 	pb "github.com/webitel/chat_manager/api/proto/chat/messages"
 	"github.com/webitel/chat_manager/app"
+	"github.com/webitel/chat_manager/internal/repo/sqlx/proto"
 	dbx "github.com/webitel/chat_manager/store/database"
 	"github.com/webitel/chat_manager/store/postgres"
 )
@@ -115,6 +116,8 @@ func getMessagesInput(req *app.SearchOptions) (args chatMessagesArgs, err error)
 				"chat",   // chat dialog, that this message belongs to ..
 				"sender", // chat member, on behalf of the "chat" (dialog)
 				"context",
+				"postback", // Quick Reply button Click[ed].
+				"keyboard", // Quick Replies. Button(s)
 			},
 		),
 	)
@@ -517,6 +520,7 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 		)
 	// mandatory(!)
 	ctx.plan = append(ctx.plan,
+		// "id"
 		func(node *pb.Message) any {
 			return postgres.Int8{Value: &node.Id}
 		},
@@ -535,6 +539,35 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 			}
 			cols = append(cols, name)
 			return true
+		}
+		scanContent = func(node *pb.Message) any {
+			return DecodeText(func(src []byte) error {
+				// JSONB
+				if len(src) == 0 {
+					return nil // NULL
+				}
+				var data proto.Content
+				err := protojsonCodec.Unmarshal(src, &data)
+				if err != nil {
+					return err
+				}
+				var e, n = 0, len(cols)
+				for fd, pull := range map[string]func(){
+					"postback": func() { node.Postback = data.Postback },
+					"keyboard": func() { node.Keyboard = data.Keyboard },
+					// "contact",
+				} {
+					for e = 0; e < n && cols[e] != fd; e++ {
+						// lookup: column requested ?
+					}
+					if e == n {
+						// NOT FOUND; skip !
+						continue
+					}
+					pull()
+				}
+				return nil // OK
+			})
 		}
 	)
 	fields := ctx.Input.Fields // req.Fields
@@ -690,6 +723,22 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 					func(node *pb.Message) any {
 						return fetchFileRow(&node.File)
 					},
+				)
+			}
+		case "postback", "keyboard":
+			{
+				if !column(field) {
+					break // switch; duplicate!
+				}
+				if !column("content") {
+					break // switch; duplicate!
+				}
+				ctx.Query = ctx.Query.Column(
+					ident(left, "content"),
+				)
+				// once for all "content" -related fields..
+				ctx.plan = append(
+					ctx.plan, scanContent,
 				)
 			}
 		case "context":

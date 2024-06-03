@@ -39,7 +39,13 @@ message Message {
   
   // Context. Variables. Environment.
   map<string, string> context = 9;
-  
+
+  // Keyboard. Buttons. Quick Replies.
+  ReplyMarkup keyboard = 10;
+
+  // Postback. Reply Button Click[ed].
+  Postback postback = 11;
+
   // MIME Type specific content.
 
   // // Contact info shared.
@@ -84,4 +90,52 @@ message File {
 
   // Filename
   string name = 5;
+}
+
+message ReplyMarkup {
+  // An option used to block input to force
+  // the user to respond with one of the buttons.
+  bool no_input = 2;
+  // Markup of button(s)
+  repeated ButtonRow buttons = 1;
+}
+
+message ButtonRow {
+  // Button(s) in a row
+  repeated Button row = 1;
+}
+
+message Button {
+  // Caption to display.
+  string text = 1;
+  // Type of request to share contact info
+  enum Request {
+    // Phone Number
+    phone = 0;
+    // Email Address
+    email = 1;
+    // General Form
+    contact = 2;
+    // Current Location
+    location = 3;
+  }
+  // Type of the button.
+  oneof type {
+    // URL to navigate to ..
+    string url = 2;
+    // Postback/Callback data.
+    string code = 3;
+    // Request to share contact info.
+    Request share = 4;
+  }
+}
+
+// Postback. Reply Button Click[ed].
+message Postback {
+  // Message ID of the button.
+  int64 mid = 1;
+  // Data associated with the Button.
+  string code = 2;
+  // Button's display caption.
+  string text = 3;
 }
