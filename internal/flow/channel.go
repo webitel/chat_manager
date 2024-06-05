@@ -10,6 +10,7 @@ import (
 
 	// "net/http"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/rs/zerolog"
 
 	"github.com/micro/micro/v3/service/client"
@@ -435,6 +436,22 @@ func (c *Channel) delPending(usedToken string) {
 	c.setPending("", usedToken)
 }
 
+// expose postback.code as a message.text if specified
+func flowMessage(message *chat.Message) *chat.Message {
+	postback := message.Postback
+	if postback.GetCode() == "" {
+		return message // original
+	}
+	if message.Text == postback.Code {
+		return message // nothing to change
+	}
+	// Here we need to send postback.code as a message.text
+	// due to flow.schema(bot) might react on code(s), not "text" !
+	message = proto.Clone(message).(*chat.Message)
+	message.Text = postback.Code
+	return message
+}
+
 // Send @workflow.ConfirmationMessage() or restart @workflow.Start()
 func (c *Channel) Send(message *chat.Message) (err error) {
 
@@ -476,7 +493,9 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 		ConversationId: c.ID,
 		ConfirmationId: pending,
 		// Messages:       messages,
-		Messages: []*chat.Message{message},
+		Messages: []*chat.Message{
+			flowMessage(message),
+		},
 	}
 	// PERFORM
 	_, err = c.Agent.
@@ -582,7 +601,7 @@ func (c *Channel) Start(message *chat.Message) error {
 		// FIXME: why flow_manager need to know about some external chat-bot profile identity ?
 		ProfileId: c.UserID(),
 		SchemaId:  int32(schemaId),
-		Message:   message,
+		Message:   flowMessage(message),
 		// Message: &bot.Message{
 		// 	Id:   message.GetId(),
 		// 	Type: message.GetType(),

@@ -5,6 +5,7 @@ go 1.18
 require (
 	github.com/Masterminds/squirrel v1.5.2
 	github.com/SevereCloud/vksdk/v2 v2.16.0
+	github.com/beevik/guid v1.0.0
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/golang/protobuf v1.5.3
 	github.com/google/uuid v1.6.0
@@ -19,7 +20,6 @@ require (
 	github.com/micro/micro/v3 v3.10.1
 	github.com/mitchellh/hashstructure v1.1.0
 	github.com/pkg/errors v0.9.1
-	github.com/rabbitmq/amqp091-go v1.8.1
 	github.com/rs/zerolog v1.26.1
 	github.com/streadway/amqp v1.1.0
 	github.com/urfave/cli/v2 v2.3.0
@@ -32,9 +32,9 @@ require (
 )
 
 require (
-	github.com/beevik/guid v1.0.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.3.5 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
+	go.uber.org/goleak v1.2.1 // indirect
 	google.golang.org/grpc/examples v0.0.0-20230327223622-a357bafad155 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

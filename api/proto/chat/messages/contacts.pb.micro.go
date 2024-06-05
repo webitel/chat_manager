@@ -5,9 +5,8 @@ package messages
 
 import (
 	fmt "fmt"
-	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options"
+	proto "github.com/golang/protobuf/proto"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
-	proto "google.golang.org/protobuf/proto"
 	math "math"
 )
 
@@ -23,6 +22,12 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the proto package it is being compiled against.
+// A compilation error at this line likely means your copy of the
+// proto package needs to be updated.
+const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
+
 // Reference imports to suppress errors if they are not otherwise used.
 var _ api.Endpoint
 var _ context.Context
@@ -33,16 +38,18 @@ var _ server.Option
 
 func NewContactLinkingServiceEndpoints() []*api.Endpoint {
 	return []*api.Endpoint{
-		{
+		&api.Endpoint{
 			Name:    "ContactLinkingService.LinkContactToClient",
 			Path:    []string{"/chat/{conversation_id}/link"},
 			Method:  []string{"POST"},
+			Body:    "",
 			Handler: "rpc",
 		},
-		{
+		&api.Endpoint{
 			Name:    "ContactLinkingService.CreateContactFromConversation",
 			Path:    []string{"/chat/{conversation_id}/contact"},
 			Method:  []string{"POST"},
+			Body:    "",
 			Handler: "rpc",
 		},
 	}
@@ -126,12 +133,14 @@ func RegisterContactLinkingServiceHandler(s server.Server, hdlr ContactLinkingSe
 		Name:    "ContactLinkingService.LinkContactToClient",
 		Path:    []string{"/chat/{conversation_id}/link"},
 		Method:  []string{"POST"},
+		Body:    "",
 		Handler: "rpc",
 	}))
 	opts = append(opts, api.WithEndpoint(&api.Endpoint{
 		Name:    "ContactLinkingService.CreateContactFromConversation",
 		Path:    []string{"/chat/{conversation_id}/contact"},
 		Method:  []string{"POST"},
+		Body:    "",
 		Handler: "rpc",
 	}))
 	return s.Handle(s.NewHandler(&ContactLinkingService{h}, opts...))

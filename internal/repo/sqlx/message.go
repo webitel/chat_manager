@@ -1,6 +1,7 @@
 package sqlxrepo
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strconv"
@@ -9,10 +10,12 @@ import (
 	// "encoding/json"
 
 	"database/sql"
+	"database/sql/driver"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgtype"
 	"github.com/jmoiron/sqlx"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	errs "github.com/pkg/errors"
 	// "github.com/micro/go-micro/v2/errors"
@@ -691,6 +694,39 @@ func (repo *sqlxRepository) DeleteMessages(ctx context.Context, mid ...int64) (n
 	return obj, nil
 }*/
 
+var protojsonCodec = struct {
+	protojson.MarshalOptions
+	protojson.UnmarshalOptions
+}{
+	MarshalOptions: protojson.MarshalOptions{
+		Indent:          "",    // compact
+		Multiline:       false, // compact
+		AllowPartial:    true,  // contract
+		UseProtoNames:   true,  // contract
+		UseEnumNumbers:  true,  // compact
+		EmitUnpopulated: false, // compact
+	},
+	UnmarshalOptions: protojson.UnmarshalOptions{
+		AllowPartial:   true, // contract
+		DiscardUnknown: true, // contract
+	},
+}
+
+func contentJSONB(msg *Message) EvalFunc {
+	return func() (driver.Value, error) {
+		codec := protojsonCodec
+		jsonb, err := codec.Marshal(&msg.Content)
+		if err != nil {
+			return nil, err
+		}
+		if bytes.Equal(jsonb, jsonNullObject) {
+			return nil, nil // NULL
+		}
+		// pgtype.JSONB
+		return jsonb, nil
+	}
+}
+
 func SaveMessage(ctx context.Context, dcx sqlx.ExtContext, msg *Message) (err error) {
 
 	var doc Document
@@ -735,6 +771,7 @@ func SaveMessage(ctx context.Context, dcx sqlx.ExtContext, msg *Message) (err er
 			NullInteger(msg.ReplyToMessageID),     // $11 - NEW message is reply to some previous message id
 			NullInteger(msg.ForwardFromMessageID), // $12 - NEW message is forwarding from previous message id
 			NullMetadata(msg.Variables),           // $13 - NEW message extra properties
+			contentJSONB(msg),                     // $14 - NEW message raw content{keyboard|postback|contact|...}
 			// NullMetadata(props),                   // $12 - NEW message extra properties
 			// msg.Variables,                         // $12 - NEW message extra properties
 		)
@@ -827,6 +864,7 @@ func (repo *sqlxRepository) BindMessage(ctx context.Context, oid int64, vars map
 // $11 - SENT: NEW message as reply to previous message id
 // $12 - SENT: NEW message as forward from previous message id
 // $13 - SENT: NEW message extra properties
+// $14 - SENT: NEW message raw content{keyboard|postback|contact|...}
 const psqlMessageNewQ =
 // Mark channel as 'just seen'; it's either chat@channel or chat@workflow
 `WITH seenUser AS (UPDATE chat.channel SET updated_at=$1 WHERE id=$2)
@@ -834,11 +872,11 @@ const psqlMessageNewQ =
 INSERT INTO chat.message (
   created_at, updated_at, channel_id, conversation_id,
   type, text, file_id, file_url, file_size, file_type, file_name,
-  reply_to, forward_id, variables
+  reply_to, forward_id, variables, content
 ) VALUES (
   $1, NULL, NULLIF($2,$3), $3,
   $4, $5, $6, $7, $8, $9, $10,
-  $11, $12, $13
+  $11, $12, $13, $14
 ) RETURNING id`
 
 // Statement to edit historical (SENT) message
