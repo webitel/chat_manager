@@ -7,11 +7,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	goerr "errors"
 	"fmt"
 	"github.com/beevik/guid"
 	lru "github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/micro/micro/v3/service/errors"
-	errors2 "github.com/pkg/errors"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
 	"google.golang.org/genproto/googleapis/rpc/status"
@@ -35,8 +35,11 @@ func init() {
 
 type CustomGateway struct {
 	*bot.Gateway
-	params     *CustomBotParameters
-	contacts   map[string]*bot.Account
+	params   *CustomBotParameters
+	contacts map[string]*bot.Account
+	// closeQueue is the storage of chatIds for the sync of the webhook and send notify close events.
+	//
+	// If chat was closed by external user the close event goes to the send notify to send close message.
 	closeQueue []string
 	// broadcastSync is the channel used to synchronize the webhook method and broadcast method of the gateway
 	//
@@ -213,7 +216,7 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 	splittedChatId := strings.Split(channel.ChatID, "|")
 	switch len(splittedChatId) {
 	case 0:
-		err := errors2.New("empty chat id")
+		err := goerr.New("empty chat id")
 		c.Gateway.Log.Err(err).
 			Str("update", message.Type).
 			Msg("custom/bot.updateChatMember")
@@ -275,7 +278,9 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 				Msg("custom/bot.updateLeftMember")
 			return errors.InternalServerError("custom.bot.send_notify.left_type.error", err.Error())
 		}
-
+		if messageText == "" {
+			return nil
+		}
 		webhookMessage.Text = messageText
 
 	case "closed":
@@ -356,10 +361,10 @@ func (c *CustomGateway) WebHook(reply http.ResponseWriter, notice *http.Request)
 
 	var (
 		bodyBuf bytes.Buffer
-		sender  *bot.Account
+		ctx     = notice.Context()
 	)
 	_, err := bodyBuf.ReadFrom(notice.Body)
-	if err != nil && !errors2.Is(err, io.EOF) {
+	if err != nil && !goerr.Is(err, io.EOF) {
 		c.Gateway.Log.Err(err).
 			Msg("custom/bot.readBody")
 		returnErrorToResp(reply, http.StatusBadRequest, nil)
@@ -368,7 +373,7 @@ func (c *CustomGateway) WebHook(reply http.ResponseWriter, notice *http.Request)
 	// check hash
 	suspiciousHash := notice.Header.Get(HashHeader)
 	if validHash := calculateHash(bodyBuf.Bytes(), c.params.Secret); validHash != suspiciousHash { // threat or no sign
-		c.Gateway.Log.Err(errors2.New(fmt.Sprintf("wrong hash for the webhook, provided - %s expected - %s", suspiciousHash, validHash))).
+		c.Gateway.Log.Err(goerr.New(fmt.Sprintf("wrong hash for the webhook, provided - %s expected - %s", suspiciousHash, validHash))).
 			Str("suspicious", suspiciousHash).
 			Msg("custom/bot.hashCheck")
 		returnErrorToResp(reply, http.StatusForbidden, nil)
@@ -379,6 +384,7 @@ func (c *CustomGateway) WebHook(reply http.ResponseWriter, notice *http.Request)
 	var event ReceiveEvent
 	err = json.Unmarshal(bodyBuf.Bytes(), &event)
 	if err != nil {
+		c.Log.Err(err)
 		returnErrorToResp(reply, http.StatusInternalServerError, err)
 		return
 	}
@@ -386,125 +392,125 @@ func (c *CustomGateway) WebHook(reply http.ResponseWriter, notice *http.Request)
 
 	// switch event type
 	if closeEvent := event.Close; closeEvent != nil { // close the chat (highest priority)
-
-		err = closeEvent.Normalize() // check for nil values where fields required
-		if err != nil {
-			returnErrorToResp(reply, http.StatusBadRequest, err)
-			return
-		}
-		// search for the channel to close (contact probably will be in the cache)
-		sender = c.contacts[closeEvent.ChatId]
-		channel, err := c.Gateway.GetChannel(
-			context.Background(), closeEvent.ChatId, sender,
-		)
-		if err != nil {
-			returnErrorToResp(reply, http.StatusBadRequest, err)
-			return
-		}
-		c.RLock()
-		c.closeQueue = append(c.closeQueue, closeEvent.ChatId)
-		c.RUnlock()
-		// close channel
-		err = channel.Close()
-		if err != nil {
-			c.processCloseQueueByChatId(closeEvent.ChatId)
-			returnErrorToResp(reply, http.StatusBadRequest, err)
-			return
-		}
-
+		err = c.handleChatClose(ctx, closeEvent)
 	} else if broadcastEvent := event.Broadcast; broadcastEvent != nil {
-		eventId := broadcastEvent.EventId
-		if broadcastEvent != nil {
-			var errMessage = ""
-			for _, lookup := range broadcastEvent.FailedReceivers {
-				errMessage += fmt.Sprintf("receiver %s|%s error: %s; ", lookup.Type, lookup.Id, lookup.Error)
-
-			}
-			c.broadcastSync <- *broadcastEvent
-			c.Log.Warn().Msg(errMessage)
-		}
-		c.broadcastEvents.Remove(eventId)
+		err = c.handleBroadcast(ctx, broadcastEvent)
 	} else if messageEvent := event.Message; messageEvent != nil { // message to the new or existing chat
-		var (
-			update         *bot.Update
-			conversationId string
-		)
-		err = messageEvent.Normalize() // check for nil values where fields required
-		if err != nil {
-			c.Log.Err(err)
-			returnErrorToResp(reply, http.StatusBadRequest, err)
-			return
-		}
-
-		conversationId = messageEvent.ChatId
-
-		channel, err := c.getChannel(
-			notice.Context(), messageEvent,
-		)
-		if err != nil {
-			c.Log.Err(err)
-			returnErrorToResp(reply, http.StatusBadRequest, err)
-			return
-		}
-
-		update = &bot.Update{
-			Chat:    channel,
-			Title:   channel.Title,
-			User:    &channel.Account,
-			Message: new(chat.Message),
-		}
-		internalMessage := update.Message
-		internalMessage.CreatedAt = messageEvent.Date
-		if channel.IsNew() {
-			internalMessage.Variables = messageEvent.Metadata
-			if sender := messageEvent.Sender; sender != nil && sender.Type != "" {
-				if internalMessage.Variables == nil {
-					internalMessage.Variables = map[string]string{}
-				}
-				internalMessage.Variables[sourceVariableName] = sender.Type
-				//metadata, _ := channel.Properties.(map[string]string)
-				//if metadata == nil {
-				//	metadata = make(map[string]string, 4)
-				//}
-				//metadata[sourceVariableName] = sender.Type
-			}
-		}
-
-		if file := messageEvent.File; file != nil {
-
-			internalMessage.Type = bot.FileType
-			internalMessage.Text = messageEvent.Text
-			internalMessage.File = &chat.File{
-				Id:   0,
-				Url:  file.Url,
-				Mime: file.Mime,
-				Name: file.Name,
-				Size: file.Size,
-			}
-		} else {
-			internalMessage.Type = bot.TextType
-			internalMessage.Text = messageEvent.Text
-		}
-		// TODO id is empty!
-		update.Message.Variables = map[string]string{
-			conversationId: messageEvent.Id,
-		}
-		err = c.Gateway.Read(notice.Context(), update)
-		if err != nil {
-			code := http.StatusInternalServerError
-			http.Error(reply, "Failed to forward .Update recvEvent", code)
-			return // 502 Bad Gateway
-		}
-
+		err = c.handleMessage(ctx, messageEvent)
 	} else { // no payload
-		returnErrorStringToResp(reply, http.StatusBadRequest, "no valid payload")
+		err = goerr.New("no valid payload")
+	}
+	if err != nil {
+		c.Log.Err(err)
+		returnErrorToResp(reply, http.StatusInternalServerError, err)
 		return
 	}
 	// encode successful response
 	json.NewEncoder(reply).Encode(Response{Success: true})
 	reply.WriteHeader(http.StatusOK)
 	return
-	// return // HTTP/1.1 200 OK
+}
+
+func (c *CustomGateway) handleMessage(ctx context.Context, msg *Message) error {
+	var (
+		update         *bot.Update
+		conversationId string
+	)
+	if msg == nil {
+		return nil
+	}
+	err := msg.Normalize() // check for nil values where fields required
+	if err != nil {
+		return err
+	}
+
+	conversationId = msg.ChatId
+
+	channel, err := c.getChannel(
+		ctx, msg,
+	)
+	if err != nil {
+		return err
+	}
+
+	update = &bot.Update{
+		Chat:    channel,
+		Title:   channel.Title,
+		User:    &channel.Account,
+		Message: new(chat.Message),
+	}
+	internalMessage := update.Message
+	if internalMessage.Variables == nil {
+		internalMessage.Variables = make(map[string]string)
+	}
+	internalMessage.CreatedAt = msg.Date
+	if channel.IsNew() {
+		internalMessage.Variables = msg.Metadata
+		if sender := msg.Sender; sender != nil && sender.Type != "" {
+			internalMessage.Variables[sourceVariableName] = sender.Type
+		}
+	}
+
+	if file := msg.File; file != nil {
+		internalMessage.Type = bot.FileType
+		internalMessage.Text = msg.Text
+		internalMessage.File = &chat.File{
+			Id:   0,
+			Url:  file.Url,
+			Mime: file.Mime,
+			Name: file.Name,
+			Size: file.Size,
+		}
+	} else {
+		internalMessage.Type = bot.TextType
+		internalMessage.Text = msg.Text
+	}
+	// TODO id is empty!
+	internalMessage.Variables[conversationId] = msg.Id
+	return c.Gateway.Read(ctx, update)
+}
+
+func (c *CustomGateway) handleChatClose(ctx context.Context, closeEvent *ReceiveClose) error {
+	if closeEvent == nil {
+		return nil
+	}
+	err := closeEvent.Normalize() // check for nil values where fields required
+	if err != nil {
+		return err
+	}
+	// search for the channel to close (contact probably will be in the cache)
+	// if not then sender = nil will search for the database entry
+	sender := c.contacts[closeEvent.ChatId]
+	channel, err := c.Gateway.GetChannel(
+		ctx, closeEvent.ChatId, sender,
+	)
+	if err != nil {
+		return err
+	}
+	c.RLock()
+	// add the id to the close queue for SendMessage knew if there was external close of the chat
+	c.closeQueue = append(c.closeQueue, closeEvent.ChatId)
+	c.RUnlock()
+	// close channel
+	return channel.Close()
+}
+
+// handleBroadcast on the webhook used to process failed broadcast receivers
+//
+// Also syncs the SendBroadcast and WebHook methods
+func (c *CustomGateway) handleBroadcast(ctx context.Context, broadcast *ReceiveBroadcast) error {
+	if broadcast == nil {
+		return nil
+	}
+	eventId := broadcast.EventId
+	var errMessage = ""
+	for _, lookup := range broadcast.FailedReceivers {
+		errMessage += fmt.Sprintf("{type:%s, id:%s} error: %s; ", lookup.Type, lookup.Id, lookup.Error)
+	}
+	c.broadcastSync <- *broadcast
+	c.Log.Warn().Msg(errMessage)
+	c.broadcastEvents.Remove(eventId)
+	return nil
 }
 
 func (c *CustomGateway) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
@@ -526,7 +532,7 @@ func (c *CustomGateway) BroadcastMessage(ctx context.Context, req *chat.Broadcas
 		splittedSenderId := strings.Split(peer, "|")
 		switch len(splittedSenderId) {
 		case 0:
-			err := errors2.New("empty chat id")
+			err := goerr.New("empty chat id")
 			c.Gateway.Log.Err(err).
 				Str("broadcast", peer).
 				Msg("custom/bot.broadcastGetPeers")
@@ -618,11 +624,11 @@ func calculateHash(body []byte, secret string) string {
 func (c *CustomGateway) getChannel(ctx context.Context, message *Message) (*bot.Channel, error) {
 	sender := message.Sender
 	if sender == nil {
-		return nil, errors2.New("sender is empty")
+		return nil, goerr.New("sender is empty")
 	}
 	chatId := message.ChatId
 	if chatId == "" {
-		return nil, errors2.New("chat id is empty")
+		return nil, goerr.New("chat id is empty")
 	}
 	// check for cache entry
 	contact := c.contacts[chatId]
