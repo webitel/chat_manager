@@ -406,8 +406,11 @@ func (c *CustomGateway) WebHook(reply http.ResponseWriter, notice *http.Request)
 		return
 	}
 	// encode successful response
+	headers := reply.Header()
+	headers["Content-Type"] = []string{"application/json"}
 	json.NewEncoder(reply).Encode(Response{Success: true})
 	reply.WriteHeader(http.StatusOK)
+
 	return
 }
 
