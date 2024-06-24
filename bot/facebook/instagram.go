@@ -51,6 +51,128 @@ func (c *Client) instagramOAuth2Scope() (scope []string) {
 	return // scope
 }
 
+// https://developers.facebook.com/docs/whatsapp/embedded-signup/manage-accounts#get-shared-waba-id-with-access-token
+func (c *Client) getSharedInstagramPages(userToken *oauth2.Token) ([]*Page, error) {
+
+	token, err := c.inspectToken(userToken)
+	if err != nil {
+		return nil, err
+	}
+	// Facebook Page IDs linked WITH Instagram account
+	var PSID []string
+	for _, scope := range token.GranularScopes {
+		// Permission Dependencies
+		// instagram_basic | pages_read_engagement
+		//                 | pages_show_list
+		// The `instagram_manage_messages` permission
+		// allows business users to read and respond
+		// to Instagram Direct messages.
+		//
+		// The `pages_show_list` permission
+		// allows your app to access the list
+		// of Pages a person manages.
+		if scope.Permission == "pages_show_list" {
+			PSID = append(PSID, scope.TargetIDs...) // copy
+			break
+		}
+	}
+	return c.fetchInstagramPages(
+		context.TODO(), userToken.AccessToken, PSID,
+	)
+}
+
+func (c *Client) fetchInstagramPages(ctx context.Context, accessUserToken string, PSID []string) ([]*Page, error) {
+
+	n := len(PSID)
+	if n == 0 {
+		return nil, nil
+	}
+
+	// return IGID, nil
+	form := url.Values{
+		// Facebook Page(s)ID linked WITH Instagram
+		"ids": []string{strings.Join(PSID, ",")},
+		// https://developers.facebook.com/docs/graph-api/reference/page/#fields
+		"fields": []string{strings.Join([]string{
+			"id", // default
+			"name",
+			"access_token",
+			"instagram_business_account.as(instagram){name,username}",
+			// "instagram_business_account.as(instagram){name,username,profile_picture_url,followers_count,website}",
+		}, ",")},
+	}
+	form = c.requestForm(form, accessUserToken)
+	// Hide ?access_token= from query ...
+	delete(form, graph.ParamAccessToken)
+	// Add Authorization header BELOW ...
+
+	// https://developers.facebook.com/docs/graph-api/reference/whats-app-business-account/phone_numbers/#Reading
+	req, err := http.NewRequestWithContext(ctx,
+		http.MethodGet, "https://graph.facebook.com"+
+			path.Join("/", c.Version, "/")+
+			"?"+form.Encode(),
+		http.NoBody,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+	// Authorize GraphAPI Request
+	req.Header.Add("Authorization", "Bearer "+accessUserToken)
+
+	rsp, err := c.Client.Do(req)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rsp.Body.Close()
+
+	var (
+		res = struct {
+			// Public JSON result
+			Error *graph.Error `json:"error,omitempty"`
+			// Private JSON result
+			data map[string]*Page
+			raw  json.RawMessage
+		}{
+			data: make(map[string]*Page, n),
+			// raw:  make(json.RawMessage, 0, res.ContentLength), // NO Content-Length Header provided !  =(
+		}
+	)
+
+	err = json.NewDecoder(rsp.Body).Decode(&res.raw)
+	if err != nil {
+		// ERR: Invalid JSON
+		return nil, err
+	}
+	// CHECK: for RPC `error` first
+	err = json.Unmarshal(res.raw, &res) // {"error"}
+	if err == nil && res.Error != nil {
+		// RPC: Result Error
+		err = res.Error
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(res.raw, &res.data)
+	if err != nil {
+		// ERR: Unexpected JSON result
+		return nil, err
+	}
+
+	list := make([]*Page, 0, len(res.data))
+	for _, node := range res.data {
+		if node.IGSID() == "" {
+			// NO Instagram linked ! Ignore page !
+			continue
+		}
+		list = append(list, node)
+	}
+	return list, nil
+}
+
 // Retrive Facebook User profile and it's accounts (Pages) access granted
 // Refresh Pages webhook subscription state
 func (c *Client) getInstagramPages(token *oauth2.Token) (*UserAccounts, error) {
@@ -99,6 +221,11 @@ func (c *Client) getInstagramPages(token *oauth2.Token) (*UserAccounts, error) {
 	if resMe.Accounts.Error != nil {
 		// GraphAPI request error
 		return nil, resMe.Accounts.Error
+	}
+	// Inspect debug_token.granular_scope granted
+	pages, err = c.getSharedInstagramPages(token)
+	if err != nil {
+		return nil, err
 	}
 	// Remove page(s) that does not have .Instagram account assigned !
 	for i := 0; i < len(pages); i++ {

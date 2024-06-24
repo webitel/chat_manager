@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package webitel.chat.internal; 
+
+option go_package = "github.com/webitel/chat_manager/internal/repo/sqlx/proto";
+
+import "chat/message.proto"; // webitel.chat.server.
+import "chat/messages/message.proto"; // webitel.chat.
+
+message Content {
+
+  webitel.chat.ReplyMarkup keyboard = 10;
+  webitel.chat.Postback postback = 11;
+  webitel.chat.server.Account contact = 12;
+  // TODO: location
+
+  // // Unique message identifier inside this chat
+  // int64 id = 1;
+  // // Type of this Message to notify e.g.: text, file, read, status etc.
+  // string type = 2;
+  // // Text of the message to be sent, 1-4096
+  // string text = 3;
+  // // File to send. Pass an HTTP .URL as a string for Webitel to get a file from the Internet,
+  // // or upload a new one using storage.FileService.UploadFile()
+  // File file = 4;
+  // // Optional. This Message extra properties
+  // map<string, string> variables = 5;
+  // // End-User extra contact info
+  // Account contact = 7;
+
+  // // Optional. Send message date (epochtime ms) Generates by the service.
+  // int64 created_at = 8;
+  // // Optional. Edit message date (epochtime ms) Generates by the service.
+  // // For "read" messages, you can specify the date the last READ message was created_at
+  // int64 updated_at = 9;
+  // // Optional. If the message is a reply,
+  // // this is the ID of the original message
+  // int64 reply_to_message_id = 10;
+  // // External message sent-binding to be able to identify corresponding internal message
+  // map<string,string> reply_to_variables = 11;
+  // // Unique identifier for the chat where the original message was sent
+  // string forward_from_chat_id = 12;
+  // // Message identifier in the chat specified in from_chat_id
+  // int64 forward_from_message_id = 13;
+  // // External message sent-binding to be able to identify corresponding internal message
+  // map<string,string> forward_from_variables = 14;
+  // // Reply Markup Buttons SET
+  // repeated Buttons buttons = 6;
+  // // Inline Keyboard Buttons SET
+  // repeated Buttons inline = 15;
+  // // From sender user account
+  // Account from = 16;
+  // // Postback. Button click[ed].
+  // Postback postback = 17;
+
+  // // NewChatMembers description for {"type":"joined"} notification
+  // repeated Account new_chat_members = 20;
+  // // LeftChatMember description for {"type":"left"} notification
+  // Account left_chat_member = 21;
+}

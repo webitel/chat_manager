@@ -9,6 +9,7 @@ import (
 	"github.com/micro/micro/v3/service/errors"
 	api "github.com/webitel/chat_manager/api/proto/chat/messages"
 	"github.com/webitel/chat_manager/app"
+	"github.com/webitel/chat_manager/internal/repo/sqlx/proto"
 	dbx "github.com/webitel/chat_manager/store/database"
 	"github.com/webitel/chat_manager/store/postgres"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -487,6 +488,7 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 					, coalesce(m.channel_id, m.conversation_id) "from"
 					, m.text
 					, (file)
+					, content
 					FROM
 						chat.message m
 					LEFT JOIN LATERAL
@@ -690,6 +692,40 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 								}),
 								// file
 								fetchFileRow(&res.File).(DecodeText),
+								// content
+								DecodeText(func(src []byte) error {
+									// JSONB
+									if len(src) == 0 {
+										return nil // NULL
+									}
+									var data proto.Content
+									err := protojsonCodec.Unmarshal(src, &data)
+									if err != nil {
+										return err
+									}
+									// set of columns to expose
+									cols := []string{
+										"keyboard",
+										"postback",
+										// "contact",
+										// "location",
+									}
+									var e, n = 0, len(cols)
+									for fd, expose := range map[string]func(){
+										"postback": func() { res.Postback = data.Postback },
+										"keyboard": func() { res.Keyboard = data.Keyboard },
+									} {
+										for e = 0; e < n && cols[e] != fd; e++ {
+											// lookup: column requested ?
+										}
+										if e == n {
+											// NOT FOUND; skip !
+											continue
+										}
+										expose()
+									}
+									return nil // OK
+								}),
 							}
 							// row()::record
 							raw = pgtype.NewCompositeTextScanner(nil, src)

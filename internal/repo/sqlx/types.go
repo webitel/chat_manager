@@ -3,6 +3,7 @@ package sqlxrepo
 import (
 	"bytes"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -23,6 +24,20 @@ func (fn ScanFunc) Scan(src interface{}) error {
 	return nil
 }
 
+// EvalFunc is custom database/sql/driver.Valuer
+type EvalFunc func() (driver.Value, error)
+
+// Implements database/sql/driver.Valuer interface
+var _ driver.Valuer = EvalFunc(nil)
+
+// Value implements database/sql/driver.Valuer interface
+func (fn EvalFunc) Value() (driver.Value, error) {
+	if fn != nil {
+		return fn()
+	}
+	// IGNORE
+	return nil, nil
+}
 
 // NullString sql.Valuer for native integer values
 func NullInteger(i int64) *int64 {
@@ -46,7 +61,6 @@ func ScanInteger(dst *int64) ScanFunc {
 		return nil
 	}
 }
-
 
 // NullString sql.Valuer for native string values
 func NullString(s string) *string {
@@ -73,7 +87,7 @@ func ScanString(s *string) ScanFunc {
 
 func ScanJSON(dst interface{}) ScanFunc {
 	return func(src interface{}) error {
-		
+
 		if src == nil {
 			return nil
 		}
@@ -102,7 +116,6 @@ func ScanJSON(dst interface{}) ScanFunc {
 }
 
 var (
-
 	jsonNull = []byte("null")
 	// jsonNullArray = []byte("[]")
 	jsonNullObject = []byte("{}")
@@ -113,7 +126,7 @@ func NullMetadata(md map[string]string) []byte { // JSONB
 	// if props == nil {
 	// 	return nil
 	// }
-	
+
 	// delete(props, "")
 	if len(md) == 0 {
 		return nil
@@ -176,7 +189,6 @@ func ScanMetadata(md *map[string]string) ScanFunc {
 	}
 }
 
-
 // Properties represents extra key:value variables
 type Metadata map[string]string
 
@@ -187,8 +199,6 @@ func (e Metadata) Value() (interface{}, error) {
 func (e *Metadata) Scan(src interface{}) error {
 	return ScanMetadata((*map[string]string)(e))(src)
 }
-
-
 
 func NullDatetime(date *time.Time) *time.Time {
 	if date == nil || date.IsZero() {

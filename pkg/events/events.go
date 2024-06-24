@@ -1,5 +1,9 @@
 package events
 
+import (
+	"github.com/webitel/chat_manager/api/proto/chat"
+)
+
 const (
 	MessageEventType            = "message"
 	MessageDeletedEventType     = "message_deleted"
@@ -106,6 +110,8 @@ type Message struct {
 	File *File  `json:"file,omitempty"`
 
 	Contact *Contact `json:"contact,omitempty"`
+	// Reply Button Click[ed]
+	Postback *Postback `json:"postback,omitempty"`
 
 	ReplyToMessageID int64 `json:"reply_to_message_id,omitempty"`
 	MessageForwarded       // embedded
@@ -135,3 +141,5 @@ type Contact struct {
 	LastName  string `json:"lastName"`
 	Phone     string `json:"phone"`
 }
+
+type Postback = chat.Postback

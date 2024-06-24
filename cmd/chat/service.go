@@ -28,10 +28,12 @@ import (
 
 	pbbot "github.com/webitel/chat_manager/api/proto/bot"
 	pb "github.com/webitel/chat_manager/api/proto/chat"
+	v2 "github.com/webitel/chat_manager/api/proto/chat/messages"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/internal/auth"
 	event "github.com/webitel/chat_manager/internal/event_router"
 	"github.com/webitel/chat_manager/internal/flow"
+	"github.com/webitel/chat_manager/internal/keyboard"
 	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
 )
 
@@ -1890,7 +1892,7 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 
 		// REPLY operation purpose ?
 		reply = replyToMessageID != 0 ||
-			len(replyToBinding) != 0
+			len(replyToBinding) != 0 // || sendMessage.Postback.GetMid() > 0
 
 		// EDIT operation purpose ?
 		edit = sendMessage.UpdatedAt != 0
@@ -1922,6 +1924,9 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		)
 	}
 
+	// if replyToMessageID == 0 {
+	// 	replyToMessageID = sendMessage.Postback.GetMid()
+	// }
 	if reply && replyToMessageID == 0 && len(replyToBinding) == 0 {
 		// NOTE: the same for 'reply' operation request ...
 		return nil, errors.BadRequest(
@@ -2016,6 +2021,29 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 
 			// [TO]: ChatID
 			ConversationID: targetChatID,
+		}
+
+		// [RAW]: Message Content details
+		saveMessage.Contact = notify.Contact
+		// Quick Reply Button(s) ?
+		saveMessage.Keyboard, _ = keyboard.MarkupV2(
+			notify.Buttons,
+		)
+		// Disable `input` request ?
+		if notify.NoInput && saveMessage.Keyboard != nil {
+			// Can only be used with a set of `Buttons` !
+			saveMessage.Keyboard.NoInput = len(saveMessage.Keyboard.Buttons) > 0
+		}
+		postback := notify.Postback
+		if postback.GetCode() != "" {
+			saveMessage.Postback = &v2.Postback{
+				Mid:  postback.Mid,
+				Code: postback.Code,
+				Text: postback.Text,
+			}
+			if saveMessage.Text == "" {
+				saveMessage.Text = postback.Text
+			}
 		}
 	}
 
@@ -2232,6 +2260,8 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			// }
 		} else if sendMessage.Contact != nil {
 			sendMessage.Type = "contact"
+			// } else if sendMessage.Postback != nil {
+			// 	sendMessage.Type = "postback"
 		} else {
 			sendMessage.Type = "text"
 		}
@@ -2242,8 +2272,20 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 
 	case "text":
 
-		text := sendMessage.GetText()
-		text = strings.TrimSpace(text)
+		text := sendMessage.Text
+		postback := sendMessage.Postback
+		// coalesce(...)
+		for _, vs := range []string{
+			sendMessage.Text,
+			postback.GetText(),
+			postback.GetCode(),
+		} {
+			vs = strings.TrimSpace(vs)
+			if vs != "" {
+				text = vs
+				break
+			}
+		}
 
 		if text == "" {
 			return nil, errors.BadRequest(
@@ -2256,6 +2298,14 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		// TOBE: saved !
 		saveMessage.Type = "text"
 		saveMessage.Text = text
+		// Button click[ed] ?
+		if postback.GetCode() != "" {
+			saveMessage.Postback = &v2.Postback{
+				Mid:  postback.Mid,
+				Code: postback.Code,
+				Text: postback.Text,
+			}
+		}
 
 	// case "buttons", "inline":
 
@@ -2616,7 +2666,12 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 
 	// publish
 	var (
-		data   []byte
+		// data   []byte // TO: websocket
+		data = struct {
+			textgate *pb.Message // messages-bot (text:gateway)
+			workflow *pb.Message // flow_manager (bot:schema)
+			wesocket []byte      // engine (agent:user)
+		}{}
 		header map[string]string
 
 		rebind  bool
@@ -2642,7 +2697,7 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 			// NOTE: if sender is an internal chat@channel user (operator)
 			//       we publish message for him (author) as a member too
 			//       to be able to detect chat updates on other browser tabs ...
-			if data == nil {
+			if data.wesocket == nil {
 				// basic
 				timestamp := notify.UpdatedAt
 				if timestamp == 0 {
@@ -2682,6 +2737,16 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 						Name: doc.Name,
 					}
 				}
+				// Postback. Button click[ed].
+				// Webitel User (Agent) side.
+				if btn := notify.Postback; btn != nil {
+					notice.Postback = btn
+					if notice.Text == "" {
+						notice.Text = btn.Text
+					}
+				}
+				// NOTE: Here, keyboard is not supported
+				// because customer(s) can't send buttons
 
 				// Contact
 				if contact := notify.Contact; contact != nil {
@@ -2693,7 +2758,7 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 					}
 				}
 				// init once
-				data, _ = json.Marshal(notice)
+				data.wesocket, _ = json.Marshal(notice)
 				header = map[string]string{
 					"content_type": "text/json",
 				}
@@ -2704,7 +2769,7 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 				events.MessageEventType, member.DomainID, member.User.ID,
 			), &broker.Message{
 				Header: header,
-				Body:   data,
+				Body:   data.wesocket,
 			})
 
 		case "chatflow": // TO: workflow (internal)
@@ -2712,7 +2777,23 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 			if member == sender {
 				continue
 			}
-			err = c.flowClient.SendMessageV1(member, notify)
+
+			if data.workflow == nil {
+				// proto.Clone(notify).(*pb.Message)
+				send := *(notify) // shallowcopy
+				// Postback. Button click[ed].
+				// Webitel Bot (Schema) side.
+				if btn := notify.Postback; btn != nil {
+					if code := btn.Code; code != "" {
+						send.Text = code // reply_to
+					}
+				}
+				data.workflow = &send
+			}
+
+			err = c.flowClient.SendMessageV1(
+				member, data.workflow,
+			)
 
 		default: // TO: webitel.chat.bot (external)
 			// s.eventRouter.sendMessageToBotUser()
