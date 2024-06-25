@@ -448,7 +448,9 @@ func (c *CustomGateway) handleMessage(ctx context.Context, msg *Message) error {
 	}
 	internalMessage.CreatedAt = msg.Date
 	if channel.IsNew() {
-		internalMessage.Variables = msg.Metadata
+		if msg.Metadata != nil {
+			internalMessage.Variables = msg.Metadata
+		}
 		if sender := msg.Sender; sender != nil && sender.Type != "" {
 			internalMessage.Variables[sourceVariableName] = sender.Type
 		}
