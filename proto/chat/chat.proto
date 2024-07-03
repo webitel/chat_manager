@@ -235,6 +235,7 @@ enum LeaveConversationCause {
   client_timeout = 2;
   agent_leave = 3;
   transfer = 4;
+  silence_timeout = 5;
 }
 
 message LeaveConversationResponse {
