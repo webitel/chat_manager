@@ -782,7 +782,7 @@ const psqlSessionCloseQ = `WITH c0 AS (
      AND closed_at ISNULL
 )
 UPDATE chat.channel
-   SET closed_at=$2, , closed_cause=$3
+   SET closed_at=$2, closed_cause=$3
  WHERE conversation_id=$1
    AND closed_at ISNULL
 `
