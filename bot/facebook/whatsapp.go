@@ -1814,6 +1814,12 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 		}
 		err = c.Gateway.Read(ctx, &sendUpd)
 		if bound != nil {
+			if env, _ := bound.(map[string]string); env != nil {
+				// merge/reset with START/NEW properties
+				for param, value := range props {
+					env[param] = value
+				}
+			}
 			channel.Properties = bound
 		}
 		if err != nil {
