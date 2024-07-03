@@ -14,8 +14,8 @@ import (
 	// "github.com/jmoiron/sqlx"
 )
 
-func (s *chatService) closeConversation(ctx context.Context, conversationID *string) error {
-	err := s.repo.CloseConversation(ctx, *conversationID)
+func (s *chatService) closeConversation(ctx context.Context, conversationID *string, cause string) error {
+	err := s.repo.CloseConversation(ctx, *conversationID, cause)
 	if err != nil {
 		s.log.Error().Err(err).Msg("Failed to update chat CLOSED")
 		return err

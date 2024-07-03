@@ -343,7 +343,7 @@ func (repo *sqlxRepository) CreateChannel(ctx context.Context, c *Channel) error
 	return err
 }*/
 
-func (repo *sqlxRepository) CloseChannel(ctx context.Context, id string) (*Channel, error) {
+func (repo *sqlxRepository) CloseChannel(ctx context.Context, id string, cause string) (*Channel, error) {
 
 	if id == "" {
 		return nil, errors.New("Close: channel.id required")
@@ -354,7 +354,7 @@ func (repo *sqlxRepository) CloseChannel(ctx context.Context, id string) (*Chann
 		// res = &Channel{}
 	)
 
-	rows, err := repo.db.QueryContext(ctx, psqlChannelCloseQ, id, now.UTC())
+	rows, err := repo.db.QueryContext(ctx, psqlChannelCloseQ, id, now.UTC(), cause)
 
 	if err != nil {
 		return nil, err
@@ -1100,7 +1100,7 @@ func NewChannel(dcx sqlx.ExtContext, ctx context.Context, channel *Channel) erro
 // postgres: chat.channel.close(!)
 // $1 - channel_id
 // $2 - local timestamp
-const psqlChannelCloseQ = `WITH closed AS (UPDATE chat.channel c SET closed_at=$2 WHERE c.id=$1 AND c.closed_at ISNULL RETURNING c.*)
+const psqlChannelCloseQ = `WITH closed AS (UPDATE chat.channel c SET closed_at=$2, closed_cause = $3 WHERE c.id=$1 AND c.closed_at ISNULL RETURNING c.*)
 UPDATE chat.conversation s SET updated_at=$2 FROM closed c WHERE s.id=c.conversation_id
 RETURNING c.*
 `

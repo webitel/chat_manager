@@ -134,31 +134,17 @@ func (c *Channel) Close() (err error) {
 			c.Log.Warn().Msg(">>>>> CLOSED <<<<<") // CONFIRMED Chat State !
 			return nil
 		}
+		cause := chat.CloseConversationCause_client_leave
 
 		// Mark SENT .CloseConversation(!)
 		c.Closed = time.Now().Unix()
-		// // complete command /close with reply text
-		// // if cause == "" {
-		// // 	// cause = commandCloseRecvDisposiotion // FROM: external, end-user request !
-		// // 	// NOTE: default: "Conversation closed"; expected ...
-		// // }
-		// // cause := "" // ACK: "Conversation closed" expected !
-		// if cause == "" {
-		cause := commandCloseRecvDisposition // FROM: external, end-user request !
-		// }
-		// // switch cause {
-		// // case "": // default: "Conversation closed"
-		// // 	// cause = commandCloseSendDisposiotion
-		// // case commandCloseRecvDisposiotion:
-		// // 	cause = "closed" //
-		// // }
 
-		c.Log.Warn().Str("cause", cause).Msg(">>>>> CLOSING >>>>>")
+		c.Log.Warn().Str("cause", cause.String()).Msg(">>>>> CLOSING >>>>>")
 		// PREPARE: request parameters
 		close := chat.CloseConversationRequest{
 			ConversationId:  c.SessionID,
 			CloserChannelId: c.ChannelID,
-			AuthUserId:      c.Account.ID, // c.ContactID,
+			AuthUserId:      c.Account.ID,
 			Cause:           cause,
 		}
 		// PERFORM: close request !
@@ -211,7 +197,7 @@ func (c *Channel) Close() (err error) {
 			bot.Unlock() // -RW
 
 			// TODO: defer c.Send("error: %s", err)
-			c.Log.Error().Err(err).Str("cause", cause).Msg(">>>>> CLOSING >>>>>")
+			c.Log.Error().Err(err).Str("cause", cause.String()).Msg(">>>>> CLOSING >>>>>")
 		}
 
 		// var event *zerolog.Event
