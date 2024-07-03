@@ -363,7 +363,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 			// populate
 			contact.ID = chat.ClientId
 			externalChatId, found := chat.Properties[ExternalChatPropertyName]
-			if found {
+			if found && externalChatId != "" {
 				chatID = externalChatId
 			} else if chatID == "" {
 				chatID = contact.Contact
