@@ -774,15 +774,16 @@ func (s *chatService) StartConversation(
 	return nil
 }*/
 
+// CloseConversation used by the flow or the client to entirely close whole conversation
 func (s *chatService) CloseConversation(
 	ctx context.Context,
 	req *pb.CloseConversationRequest,
 	res *pb.CloseConversationResponse,
 ) error {
-
+	cause := req.GetCause().String()
 	s.log.Trace().
 		Str("conversation_id", req.GetConversationId()).
-		Str("cause", req.GetCause()).
+		Str("cause", cause).
 		Str("closer_channel_id", req.GetCloserChannelId()).
 		Msg("CLOSE Conversation")
 
@@ -859,9 +860,7 @@ func (s *chatService) CloseConversation(
 	// sender := chat.Channel
 	// endregion
 
-	text := req.GetCause()
-
-	_, err = s.sendChatClosed(ctx, chat, text)
+	_, err = s.sendChatClosed(ctx, chat, cause)
 
 	if err != nil {
 		s.log.Error().Err(err).
@@ -871,7 +870,17 @@ func (s *chatService) CloseConversation(
 
 	// Mark ALL chat members as CLOSED !
 	// NOTE: - delete: chat.confirmation; - delete: chat.flow.node
-	err = s.closeConversation(ctx, &targetChatID)
+	//
+	// close conversation should close all the derived channels with given reason
+	// possible reasons
+	// user_timeout - setting defined by queue violated (max client response time)
+	// agent_timeout - setting defined by queue violated (max agent response time)
+	// flow_end - given scheme ended
+	// flow_err - given scheme returned error
+	// client_leave - client wrote /close
+	// TODO: i think the good idea will be to use reasons here to duplicate to the conversation (or not) actually there are two ways of fully ending conversation
+	// TODO: flow_end, flow_err or client_leave
+	err = s.closeConversation(ctx, &targetChatID, cause)
 	if err != nil {
 		s.log.Error().Err(err).Msg("Failed to close chat channels")
 		return err
@@ -1103,17 +1112,13 @@ func (s *chatService) JoinConversation(
 	return nil
 }
 
-func (s *chatService) leaveChat(
-	ctx context.Context,
-	req *pb.LeaveConversationRequest,
-	breakBridge flow.BreakBridgeCause,
-	leftCause string,
-) error {
+func (s *chatService) leaveChat(ctx context.Context, req *pb.LeaveConversationRequest, breakBridge flow.BreakBridgeCause) error {
 
 	var (
 		channelChatID  = req.GetChannelId()
 		channelFromID  = req.GetAuthUserId()
 		conversationID = req.GetConversationId()
+		leaveCause     = req.GetCause()
 	)
 
 	s.log.Trace().
@@ -1158,7 +1163,7 @@ func (s *chatService) leaveChat(
 
 	// ----- PERFORM ---------------------------------
 	// 1. Mark given .channel.id as "closed" !
-	closed, err := s.repo.CloseChannel(ctx, sender.ID) // channelChatID)
+	closed, err := s.repo.CloseChannel(ctx, sender.ID, leaveCause.String()) // channelChatID)
 	if err != nil {
 		s.log.Error().Msg(err.Error())
 		return err
@@ -1190,14 +1195,15 @@ func (s *chatService) leaveChat(
 			// },
 			// func() {
 			// omitted ? populate breakBridge cause
-			if leftCause == "" {
+			var leaveNotify string
+			if leaveCause == pb.LeaveConversationCause_default_cause {
 				if breakBridge != flow.LeaveConversationCause {
-					leftCause = string(breakBridge)
+					leaveNotify = string(breakBridge)
 				}
 			}
 			// NOTIFY: All related CHAT member(s) !
 			await <- s.eventRouter.RouteLeaveConversation(
-				closed, &sender.ConversationID, leftCause,
+				closed, &sender.ConversationID, leaveNotify,
 			)
 
 		},
@@ -1245,15 +1251,14 @@ func (s *chatService) leaveChat(
 	return nil
 }
 
+// LeaveConversation means the agent leaved conversation and the initiator channel must be closed (cause reason agent_leave)
 func (s *chatService) LeaveConversation(
 	ctx context.Context,
 	req *pb.LeaveConversationRequest,
 	res *pb.LeaveConversationResponse,
 ) error {
-
-	return s.leaveChat(ctx, req,
-		flow.LeaveConversationCause, req.GetCause(),
-	)
+	// use the incoming kick reason (from engine or call_center) in database
+	return s.leaveChat(ctx, req, flow.LeaveConversationCause)
 }
 
 func (s *chatService) InviteToConversation(
@@ -3206,14 +3211,13 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 		// In case of Agent (Originator) Bridge Application running !
 		// var leave pb.LeaveConversationResponse
 		// NOTE: Ignore errors; Calling this just to be sure that originator's channel is kicked !
-		_ = c.leaveChat(ctx,
-			// _ = c.LeaveConversation(ctx,
-			&pb.LeaveConversationRequest{
-				ConversationId: chatFlowID,
-				AuthUserId:     originator.User.ID,
-				ChannelId:      chatFromID,
-			}, flow.TransferCause, "", // "TRANSFER"
-		)
+		// Cause of the originator kick is clearly defined here
+		_ = c.leaveChat(ctx, &pb.LeaveConversationRequest{
+			ConversationId: chatFlowID,
+			AuthUserId:     originator.User.ID,
+			ChannelId:      chatFromID,
+			Cause:          pb.LeaveConversationCause_transfer,
+		}, flow.TransferCause)
 
 	case "chatflow":
 		// FIXME:

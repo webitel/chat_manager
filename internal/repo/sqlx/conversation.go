@@ -91,7 +91,7 @@ func (repo *sqlxRepository) CreateConversation(ctx context.Context, session *Con
 }*/
 
 // TODO: CloseConversation(ctx context.Context, id string, at time.Time) error {}
-func (repo *sqlxRepository) CloseConversation(ctx context.Context, id string) error {
+func (repo *sqlxRepository) CloseConversation(ctx context.Context, id string, cause string) error {
 
 	at := time.Now()
 
@@ -100,7 +100,7 @@ func (repo *sqlxRepository) CloseConversation(ctx context.Context, id string) er
 		// query statement
 		psqlSessionCloseQ,
 		// query params ...
-		id, at.UTC(),
+		id, at.UTC(), cause,
 	)
 
 	return err
@@ -782,7 +782,7 @@ const psqlSessionCloseQ = `WITH c0 AS (
      AND closed_at ISNULL
 )
 UPDATE chat.channel
-   SET closed_at=$2
+   SET closed_at=$2, , closed_cause=$3
  WHERE conversation_id=$1
    AND closed_at ISNULL
 `

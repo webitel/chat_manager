@@ -196,8 +196,15 @@ message CloseConversationRequest {
   string conversation_id = 1; // required
   string closer_channel_id = 2;
   //  bool from_flow = 3;
-  string cause = 3;
+  CloseConversationCause cause = 3;
   int64 auth_user_id = 4;
+}
+
+enum CloseConversationCause {
+  no_cause = 0; // optional (no cause)
+  flow_end = 1;
+  client_leave = 2;
+  flow_err = 3;
 }
 
 message CloseConversationResponse {
@@ -219,7 +226,15 @@ message LeaveConversationRequest {
   string channel_id = 1;
   string conversation_id = 2;
   int64 auth_user_id = 3;
-  string cause = 4; // optional: reason
+  LeaveConversationCause cause = 4;
+}
+
+enum LeaveConversationCause {
+  default_cause = 0; // optional (no cause)
+  agent_timeout = 1;
+  client_timeout = 2;
+  agent_leave = 3;
+  transfer = 4;
 }
 
 message LeaveConversationResponse {

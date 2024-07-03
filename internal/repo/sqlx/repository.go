@@ -56,7 +56,7 @@ type Repository interface {
 // }
 
 type ConversationRepository interface {
-	CloseConversation(ctx context.Context, id string) error
+	CloseConversation(ctx context.Context, id string, cause string) error
 	GetConversations(
 		ctx context.Context,
 		id string,
@@ -75,7 +75,7 @@ type ConversationRepository interface {
 }
 
 type ChannelRepository interface {
-	CloseChannel(ctx context.Context, id string) (*Channel, error)
+	CloseChannel(ctx context.Context, id string, cause string) (*Channel, error)
 	CloseChannels(ctx context.Context, conversationID string) error
 	GetChannels(
 		ctx context.Context,
