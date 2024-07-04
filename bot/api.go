@@ -161,6 +161,9 @@ func (srv *Service) SelectBot(ctx context.Context, req *bot.SelectBotRequest, rs
 			srv.Auth.GetAuthorization,
 		),
 	)
+	if err != nil {
+		return err
+	}
 
 	// Normalize FIELDS request
 	fields := app.FieldsFunc(
