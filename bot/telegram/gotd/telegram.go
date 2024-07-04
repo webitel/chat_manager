@@ -521,6 +521,12 @@ func (c *app) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			// }
 		}
 
+		// region: --- AdminAuthorization(!) ---
+		if c.Gateway.AdminAuthorization(rsp, req) != nil {
+			return // Authorization FAILED(!)
+		}
+		// endregion: --- AdminAuthorization(!) ---
+
 		// status
 		status := struct {
 			Enabled    bool `json:"enabled"`

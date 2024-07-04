@@ -910,10 +910,15 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		if notice.Body != nil {
 			defer notice.Body.Close()
 		}
-	case http.MethodGet:
-		// ?query= API extensions
+	// // GET ?query= API extensions
+	// case http.MethodGet:
 	default:
 		// Method Not Allowed !
+		http.Error(reply,
+			"(405) Method Not Allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
 	}
 
 	var recvUpdate telegram.Update

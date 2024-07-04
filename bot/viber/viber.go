@@ -444,14 +444,16 @@ func (c *Bot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	switch notice.Method {
 	case http.MethodPost:
 		// Handle Update(s) ...
-	case http.MethodGet:
-		// TODO: Viber Bot Public API
-		return
+	// // TODO: Viber Bot Public API
+	// case http.MethodGet:
+	// 	return
 	default:
-		// ERROR(!)
-		code := http.StatusMethodNotAllowed
-		http.Error(reply, http.StatusText(code), code)
-		return // (405) Method Not Allowed
+		// Method Not Allowed !
+		http.Error(reply,
+			"(405) Method Not Allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
 	}
 
 	// POST Inbound Update(s) ...

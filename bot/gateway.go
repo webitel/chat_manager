@@ -13,6 +13,7 @@ import (
 
 	"encoding/json"
 
+	"github.com/micro/micro/v3/service/context/metadata"
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/rs/zerolog"
 
@@ -20,6 +21,7 @@ import (
 	gate "github.com/webitel/chat_manager/api/proto/bot"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/app"
+	access "github.com/webitel/chat_manager/auth"
 )
 
 const ExternalChatPropertyName = "externalChatID"
@@ -289,6 +291,70 @@ func (c *Gateway) Remove() bool {
 // 		chat.Close()
 // 	}
 // }
+
+// AdminAuthorization HTTP handler.
+// Used to protect provider's WebHook API extensions
+// Non <nil> error means that the Authorization failed
+// and an error was returned. Further execution must be terminated.
+func (c *Gateway) AdminAuthorization(rsp http.ResponseWriter, req *http.Request) error {
+	// Transform http.Header to micro.Metadata
+	// Than we can use existing methods here ..
+	hd := req.Header
+	md := make(metadata.Metadata, len(hd))
+	for h, vs := range hd {
+		if n := len(vs); n > 0 {
+			md.Set(h, vs[n-1])
+		}
+	}
+	ctx := metadata.NewContext(
+		req.Context(), md,
+	)
+	// CHECK Authorization ?
+	authN, err := app.GetContext(
+		ctx, app.AuthorizationRequire(
+			c.Internal.Auth.GetAuthorization,
+		),
+	)
+	if err != nil {
+		re := errors.FromError(err)
+		if re.Code < 400 {
+			re.Code = http.StatusUnauthorized // 401
+			re.Status = http.StatusText(int(re.Code))
+		}
+		if re.Id == "" {
+			re.Id = "app.context.unauthorized"
+		}
+		http.Error(rsp, re.Error(), int(re.Code))
+		return err
+	}
+	// CHECK Scope granted ?
+	// const objclassBots = "chat_bots"
+	scope := authN.HasObjclass(objclassBots)
+	if scope == nil {
+		// ERR: Has NO license product GRANTED !
+		err = errors.Forbidden(
+			"chat.bot.access.denied",
+			"chatbot: objclass access DENIED !",
+		)
+		re := errors.FromError(err)
+		http.Error(rsp, re.Error(), int(re.Code))
+		return err
+	}
+	// CHECK Access granted ?
+	const mode = access.READ
+	if !authN.CanAccess(scope, mode) {
+		// ERR: Has NO access to objclass been GRANTED !
+		err = errors.Forbidden(
+			"chat.bot.access.forbidden",
+			"chatbot: objclass READ privilege NOT GRANTED !",
+		)
+		re := errors.FromError(err)
+		http.Error(rsp, re.Error(), int(re.Code))
+		return err
+	}
+	// OK
+	return nil
+}
 
 // WebHook implements basic provider.Receiver interface
 // Just delegates control to the underlaying service provider

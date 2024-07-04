@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/hashicorp/golang-lru/v2/expirable"
 	"net/http"
 	"net/url"
 	"path"
@@ -16,6 +15,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/hashicorp/golang-lru/v2/expirable"
 
 	"github.com/micro/micro/v3/service/errors"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
@@ -824,6 +825,12 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 				return
 			}
 		}
+
+		// region: --- AdminAuthorization(!) ---
+		if c.Gateway.AdminAuthorization(rsp, req) != nil {
+			return // Authorization FAILED(!)
+		}
+		// endregion: --- AdminAuthorization(!) ---
 
 		// Tab: Instagram section ...
 		if _, is := query["instagram"]; is {
