@@ -1196,11 +1196,10 @@ func (s *chatService) leaveChat(ctx context.Context, req *pb.LeaveConversationRe
 			// func() {
 			// omitted ? populate breakBridge cause
 			var leaveNotify string
-			if leaveCause == pb.LeaveConversationCause_default_cause {
-				if breakBridge != flow.LeaveConversationCause {
-					leaveNotify = string(breakBridge)
-				}
+			if breakBridge != flow.LeaveConversationCause {
+				leaveNotify = string(breakBridge)
 			}
+
 			// NOTIFY: All related CHAT member(s) !
 			await <- s.eventRouter.RouteLeaveConversation(
 				closed, &sender.ConversationID, leaveNotify,
