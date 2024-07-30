@@ -827,7 +827,12 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 		}
 
 		// region: --- AdminAuthorization(!) ---
-		if c.Gateway.AdminAuthorization(rsp, req) != nil {
+		// [D]e[M]illitary[Z]one(s) ...
+		dmz := (query.Get("pages") == "setup" ||
+			query.Get("instagram") == "setup" ||
+			query.Get("whatsapp") == "setup")
+		// Authorize (!)
+		if !dmz && c.Gateway.AdminAuthorization(rsp, req) != nil {
 			return // Authorization FAILED(!)
 		}
 		// endregion: --- AdminAuthorization(!) ---

@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/webitel/chat_manager/api/proto/chat"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -15,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/webitel/chat_manager/api/proto/chat"
 
 	cache "github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/micro/micro/v3/service/errors"
@@ -476,7 +477,7 @@ type Chat struct {
 	Page *Page
 }
 
-func (c *Client) getChat(page *Page, psid string) (*Chat, error) {
+func (c *Client) getChat(page *Page, psid string) (conn *Chat, err error) {
 
 	// TODO: Lookup internal cache first ...
 	c.chatMx.RLock() // +R
@@ -499,44 +500,117 @@ func (c *Client) getChat(page *Page, psid string) (*Chat, error) {
 	}
 	chat.Page = page
 
+	// NOTE: Now we can build a minimal recipient
+	// contact info with given input arguments only..
+	// So ignore any error(s) getting UserProfile info
+	// Just LOG them, if any, but return no error ...
+
+	defer func() {
+		if err != nil {
+			// chatID := psid
+			platform := "facebook"
+			facebook := page // MUST: recipient
+			pageName := facebook.Name
+			instagram := facebook.Instagram
+			if instagram != nil {
+				platform = "instagram"
+				pageName = instagram.Name
+				if pageName == "" {
+					pageName = instagram.Username
+				}
+			}
+			c.Gateway.Log.Err(err).
+				Str("page.asid", page.ID). // recipient
+				Str(platform, pageName).
+				Str("user.psid", psid). // sender
+				// Str("from", "noname").  // Unavailable(!)
+				Msg(platform + ".getUserProfile")
+			// err = res.Error
+			err = nil
+		}
+		// NO/Invalid result (?)
+		if chat.User.ID != psid {
+			// Minimal Userinfo (!)
+			chat.User = graph.UserProfile{
+				Name: "noname", // Unavailable(!)
+				ID:   psid,
+			}
+		}
+		// TODO: Cache result for PSID
+		c.chatMx.Lock() // +W
+		c.chats[psid] = chat
+		c.chatMx.Unlock() // -W
+
+		conn = &chat
+		// return // conn, nil
+	}()
+
 	query := c.requestForm(url.Values{
 		"fields": {"name"}, // ,first_name,middle_name,last_name,picture{width(50),height(50)}"},
 	}, page.AccessToken,
 	)
 
-	req, err := http.NewRequest(http.MethodGet,
+	req, re := http.NewRequest(http.MethodGet,
 		"https://graph.facebook.com"+path.Join(
 			"/", c.Version, psid,
 		)+"?"+query.Encode(),
 		nil,
 	)
 
-	if err != nil {
+	if err = re; err != nil {
 		return nil, err
 	}
 
-	rsp, err := c.Client.Do(req)
-	if err != nil {
+	rsp, re := c.Client.Do(req)
+
+	if err = re; err != nil {
 		return nil, err
 	}
 	defer rsp.Body.Close()
 
-	// var res graph.User
-	// err = json.NewDecoder(rsp.Body).Decode(&res)
-	err = json.NewDecoder(rsp.Body).Decode(&chat.User)
+	var (
+		res = struct {
+			// Private JSON result
+			raw json.RawMessage
+			// data *graph.User
+			// Public JSON result
+			Error *graph.Error `json:"error,omitempty"`
+		}{
+			// raw:  make(json.RawMessage, 0, res.ContentLength), // NO Content-Length Header provided !  =(
+		}
+	)
+
+	// // https://developers.facebook.com/docs/messenger-platform/identity/user-profile/#profile_unavailable
+	// rpcError := bytes.NewReader([]byte(`{
+	// 	"error": {
+	// 		"message": "(#100) No profile available for this user.",
+	// 		"type": "OAuthException",
+	// 		"code": 100,
+	// 		"error_subcode": 2018218,
+	// 		"fbtrace_id": "APLx_C4fHhrLqjNFqOXv7tw"
+	// 	}
+	// }`))
+	// err = json.NewDecoder(rpcError).Decode(&res.raw)
+	err = json.NewDecoder(rsp.Body).Decode(&res.raw)
+	if err != nil {
+		// ERR: Invalid JSON
+		return nil, err
+	}
+	// CHECK: for RPC `error` first
+	err = json.Unmarshal(res.raw, &res) // {"error"}
+	if err == nil && res.Error != nil {
+		// RPC Error !
+		err = res.Error
+	}
 	if err != nil {
 		return nil, err
 	}
-
-	// if res.ID != psid {
-	if chat.User.ID != psid {
-		// Invalid result !
+	// Decode UserProfile payload data
+	err = json.Unmarshal(res.raw, &chat.User)
+	if err != nil {
+		// ERR: Unexpected JSON result
+		return nil, err
 	}
-
-	// TODO: Cache result for PSID
-	c.chatMx.Lock() // +W
-	c.chats[psid] = chat
-	c.chatMx.Unlock() // -W
-
-	return &chat, nil
+	// Build result defered (!)
+	return // &chat, nil
 }
