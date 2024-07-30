@@ -191,8 +191,27 @@ func Run(ctx *cli.Context) error {
 		ContactsLinkingServiceContactClient(contactsClient),
 	)
 
+	contactChatHistory := NewContactChatHistoryService(
+		ContactChatHistoryServiceLogs(&logger),
+		ContactChatHistoryServiceAuthN(authN.NewClient(
+			authN.ClientService(service),
+			authN.ClientCache(authN.NewLru(4096)),
+		)),
+		ContactChatHistoryServiceStore(store),
+		ContactChatHistoryServiceContactClient(contactsClient),
+	)
+
 	if err := pb2.RegisterContactLinkingServiceHandler(
 		service.Server(), contactLinking,
+	); err != nil {
+		logger.Fatal().
+			Str("app", "failed to register service").
+			Msg(err.Error())
+		return err
+	}
+
+	if err := pb2.RegisterContactsChatCatalogHandler(
+		service.Server(), contactChatHistory,
 	); err != nil {
 		logger.Fatal().
 			Str("app", "failed to register service").

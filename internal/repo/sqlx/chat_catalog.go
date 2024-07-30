@@ -148,6 +148,36 @@ func (c *sqlxRepository) GetHistory(req *app.SearchOptions) (*api.ChatMessages, 
 	return &page, nil
 }
 
+func (c *sqlxRepository) GetContactChatHistory(req *app.SearchOptions) (*api.GetContactChatHistoryResponse, error) {
+
+	ctx := req.Context.Context
+	cte, err := getContactHistoryQuery(req, false)
+	if err != nil {
+		return nil, err
+	}
+
+	query, args, err := cte.ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := c.db.QueryContext(
+		ctx, query, args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var page api.GetContactChatHistoryResponse
+	err = cte.scanRows(rows, &page)
+	if err != nil {
+		return nil, err
+	}
+
+	return &page, nil
+}
+
 // Query of the chat history updates ; forward offset
 func (c *sqlxRepository) GetUpdates(req *app.SearchOptions) (*api.ChatMessages, error) {
 
@@ -793,6 +823,83 @@ func fetchFileRow(value **api.File) any {
 
 		if res == nil {
 			res = new(api.File)
+		}
+
+		var err error
+		for _, col := range row {
+
+			raw.ScanDecoder(col)
+
+			err = raw.Err()
+			if err != nil {
+				return err
+			}
+		}
+
+		if ok {
+			*(value) = res
+		}
+
+		return nil
+	})
+}
+
+func fetchContactFileRow(value **api.MessageFile) any {
+	return DecodeText(func(src []byte) error {
+
+		res := *(value) // Value
+		*(value) = nil  // NULL
+		if len(src) == 0 {
+			return nil // NULL
+		}
+
+		var (
+			ok   bool // false
+			text pgtype.Text
+			int8 pgtype.Int8
+			row  = []TextDecoder{
+				// id
+				DecodeText(func(src []byte) error {
+					err := int8.DecodeText(nil, src)
+					if err == nil && int8.Status == pgtype.Present {
+						res.Id = strconv.FormatInt(int8.Int, 10) // int8.Int
+						ok = true
+					}
+					return err
+				}),
+				// size
+				DecodeText(func(src []byte) error {
+					err := int8.DecodeText(nil, src)
+					if err == nil && int8.Status == pgtype.Present {
+						res.Size = int8.Int
+						ok = true
+					}
+					return err
+				}),
+				// type
+				DecodeText(func(src []byte) error {
+					err := text.DecodeText(nil, src)
+					if err == nil && text.Status == pgtype.Present {
+						res.Type = text.String
+						ok = true
+					}
+					return err
+				}),
+				// name
+				DecodeText(func(src []byte) error {
+					err := text.DecodeText(nil, src)
+					if err == nil && text.Status == pgtype.Present {
+						res.Name = text.String
+						ok = true
+					}
+					return err
+				}),
+			}
+			raw = pgtype.NewCompositeTextScanner(nil, src)
+		)
+
+		if res == nil {
+			res = new(api.MessageFile)
 		}
 
 		var err error
