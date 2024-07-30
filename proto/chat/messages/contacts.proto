@@ -5,7 +5,7 @@ package webitel.chat;
 option go_package = "github.com/webitel/chat_manager/api/proto/chat/messages";
 
 import "google/api/annotations.proto";
-// import "protoc-gen-openapiv2/options/annotations.proto";
+import "google/protobuf/wrappers.proto";
 
 // API used to connect the external user to our internal contact
 service ContactLinkingService {
@@ -23,6 +23,14 @@ service ContactLinkingService {
   }
   // CreateContactFromConversation[No Authorization] creates new contact from the data existing in the conversation and after that links this contact to the external user.
   rpc LinkContactToClientNA(LinkContactToClientNARequest) returns (LinkContactToClientNAResponse) {}
+}
+
+service ContactsChatCatalog {
+  rpc GetContactChatHistory(GetContactChatHistoryRequest) returns (GetContactChatHistoryResponse) {
+    option (google.api.http) = {
+      get: "/contacts/{contact_id}/chat/{chat_id}/messages"
+    };
+  }
 }
 
 message LinkContactToClientNARequest {
@@ -53,3 +61,227 @@ message Lookup {
   int64 id = 1;
   string name = 2;
 }
+
+
+message GetContactChatHistoryRequest {
+  // Offset options
+  message Offset {
+    // Messages ONLY starting from the specified message ID
+    int64 id = 1;
+    // Messages ONLY been sent before the specified epochtime(milli).
+    int64 date = 2;
+  }
+  // Offset messages.
+  Offset offset = 1;
+  // Number of messages to return.
+  int32 limit = 2;
+  // Search term: message.text
+  string q = 5;
+  // Fields to return into result.
+  repeated string fields = 3;
+  // Unique chat dialog
+  string chat_id = 6;
+  // Contact identificator
+  string contact_id = 7;
+
+  // Includes the history of ONLY those dialogs
+  // whose member channel(s) contain
+  // a specified set of variables.
+  map<string,string> group = 8;
+}
+
+// Chat Message.
+message ChatMessage {
+
+  // Unique message identifier inside this chat.
+  int64 id = 1;
+
+  // Timestamp when this message was sent (published).
+  int64 date = 2;
+
+  // Sender of the message.
+  ChatPeer from = 3;
+
+  // Conversation the message belongs to ..
+  ContactChat chat = 4;
+
+  // Chat Sender of the message, sent on behalf of a chat (member).
+  ContactChat sender = 5;
+
+  // Timestamp when this message was last edited.
+  int64 edit = 6;
+
+  // // MIME Type of the message, e.g.: text, file, read, status etc.
+  // string type = 5;
+
+  // Message Text.
+  string text = 7;
+
+  // Message Media. Attachment.
+  MessageFile file = 8;
+
+  // Context. Variables. Environment.
+  map<string, string> context = 9;
+
+  // Keyboard. Buttons. Quick Replies.
+  MessageReplyMarkup keyboard = 10;
+
+  // Postback. Reply Button Click[ed].
+  MessagePostback postback = 11;
+}
+
+// Media File.
+message MessageFile {
+
+  // File location
+  string id = 1;
+
+  // string url = 2;
+
+  // Size in bytes
+  int64 size = 3;
+
+  // MIME media type
+  string type = 4;
+
+  // Filename
+  string name = 5;
+}
+
+message MessageReplyMarkup {
+  // An option used to block input to force
+  // the user to respond with one of the buttons.
+  bool no_input = 2;
+  // Markup of button(s)
+  repeated MessageButtonRow buttons = 1;
+}
+
+message MessageButtonRow {
+  // Button(s) in a row
+  repeated MessageButton row = 1;
+}
+
+message MessageButton {
+  // Caption to display.
+  string text = 1;
+  // Type of request to share contact info
+  enum Request {
+    // Phone Number
+    phone = 0;
+    // Email Address
+    email = 1;
+    // General Form
+    contact = 2;
+    // Current Location
+    location = 3;
+  }
+  // Type of the button.
+  oneof type {
+    // URL to navigate to ..
+    string url = 2;
+    // Postback/Callback data.
+    string code = 3;
+    // Request to share contact info.
+    Request share = 4;
+  }
+}
+
+// Postback. Reply Button Click[ed].
+message MessagePostback {
+  // Message ID of the button.
+  int64 mid = 1;
+  // Data associated with the Button.
+  string code = 2;
+  // Button's display caption.
+  string text = 3;
+}
+
+// Peer contact.
+message ChatPeer {
+  // Contact unique **ID**entifier.
+  // Contact **type**-specific string.
+  string id = 1;
+
+  // Type of contact provider.
+  // [internal]
+  // -- user; (agent)
+  // -- flow; (schema/bot)
+  // [external]
+  // -- viber
+  // -- telegram
+  // -- facebook
+  // -- whatsapp
+  // -- instagram
+  // . . .
+
+  // Contact **type** provider.
+  string type = 2;
+
+  // Contact display **name**.
+  string name = 3;
+}
+
+
+// The Chat info.
+// Alias: participant, subscriber, member, peer, leg.
+message ContactChat {
+  // [D]omain[C]omponent primary ID.
+  int64 dc = 1;
+  // Unique identifier for this chat.
+  // [FROM] Member / Channel ID.
+  string id = 2;
+  // // [TO] Group. Conversation ID.
+  // string chat_id = 2;
+
+  // [FROM] VIA text gateway profile.
+  ChatPeer via = 5;
+  // [FROM]: User identity. Seed.
+  ChatPeer peer = 6;
+
+  // // [TO]: Chat identity. Peer.
+  // // Transport, e.g.: webchat, websocket, telegram, etc.
+  // string type = 7;
+  // Peer chat = 7;
+
+  // [TO]: Chat title.
+  string title = 8;
+
+  // ------- Timing ------- //
+
+  // OPTIONAL. A non-zero value indicates that
+  // the participant has left the chat. OFFLINE(!)
+  int64 left = 10;
+  // OPTIONAL. A non-zero value indicates that
+  // the participant has joined the chat.
+  int64 join = 11;
+
+  // // OPTIONAL. A non-zero value indicates that the participant was invite[d] to join the chat.
+  // int64 req = 12;
+
+  message Invite {
+    // Timestamp when the invitation to join the chat was sent
+    int64 date = 1;
+    // Chat member ID who invited to join the chat
+    string from = 2;
+  }
+  // OPTIONAL. Invite[d] BY member info.
+  Invite invite = 13;
+
+  // Context. Variables.
+  map<string, string> context = 15;
+}
+
+// ChatMessages dataset
+message GetContactChatHistoryResponse {
+  // Dataset page of messages.
+  repeated ChatMessage messages = 1;
+  // List of chats mentioned in messages. [FROM]
+  repeated ContactChat chats = 2;
+  // List of peers mentioned in messages. [FROM]
+  repeated ChatPeer peers = 3;
+  // Dataset page number.
+  int32 page = 5;
+  // Next page is available ?
+  bool next = 6;
+}
+

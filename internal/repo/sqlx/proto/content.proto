@@ -6,6 +6,7 @@ option go_package = "github.com/webitel/chat_manager/internal/repo/sqlx/proto";
 
 import "chat/message.proto"; // webitel.chat.server.
 import "chat/messages/message.proto"; // webitel.chat.
+import "chat/messages/contacts.proto";
 
 message Content {
 
@@ -57,4 +58,12 @@ message Content {
   // repeated Account new_chat_members = 20;
   // // LeftChatMember description for {"type":"left"} notification
   // Account left_chat_member = 21;
+}
+
+
+message ContactMessageContent {
+
+  webitel.chat.MessageReplyMarkup keyboard = 10;
+  webitel.chat.MessagePostback postback = 11;
+  webitel.chat.server.Account contact = 12;
 }
