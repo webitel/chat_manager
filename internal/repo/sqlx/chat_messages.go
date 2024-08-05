@@ -56,7 +56,55 @@ type chatMessagesArgs struct {
 	Limit int
 }
 
+type contactChatMessagesArgs struct {
+	// ----- Input ------ //
+	// Search term: message.text
+	Q string
+	// [D]omain[C]omponent primary ID.
+	// Mandatory(!)
+	DC int64
+	// Possible chat ID
+	Peer *pb.Peer
+	// Required contact ID
+	ContactId string
+	// Includes the history of ONLY those dialogs
+	// whose member channel(s) contain a specified set of variables
+	Group map[string]string
+	// ----- Output ----- //
+	// Fields to return into result.
+	Fields []string
+	// Offset messages history options.
+	Offset struct {
+		// Message ID
+		Id int64
+		// Message Date
+		Date *time.Time
+	}
+	// Limit count of messages to return.
+	Limit int
+	// Page
+	Page int
+}
+
 func (e *chatMessagesArgs) indexField(name string, alias ...string) int {
+	var a, c = 0, len(alias)
+	var i, n = 0, len(e.Fields)
+	for ; i < n && e.Fields[i] != name; i++ {
+		// match: by <name>
+		for a = 0; a < c && e.Fields[i] != alias[a]; a++ {
+			// match: by <alias>
+		}
+		if a < c {
+			return i
+		}
+	}
+	if i < n {
+		return i
+	}
+	return -1
+}
+
+func (e *contactChatMessagesArgs) indexField(name string, alias ...string) int {
 	var a, c = 0, len(alias)
 	var i, n = 0, len(e.Fields)
 	for ; i < n && e.Fields[i] != name; i++ {
@@ -81,7 +129,7 @@ type chatMessagesQuery struct {
 }
 
 type contactChatMessagesQuery struct {
-	Input chatMessagesArgs
+	Input contactChatMessagesArgs
 	SELECT
 	plan dataFetch[*pb.ChatMessage]
 }
@@ -275,6 +323,225 @@ func getMessagesInput(req *app.SearchOptions) (args chatMessagesArgs, err error)
 			"messages( peer.type: string! ); input: required",
 		)
 		return // nil, err
+	}
+
+	return // args, nil
+}
+
+func getContactMessagesInput(req *app.SearchOptions) (args contactChatMessagesArgs, err error) {
+
+	args.Q = req.Term
+	if app.IsPresent(args.Q) {
+		args.Q = "" // clear; ignore
+	} else {
+		for _, kindOf := range []string{
+			"media", "file", "text",
+		} {
+			if strings.HasPrefix(
+				args.Q, kindOf+":",
+			) {
+				args.Q = "*" + args.Q + "*"
+				break
+			}
+		}
+	}
+	args.DC = req.Context.Creds.Dc
+	args.Limit = req.GetSize()
+	args.Page = req.GetPage()
+
+	inputPeer := func(input *pb.Peer) error {
+		if args.Peer != nil {
+			return errors.BadRequest(
+				"contact.messages.query.peer.input",
+				"contact.messages( peer: peer! ); input: ambiguous; oneof{ chat, peer }",
+			)
+		}
+		if input.Id == "" {
+			return errors.BadRequest(
+				"contact.messages.query.peer.input",
+				"contact.messages( peer( id: string! ) ); input: required but missing",
+			)
+		}
+		if input.Type == "" {
+			return errors.BadRequest(
+				"contact.messages.query.peer.input",
+				"contact.messages( peer( type: string! ) ); input: required but missing",
+			)
+		}
+		args.Peer = input
+		return nil // OK
+	}
+
+	for param, input := range req.Filter {
+		switch param {
+		case "contact.id":
+			{
+				switch data := input.(type) {
+				case string:
+					if data == "" {
+						err = errors.BadRequest(
+							"contact.messages.query.contact_id.input.nil",
+							"contact.messages( contact: id! ); input: nil",
+							input,
+						)
+					}
+					args.ContactId = data
+
+				default:
+					err = errors.BadRequest(
+						"contact.messages.query.contact_id.input",
+						"contact.messages( contact: id! ); input: convert %T into string",
+						input,
+					)
+				}
+				if err != nil {
+					return // args, err
+				}
+			}
+		case "group":
+			{
+				switch data := input.(type) {
+				case map[string]string:
+					if len(data) > 0 {
+						delete(data, "")
+					}
+					if len(data) > 0 {
+						args.Group = data
+					}
+				default:
+					err = errors.BadRequest(
+						"contact.messages.query.group.input",
+						"contact.messages( group: {variables} ); input: convert %T into variables",
+						input,
+					)
+				}
+			}
+		case "chat.id":
+			{
+				var chatId uuid.UUID
+				switch data := input.(type) {
+				case uuid.UUID:
+					chatId = data
+				case string:
+					if data == "" {
+						break // omitted
+					}
+					chatId, err = uuid.Parse(data)
+					if err != nil {
+						err = errors.BadRequest(
+							"contact.messages.query.peer.chat.input",
+							"messages( chat: id! ); input: %v",
+							err,
+						)
+					}
+				default:
+					err = errors.BadRequest(
+						"contact.messages.query.chat.input",
+						"contact.messages( chat: id ); input: convert %T into ID",
+						input,
+					)
+				}
+				if err == nil && !isZeroUUID(chatId) {
+					err = inputPeer(&pb.Peer{
+						Type: "chat",
+						Id:   hex.EncodeToString(chatId[:]),
+					})
+				}
+				if err != nil {
+					return // args, err
+				}
+			}
+		case "offset":
+			{
+				switch data := input.(type) {
+				case *pb.ChatMessagesRequest_Offset:
+					{
+						if data.GetId() > 0 {
+							args.Offset.Id = data.Id
+						} else if data.GetDate() > 0 {
+							date := app.EpochtimeDate(
+								data.Date, app.TimePrecision, // (milli)
+							)
+							args.Offset.Date = &date
+						} else {
+							// IGNORE(?)
+						}
+					}
+				// case int64:
+				// case int:
+				default:
+					err = errors.BadRequest(
+						"contact.messages.query.offset.input",
+						"contact.messages( offset: ! ); input: convert %T into Offset",
+						input,
+					)
+					return // args, err
+				}
+			}
+		default:
+			err = errors.BadRequest(
+				"contact.messages.query.args.error",
+				"contact.messages( %s: ? ); input: no such argument",
+				param,
+			)
+			return // args, err
+		}
+	}
+
+	if args.ContactId == "" {
+		err = errors.BadRequest(
+			"contact.messages.query.peer.input",
+			"messages( peer( type: string! ) ); input: required but missing",
+		)
+	}
+	// if peer not found then user wants to see all merged messages by contact
+	// split fields for merged and unmerged history
+	if args.Peer == nil {
+		args.Fields = app.FieldsFunc(
+			req.Fields, // app.InlineFields,
+			app.SelectFields(
+				// application: default
+				[]string{
+					"id",
+					"from", // sender; user
+					"date",
+					"edit",
+					"text",
+					"file",
+					"chat", // chat dialog, that this message belongs to ..
+				},
+				// operational
+				[]string{
+					"sender", // chat member, on behalf of the "chat" (dialog)
+					"context",
+					"postback", // Quick Reply button Click[ed].
+					"keyboard", // Quick Replies. Button(s)
+				},
+			),
+		)
+	} else {
+		args.Fields = app.FieldsFunc(
+			req.Fields, // app.InlineFields,
+			app.SelectFields(
+				// application: default
+				[]string{
+					"id",
+					"from", // sender; user
+					"date",
+					"edit",
+					"text",
+					"file",
+				},
+				// operational
+				[]string{
+					"chat",   // chat dialog, that this message belongs to ..
+					"sender", // chat member, on behalf of the "chat" (dialog)
+					"context",
+					"postback", // Quick Reply button Click[ed].
+					"keyboard", // Quick Replies. Button(s)
+				},
+			),
+		)
 	}
 
 	return // args, nil
@@ -935,7 +1202,7 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 // if `updates` true - query history forward to get updates from some `offset` state (chat.top message)
 // otherwise - will query history back in time ..
 func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactChatMessagesQuery, err error) {
-	ctx.Input, err = getMessagesInput(req)
+	ctx.Input, err = getContactMessagesInput(req)
 	if err != nil {
 		return // nil, err
 	}
@@ -952,9 +1219,6 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 			// NO SEARCH AVAILABLE
 			ctx.Input.Q = ""
 		}
-		// if ctx.Input.Peer.GetId() == "" {
-		// 	// getMessagesInput(REQUIRE) ;
-		// }
 		if ctx.Input.Offset.Id < 1 && ctx.Input.Offset.Date == nil {
 			// REQUIRED
 			dummy := req.Localtime()
@@ -988,18 +1252,8 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 			ident(left, "created_at") + " DESC",
 		)
 
-	if ctx.Input.Self > 0 {
-		ctx.Params.set("self", ctx.Input.Self)
-		ctx.Query = ctx.Query.JoinClause(fmt.Sprintf(
-			// INNER; dialog(s) in common with current user, that has [been] joined !
-			"JOIN %[2]s %[3]s ON %[3]s.internal AND %[3]s.user_id = :self AND %[3]s.conversation_id = %[1]s.id",
-			left, "chat.channel", "self",
-		))
-	}
-
 	var (
 		aliasChat    string // "c"
-		aliasContact string // "x"
 		joinChatPeer = func() string {
 			if aliasChat != "" {
 				return aliasChat
@@ -1012,64 +1266,33 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 			))
 			return aliasChat
 		}
-		// LEFT JOIN chat.client AS x
-		joinPeerContact = func() string {
-			if aliasContact != "" {
-				return aliasContact
-			}
-			// once
-			aliasContact = "u"
-			left, right := joinChatPeer(), aliasContact
-			ctx.Query = ctx.Query.JoinClause(fmt.Sprintf(
-				"LEFT JOIN chat.client %[2]s ON NOT %[1]s.internal AND %[2]s.id = %[1]s.user_id",
-				left, right,
-			))
-			return aliasContact
-		}
 	)
-
-	switch ctx.Input.Peer.Type {
-	case "chat":
-		{
-			var chatId pgtype.UUID
-			err = chatId.Set(ctx.Input.Peer.Id)
-			if err != nil {
-				panic("messages.chat.id: " + err.Error())
-			}
-			ctx.Params.set("chat.id", &chatId)
-			ctx.Query = ctx.Query.Where(
-				ident(left, "id") + " = :chat.id",
-			)
-		}
-	case "user":
-		{
-			relChat := joinChatPeer()
-			ctx.Params.set("peer.id", ctx.Input.Peer.Id)
-			ctx.Query = ctx.Query.Where(sq.And{
-				sq.Expr(ident(relChat, "internal")), // true
-				sq.Expr(ident(relChat, "user_id") + "::::text LIKE :peer.id"),
-			})
-		}
-	case "bot":
-		{
-			relBot := left // joinPeerBot()
-			ctx.Params.set("peer.id", ctx.Input.Peer.Id)
-			ctx.Query = ctx.Query.Where(
-				ident(relBot, "props->>'flow'") + " LIKE :peer.id",
-			)
-		}
-	default:
-		// case "user":
-		// case "bot": // useless(!) Agent CANNOT text with bot !
+	if ctId := ctx.Input.ContactId; ctId != "" {
 		relChat := joinChatPeer()
-		relPeer := joinPeerContact()
-		ctx.Params.set("peer.id", ctx.Input.Peer.Id)
-		ctx.Params.set("peer.type", ctx.Input.Peer.Type)
+		ctx.Params.set("contact.id", ctId)
 		ctx.Query = ctx.Query.Where(sq.And{
-			sq.Expr(ident(relChat, "type") + " = :peer.type"),
-			sq.Expr(ident(relPeer, "external_id") + " LIKE :peer.id"),
+			sq.Expr(ident(relChat, "user_id") + " = any (SELECT user_id from contacts.contact_imclient where contact_id = :contact.id)"),
 		})
 	}
+	if peer := ctx.Input.Peer; peer != nil {
+		switch ctx.Input.Peer.Type {
+		default:
+			// case "chat":
+			{
+				var chatId pgtype.UUID
+				err = chatId.Set(ctx.Input.Peer.Id)
+				if err != nil {
+					panic("messages.chat.id: " + err.Error())
+				}
+				ctx.Params.set("chat.id", &chatId)
+				ctx.Query = ctx.Query.Where(sq.And{
+					sq.Expr(ident(left, "id") + " = :chat.id"),
+				},
+				)
+			}
+		}
+	}
+
 	if q := ctx.Input.Q; q != "" {
 		ctx.Params.set("q", app.Substring(q))
 		ctx.Query = ctx.Query.JoinClause(CompactSQL(fmt.Sprintf(
@@ -1434,7 +1657,13 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 	// LIMIT
 	if ctx.Input.Limit > 0 {
 		ctx.Query = ctx.Query.Limit(
-			uint64(ctx.Input.Limit),
+			uint64(ctx.Input.Limit + 1),
+		)
+	}
+	// Paging
+	if p := ctx.Input.Page; p > 1 {
+		ctx.Query = ctx.Query.Offset(
+			uint64(p * ctx.Input.Limit),
 		)
 	}
 
@@ -1833,7 +2062,7 @@ func (ctx chatMessagesQuery) scanRows(rows *sql.Rows, into *pb.ChatMessages) err
 	return rows.Err()
 }
 
-func (ctx contactChatMessagesQuery) scanRows(rows *sql.Rows, into *pb.GetContactChatHistoryResponse) error {
+func (ctx contactChatMessagesQuery) scanRows(rows *sql.Rows, req *app.SearchOptions, into *pb.GetContactChatHistoryResponse) error {
 
 	type (
 		UUID [16]byte
@@ -2109,6 +2338,11 @@ func (ctx contactChatMessagesQuery) scanRows(rows *sql.Rows, into *pb.GetContact
 		// once; MUST: single row
 		break
 	}
+
+	if len(into.Messages) > req.GetSize() {
+		into.Next = true
+	}
+	into.Page = int32(req.GetPage())
 
 	return rows.Err()
 }

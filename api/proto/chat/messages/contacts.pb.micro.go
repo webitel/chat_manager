@@ -159,7 +159,7 @@ func NewContactsChatCatalogEndpoints() []*api.Endpoint {
 	return []*api.Endpoint{
 		{
 			Name:    "ContactsChatCatalog.GetContactChatHistory",
-			Path:    []string{"contacts/{contact_id}/chat/{chat_id}/messages"},
+			Path:    []string{"/contacts/{contact_id}/chat/{chat_id}/messages"},
 			Method:  []string{"GET"},
 			Handler: "rpc",
 		},
@@ -210,7 +210,7 @@ func RegisterContactsChatCatalogHandler(s server.Server, hdlr ContactsChatCatalo
 	h := &contactsChatCatalogHandler{hdlr}
 	opts = append(opts, api.WithEndpoint(&api.Endpoint{
 		Name:    "ContactsChatCatalog.GetContactChatHistory",
-		Path:    []string{"contacts/{contact_id}/chat/{chat_id}/messages"},
+		Path:    []string{"/contacts/{contact_id}/chat/{chat_id}/messages"},
 		Method:  []string{"GET"},
 		Handler: "rpc",
 	}))

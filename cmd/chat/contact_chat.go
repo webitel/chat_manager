@@ -2,8 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/hex"
-	"github.com/google/uuid"
 	"github.com/micro/micro/v3/service/context/metadata"
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/rs/zerolog"
@@ -98,37 +96,7 @@ func (srv *ContactChatHistoryService) GetContactChatHistory(ctx context.Context,
 	// endregion: ----- Authentication -----
 
 	// region: ----- Validation -----
-	var peer *pb.Peer // mandatory(!)
-
-	if req.ChatId != "" {
-		chatId, err := uuid.Parse(req.ChatId)
-		if err != nil { // || chatId.IsZero() {
-			return errors.BadRequest(
-				"chat.contact_chat.get_contact_chat_history.chat_id.input",
-				"chat.history( chat: %s ); input: invalid id",
-				req.ChatId,
-			)
-		}
-		peer = &pb.Peer{
-			Type: "chat",
-			Id:   hex.EncodeToString(chatId[:]),
-		}
-	}
-
-	if peer.GetId() == "" {
-		return errors.BadRequest(
-			"chat.contact_chat.get_contact_chat_history.chat_id.required",
-			"chat.history( chat.id: string! ); input: required",
-		)
-	}
-
-	if peer.GetType() == "" {
-		return errors.BadRequest(
-			"chat.contact_chat.get_contact_chat_history.peer_type.required",
-			"chat.history( chat.type: string! ); input: required",
-		)
-	}
-
+	// required!
 	if req.GetContactId() == "" {
 		return errors.BadRequest(
 			"chat.contact_chat.get_contact_chat_history.contact_id.required",
@@ -145,66 +113,24 @@ func (srv *ContactChatHistoryService) GetContactChatHistory(ctx context.Context,
 	}
 	// endregion: ----- Check contact access -----
 
+	// ------- Filter(s) ------- //
 	search := app.SearchOptions{
 		Context: *(authN),
 		// ID:   []int64{},
 		Term: req.Q,
 		Filter: map[string]any{
-			"peer": peer, // mandatory(!)
+			"contact.id": req.GetContactId(), // mandatory(!)
 		},
 		Access: auth.READ,
-		Fields: app.FieldsFunc(
-			req.Fields, // app.InlineFields,
-			app.SelectFields(
-				// default
-				[]string{
-					"id",
-					"from", // sender; user
-					"date",
-					"edit",
-					"text",
-					"file",
-				},
-				// extra
-				[]string{
-					"chat",   // chat dialog, that this message belongs to ..
-					"sender", // chat member, on behalf of the "chat" (dialog)
-					"context",
-				},
-			),
-		),
-		Size: int(req.GetLimit()),
+		Fields: req.Fields,
+		Size:   int(req.GetSize()),
+		Page:   int(req.GetPage()),
 	}
-	indexField := func(name string) int {
-		var e, n = 0, len(search.Fields)
-		for ; e < n && search.Fields[e] != name; e++ {
-			// lookup: field specified ?
-		}
-		if e < n {
-			return e // FOUND !
-		}
-		return -1 // NOT FOUND !
-	}
-	switch peer.Type {
-	case "chat":
-		// Hide: { chat }; Input given, will be the same for all messages !
-		e := indexField("chat")
-		for e >= 0 {
-			search.Fields = append(
-				search.Fields[0:e], search.Fields[e+1:]...,
-			)
-			e = indexField("chat")
-		}
-	default:
-		// [ bot, user, viber, telegram, ... ]
-		// Query: { chat }; To be able to distinguish individual chat dialogs
-		if indexField("chat") < 0 {
-			search.Fields = append(search.Fields, "chat")
-		}
-	}
-	// endregion: ----- Authorization -----
 
-	// ------- Filter(s) ------- //
+	if chatId := req.GetChatId(); chatId != "" {
+		search.FilterAND("chat.id", chatId)
+	}
+
 	if vs := req.Offset; vs != nil {
 		search.FilterAND("offset", vs)
 	}
@@ -224,8 +150,6 @@ func (srv *ContactChatHistoryService) GetContactChatHistory(ctx context.Context,
 	res.Peers = list.Peers
 	res.Page = list.Page
 	res.Next = list.Next
-
-	// TODO: Output sanitizer ...
 
 	return nil
 }

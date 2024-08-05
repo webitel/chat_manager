@@ -170,11 +170,10 @@ func (c *sqlxRepository) GetContactChatHistory(req *app.SearchOptions) (*api.Get
 	defer rows.Close()
 
 	var page api.GetContactChatHistoryResponse
-	err = cte.scanRows(rows, &page)
+	err = cte.scanRows(rows, req, &page)
 	if err != nil {
 		return nil, err
 	}
-
 	return &page, nil
 }
 

@@ -736,6 +736,94 @@
         ]
       }
     },
+    "/contacts/{contact_id}/chat/messages": {
+      "get": {
+        "operationId": "ContactsChatCatalog_GetContactChatHistory2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/webitel.chat.GetContactChatHistoryResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "contact_id",
+            "description": "Contact identificator",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "offset.id",
+            "description": "Messages ONLY starting from the specified message ID",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "offset.date",
+            "description": "Messages ONLY been sent before the specified epochtime(milli).",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "size",
+            "description": "Number of messages to return.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "q",
+            "description": "Search term: message.text",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "fields",
+            "description": "Fields to return into result.",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "chat_id",
+            "description": "Unique chat dialog",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "group[string][string]",
+            "description": "This is a request variable of the map type. The query format is \"map_name[key]=value\", e.g. If the map name is Age, the key type is string, and the value type is integer, the query parameter is expressed as Age[\"bob\"]=18",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ContactsChatCatalog"
+        ]
+      }
+    },
     "/contacts/{contact_id}/chat/{chat_id}/messages": {
       "get": {
         "operationId": "ContactsChatCatalog_GetContactChatHistory",
@@ -779,8 +867,15 @@
             "format": "int64"
           },
           {
-            "name": "limit",
+            "name": "size",
             "description": "Number of messages to return.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "page",
             "in": "query",
             "required": false,
             "type": "integer",
