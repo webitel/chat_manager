@@ -60,6 +60,8 @@ type ChatService interface {
 	GetConversations(ctx context.Context, in *GetConversationsRequest, opts ...client.CallOption) (*GetConversationsResponse, error)
 	GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, opts ...client.CallOption) (*GetConversationByIDResponse, error)
 	GetHistoryMessages(ctx context.Context, in *GetHistoryMessagesRequest, opts ...client.CallOption) (*GetHistoryMessagesResponse, error)
+	// [WTEL-4695] crutch
+	SaveAgentJoinMessage(ctx context.Context, in *SaveAgentJoinMessageRequest, opts ...client.CallOption) (*SaveAgentJoinMessageResponse, error)
 	// API /v1
 	SetVariables(ctx context.Context, in *SetVariablesRequest, opts ...client.CallOption) (*ChatVariablesResponse, error)
 	BlindTransfer(ctx context.Context, in *ChatTransferRequest, opts ...client.CallOption) (*ChatTransferResponse, error)
@@ -227,6 +229,16 @@ func (c *chatService) GetHistoryMessages(ctx context.Context, in *GetHistoryMess
 	return out, nil
 }
 
+func (c *chatService) SaveAgentJoinMessage(ctx context.Context, in *SaveAgentJoinMessageRequest, opts ...client.CallOption) (*SaveAgentJoinMessageResponse, error) {
+	req := c.c.NewRequest(c.name, "ChatService.SaveAgentJoinMessage", in)
+	out := new(SaveAgentJoinMessageResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *chatService) SetVariables(ctx context.Context, in *SetVariablesRequest, opts ...client.CallOption) (*ChatVariablesResponse, error) {
 	req := c.c.NewRequest(c.name, "ChatService.SetVariables", in)
 	out := new(ChatVariablesResponse)
@@ -274,6 +286,8 @@ type ChatServiceHandler interface {
 	GetConversations(context.Context, *GetConversationsRequest, *GetConversationsResponse) error
 	GetConversationByID(context.Context, *GetConversationByIDRequest, *GetConversationByIDResponse) error
 	GetHistoryMessages(context.Context, *GetHistoryMessagesRequest, *GetHistoryMessagesResponse) error
+	// [WTEL-4695] crutch
+	SaveAgentJoinMessage(context.Context, *SaveAgentJoinMessageRequest, *SaveAgentJoinMessageResponse) error
 	// API /v1
 	SetVariables(context.Context, *SetVariablesRequest, *ChatVariablesResponse) error
 	BlindTransfer(context.Context, *ChatTransferRequest, *ChatTransferResponse) error
@@ -296,6 +310,7 @@ func RegisterChatServiceHandler(s server.Server, hdlr ChatServiceHandler, opts .
 		GetConversations(ctx context.Context, in *GetConversationsRequest, out *GetConversationsResponse) error
 		GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, out *GetConversationByIDResponse) error
 		GetHistoryMessages(ctx context.Context, in *GetHistoryMessagesRequest, out *GetHistoryMessagesResponse) error
+		SaveAgentJoinMessage(ctx context.Context, in *SaveAgentJoinMessageRequest, out *SaveAgentJoinMessageResponse) error
 		SetVariables(ctx context.Context, in *SetVariablesRequest, out *ChatVariablesResponse) error
 		BlindTransfer(ctx context.Context, in *ChatTransferRequest, out *ChatTransferResponse) error
 	}
@@ -368,6 +383,10 @@ func (h *chatServiceHandler) GetConversationByID(ctx context.Context, in *GetCon
 
 func (h *chatServiceHandler) GetHistoryMessages(ctx context.Context, in *GetHistoryMessagesRequest, out *GetHistoryMessagesResponse) error {
 	return h.ChatServiceHandler.GetHistoryMessages(ctx, in, out)
+}
+
+func (h *chatServiceHandler) SaveAgentJoinMessage(ctx context.Context, in *SaveAgentJoinMessageRequest, out *SaveAgentJoinMessageResponse) error {
+	return h.ChatServiceHandler.SaveAgentJoinMessage(ctx, in, out)
 }
 
 func (h *chatServiceHandler) SetVariables(ctx context.Context, in *SetVariablesRequest, out *ChatVariablesResponse) error {

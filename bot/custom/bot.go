@@ -266,6 +266,10 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 			return nil
 		}
 		webhookMessage.Text = text
+		_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{ConversationId: notify.Chat.ChatID, Message: message})
+		if err != nil {
+			return err
+		}
 
 	case "left":
 

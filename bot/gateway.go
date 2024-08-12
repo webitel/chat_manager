@@ -376,13 +376,12 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 	)
 
 	if contact == nil {
-		if chatID != "" {
-			contact = &Account{
-				Channel: c.GetProvider(),
-				Contact: chatID,
-			}
-		} else {
+		if chatID == "" {
 			return nil, errors2.New("not enough information to form/get channel")
+		}
+		contact = &Account{
+			Channel: c.GetProvider(),
+			Contact: chatID,
 		}
 	}
 

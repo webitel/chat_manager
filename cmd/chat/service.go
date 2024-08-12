@@ -43,6 +43,8 @@ type Service interface {
 	GetHistoryMessages(ctx context.Context, req *pb.GetHistoryMessagesRequest, res *pb.GetHistoryMessagesResponse) error
 
 	SendMessage(ctx context.Context, req *pb.SendMessageRequest, res *pb.SendMessageResponse) error
+	// [WTEL-4695]: duct tape, please make me normal when chats will be rewrited (agent join message knows only webitel.chat.bot)
+	SaveAgentJoinMessage(context.Context, *pb.SaveAgentJoinMessageRequest, *pb.SaveAgentJoinMessageResponse) error
 	DeleteMessage(ctx context.Context, req *pb.DeleteMessageRequest, res *pb.HistoryMessage) error
 	StartConversation(ctx context.Context, req *pb.StartConversationRequest, res *pb.StartConversationResponse) error
 	CloseConversation(ctx context.Context, req *pb.CloseConversationRequest, res *pb.CloseConversationResponse) error
@@ -320,6 +322,97 @@ func (s *chatService) SendMessage(
 	// NOTE: normalized during .saveMessage() function
 	sentMessage := sendMessage
 	res.Message = sentMessage
+
+	return nil
+}
+
+func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pb.SaveAgentJoinMessageRequest, rsp *pb.SaveAgentJoinMessageResponse) error {
+
+	var (
+		sendMessage  = req.GetMessage()
+		senderFromID = int64(0)
+		senderChatID = ""
+		targetChatID = req.GetConversationId()
+	)
+
+	s.log.Debug().
+		Str("channel_id", senderChatID).
+		Str("conversation_id", targetChatID).
+		Int64("auth_user_id", senderFromID).
+		Str("type", sendMessage.GetType()).
+		Str("text", sendMessage.GetText()).
+		// Bool("file", sendMessage.GetFile() != nil).
+		Interface("file", sendMessage.GetFile()).
+		Msg("SEND Message")
+
+	if senderChatID == "" {
+		senderChatID = targetChatID
+		if senderChatID == "" {
+			return errors.BadRequest(
+				"chat.send.channel.from.required",
+				"send: message sender chat ID required",
+			)
+		}
+	}
+
+	// region: lookup target chat session by unique sender chat channel id
+	chat, err := s.repo.GetSession(ctx, senderChatID)
+
+	if err != nil {
+		// lookup operation error
+		return err
+	}
+
+	if chat == nil || chat.ID != senderChatID {
+		// sender channel ID not found
+		return errors.BadRequest(
+			"chat.send.channel.from.not_found",
+			"send: FROM channel ID=%s sender not found or been closed",
+			senderChatID,
+		)
+	}
+
+	if senderFromID != 0 && chat.User.ID != senderFromID {
+		// mismatch sender contact ID
+		return errors.BadRequest(
+			"chat.send.channel.user.mismatch",
+			"send: FROM channel ID=%s user ID=%d mismatch",
+			senderChatID, senderFromID,
+		)
+	}
+
+	if chat.IsClosed() {
+		// sender channel is already closed !
+		return errors.BadRequest(
+			"chat.send.channel.from.closed",
+			"send: FROM chat channel ID=%s is closed",
+			senderChatID,
+		)
+	}
+
+	sender := chat.Channel
+
+	// Validate and normalize message to send
+	// Mostly also stores non-service-level message to persistent DB
+	_, err = s.saveMessage(ctx, nil, sender, sendMessage)
+
+	if err != nil {
+		// Failed to store message or validation error !
+		return err
+	}
+
+	// // show chat room state
+	// data, _ := json.MarshalIndent(chat, "", "  ")
+	// s.log.Debug().Msg(string(data))
+
+	// PERFORM message publish|broadcast
+	_, err = s.notifyAgentJoinToAllMembers(ctx, chat, sendMessage)
+
+	if err != nil {
+		s.log.Error().Err(err).
+			Msg("FAILED Notify Websocket")
+		return err
+	}
 
 	return nil
 }
@@ -2870,6 +2963,146 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 		c.log.Warn().Str("error", "no any recepients").Msg("SEND")
 	}
 
+	return sent, nil // err
+}
+
+func (c *chatService) notifyAgentJoinToAllMembers(ctx context.Context, chatRoom *app.Session, notify *pb.Message) (sent int, err error) {
+	// FROM
+	sender := chatRoom.Channel
+	// TO
+	if len(chatRoom.Members) == 0 {
+		return 0, nil // NO ANY recepient(s) !
+	}
+
+	// publish
+	var (
+		// data   []byte // TO: websocket
+		data = struct {
+			textgate *pb.Message // messages-bot (text:gateway)
+			workflow *pb.Message // flow_manager (bot:schema)
+			wesocket []byte      // engine (agent:user)
+		}{}
+		header map[string]string
+	)
+	// Broadcast message to every member in the room,
+	// in front of chaRoom.Channel as a sender !
+	members := make([]*app.Channel, 1+len(chatRoom.Members))
+
+	members[0] = sender
+	copy(members[1:], chatRoom.Members)
+
+	for _, member := range members { // chatRoom.Members {
+
+		if member.IsClosed() {
+			continue // omit send TO channel: closed !
+		}
+
+		switch member.Channel {
+
+		case "websocket": // TO: engine (internal)
+			// s.eventRouter.sendEventToWebitelUser()
+			// NOTE: if sender is an internal chat@channel user (operator)
+			//       we publish message for him (author) as a member too
+			//       to be able to detect chat updates on other browser tabs ...
+			if data.wesocket == nil {
+				// basic
+				timestamp := notify.UpdatedAt
+				if timestamp == 0 {
+					timestamp = notify.CreatedAt
+				}
+				notice := events.MessageEvent{
+					BaseEvent: events.BaseEvent{
+						ConversationID: sender.Chat.Invite, // hidden channel.conversation_id
+						Timestamp:      timestamp,          // millis
+					},
+					Message: events.Message{
+						ID:        notify.Id,
+						ChannelID: sender.Chat.ID,
+						Type:      notify.Type,
+						Text:      notify.Text,
+						// File:   notify.File,
+						CreatedAt: notify.CreatedAt, // NEW
+						UpdatedAt: notify.UpdatedAt, // EDITED
+
+						ReplyToMessageID: notify.ReplyToMessageId,
+						MessageForwarded: events.MessageForwarded{
+							// original message/sender details ...
+							ForwardFromChatID:    notify.ForwardFromChatId,
+							ForwardFromMessageID: notify.ForwardFromMessageId,
+							ForwardSenderName:    "",
+							ForwardDate:          0,
+						},
+					},
+				}
+				// File
+				if doc := notify.File; doc != nil {
+					notice.File = &events.File{
+						ID:   doc.Id,
+						URL:  doc.Url,
+						Type: doc.Mime,
+						Size: doc.Size,
+						Name: doc.Name,
+					}
+				}
+				// Postback. Button click[ed].
+				// Webitel User (Agent) side.
+				if btn := notify.Postback; btn != nil {
+					notice.Postback = btn
+					if notice.Text == "" {
+						notice.Text = btn.Text
+					}
+				}
+				// NOTE: Here, keyboard is not supported
+				// because customer(s) can't send buttons
+
+				// Contact
+				if contact := notify.Contact; contact != nil {
+					notice.Contact = &events.Contact{
+						ID:        contact.Id,
+						FirstName: contact.FirstName,
+						LastName:  contact.LastName,
+						Phone:     contact.Contact,
+					}
+				}
+				// init once
+				data.wesocket, _ = json.Marshal(notice)
+				header = map[string]string{
+					"content_type": "text/json",
+				}
+			}
+
+			agent := broker.DefaultBroker // service.Options().Broker
+			err = agent.Publish(fmt.Sprintf("event.%s.%d.%d",
+				events.MessageEventType, member.DomainID, member.User.ID,
+			), &broker.Message{
+				Header: header,
+				Body:   data.wesocket,
+			})
+
+		case "chatflow": // TO: workflow (internal)
+
+			if member == sender {
+				continue
+			}
+
+			if data.workflow == nil {
+				// proto.Clone(notify).(*pb.Message)
+				send := *(notify) // shallowcopy
+				// Postback. Button click[ed].
+				// Webitel Bot (Schema) side.
+				if btn := notify.Postback; btn != nil {
+					if code := btn.Code; code != "" {
+						send.Text = code // reply_to
+					}
+				}
+				data.workflow = &send
+			}
+
+			err = c.flowClient.SendMessageV1(
+				member, data.workflow,
+			)
+		}
+	}
 	return sent, nil // err
 }
 

@@ -33,6 +33,9 @@ service ChatService {
   rpc GetConversationByID(GetConversationByIDRequest) returns (GetConversationByIDResponse) {}
   rpc GetHistoryMessages(GetHistoryMessagesRequest) returns (GetHistoryMessagesResponse) {}
 
+  // [WTEL-4695] crutch
+  rpc SaveAgentJoinMessage(SaveAgentJoinMessageRequest) returns (SaveAgentJoinMessageResponse) {}
+
   // API /v1
   rpc SetVariables(SetVariablesRequest) returns (ChatVariablesResponse) {}
   rpc BlindTransfer(ChatTransferRequest) returns (ChatTransferResponse) {}
@@ -108,6 +111,15 @@ message UpdateChannelRequest {
 }
 
 message UpdateChannelResponse {}
+
+
+message SaveAgentJoinMessageRequest {
+  string conversation_id = 1;
+  Message message = 2;
+}
+
+message SaveAgentJoinMessageResponse {
+}
 
 message HistoryMessage {
   int64 id = 1;

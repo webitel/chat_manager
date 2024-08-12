@@ -767,6 +767,99 @@ func (*UpdateChannelResponse) Descriptor() ([]byte, []int) {
 	return file_chat_proto_rawDescGZIP(), []int{7}
 }
 
+type SaveAgentJoinMessageRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	ConversationId string   `protobuf:"bytes,1,opt,name=conversation_id,json=conversationId,proto3" json:"conversation_id,omitempty"`
+	Message        *Message `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+}
+
+func (x *SaveAgentJoinMessageRequest) Reset() {
+	*x = SaveAgentJoinMessageRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_chat_proto_msgTypes[8]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *SaveAgentJoinMessageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveAgentJoinMessageRequest) ProtoMessage() {}
+
+func (x *SaveAgentJoinMessageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_chat_proto_msgTypes[8]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveAgentJoinMessageRequest.ProtoReflect.Descriptor instead.
+func (*SaveAgentJoinMessageRequest) Descriptor() ([]byte, []int) {
+	return file_chat_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *SaveAgentJoinMessageRequest) GetConversationId() string {
+	if x != nil {
+		return x.ConversationId
+	}
+	return ""
+}
+
+func (x *SaveAgentJoinMessageRequest) GetMessage() *Message {
+	if x != nil {
+		return x.Message
+	}
+	return nil
+}
+
+type SaveAgentJoinMessageResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *SaveAgentJoinMessageResponse) Reset() {
+	*x = SaveAgentJoinMessageResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_chat_proto_msgTypes[9]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *SaveAgentJoinMessageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveAgentJoinMessageResponse) ProtoMessage() {}
+
+func (x *SaveAgentJoinMessageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_chat_proto_msgTypes[9]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveAgentJoinMessageResponse.ProtoReflect.Descriptor instead.
+func (*SaveAgentJoinMessageResponse) Descriptor() ([]byte, []int) {
+	return file_chat_proto_rawDescGZIP(), []int{9}
+}
+
 type HistoryMessage struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -787,7 +880,7 @@ type HistoryMessage struct {
 func (x *HistoryMessage) Reset() {
 	*x = HistoryMessage{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[8]
+		mi := &file_chat_proto_msgTypes[10]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -800,7 +893,7 @@ func (x *HistoryMessage) String() string {
 func (*HistoryMessage) ProtoMessage() {}
 
 func (x *HistoryMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[8]
+	mi := &file_chat_proto_msgTypes[10]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -813,7 +906,7 @@ func (x *HistoryMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HistoryMessage.ProtoReflect.Descriptor instead.
 func (*HistoryMessage) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{8}
+	return file_chat_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *HistoryMessage) GetId() int64 {
@@ -877,7 +970,7 @@ type WaitMessageRequest struct {
 func (x *WaitMessageRequest) Reset() {
 	*x = WaitMessageRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[9]
+		mi := &file_chat_proto_msgTypes[11]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -890,7 +983,7 @@ func (x *WaitMessageRequest) String() string {
 func (*WaitMessageRequest) ProtoMessage() {}
 
 func (x *WaitMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[9]
+	mi := &file_chat_proto_msgTypes[11]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -903,7 +996,7 @@ func (x *WaitMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WaitMessageRequest.ProtoReflect.Descriptor instead.
 func (*WaitMessageRequest) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{9}
+	return file_chat_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *WaitMessageRequest) GetConversationId() string {
@@ -932,7 +1025,7 @@ type WaitMessageResponse struct {
 func (x *WaitMessageResponse) Reset() {
 	*x = WaitMessageResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[10]
+		mi := &file_chat_proto_msgTypes[12]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -945,7 +1038,7 @@ func (x *WaitMessageResponse) String() string {
 func (*WaitMessageResponse) ProtoMessage() {}
 
 func (x *WaitMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[10]
+	mi := &file_chat_proto_msgTypes[12]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -958,7 +1051,7 @@ func (x *WaitMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WaitMessageResponse.ProtoReflect.Descriptor instead.
 func (*WaitMessageResponse) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{10}
+	return file_chat_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *WaitMessageResponse) GetTimeoutSec() int64 {
@@ -988,7 +1081,7 @@ type CheckSessionRequest struct {
 func (x *CheckSessionRequest) Reset() {
 	*x = CheckSessionRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[11]
+		mi := &file_chat_proto_msgTypes[13]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1001,7 +1094,7 @@ func (x *CheckSessionRequest) String() string {
 func (*CheckSessionRequest) ProtoMessage() {}
 
 func (x *CheckSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[11]
+	mi := &file_chat_proto_msgTypes[13]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1014,7 +1107,7 @@ func (x *CheckSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckSessionRequest.ProtoReflect.Descriptor instead.
 func (*CheckSessionRequest) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{11}
+	return file_chat_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CheckSessionRequest) GetExternalId() string {
@@ -1055,7 +1148,7 @@ type CheckSessionResponse struct {
 func (x *CheckSessionResponse) Reset() {
 	*x = CheckSessionResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[12]
+		mi := &file_chat_proto_msgTypes[14]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1068,7 +1161,7 @@ func (x *CheckSessionResponse) String() string {
 func (*CheckSessionResponse) ProtoMessage() {}
 
 func (x *CheckSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[12]
+	mi := &file_chat_proto_msgTypes[14]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1081,7 +1174,7 @@ func (x *CheckSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckSessionResponse.ProtoReflect.Descriptor instead.
 func (*CheckSessionResponse) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{12}
+	return file_chat_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CheckSessionResponse) GetExists() bool {
@@ -1136,7 +1229,7 @@ type SendMessageRequest struct {
 func (x *SendMessageRequest) Reset() {
 	*x = SendMessageRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[13]
+		mi := &file_chat_proto_msgTypes[15]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1149,7 +1242,7 @@ func (x *SendMessageRequest) String() string {
 func (*SendMessageRequest) ProtoMessage() {}
 
 func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[13]
+	mi := &file_chat_proto_msgTypes[15]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1162,7 +1255,7 @@ func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMessageRequest.ProtoReflect.Descriptor instead.
 func (*SendMessageRequest) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{13}
+	return file_chat_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *SendMessageRequest) GetMessage() *Message {
@@ -1205,7 +1298,7 @@ type SendMessageResponse struct {
 func (x *SendMessageResponse) Reset() {
 	*x = SendMessageResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[14]
+		mi := &file_chat_proto_msgTypes[16]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1218,7 +1311,7 @@ func (x *SendMessageResponse) String() string {
 func (*SendMessageResponse) ProtoMessage() {}
 
 func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[14]
+	mi := &file_chat_proto_msgTypes[16]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1231,7 +1324,7 @@ func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMessageResponse.ProtoReflect.Descriptor instead.
 func (*SendMessageResponse) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{14}
+	return file_chat_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *SendMessageResponse) GetMessage() *Message {
@@ -1259,7 +1352,7 @@ type StartConversationRequest struct {
 func (x *StartConversationRequest) Reset() {
 	*x = StartConversationRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[15]
+		mi := &file_chat_proto_msgTypes[17]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1272,7 +1365,7 @@ func (x *StartConversationRequest) String() string {
 func (*StartConversationRequest) ProtoMessage() {}
 
 func (x *StartConversationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[15]
+	mi := &file_chat_proto_msgTypes[17]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1285,7 +1378,7 @@ func (x *StartConversationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartConversationRequest.ProtoReflect.Descriptor instead.
 func (*StartConversationRequest) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{15}
+	return file_chat_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *StartConversationRequest) GetUser() *User {
@@ -1337,7 +1430,7 @@ type StartConversationResponse struct {
 func (x *StartConversationResponse) Reset() {
 	*x = StartConversationResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[16]
+		mi := &file_chat_proto_msgTypes[18]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1350,7 +1443,7 @@ func (x *StartConversationResponse) String() string {
 func (*StartConversationResponse) ProtoMessage() {}
 
 func (x *StartConversationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[16]
+	mi := &file_chat_proto_msgTypes[18]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1363,7 +1456,7 @@ func (x *StartConversationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartConversationResponse.ProtoReflect.Descriptor instead.
 func (*StartConversationResponse) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{16}
+	return file_chat_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *StartConversationResponse) GetConversationId() string {
@@ -1402,7 +1495,7 @@ type CloseConversationRequest struct {
 func (x *CloseConversationRequest) Reset() {
 	*x = CloseConversationRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[17]
+		mi := &file_chat_proto_msgTypes[19]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1415,7 +1508,7 @@ func (x *CloseConversationRequest) String() string {
 func (*CloseConversationRequest) ProtoMessage() {}
 
 func (x *CloseConversationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[17]
+	mi := &file_chat_proto_msgTypes[19]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1428,7 +1521,7 @@ func (x *CloseConversationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseConversationRequest.ProtoReflect.Descriptor instead.
 func (*CloseConversationRequest) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{17}
+	return file_chat_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *CloseConversationRequest) GetConversationId() string {
@@ -1468,7 +1561,7 @@ type CloseConversationResponse struct {
 func (x *CloseConversationResponse) Reset() {
 	*x = CloseConversationResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[18]
+		mi := &file_chat_proto_msgTypes[20]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1481,7 +1574,7 @@ func (x *CloseConversationResponse) String() string {
 func (*CloseConversationResponse) ProtoMessage() {}
 
 func (x *CloseConversationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[18]
+	mi := &file_chat_proto_msgTypes[20]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1494,7 +1587,7 @@ func (x *CloseConversationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseConversationResponse.ProtoReflect.Descriptor instead.
 func (*CloseConversationResponse) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{18}
+	return file_chat_proto_rawDescGZIP(), []int{20}
 }
 
 // Accept Invitation !
@@ -1510,7 +1603,7 @@ type JoinConversationRequest struct {
 func (x *JoinConversationRequest) Reset() {
 	*x = JoinConversationRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[19]
+		mi := &file_chat_proto_msgTypes[21]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1523,7 +1616,7 @@ func (x *JoinConversationRequest) String() string {
 func (*JoinConversationRequest) ProtoMessage() {}
 
 func (x *JoinConversationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[19]
+	mi := &file_chat_proto_msgTypes[21]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1536,7 +1629,7 @@ func (x *JoinConversationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JoinConversationRequest.ProtoReflect.Descriptor instead.
 func (*JoinConversationRequest) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{19}
+	return file_chat_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *JoinConversationRequest) GetInviteId() string {
@@ -1564,7 +1657,7 @@ type JoinConversationResponse struct {
 func (x *JoinConversationResponse) Reset() {
 	*x = JoinConversationResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[20]
+		mi := &file_chat_proto_msgTypes[22]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1577,7 +1670,7 @@ func (x *JoinConversationResponse) String() string {
 func (*JoinConversationResponse) ProtoMessage() {}
 
 func (x *JoinConversationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[20]
+	mi := &file_chat_proto_msgTypes[22]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1590,7 +1683,7 @@ func (x *JoinConversationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JoinConversationResponse.ProtoReflect.Descriptor instead.
 func (*JoinConversationResponse) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{20}
+	return file_chat_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *JoinConversationResponse) GetChannelId() string {
@@ -1614,7 +1707,7 @@ type LeaveConversationRequest struct {
 func (x *LeaveConversationRequest) Reset() {
 	*x = LeaveConversationRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[21]
+		mi := &file_chat_proto_msgTypes[23]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1627,7 +1720,7 @@ func (x *LeaveConversationRequest) String() string {
 func (*LeaveConversationRequest) ProtoMessage() {}
 
 func (x *LeaveConversationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[21]
+	mi := &file_chat_proto_msgTypes[23]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1640,7 +1733,7 @@ func (x *LeaveConversationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeaveConversationRequest.ProtoReflect.Descriptor instead.
 func (*LeaveConversationRequest) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{21}
+	return file_chat_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *LeaveConversationRequest) GetChannelId() string {
@@ -1680,7 +1773,7 @@ type LeaveConversationResponse struct {
 func (x *LeaveConversationResponse) Reset() {
 	*x = LeaveConversationResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[22]
+		mi := &file_chat_proto_msgTypes[24]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1693,7 +1786,7 @@ func (x *LeaveConversationResponse) String() string {
 func (*LeaveConversationResponse) ProtoMessage() {}
 
 func (x *LeaveConversationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[22]
+	mi := &file_chat_proto_msgTypes[24]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1706,7 +1799,7 @@ func (x *LeaveConversationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeaveConversationResponse.ProtoReflect.Descriptor instead.
 func (*LeaveConversationResponse) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{22}
+	return file_chat_proto_rawDescGZIP(), []int{24}
 }
 
 type InviteToConversationRequest struct {
@@ -1729,7 +1822,7 @@ type InviteToConversationRequest struct {
 func (x *InviteToConversationRequest) Reset() {
 	*x = InviteToConversationRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[23]
+		mi := &file_chat_proto_msgTypes[25]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1742,7 +1835,7 @@ func (x *InviteToConversationRequest) String() string {
 func (*InviteToConversationRequest) ProtoMessage() {}
 
 func (x *InviteToConversationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[23]
+	mi := &file_chat_proto_msgTypes[25]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1755,7 +1848,7 @@ func (x *InviteToConversationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InviteToConversationRequest.ProtoReflect.Descriptor instead.
 func (*InviteToConversationRequest) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{23}
+	return file_chat_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *InviteToConversationRequest) GetUser() *User {
@@ -1832,7 +1925,7 @@ type InviteToConversationResponse struct {
 func (x *InviteToConversationResponse) Reset() {
 	*x = InviteToConversationResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[24]
+		mi := &file_chat_proto_msgTypes[26]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1845,7 +1938,7 @@ func (x *InviteToConversationResponse) String() string {
 func (*InviteToConversationResponse) ProtoMessage() {}
 
 func (x *InviteToConversationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[24]
+	mi := &file_chat_proto_msgTypes[26]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1858,7 +1951,7 @@ func (x *InviteToConversationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InviteToConversationResponse.ProtoReflect.Descriptor instead.
 func (*InviteToConversationResponse) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{24}
+	return file_chat_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *InviteToConversationResponse) GetInviteId() string {
@@ -1882,7 +1975,7 @@ type DeclineInvitationRequest struct {
 func (x *DeclineInvitationRequest) Reset() {
 	*x = DeclineInvitationRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[25]
+		mi := &file_chat_proto_msgTypes[27]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1895,7 +1988,7 @@ func (x *DeclineInvitationRequest) String() string {
 func (*DeclineInvitationRequest) ProtoMessage() {}
 
 func (x *DeclineInvitationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[25]
+	mi := &file_chat_proto_msgTypes[27]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1908,7 +2001,7 @@ func (x *DeclineInvitationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeclineInvitationRequest.ProtoReflect.Descriptor instead.
 func (*DeclineInvitationRequest) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{25}
+	return file_chat_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *DeclineInvitationRequest) GetInviteId() string {
@@ -1948,7 +2041,7 @@ type DeclineInvitationResponse struct {
 func (x *DeclineInvitationResponse) Reset() {
 	*x = DeclineInvitationResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[26]
+		mi := &file_chat_proto_msgTypes[28]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1961,7 +2054,7 @@ func (x *DeclineInvitationResponse) String() string {
 func (*DeclineInvitationResponse) ProtoMessage() {}
 
 func (x *DeclineInvitationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[26]
+	mi := &file_chat_proto_msgTypes[28]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1974,7 +2067,7 @@ func (x *DeclineInvitationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeclineInvitationResponse.ProtoReflect.Descriptor instead.
 func (*DeclineInvitationResponse) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{26}
+	return file_chat_proto_rawDescGZIP(), []int{28}
 }
 
 type DeleteMessageRequest struct {
@@ -1997,7 +2090,7 @@ type DeleteMessageRequest struct {
 func (x *DeleteMessageRequest) Reset() {
 	*x = DeleteMessageRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[27]
+		mi := &file_chat_proto_msgTypes[29]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2010,7 +2103,7 @@ func (x *DeleteMessageRequest) String() string {
 func (*DeleteMessageRequest) ProtoMessage() {}
 
 func (x *DeleteMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[27]
+	mi := &file_chat_proto_msgTypes[29]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2023,7 +2116,7 @@ func (x *DeleteMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMessageRequest.ProtoReflect.Descriptor instead.
 func (*DeleteMessageRequest) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{27}
+	return file_chat_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *DeleteMessageRequest) GetId() int64 {
@@ -2072,7 +2165,7 @@ type DeleteMessageResponse struct {
 func (x *DeleteMessageResponse) Reset() {
 	*x = DeleteMessageResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[28]
+		mi := &file_chat_proto_msgTypes[30]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2085,7 +2178,7 @@ func (x *DeleteMessageResponse) String() string {
 func (*DeleteMessageResponse) ProtoMessage() {}
 
 func (x *DeleteMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[28]
+	mi := &file_chat_proto_msgTypes[30]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2098,7 +2191,7 @@ func (x *DeleteMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMessageResponse.ProtoReflect.Descriptor instead.
 func (*DeleteMessageResponse) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{28}
+	return file_chat_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *DeleteMessageResponse) GetId() []int64 {
@@ -2130,7 +2223,7 @@ type GetConversationsRequest struct {
 func (x *GetConversationsRequest) Reset() {
 	*x = GetConversationsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[29]
+		mi := &file_chat_proto_msgTypes[31]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2143,7 +2236,7 @@ func (x *GetConversationsRequest) String() string {
 func (*GetConversationsRequest) ProtoMessage() {}
 
 func (x *GetConversationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[29]
+	mi := &file_chat_proto_msgTypes[31]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2156,7 +2249,7 @@ func (x *GetConversationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConversationsRequest.ProtoReflect.Descriptor instead.
 func (*GetConversationsRequest) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{29}
+	return file_chat_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *GetConversationsRequest) GetId() string {
@@ -2235,7 +2328,7 @@ type GetConversationsResponse struct {
 func (x *GetConversationsResponse) Reset() {
 	*x = GetConversationsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[30]
+		mi := &file_chat_proto_msgTypes[32]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2248,7 +2341,7 @@ func (x *GetConversationsResponse) String() string {
 func (*GetConversationsResponse) ProtoMessage() {}
 
 func (x *GetConversationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[30]
+	mi := &file_chat_proto_msgTypes[32]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2261,7 +2354,7 @@ func (x *GetConversationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConversationsResponse.ProtoReflect.Descriptor instead.
 func (*GetConversationsResponse) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{30}
+	return file_chat_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *GetConversationsResponse) GetPage() int32 {
@@ -2296,7 +2389,7 @@ type GetConversationByIDRequest struct {
 func (x *GetConversationByIDRequest) Reset() {
 	*x = GetConversationByIDRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[31]
+		mi := &file_chat_proto_msgTypes[33]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2309,7 +2402,7 @@ func (x *GetConversationByIDRequest) String() string {
 func (*GetConversationByIDRequest) ProtoMessage() {}
 
 func (x *GetConversationByIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[31]
+	mi := &file_chat_proto_msgTypes[33]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2322,7 +2415,7 @@ func (x *GetConversationByIDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConversationByIDRequest.ProtoReflect.Descriptor instead.
 func (*GetConversationByIDRequest) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{31}
+	return file_chat_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *GetConversationByIDRequest) GetId() string {
@@ -2343,7 +2436,7 @@ type GetConversationByIDResponse struct {
 func (x *GetConversationByIDResponse) Reset() {
 	*x = GetConversationByIDResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[32]
+		mi := &file_chat_proto_msgTypes[34]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2356,7 +2449,7 @@ func (x *GetConversationByIDResponse) String() string {
 func (*GetConversationByIDResponse) ProtoMessage() {}
 
 func (x *GetConversationByIDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[32]
+	mi := &file_chat_proto_msgTypes[34]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2369,7 +2462,7 @@ func (x *GetConversationByIDResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConversationByIDResponse.ProtoReflect.Descriptor instead.
 func (*GetConversationByIDResponse) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{32}
+	return file_chat_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *GetConversationByIDResponse) GetItem() *Conversation {
@@ -2398,7 +2491,7 @@ type GetHistoryMessagesRequest struct {
 func (x *GetHistoryMessagesRequest) Reset() {
 	*x = GetHistoryMessagesRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[33]
+		mi := &file_chat_proto_msgTypes[35]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2411,7 +2504,7 @@ func (x *GetHistoryMessagesRequest) String() string {
 func (*GetHistoryMessagesRequest) ProtoMessage() {}
 
 func (x *GetHistoryMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[33]
+	mi := &file_chat_proto_msgTypes[35]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2424,7 +2517,7 @@ func (x *GetHistoryMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetHistoryMessagesRequest.ProtoReflect.Descriptor instead.
 func (*GetHistoryMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{33}
+	return file_chat_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *GetHistoryMessagesRequest) GetId() int64 {
@@ -2482,7 +2575,7 @@ type GetHistoryMessagesResponse struct {
 func (x *GetHistoryMessagesResponse) Reset() {
 	*x = GetHistoryMessagesResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[34]
+		mi := &file_chat_proto_msgTypes[36]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2495,7 +2588,7 @@ func (x *GetHistoryMessagesResponse) String() string {
 func (*GetHistoryMessagesResponse) ProtoMessage() {}
 
 func (x *GetHistoryMessagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[34]
+	mi := &file_chat_proto_msgTypes[36]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2508,7 +2601,7 @@ func (x *GetHistoryMessagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetHistoryMessagesResponse.ProtoReflect.Descriptor instead.
 func (*GetHistoryMessagesResponse) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{34}
+	return file_chat_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *GetHistoryMessagesResponse) GetPage() int32 {
@@ -2549,7 +2642,7 @@ type SetVariablesRequest struct {
 func (x *SetVariablesRequest) Reset() {
 	*x = SetVariablesRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[35]
+		mi := &file_chat_proto_msgTypes[37]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2562,7 +2655,7 @@ func (x *SetVariablesRequest) String() string {
 func (*SetVariablesRequest) ProtoMessage() {}
 
 func (x *SetVariablesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[35]
+	mi := &file_chat_proto_msgTypes[37]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2575,7 +2668,7 @@ func (x *SetVariablesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetVariablesRequest.ProtoReflect.Descriptor instead.
 func (*SetVariablesRequest) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{35}
+	return file_chat_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *SetVariablesRequest) GetChannelId() string {
@@ -2606,7 +2699,7 @@ type ChatVariablesResponse struct {
 func (x *ChatVariablesResponse) Reset() {
 	*x = ChatVariablesResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[36]
+		mi := &file_chat_proto_msgTypes[38]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2619,7 +2712,7 @@ func (x *ChatVariablesResponse) String() string {
 func (*ChatVariablesResponse) ProtoMessage() {}
 
 func (x *ChatVariablesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[36]
+	mi := &file_chat_proto_msgTypes[38]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2632,7 +2725,7 @@ func (x *ChatVariablesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatVariablesResponse.ProtoReflect.Descriptor instead.
 func (*ChatVariablesResponse) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{36}
+	return file_chat_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ChatVariablesResponse) GetChannelId() string {
@@ -2672,7 +2765,7 @@ type ChatTransferRequest struct {
 func (x *ChatTransferRequest) Reset() {
 	*x = ChatTransferRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[37]
+		mi := &file_chat_proto_msgTypes[39]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2685,7 +2778,7 @@ func (x *ChatTransferRequest) String() string {
 func (*ChatTransferRequest) ProtoMessage() {}
 
 func (x *ChatTransferRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[37]
+	mi := &file_chat_proto_msgTypes[39]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2698,7 +2791,7 @@ func (x *ChatTransferRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatTransferRequest.ProtoReflect.Descriptor instead.
 func (*ChatTransferRequest) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{37}
+	return file_chat_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ChatTransferRequest) GetConversationId() string {
@@ -2745,7 +2838,7 @@ type ChatTransferResponse struct {
 func (x *ChatTransferResponse) Reset() {
 	*x = ChatTransferResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_chat_proto_msgTypes[38]
+		mi := &file_chat_proto_msgTypes[40]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2758,7 +2851,7 @@ func (x *ChatTransferResponse) String() string {
 func (*ChatTransferResponse) ProtoMessage() {}
 
 func (x *ChatTransferResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chat_proto_msgTypes[38]
+	mi := &file_chat_proto_msgTypes[40]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2771,7 +2864,7 @@ func (x *ChatTransferResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatTransferResponse.ProtoReflect.Descriptor instead.
 func (*ChatTransferResponse) Descriptor() ([]byte, []int) {
-	return file_chat_proto_rawDescGZIP(), []int{38}
+	return file_chat_proto_rawDescGZIP(), []int{40}
 }
 
 var File_chat_proto protoreflect.FileDescriptor
@@ -2865,6 +2958,16 @@ var file_chat_proto_rawDesc = []byte{
 	0x1d, 0x0a, 0x0a, 0x72, 0x65, 0x61, 0x64, 0x5f, 0x75, 0x6e, 0x74, 0x69, 0x6c, 0x18, 0x03, 0x20,
 	0x01, 0x28, 0x03, 0x52, 0x09, 0x72, 0x65, 0x61, 0x64, 0x55, 0x6e, 0x74, 0x69, 0x6c, 0x22, 0x17,
 	0x0a, 0x15, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x43, 0x68, 0x61, 0x6e, 0x6e, 0x65, 0x6c, 0x52,
+	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x7e, 0x0a, 0x1b, 0x53, 0x61, 0x76, 0x65, 0x41,
+	0x67, 0x65, 0x6e, 0x74, 0x4a, 0x6f, 0x69, 0x6e, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x27, 0x0a, 0x0f, 0x63, 0x6f, 0x6e, 0x76, 0x65, 0x72,
+	0x73, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52,
+	0x0e, 0x63, 0x6f, 0x6e, 0x76, 0x65, 0x72, 0x73, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x64, 0x12,
+	0x36, 0x0a, 0x07, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b,
+	0x32, 0x1c, 0x2e, 0x77, 0x65, 0x62, 0x69, 0x74, 0x65, 0x6c, 0x2e, 0x63, 0x68, 0x61, 0x74, 0x2e,
+	0x73, 0x65, 0x72, 0x76, 0x65, 0x72, 0x2e, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x52, 0x07,
+	0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x22, 0x1e, 0x0a, 0x1c, 0x53, 0x61, 0x76, 0x65, 0x41,
+	0x67, 0x65, 0x6e, 0x74, 0x4a, 0x6f, 0x69, 0x6e, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x52,
 	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0xd4, 0x01, 0x0a, 0x0e, 0x48, 0x69, 0x73, 0x74,
 	0x6f, 0x72, 0x79, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64,
 	0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x02, 0x69, 0x64, 0x12, 0x1d, 0x0a, 0x0a, 0x63, 0x68,
@@ -3181,8 +3284,8 @@ var file_chat_proto_rawDesc = []byte{
 	0x5f, 0x74, 0x69, 0x6d, 0x65, 0x6f, 0x75, 0x74, 0x10, 0x02, 0x12, 0x0f, 0x0a, 0x0b, 0x61, 0x67,
 	0x65, 0x6e, 0x74, 0x5f, 0x6c, 0x65, 0x61, 0x76, 0x65, 0x10, 0x03, 0x12, 0x0c, 0x0a, 0x08, 0x74,
 	0x72, 0x61, 0x6e, 0x73, 0x66, 0x65, 0x72, 0x10, 0x04, 0x12, 0x13, 0x0a, 0x0f, 0x73, 0x69, 0x6c,
-	0x65, 0x6e, 0x63, 0x65, 0x5f, 0x74, 0x69, 0x6d, 0x65, 0x6f, 0x75, 0x74, 0x10, 0x05, 0x32, 0xed,
-	0x0e, 0x0a, 0x0b, 0x43, 0x68, 0x61, 0x74, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x62,
+	0x65, 0x6e, 0x63, 0x65, 0x5f, 0x74, 0x69, 0x6d, 0x65, 0x6f, 0x75, 0x74, 0x10, 0x05, 0x32, 0xec,
+	0x0f, 0x0a, 0x0b, 0x43, 0x68, 0x61, 0x74, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x62,
 	0x0a, 0x0b, 0x53, 0x65, 0x6e, 0x64, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x27, 0x2e,
 	0x77, 0x65, 0x62, 0x69, 0x74, 0x65, 0x6c, 0x2e, 0x63, 0x68, 0x61, 0x74, 0x2e, 0x73, 0x65, 0x72,
 	0x76, 0x65, 0x72, 0x2e, 0x53, 0x65, 0x6e, 0x64, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x52,
@@ -3287,24 +3390,32 @@ var file_chat_proto_rawDesc = []byte{
 	0x61, 0x67, 0x65, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2f, 0x2e, 0x77, 0x65,
 	0x62, 0x69, 0x74, 0x65, 0x6c, 0x2e, 0x63, 0x68, 0x61, 0x74, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x65,
 	0x72, 0x2e, 0x47, 0x65, 0x74, 0x48, 0x69, 0x73, 0x74, 0x6f, 0x72, 0x79, 0x4d, 0x65, 0x73, 0x73,
-	0x61, 0x67, 0x65, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x66,
-	0x0a, 0x0c, 0x53, 0x65, 0x74, 0x56, 0x61, 0x72, 0x69, 0x61, 0x62, 0x6c, 0x65, 0x73, 0x12, 0x28,
-	0x2e, 0x77, 0x65, 0x62, 0x69, 0x74, 0x65, 0x6c, 0x2e, 0x63, 0x68, 0x61, 0x74, 0x2e, 0x73, 0x65,
-	0x72, 0x76, 0x65, 0x72, 0x2e, 0x53, 0x65, 0x74, 0x56, 0x61, 0x72, 0x69, 0x61, 0x62, 0x6c, 0x65,
-	0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2a, 0x2e, 0x77, 0x65, 0x62, 0x69, 0x74,
-	0x65, 0x6c, 0x2e, 0x63, 0x68, 0x61, 0x74, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x65, 0x72, 0x2e, 0x43,
-	0x68, 0x61, 0x74, 0x56, 0x61, 0x72, 0x69, 0x61, 0x62, 0x6c, 0x65, 0x73, 0x52, 0x65, 0x73, 0x70,
-	0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x66, 0x0a, 0x0d, 0x42, 0x6c, 0x69, 0x6e, 0x64, 0x54,
-	0x72, 0x61, 0x6e, 0x73, 0x66, 0x65, 0x72, 0x12, 0x28, 0x2e, 0x77, 0x65, 0x62, 0x69, 0x74, 0x65,
+	0x61, 0x67, 0x65, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x7d,
+	0x0a, 0x14, 0x53, 0x61, 0x76, 0x65, 0x41, 0x67, 0x65, 0x6e, 0x74, 0x4a, 0x6f, 0x69, 0x6e, 0x4d,
+	0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x30, 0x2e, 0x77, 0x65, 0x62, 0x69, 0x74, 0x65, 0x6c,
+	0x2e, 0x63, 0x68, 0x61, 0x74, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x65, 0x72, 0x2e, 0x53, 0x61, 0x76,
+	0x65, 0x41, 0x67, 0x65, 0x6e, 0x74, 0x4a, 0x6f, 0x69, 0x6e, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67,
+	0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x31, 0x2e, 0x77, 0x65, 0x62, 0x69, 0x74,
+	0x65, 0x6c, 0x2e, 0x63, 0x68, 0x61, 0x74, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x65, 0x72, 0x2e, 0x53,
+	0x61, 0x76, 0x65, 0x41, 0x67, 0x65, 0x6e, 0x74, 0x4a, 0x6f, 0x69, 0x6e, 0x4d, 0x65, 0x73, 0x73,
+	0x61, 0x67, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x66, 0x0a,
+	0x0c, 0x53, 0x65, 0x74, 0x56, 0x61, 0x72, 0x69, 0x61, 0x62, 0x6c, 0x65, 0x73, 0x12, 0x28, 0x2e,
+	0x77, 0x65, 0x62, 0x69, 0x74, 0x65, 0x6c, 0x2e, 0x63, 0x68, 0x61, 0x74, 0x2e, 0x73, 0x65, 0x72,
+	0x76, 0x65, 0x72, 0x2e, 0x53, 0x65, 0x74, 0x56, 0x61, 0x72, 0x69, 0x61, 0x62, 0x6c, 0x65, 0x73,
+	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2a, 0x2e, 0x77, 0x65, 0x62, 0x69, 0x74, 0x65,
 	0x6c, 0x2e, 0x63, 0x68, 0x61, 0x74, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x65, 0x72, 0x2e, 0x43, 0x68,
-	0x61, 0x74, 0x54, 0x72, 0x61, 0x6e, 0x73, 0x66, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
-	0x74, 0x1a, 0x29, 0x2e, 0x77, 0x65, 0x62, 0x69, 0x74, 0x65, 0x6c, 0x2e, 0x63, 0x68, 0x61, 0x74,
-	0x2e, 0x73, 0x65, 0x72, 0x76, 0x65, 0x72, 0x2e, 0x43, 0x68, 0x61, 0x74, 0x54, 0x72, 0x61, 0x6e,
-	0x73, 0x66, 0x65, 0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42, 0x30,
-	0x5a, 0x2e, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x77, 0x65, 0x62,
-	0x69, 0x74, 0x65, 0x6c, 0x2f, 0x63, 0x68, 0x61, 0x74, 0x5f, 0x6d, 0x61, 0x6e, 0x61, 0x67, 0x65,
-	0x72, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x63, 0x68, 0x61, 0x74,
-	0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x61, 0x74, 0x56, 0x61, 0x72, 0x69, 0x61, 0x62, 0x6c, 0x65, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x66, 0x0a, 0x0d, 0x42, 0x6c, 0x69, 0x6e, 0x64, 0x54, 0x72,
+	0x61, 0x6e, 0x73, 0x66, 0x65, 0x72, 0x12, 0x28, 0x2e, 0x77, 0x65, 0x62, 0x69, 0x74, 0x65, 0x6c,
+	0x2e, 0x63, 0x68, 0x61, 0x74, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x65, 0x72, 0x2e, 0x43, 0x68, 0x61,
+	0x74, 0x54, 0x72, 0x61, 0x6e, 0x73, 0x66, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
+	0x1a, 0x29, 0x2e, 0x77, 0x65, 0x62, 0x69, 0x74, 0x65, 0x6c, 0x2e, 0x63, 0x68, 0x61, 0x74, 0x2e,
+	0x73, 0x65, 0x72, 0x76, 0x65, 0x72, 0x2e, 0x43, 0x68, 0x61, 0x74, 0x54, 0x72, 0x61, 0x6e, 0x73,
+	0x66, 0x65, 0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42, 0x30, 0x5a,
+	0x2e, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x77, 0x65, 0x62, 0x69,
+	0x74, 0x65, 0x6c, 0x2f, 0x63, 0x68, 0x61, 0x74, 0x5f, 0x6d, 0x61, 0x6e, 0x61, 0x67, 0x65, 0x72,
+	0x2f, 0x61, 0x70, 0x69, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x63, 0x68, 0x61, 0x74, 0x62,
+	0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -3320,7 +3431,7 @@ func file_chat_proto_rawDescGZIP() []byte {
 }
 
 var file_chat_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_chat_proto_msgTypes = make([]protoimpl.MessageInfo, 47)
+var file_chat_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
 var file_chat_proto_goTypes = []any{
 	(CloseConversationCause)(0),          // 0: webitel.chat.server.CloseConversationCause
 	(LeaveConversationCause)(0),          // 1: webitel.chat.server.LeaveConversationCause
@@ -3332,113 +3443,118 @@ var file_chat_proto_goTypes = []any{
 	(*User)(nil),                         // 7: webitel.chat.server.User
 	(*UpdateChannelRequest)(nil),         // 8: webitel.chat.server.UpdateChannelRequest
 	(*UpdateChannelResponse)(nil),        // 9: webitel.chat.server.UpdateChannelResponse
-	(*HistoryMessage)(nil),               // 10: webitel.chat.server.HistoryMessage
-	(*WaitMessageRequest)(nil),           // 11: webitel.chat.server.WaitMessageRequest
-	(*WaitMessageResponse)(nil),          // 12: webitel.chat.server.WaitMessageResponse
-	(*CheckSessionRequest)(nil),          // 13: webitel.chat.server.CheckSessionRequest
-	(*CheckSessionResponse)(nil),         // 14: webitel.chat.server.CheckSessionResponse
-	(*SendMessageRequest)(nil),           // 15: webitel.chat.server.SendMessageRequest
-	(*SendMessageResponse)(nil),          // 16: webitel.chat.server.SendMessageResponse
-	(*StartConversationRequest)(nil),     // 17: webitel.chat.server.StartConversationRequest
-	(*StartConversationResponse)(nil),    // 18: webitel.chat.server.StartConversationResponse
-	(*CloseConversationRequest)(nil),     // 19: webitel.chat.server.CloseConversationRequest
-	(*CloseConversationResponse)(nil),    // 20: webitel.chat.server.CloseConversationResponse
-	(*JoinConversationRequest)(nil),      // 21: webitel.chat.server.JoinConversationRequest
-	(*JoinConversationResponse)(nil),     // 22: webitel.chat.server.JoinConversationResponse
-	(*LeaveConversationRequest)(nil),     // 23: webitel.chat.server.LeaveConversationRequest
-	(*LeaveConversationResponse)(nil),    // 24: webitel.chat.server.LeaveConversationResponse
-	(*InviteToConversationRequest)(nil),  // 25: webitel.chat.server.InviteToConversationRequest
-	(*InviteToConversationResponse)(nil), // 26: webitel.chat.server.InviteToConversationResponse
-	(*DeclineInvitationRequest)(nil),     // 27: webitel.chat.server.DeclineInvitationRequest
-	(*DeclineInvitationResponse)(nil),    // 28: webitel.chat.server.DeclineInvitationResponse
-	(*DeleteMessageRequest)(nil),         // 29: webitel.chat.server.DeleteMessageRequest
-	(*DeleteMessageResponse)(nil),        // 30: webitel.chat.server.DeleteMessageResponse
-	(*GetConversationsRequest)(nil),      // 31: webitel.chat.server.GetConversationsRequest
-	(*GetConversationsResponse)(nil),     // 32: webitel.chat.server.GetConversationsResponse
-	(*GetConversationByIDRequest)(nil),   // 33: webitel.chat.server.GetConversationByIDRequest
-	(*GetConversationByIDResponse)(nil),  // 34: webitel.chat.server.GetConversationByIDResponse
-	(*GetHistoryMessagesRequest)(nil),    // 35: webitel.chat.server.GetHistoryMessagesRequest
-	(*GetHistoryMessagesResponse)(nil),   // 36: webitel.chat.server.GetHistoryMessagesResponse
-	(*SetVariablesRequest)(nil),          // 37: webitel.chat.server.SetVariablesRequest
-	(*ChatVariablesResponse)(nil),        // 38: webitel.chat.server.ChatVariablesResponse
-	(*ChatTransferRequest)(nil),          // 39: webitel.chat.server.ChatTransferRequest
-	(*ChatTransferResponse)(nil),         // 40: webitel.chat.server.ChatTransferResponse
-	nil,                                  // 41: webitel.chat.server.Profile.VariablesEntry
-	nil,                                  // 42: webitel.chat.server.CheckSessionResponse.PropertiesEntry
-	nil,                                  // 43: webitel.chat.server.StartConversationRequest.PropertiesEntry
-	nil,                                  // 44: webitel.chat.server.InviteToConversationRequest.VariablesEntry
-	nil,                                  // 45: webitel.chat.server.DeleteMessageRequest.VariablesEntry
-	nil,                                  // 46: webitel.chat.server.SetVariablesRequest.VariablesEntry
-	nil,                                  // 47: webitel.chat.server.ChatVariablesResponse.VariablesEntry
-	nil,                                  // 48: webitel.chat.server.ChatTransferRequest.VariablesEntry
-	(*File)(nil),                         // 49: webitel.chat.server.File
-	(*Message)(nil),                      // 50: webitel.chat.server.Message
-	(*Account)(nil),                      // 51: webitel.chat.server.Account
+	(*SaveAgentJoinMessageRequest)(nil),  // 10: webitel.chat.server.SaveAgentJoinMessageRequest
+	(*SaveAgentJoinMessageResponse)(nil), // 11: webitel.chat.server.SaveAgentJoinMessageResponse
+	(*HistoryMessage)(nil),               // 12: webitel.chat.server.HistoryMessage
+	(*WaitMessageRequest)(nil),           // 13: webitel.chat.server.WaitMessageRequest
+	(*WaitMessageResponse)(nil),          // 14: webitel.chat.server.WaitMessageResponse
+	(*CheckSessionRequest)(nil),          // 15: webitel.chat.server.CheckSessionRequest
+	(*CheckSessionResponse)(nil),         // 16: webitel.chat.server.CheckSessionResponse
+	(*SendMessageRequest)(nil),           // 17: webitel.chat.server.SendMessageRequest
+	(*SendMessageResponse)(nil),          // 18: webitel.chat.server.SendMessageResponse
+	(*StartConversationRequest)(nil),     // 19: webitel.chat.server.StartConversationRequest
+	(*StartConversationResponse)(nil),    // 20: webitel.chat.server.StartConversationResponse
+	(*CloseConversationRequest)(nil),     // 21: webitel.chat.server.CloseConversationRequest
+	(*CloseConversationResponse)(nil),    // 22: webitel.chat.server.CloseConversationResponse
+	(*JoinConversationRequest)(nil),      // 23: webitel.chat.server.JoinConversationRequest
+	(*JoinConversationResponse)(nil),     // 24: webitel.chat.server.JoinConversationResponse
+	(*LeaveConversationRequest)(nil),     // 25: webitel.chat.server.LeaveConversationRequest
+	(*LeaveConversationResponse)(nil),    // 26: webitel.chat.server.LeaveConversationResponse
+	(*InviteToConversationRequest)(nil),  // 27: webitel.chat.server.InviteToConversationRequest
+	(*InviteToConversationResponse)(nil), // 28: webitel.chat.server.InviteToConversationResponse
+	(*DeclineInvitationRequest)(nil),     // 29: webitel.chat.server.DeclineInvitationRequest
+	(*DeclineInvitationResponse)(nil),    // 30: webitel.chat.server.DeclineInvitationResponse
+	(*DeleteMessageRequest)(nil),         // 31: webitel.chat.server.DeleteMessageRequest
+	(*DeleteMessageResponse)(nil),        // 32: webitel.chat.server.DeleteMessageResponse
+	(*GetConversationsRequest)(nil),      // 33: webitel.chat.server.GetConversationsRequest
+	(*GetConversationsResponse)(nil),     // 34: webitel.chat.server.GetConversationsResponse
+	(*GetConversationByIDRequest)(nil),   // 35: webitel.chat.server.GetConversationByIDRequest
+	(*GetConversationByIDResponse)(nil),  // 36: webitel.chat.server.GetConversationByIDResponse
+	(*GetHistoryMessagesRequest)(nil),    // 37: webitel.chat.server.GetHistoryMessagesRequest
+	(*GetHistoryMessagesResponse)(nil),   // 38: webitel.chat.server.GetHistoryMessagesResponse
+	(*SetVariablesRequest)(nil),          // 39: webitel.chat.server.SetVariablesRequest
+	(*ChatVariablesResponse)(nil),        // 40: webitel.chat.server.ChatVariablesResponse
+	(*ChatTransferRequest)(nil),          // 41: webitel.chat.server.ChatTransferRequest
+	(*ChatTransferResponse)(nil),         // 42: webitel.chat.server.ChatTransferResponse
+	nil,                                  // 43: webitel.chat.server.Profile.VariablesEntry
+	nil,                                  // 44: webitel.chat.server.CheckSessionResponse.PropertiesEntry
+	nil,                                  // 45: webitel.chat.server.StartConversationRequest.PropertiesEntry
+	nil,                                  // 46: webitel.chat.server.InviteToConversationRequest.VariablesEntry
+	nil,                                  // 47: webitel.chat.server.DeleteMessageRequest.VariablesEntry
+	nil,                                  // 48: webitel.chat.server.SetVariablesRequest.VariablesEntry
+	nil,                                  // 49: webitel.chat.server.ChatVariablesResponse.VariablesEntry
+	nil,                                  // 50: webitel.chat.server.ChatTransferRequest.VariablesEntry
+	(*Message)(nil),                      // 51: webitel.chat.server.Message
+	(*File)(nil),                         // 52: webitel.chat.server.File
+	(*Account)(nil),                      // 53: webitel.chat.server.Account
 }
 var file_chat_proto_depIdxs = []int32{
-	41, // 0: webitel.chat.server.Profile.variables:type_name -> webitel.chat.server.Profile.VariablesEntry
+	43, // 0: webitel.chat.server.Profile.variables:type_name -> webitel.chat.server.Profile.VariablesEntry
 	5,  // 1: webitel.chat.server.Conversation.members:type_name -> webitel.chat.server.Member
-	10, // 2: webitel.chat.server.Conversation.messages:type_name -> webitel.chat.server.HistoryMessage
-	49, // 3: webitel.chat.server.HistoryMessage.file:type_name -> webitel.chat.server.File
-	50, // 4: webitel.chat.server.WaitMessageResponse.messages:type_name -> webitel.chat.server.Message
-	51, // 5: webitel.chat.server.CheckSessionResponse.account:type_name -> webitel.chat.server.Account
-	42, // 6: webitel.chat.server.CheckSessionResponse.properties:type_name -> webitel.chat.server.CheckSessionResponse.PropertiesEntry
-	50, // 7: webitel.chat.server.SendMessageRequest.message:type_name -> webitel.chat.server.Message
-	50, // 8: webitel.chat.server.SendMessageResponse.message:type_name -> webitel.chat.server.Message
-	7,  // 9: webitel.chat.server.StartConversationRequest.user:type_name -> webitel.chat.server.User
-	50, // 10: webitel.chat.server.StartConversationRequest.message:type_name -> webitel.chat.server.Message
-	43, // 11: webitel.chat.server.StartConversationRequest.properties:type_name -> webitel.chat.server.StartConversationRequest.PropertiesEntry
-	50, // 12: webitel.chat.server.StartConversationResponse.message:type_name -> webitel.chat.server.Message
-	0,  // 13: webitel.chat.server.CloseConversationRequest.cause:type_name -> webitel.chat.server.CloseConversationCause
-	1,  // 14: webitel.chat.server.LeaveConversationRequest.cause:type_name -> webitel.chat.server.LeaveConversationCause
-	7,  // 15: webitel.chat.server.InviteToConversationRequest.user:type_name -> webitel.chat.server.User
-	44, // 16: webitel.chat.server.InviteToConversationRequest.variables:type_name -> webitel.chat.server.InviteToConversationRequest.VariablesEntry
-	45, // 17: webitel.chat.server.DeleteMessageRequest.variables:type_name -> webitel.chat.server.DeleteMessageRequest.VariablesEntry
-	3,  // 18: webitel.chat.server.GetConversationsResponse.items:type_name -> webitel.chat.server.Conversation
-	3,  // 19: webitel.chat.server.GetConversationByIDResponse.item:type_name -> webitel.chat.server.Conversation
-	10, // 20: webitel.chat.server.GetHistoryMessagesResponse.items:type_name -> webitel.chat.server.HistoryMessage
-	46, // 21: webitel.chat.server.SetVariablesRequest.variables:type_name -> webitel.chat.server.SetVariablesRequest.VariablesEntry
-	47, // 22: webitel.chat.server.ChatVariablesResponse.variables:type_name -> webitel.chat.server.ChatVariablesResponse.VariablesEntry
-	48, // 23: webitel.chat.server.ChatTransferRequest.variables:type_name -> webitel.chat.server.ChatTransferRequest.VariablesEntry
-	15, // 24: webitel.chat.server.ChatService.SendMessage:input_type -> webitel.chat.server.SendMessageRequest
-	17, // 25: webitel.chat.server.ChatService.StartConversation:input_type -> webitel.chat.server.StartConversationRequest
-	19, // 26: webitel.chat.server.ChatService.CloseConversation:input_type -> webitel.chat.server.CloseConversationRequest
-	21, // 27: webitel.chat.server.ChatService.JoinConversation:input_type -> webitel.chat.server.JoinConversationRequest
-	23, // 28: webitel.chat.server.ChatService.LeaveConversation:input_type -> webitel.chat.server.LeaveConversationRequest
-	25, // 29: webitel.chat.server.ChatService.InviteToConversation:input_type -> webitel.chat.server.InviteToConversationRequest
-	27, // 30: webitel.chat.server.ChatService.DeclineInvitation:input_type -> webitel.chat.server.DeclineInvitationRequest
-	29, // 31: webitel.chat.server.ChatService.DeleteMessage:input_type -> webitel.chat.server.DeleteMessageRequest
-	13, // 32: webitel.chat.server.ChatService.CheckSession:input_type -> webitel.chat.server.CheckSessionRequest
-	11, // 33: webitel.chat.server.ChatService.WaitMessage:input_type -> webitel.chat.server.WaitMessageRequest
-	8,  // 34: webitel.chat.server.ChatService.UpdateChannel:input_type -> webitel.chat.server.UpdateChannelRequest
-	4,  // 35: webitel.chat.server.ChatService.GetChannelByPeer:input_type -> webitel.chat.server.GetChannelByPeerRequest
-	31, // 36: webitel.chat.server.ChatService.GetConversations:input_type -> webitel.chat.server.GetConversationsRequest
-	33, // 37: webitel.chat.server.ChatService.GetConversationByID:input_type -> webitel.chat.server.GetConversationByIDRequest
-	35, // 38: webitel.chat.server.ChatService.GetHistoryMessages:input_type -> webitel.chat.server.GetHistoryMessagesRequest
-	37, // 39: webitel.chat.server.ChatService.SetVariables:input_type -> webitel.chat.server.SetVariablesRequest
-	39, // 40: webitel.chat.server.ChatService.BlindTransfer:input_type -> webitel.chat.server.ChatTransferRequest
-	16, // 41: webitel.chat.server.ChatService.SendMessage:output_type -> webitel.chat.server.SendMessageResponse
-	18, // 42: webitel.chat.server.ChatService.StartConversation:output_type -> webitel.chat.server.StartConversationResponse
-	20, // 43: webitel.chat.server.ChatService.CloseConversation:output_type -> webitel.chat.server.CloseConversationResponse
-	22, // 44: webitel.chat.server.ChatService.JoinConversation:output_type -> webitel.chat.server.JoinConversationResponse
-	24, // 45: webitel.chat.server.ChatService.LeaveConversation:output_type -> webitel.chat.server.LeaveConversationResponse
-	26, // 46: webitel.chat.server.ChatService.InviteToConversation:output_type -> webitel.chat.server.InviteToConversationResponse
-	28, // 47: webitel.chat.server.ChatService.DeclineInvitation:output_type -> webitel.chat.server.DeclineInvitationResponse
-	10, // 48: webitel.chat.server.ChatService.DeleteMessage:output_type -> webitel.chat.server.HistoryMessage
-	14, // 49: webitel.chat.server.ChatService.CheckSession:output_type -> webitel.chat.server.CheckSessionResponse
-	12, // 50: webitel.chat.server.ChatService.WaitMessage:output_type -> webitel.chat.server.WaitMessageResponse
-	9,  // 51: webitel.chat.server.ChatService.UpdateChannel:output_type -> webitel.chat.server.UpdateChannelResponse
-	6,  // 52: webitel.chat.server.ChatService.GetChannelByPeer:output_type -> webitel.chat.server.Channel
-	32, // 53: webitel.chat.server.ChatService.GetConversations:output_type -> webitel.chat.server.GetConversationsResponse
-	34, // 54: webitel.chat.server.ChatService.GetConversationByID:output_type -> webitel.chat.server.GetConversationByIDResponse
-	36, // 55: webitel.chat.server.ChatService.GetHistoryMessages:output_type -> webitel.chat.server.GetHistoryMessagesResponse
-	38, // 56: webitel.chat.server.ChatService.SetVariables:output_type -> webitel.chat.server.ChatVariablesResponse
-	40, // 57: webitel.chat.server.ChatService.BlindTransfer:output_type -> webitel.chat.server.ChatTransferResponse
-	41, // [41:58] is the sub-list for method output_type
-	24, // [24:41] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	12, // 2: webitel.chat.server.Conversation.messages:type_name -> webitel.chat.server.HistoryMessage
+	51, // 3: webitel.chat.server.SaveAgentJoinMessageRequest.message:type_name -> webitel.chat.server.Message
+	52, // 4: webitel.chat.server.HistoryMessage.file:type_name -> webitel.chat.server.File
+	51, // 5: webitel.chat.server.WaitMessageResponse.messages:type_name -> webitel.chat.server.Message
+	53, // 6: webitel.chat.server.CheckSessionResponse.account:type_name -> webitel.chat.server.Account
+	44, // 7: webitel.chat.server.CheckSessionResponse.properties:type_name -> webitel.chat.server.CheckSessionResponse.PropertiesEntry
+	51, // 8: webitel.chat.server.SendMessageRequest.message:type_name -> webitel.chat.server.Message
+	51, // 9: webitel.chat.server.SendMessageResponse.message:type_name -> webitel.chat.server.Message
+	7,  // 10: webitel.chat.server.StartConversationRequest.user:type_name -> webitel.chat.server.User
+	51, // 11: webitel.chat.server.StartConversationRequest.message:type_name -> webitel.chat.server.Message
+	45, // 12: webitel.chat.server.StartConversationRequest.properties:type_name -> webitel.chat.server.StartConversationRequest.PropertiesEntry
+	51, // 13: webitel.chat.server.StartConversationResponse.message:type_name -> webitel.chat.server.Message
+	0,  // 14: webitel.chat.server.CloseConversationRequest.cause:type_name -> webitel.chat.server.CloseConversationCause
+	1,  // 15: webitel.chat.server.LeaveConversationRequest.cause:type_name -> webitel.chat.server.LeaveConversationCause
+	7,  // 16: webitel.chat.server.InviteToConversationRequest.user:type_name -> webitel.chat.server.User
+	46, // 17: webitel.chat.server.InviteToConversationRequest.variables:type_name -> webitel.chat.server.InviteToConversationRequest.VariablesEntry
+	47, // 18: webitel.chat.server.DeleteMessageRequest.variables:type_name -> webitel.chat.server.DeleteMessageRequest.VariablesEntry
+	3,  // 19: webitel.chat.server.GetConversationsResponse.items:type_name -> webitel.chat.server.Conversation
+	3,  // 20: webitel.chat.server.GetConversationByIDResponse.item:type_name -> webitel.chat.server.Conversation
+	12, // 21: webitel.chat.server.GetHistoryMessagesResponse.items:type_name -> webitel.chat.server.HistoryMessage
+	48, // 22: webitel.chat.server.SetVariablesRequest.variables:type_name -> webitel.chat.server.SetVariablesRequest.VariablesEntry
+	49, // 23: webitel.chat.server.ChatVariablesResponse.variables:type_name -> webitel.chat.server.ChatVariablesResponse.VariablesEntry
+	50, // 24: webitel.chat.server.ChatTransferRequest.variables:type_name -> webitel.chat.server.ChatTransferRequest.VariablesEntry
+	17, // 25: webitel.chat.server.ChatService.SendMessage:input_type -> webitel.chat.server.SendMessageRequest
+	19, // 26: webitel.chat.server.ChatService.StartConversation:input_type -> webitel.chat.server.StartConversationRequest
+	21, // 27: webitel.chat.server.ChatService.CloseConversation:input_type -> webitel.chat.server.CloseConversationRequest
+	23, // 28: webitel.chat.server.ChatService.JoinConversation:input_type -> webitel.chat.server.JoinConversationRequest
+	25, // 29: webitel.chat.server.ChatService.LeaveConversation:input_type -> webitel.chat.server.LeaveConversationRequest
+	27, // 30: webitel.chat.server.ChatService.InviteToConversation:input_type -> webitel.chat.server.InviteToConversationRequest
+	29, // 31: webitel.chat.server.ChatService.DeclineInvitation:input_type -> webitel.chat.server.DeclineInvitationRequest
+	31, // 32: webitel.chat.server.ChatService.DeleteMessage:input_type -> webitel.chat.server.DeleteMessageRequest
+	15, // 33: webitel.chat.server.ChatService.CheckSession:input_type -> webitel.chat.server.CheckSessionRequest
+	13, // 34: webitel.chat.server.ChatService.WaitMessage:input_type -> webitel.chat.server.WaitMessageRequest
+	8,  // 35: webitel.chat.server.ChatService.UpdateChannel:input_type -> webitel.chat.server.UpdateChannelRequest
+	4,  // 36: webitel.chat.server.ChatService.GetChannelByPeer:input_type -> webitel.chat.server.GetChannelByPeerRequest
+	33, // 37: webitel.chat.server.ChatService.GetConversations:input_type -> webitel.chat.server.GetConversationsRequest
+	35, // 38: webitel.chat.server.ChatService.GetConversationByID:input_type -> webitel.chat.server.GetConversationByIDRequest
+	37, // 39: webitel.chat.server.ChatService.GetHistoryMessages:input_type -> webitel.chat.server.GetHistoryMessagesRequest
+	10, // 40: webitel.chat.server.ChatService.SaveAgentJoinMessage:input_type -> webitel.chat.server.SaveAgentJoinMessageRequest
+	39, // 41: webitel.chat.server.ChatService.SetVariables:input_type -> webitel.chat.server.SetVariablesRequest
+	41, // 42: webitel.chat.server.ChatService.BlindTransfer:input_type -> webitel.chat.server.ChatTransferRequest
+	18, // 43: webitel.chat.server.ChatService.SendMessage:output_type -> webitel.chat.server.SendMessageResponse
+	20, // 44: webitel.chat.server.ChatService.StartConversation:output_type -> webitel.chat.server.StartConversationResponse
+	22, // 45: webitel.chat.server.ChatService.CloseConversation:output_type -> webitel.chat.server.CloseConversationResponse
+	24, // 46: webitel.chat.server.ChatService.JoinConversation:output_type -> webitel.chat.server.JoinConversationResponse
+	26, // 47: webitel.chat.server.ChatService.LeaveConversation:output_type -> webitel.chat.server.LeaveConversationResponse
+	28, // 48: webitel.chat.server.ChatService.InviteToConversation:output_type -> webitel.chat.server.InviteToConversationResponse
+	30, // 49: webitel.chat.server.ChatService.DeclineInvitation:output_type -> webitel.chat.server.DeclineInvitationResponse
+	12, // 50: webitel.chat.server.ChatService.DeleteMessage:output_type -> webitel.chat.server.HistoryMessage
+	16, // 51: webitel.chat.server.ChatService.CheckSession:output_type -> webitel.chat.server.CheckSessionResponse
+	14, // 52: webitel.chat.server.ChatService.WaitMessage:output_type -> webitel.chat.server.WaitMessageResponse
+	9,  // 53: webitel.chat.server.ChatService.UpdateChannel:output_type -> webitel.chat.server.UpdateChannelResponse
+	6,  // 54: webitel.chat.server.ChatService.GetChannelByPeer:output_type -> webitel.chat.server.Channel
+	34, // 55: webitel.chat.server.ChatService.GetConversations:output_type -> webitel.chat.server.GetConversationsResponse
+	36, // 56: webitel.chat.server.ChatService.GetConversationByID:output_type -> webitel.chat.server.GetConversationByIDResponse
+	38, // 57: webitel.chat.server.ChatService.GetHistoryMessages:output_type -> webitel.chat.server.GetHistoryMessagesResponse
+	11, // 58: webitel.chat.server.ChatService.SaveAgentJoinMessage:output_type -> webitel.chat.server.SaveAgentJoinMessageResponse
+	40, // 59: webitel.chat.server.ChatService.SetVariables:output_type -> webitel.chat.server.ChatVariablesResponse
+	42, // 60: webitel.chat.server.ChatService.BlindTransfer:output_type -> webitel.chat.server.ChatTransferResponse
+	43, // [43:61] is the sub-list for method output_type
+	25, // [25:43] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_chat_proto_init() }
@@ -3545,7 +3661,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[8].Exporter = func(v any, i int) any {
-			switch v := v.(*HistoryMessage); i {
+			switch v := v.(*SaveAgentJoinMessageRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3557,7 +3673,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[9].Exporter = func(v any, i int) any {
-			switch v := v.(*WaitMessageRequest); i {
+			switch v := v.(*SaveAgentJoinMessageResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3569,7 +3685,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[10].Exporter = func(v any, i int) any {
-			switch v := v.(*WaitMessageResponse); i {
+			switch v := v.(*HistoryMessage); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3581,7 +3697,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[11].Exporter = func(v any, i int) any {
-			switch v := v.(*CheckSessionRequest); i {
+			switch v := v.(*WaitMessageRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3593,7 +3709,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[12].Exporter = func(v any, i int) any {
-			switch v := v.(*CheckSessionResponse); i {
+			switch v := v.(*WaitMessageResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3605,7 +3721,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[13].Exporter = func(v any, i int) any {
-			switch v := v.(*SendMessageRequest); i {
+			switch v := v.(*CheckSessionRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3617,7 +3733,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[14].Exporter = func(v any, i int) any {
-			switch v := v.(*SendMessageResponse); i {
+			switch v := v.(*CheckSessionResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3629,7 +3745,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[15].Exporter = func(v any, i int) any {
-			switch v := v.(*StartConversationRequest); i {
+			switch v := v.(*SendMessageRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3641,7 +3757,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[16].Exporter = func(v any, i int) any {
-			switch v := v.(*StartConversationResponse); i {
+			switch v := v.(*SendMessageResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3653,7 +3769,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[17].Exporter = func(v any, i int) any {
-			switch v := v.(*CloseConversationRequest); i {
+			switch v := v.(*StartConversationRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3665,7 +3781,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[18].Exporter = func(v any, i int) any {
-			switch v := v.(*CloseConversationResponse); i {
+			switch v := v.(*StartConversationResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3677,7 +3793,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[19].Exporter = func(v any, i int) any {
-			switch v := v.(*JoinConversationRequest); i {
+			switch v := v.(*CloseConversationRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3689,7 +3805,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[20].Exporter = func(v any, i int) any {
-			switch v := v.(*JoinConversationResponse); i {
+			switch v := v.(*CloseConversationResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3701,7 +3817,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[21].Exporter = func(v any, i int) any {
-			switch v := v.(*LeaveConversationRequest); i {
+			switch v := v.(*JoinConversationRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3713,7 +3829,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[22].Exporter = func(v any, i int) any {
-			switch v := v.(*LeaveConversationResponse); i {
+			switch v := v.(*JoinConversationResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3725,7 +3841,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[23].Exporter = func(v any, i int) any {
-			switch v := v.(*InviteToConversationRequest); i {
+			switch v := v.(*LeaveConversationRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3737,7 +3853,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[24].Exporter = func(v any, i int) any {
-			switch v := v.(*InviteToConversationResponse); i {
+			switch v := v.(*LeaveConversationResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3749,7 +3865,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[25].Exporter = func(v any, i int) any {
-			switch v := v.(*DeclineInvitationRequest); i {
+			switch v := v.(*InviteToConversationRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3761,7 +3877,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[26].Exporter = func(v any, i int) any {
-			switch v := v.(*DeclineInvitationResponse); i {
+			switch v := v.(*InviteToConversationResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3773,7 +3889,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[27].Exporter = func(v any, i int) any {
-			switch v := v.(*DeleteMessageRequest); i {
+			switch v := v.(*DeclineInvitationRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3785,7 +3901,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[28].Exporter = func(v any, i int) any {
-			switch v := v.(*DeleteMessageResponse); i {
+			switch v := v.(*DeclineInvitationResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3797,7 +3913,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[29].Exporter = func(v any, i int) any {
-			switch v := v.(*GetConversationsRequest); i {
+			switch v := v.(*DeleteMessageRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3809,7 +3925,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[30].Exporter = func(v any, i int) any {
-			switch v := v.(*GetConversationsResponse); i {
+			switch v := v.(*DeleteMessageResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3821,7 +3937,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[31].Exporter = func(v any, i int) any {
-			switch v := v.(*GetConversationByIDRequest); i {
+			switch v := v.(*GetConversationsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3833,7 +3949,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[32].Exporter = func(v any, i int) any {
-			switch v := v.(*GetConversationByIDResponse); i {
+			switch v := v.(*GetConversationsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3845,7 +3961,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[33].Exporter = func(v any, i int) any {
-			switch v := v.(*GetHistoryMessagesRequest); i {
+			switch v := v.(*GetConversationByIDRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3857,7 +3973,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[34].Exporter = func(v any, i int) any {
-			switch v := v.(*GetHistoryMessagesResponse); i {
+			switch v := v.(*GetConversationByIDResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3869,7 +3985,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[35].Exporter = func(v any, i int) any {
-			switch v := v.(*SetVariablesRequest); i {
+			switch v := v.(*GetHistoryMessagesRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3881,7 +3997,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[36].Exporter = func(v any, i int) any {
-			switch v := v.(*ChatVariablesResponse); i {
+			switch v := v.(*GetHistoryMessagesResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3893,7 +4009,7 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[37].Exporter = func(v any, i int) any {
-			switch v := v.(*ChatTransferRequest); i {
+			switch v := v.(*SetVariablesRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3905,6 +4021,30 @@ func file_chat_proto_init() {
 			}
 		}
 		file_chat_proto_msgTypes[38].Exporter = func(v any, i int) any {
+			switch v := v.(*ChatVariablesResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_chat_proto_msgTypes[39].Exporter = func(v any, i int) any {
+			switch v := v.(*ChatTransferRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_chat_proto_msgTypes[40].Exporter = func(v any, i int) any {
 			switch v := v.(*ChatTransferResponse); i {
 			case 0:
 				return &v.state
@@ -3923,7 +4063,7 @@ func file_chat_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_chat_proto_rawDesc,
 			NumEnums:      2,
-			NumMessages:   47,
+			NumMessages:   49,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
