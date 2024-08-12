@@ -366,7 +366,7 @@ func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pb.SaveAgen
 	if chat == nil || chat.ID != senderChatID {
 		// sender channel ID not found
 		return errors.BadRequest(
-			"chat.send.channel.from.not_found",
+			"chat.save_agent_join_message.channel.from.not_found",
 			"send: FROM channel ID=%s sender not found or been closed",
 			senderChatID,
 		)
@@ -375,7 +375,7 @@ func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pb.SaveAgen
 	if senderFromID != 0 && chat.User.ID != senderFromID {
 		// mismatch sender contact ID
 		return errors.BadRequest(
-			"chat.send.channel.user.mismatch",
+			"chat.save_agent_join_message.user.mismatch",
 			"send: FROM channel ID=%s user ID=%d mismatch",
 			senderChatID, senderFromID,
 		)
