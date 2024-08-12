@@ -265,16 +265,17 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 		if text == "" {
 			return nil
 		}
+		// format new message to the engine, to
 		messageToSave := &chat.Message{
 			Id:        message.Id,
 			Type:      "text",
 			Text:      text,
-			CreatedAt: message.CreatedAt,
-			UpdatedAt: message.UpdatedAt,
+			CreatedAt: time.Now().UnixMilli(),
+			UpdatedAt: time.Now().UnixMilli(),
 			From:      peer,
 		}
 		webhookMessage.Text = text
-		_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{ConversationId: notify.Chat.ChatID, Message: messageToSave})
+		_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave})
 		if err != nil {
 			return err
 		}
