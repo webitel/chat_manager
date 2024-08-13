@@ -12,7 +12,7 @@ import (
 	"github.com/beevik/guid"
 	lru "github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/micro/micro/v3/service/errors"
-	chat "github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"io"
@@ -265,20 +265,19 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 		if text == "" {
 			return nil
 		}
-		// format new message to the engine, to
+		// format new message to the engine for saving it in the DB as operator message [WTEL-4695]
 		messageToSave := &chat.Message{
 			Id:        message.Id,
 			Type:      "text",
 			Text:      text,
 			CreatedAt: time.Now().UnixMilli(),
-			UpdatedAt: time.Now().UnixMilli(),
 			From:      peer,
 		}
-		webhookMessage.Text = text
 		_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave})
 		if err != nil {
 			return err
 		}
+		webhookMessage.Text = text
 
 	case "left":
 

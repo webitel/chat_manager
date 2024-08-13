@@ -457,7 +457,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 	// by channel.Account.Contact [P]age-[s]coped User [ID]
 	chatID := channel.ChatID // channel.Account.Contact
 	recipientUserPSID := chatID
-	chat, err := c.getExternalThread(channel)
+	conversation, err := c.getExternalThread(channel)
 	if err != nil {
 		// re := errors.FromError(err)
 		// switch re.Id {
@@ -470,7 +470,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 		return err
 	}
 
-	if chat == nil || chat.Page == nil {
+	if conversation == nil || conversation.Page == nil {
 		err := errors.NotFound(
 			"bot.messenger.send.chat.not_found",
 			"messenger: send TO.user=%s FROM.page=? not found",
@@ -481,7 +481,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 		return nil
 	}
 
-	dialog := chat
+	dialog := conversation
 	platform := "facebook"
 	facebook := dialog.Page // MUST: sender
 	pageName := facebook.Name
@@ -709,6 +709,17 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 			// IGNORE: message text is missing
 			return nil
 		}
+		// format new message to the engine for saving it in the DB as operator message [WTEL-4695]
+		messageToSave := &chat.Message{
+			Type:      "text",
+			Text:      text,
+			CreatedAt: time.Now().UnixMilli(),
+			From:      peer,
+		}
+		_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave})
+		if err != nil {
+			return err
+		}
 		// Send Text
 		sendMessage.Text = text
 
@@ -758,7 +769,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 		return nil
 	}
 
-	messageID, err := c.Send(chat.Page, &sendRequest)
+	messageID, err := c.Send(conversation.Page, &sendRequest)
 
 	if err != nil {
 		return err // nil

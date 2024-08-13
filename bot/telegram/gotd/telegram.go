@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gotd/td/telegram/message"
 	"github.com/gotd/td/telegram/message/styling"
@@ -400,6 +401,17 @@ func (c *app) SendNotify(ctx context.Context, notify *bot.Update) error {
 		if messageText == "" {
 			// IGNORE: empty message text !
 			return nil
+		}
+		// format new message to the engine for saving it in the DB as operator message [WTEL-4695]
+		messageToSave := &chat.Message{
+			Type:      "text",
+			Text:      messageText,
+			CreatedAt: time.Now().UnixMilli(),
+			From:      peer,
+		}
+		_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave})
+		if err != nil {
+			return err
 		}
 		_, err = sendMessage.StyledText(
 			ctx, markdown.FormatText(messageText),

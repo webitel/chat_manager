@@ -2567,6 +2567,17 @@ func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) err
 		sendMsg.Text = &whatsapp.Text{
 			Body: text,
 		}
+		// format new message to the engine for saving it in the DB as operator message [WTEL-4695]
+		messageToSave := &chat.Message{
+			Type:      "text",
+			Text:      text,
+			CreatedAt: time.Now().UnixMilli(),
+			From:      peer,
+		}
+		_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave})
+		if err != nil {
+			return err
+		}
 
 	case "left": // ACK: ChatService.LeaveConversation()
 
