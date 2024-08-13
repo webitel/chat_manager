@@ -329,9 +329,22 @@ func (s *chatService) SendMessage(
 func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pb.SaveAgentJoinMessageRequest, rsp *pb.SaveAgentJoinMessageResponse) error {
 
 	var (
-		sendMessage   = req.GetMessage()
-		webitelUserID = sendMessage.From.GetId()
+		sendMessage   *pb.Message
+		webitelUserID int64
 	)
+	if req.GetMessage() == nil {
+		return errors.BadRequest("chat.service.save_agent_join_message.check_args.message", "message required")
+	}
+	sendMessage = req.GetMessage()
+
+	if sendMessage.GetFrom() == nil {
+		return errors.BadRequest("chat.service.save_agent_join_message.check_args.message.from", "message.from required")
+	}
+
+	webitelUserID = sendMessage.From.GetId()
+	if webitelUserID == 0 {
+		return errors.BadRequest("chat.service.save_agent_join_message.check_args.message.from.id", "message.from.id required")
+	}
 
 	s.log.Debug().
 		Int64("webitel_user", webitelUserID).
@@ -376,16 +389,16 @@ func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pb.SaveAgen
 		)
 	}
 
-	//sender := chat.Channel
+	sender := chat.Channel
 
 	// Validate and normalize message to send
 	// Mostly also stores non-service-level message to persistent DB
-	//_, err = s.saveMessage(ctx, nil, sender, sendMessage)
-	//
-	//if err != nil {
-	//	// Failed to store message or validation error !
-	//	return err
-	//}
+	_, err = s.saveMessage(ctx, nil, sender, sendMessage)
+
+	if err != nil {
+		// Failed to store message or validation error !
+		return err
+	}
 
 	// // show chat room state
 	// data, _ := json.MarshalIndent(chat, "", "  ")

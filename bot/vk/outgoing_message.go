@@ -1,6 +1,7 @@
 package vk
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	vk "github.com/SevereCloud/vksdk/v2/api"
@@ -10,6 +11,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type OutgoingMessage struct {
@@ -215,6 +217,19 @@ func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*Outgoing
 				Msg("vk/bot.updateChatMember")
 		}
 		//if text != "" {
+		// format new message to the engine for saving it in the DB as operator message [WTEL-4695]
+		messageToSave := &chat.Message{
+			Type:      "text",
+			Text:      text,
+			CreatedAt: time.Now().UnixMilli(),
+			From:      peer,
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave})
+		cancel()
+		if err != nil {
+			return nil, err
+		}
 		result.Text = text
 		//}
 

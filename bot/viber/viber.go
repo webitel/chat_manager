@@ -9,6 +9,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/rs/zerolog/log"
@@ -304,6 +305,17 @@ func (c *Bot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		if messageText == "" {
 			// IGNORE: empty message text !
 			return nil
+		}
+		// format new message to the engine for saving it in the DB as operator message [WTEL-4695]
+		messageToSave := &chat.Message{
+			Type:      "text",
+			Text:      messageText,
+			CreatedAt: time.Now().UnixMilli(),
+			From:      peer,
+		}
+		_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave})
+		if err != nil {
+			return err
 		}
 		sendMessage.Text(messageText)
 
