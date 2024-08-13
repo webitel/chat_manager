@@ -114,8 +114,7 @@ message UpdateChannelResponse {}
 
 
 message SaveAgentJoinMessageRequest {
-  string conversation_id = 1;
-  Message message = 2;
+  Message message = 1;
 }
 
 message SaveAgentJoinMessageResponse {

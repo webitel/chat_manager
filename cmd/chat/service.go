@@ -329,77 +329,63 @@ func (s *chatService) SendMessage(
 func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pb.SaveAgentJoinMessageRequest, rsp *pb.SaveAgentJoinMessageResponse) error {
 
 	var (
-		sendMessage  = req.GetMessage()
-		senderFromID = int64(0)
-		senderChatID = ""
-		targetChatID = req.GetConversationId()
+		sendMessage   = req.GetMessage()
+		webitelUserID = sendMessage.From.GetId()
 	)
 
 	s.log.Debug().
-		Str("channel_id", senderChatID).
-		Str("conversation_id", targetChatID).
-		Int64("auth_user_id", senderFromID).
+		Int64("webitel_user", webitelUserID).
 		Str("type", sendMessage.GetType()).
 		Str("text", sendMessage.GetText()).
 		// Bool("file", sendMessage.GetFile() != nil).
 		Interface("file", sendMessage.GetFile()).
 		Msg("SEND Message")
 
-	if senderChatID == "" {
-		senderChatID = targetChatID
-		if senderChatID == "" {
-			return errors.BadRequest(
-				"chat.send.channel.from.required",
-				"send: message sender chat ID required",
-			)
-		}
-	}
-
 	// region: lookup target chat session by unique sender chat channel id
-	chat, err := s.repo.GetSession(ctx, senderChatID)
+	chat, err := s.repo.GetSessionByInternalUserId(ctx, webitelUserID)
 
 	if err != nil {
 		// lookup operation error
 		return err
 	}
 
-	if chat == nil || chat.ID != senderChatID {
+	if chat == nil {
 		// sender channel ID not found
 		return errors.BadRequest(
 			"chat.save_agent_join_message.channel.from.not_found",
-			"send: FROM channel ID=%s sender not found or been closed",
-			senderChatID,
+			"send: FROM user ID=%s sender not found or been closed",
+			webitelUserID,
 		)
 	}
 
-	if senderFromID != 0 && chat.User.ID != senderFromID {
-		// mismatch sender contact ID
-		return errors.BadRequest(
-			"chat.save_agent_join_message.user.mismatch",
-			"send: FROM channel ID=%s user ID=%d mismatch",
-			senderChatID, senderFromID,
-		)
-	}
+	//if senderFromID != 0 && chat.User.ID != senderFromID {
+	//	// mismatch sender contact ID
+	//	return errors.BadRequest(
+	//		"chat.save_agent_join_message.user.mismatch",
+	//		"send: FROM channel ID=%s user ID=%d mismatch",
+	//		senderChatID, senderFromID,
+	//	)
+	//}
 
 	if chat.IsClosed() {
 		// sender channel is already closed !
 		return errors.BadRequest(
 			"chat.send.channel.from.closed",
 			"send: FROM chat channel ID=%s is closed",
-			senderChatID,
+			webitelUserID,
 		)
 	}
 
-	sender := chat.Channel
+	//sender := chat.Channel
 
 	// Validate and normalize message to send
 	// Mostly also stores non-service-level message to persistent DB
-	_, err = s.saveMessage(ctx, nil, sender, sendMessage)
-
-	if err != nil {
-		// Failed to store message or validation error !
-		return err
-	}
+	//_, err = s.saveMessage(ctx, nil, sender, sendMessage)
+	//
+	//if err != nil {
+	//	// Failed to store message or validation error !
+	//	return err
+	//}
 
 	// // show chat room state
 	// data, _ := json.MarshalIndent(chat, "", "  ")
@@ -3078,29 +3064,6 @@ func (c *chatService) notifyAgentJoinToAllMembers(ctx context.Context, chatRoom 
 				Header: header,
 				Body:   data.wesocket,
 			})
-
-		case "chatflow": // TO: workflow (internal)
-
-			if member == sender {
-				continue
-			}
-
-			if data.workflow == nil {
-				// proto.Clone(notify).(*pb.Message)
-				send := *(notify) // shallowcopy
-				// Postback. Button click[ed].
-				// Webitel Bot (Schema) side.
-				if btn := notify.Postback; btn != nil {
-					if code := btn.Code; code != "" {
-						send.Text = code // reply_to
-					}
-				}
-				data.workflow = &send
-			}
-
-			err = c.flowClient.SendMessageV1(
-				member, data.workflow,
-			)
 		}
 	}
 	return sent, nil // err
