@@ -1765,18 +1765,64 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 	})
 	// endregion: ----- select: sender(s) -----
 
+	// endregion: ----- select: chat(s) -----
+	const (
+		chatView = "chat"
+	)
+	includeChat := ctx.Input.indexField("chat") > 0
+	if includeChat {
+		left = "conv"
+		ctx.Query = postgres.PGSQL.
+			Select(
+				ident(left, "id"),
+				ident(left, "domain_id"),
+				"gate.id",
+				"gate.provider",
+				"gate.name",
+			).
+			From("chat.channel ch").
+			LeftJoin("chat.conversation conv ON ch.conversation_id = conv.id").
+			LeftJoin("chat.bot gate ON ch.connection::::bigint = gate.id").
+			Where(sq.Expr(ident(left, "id") + "= any (select distinct m.chat_id from message m)")).
+			Where(sq.Expr("NOT ch.internal"))
+		ctx.With(CTE{
+			Name: chatView,
+			Expr: ctx.Query,
+		})
+	}
+
+	// endregion: ----- select: chat(s) -----
+
 	// region: ----- select: result(page) -----
-	ctx.Query = postgres.PGSQL.
-		Select(
-			fmt.Sprintf(
-				"ARRAY( SELECT %[2]s from %[1]s %[2]s ) peers",
-				senderView, "c",
-			),
-			fmt.Sprintf(
-				"ARRAY( SELECT %[2]s from %[1]s %[2]s ) messages",
-				messageView, "m",
-			),
-		)
+	if includeChat {
+		ctx.Query = postgres.PGSQL.
+			Select(
+				fmt.Sprintf(
+					"ARRAY( SELECT %[2]s from %[1]s %[2]s ) chats",
+					chatView, "c",
+				),
+				fmt.Sprintf(
+					"ARRAY( SELECT %[2]s from %[1]s %[2]s ) peers",
+					senderView, "c",
+				),
+				fmt.Sprintf(
+					"ARRAY( SELECT %[2]s from %[1]s %[2]s ) messages",
+					messageView, "m",
+				),
+			)
+	} else {
+		ctx.Query = postgres.PGSQL.
+			Select(
+				fmt.Sprintf(
+					"ARRAY( SELECT %[2]s from %[1]s %[2]s ) peers",
+					senderView, "c",
+				),
+				fmt.Sprintf(
+					"ARRAY( SELECT %[2]s from %[1]s %[2]s ) messages",
+					messageView, "m",
+				),
+			)
+	}
 	// endregion: ----- select: result(page) -----
 
 	return // ctx, nil
@@ -2070,9 +2116,14 @@ func (ctx contactChatMessagesQuery) scanRows(rows *sql.Rows, req *app.SearchOpti
 			alias pb.ChatPeer
 			node  *pb.ChatPeer
 		}
-		chat struct {
+		chatPeer struct {
 			id    UUID
 			peer  *peer
+			node  *pb.ContactChat
+			alias pb.ContactChat
+		}
+		chat struct {
+			id    UUID
 			node  *pb.ContactChat
 			alias pb.ContactChat
 		}
@@ -2080,9 +2131,11 @@ func (ctx contactChatMessagesQuery) scanRows(rows *sql.Rows, req *app.SearchOpti
 
 	var (
 		chats     []*chat
+		chatPeers []*chatPeer
 		peers     []*peer
 		outFrom   = !(ctx.Input.indexField("from") < 0)
 		outSender = !(ctx.Input.indexField("sender") < 0)
+		outChat   = !(ctx.Input.indexField("chat") < 0)
 		equalUUID = func(this, that UUID) bool {
 			var e int
 			const max = 16
@@ -2091,7 +2144,18 @@ func (ctx contactChatMessagesQuery) scanRows(rows *sql.Rows, req *app.SearchOpti
 			}
 			return e == max
 		}
-		getSender = func(chatId UUID) *chat {
+		getSender = func(chatId UUID) *chatPeer {
+			var e, n = 0, len(chatPeers)
+			for ; e < n && !equalUUID(chatId, chatPeers[e].id); e++ {
+				// lookup: match by original chat( id: uuid! )
+			}
+			if e == n {
+				panic(fmt.Errorf("chat( id: %x ); not fetched", chatId))
+			}
+			return chatPeers[e]
+		}
+		getChat = func(chatId UUID) *chat {
+			fmt.Printf("%x", chatId)
 			var e, n = 0, len(chats)
 			for ; e < n && !equalUUID(chatId, chats[e].id); e++ {
 				// lookup: match by original chat( id: uuid! )
@@ -2104,8 +2168,12 @@ func (ctx contactChatMessagesQuery) scanRows(rows *sql.Rows, req *app.SearchOpti
 	)
 
 	var (
-		fetch = []any{
-			// peers
+		fetch []any
+	)
+
+	if outChat {
+		fetch = append(fetch,
+			// chats
 			DecodeText(func(src []byte) error {
 				// parse: array(row(sender))
 				rows, err := pgtype.ParseUntypedTextArray(string(src))
@@ -2114,17 +2182,13 @@ func (ctx contactChatMessagesQuery) scanRows(rows *sql.Rows, req *app.SearchOpti
 				}
 
 				var (
-					node *pb.ChatPeer
-					heap []pb.ChatPeer
+					node *pb.ContactChat
+					heap []pb.ContactChat
 
-					page = into.GetPeers() // input
-					// data []*pb.Peer        // output
-
-					// eval = make([]any, 4) // len(ctx.plan))
+					page = into.GetChats() // input
 					size = len(rows.Elements)
 
-					text   pgtype.Text
-					chatId pgtype.UUIDArray
+					text pgtype.Text
 
 					scan = []TextDecoder{
 						// id
@@ -2137,33 +2201,52 @@ func (ctx contactChatMessagesQuery) scanRows(rows *sql.Rows, req *app.SearchOpti
 							// ok = ok || text.String != "" // && str.Status == pgtype.Present
 							return nil
 						}),
-						// type
+						// domain
 						DecodeText(func(src []byte) error {
 							err := text.DecodeText(nil, src)
 							if err != nil {
 								return err
 							}
-							node.Type = text.String
-							// ok = ok || text.String != "" // && str.Status == pgtype.Present
+							node.Dc, err = strconv.ParseInt(text.String, 10, 64)
+							if err != nil {
+								return err
+							}
 							return nil
 						}),
-						// name
+						// gateway.id
 						DecodeText(func(src []byte) error {
 							err := text.DecodeText(nil, src)
 							if err != nil {
 								return err
 							}
-							node.Name = text.String
-							// ok = ok || text.String != "" // && str.Status == pgtype.Present
+							if node.GetVia() == nil {
+								node.Via = &pb.ChatPeer{}
+							}
+							node.Via.Id = text.String
 							return nil
 						}),
-						// chat_id
+						// gateway.type
 						DecodeText(func(src []byte) error {
-							err := chatId.DecodeText(nil, src)
+							err := text.DecodeText(nil, src)
 							if err != nil {
 								return err
 							}
-							// ok = ok || text.String != "" // && str.Status == pgtype.Present
+							if node.GetVia() == nil {
+								node.Via = &pb.ChatPeer{}
+							}
+							node.Via.Type = text.String
+							return nil
+						}),
+						// gateway.name
+						DecodeText(func(src []byte) error {
+							err := text.DecodeText(nil, src)
+							if err != nil {
+								return err
+							}
+							if node.GetVia() == nil {
+								node.Via = &pb.ChatPeer{}
+							}
+							node.Via.Name = text.String
 							return nil
 						}),
 					}
@@ -2175,7 +2258,7 @@ func (ctx contactChatMessagesQuery) scanRows(rows *sql.Rows, req *app.SearchOpti
 				}
 
 				if n := size - len(page); 1 < n {
-					heap = make([]pb.ChatPeer, n) // mempage; tidy
+					heap = make([]pb.ContactChat, n) // mempage; tidy
 				}
 
 				var (
@@ -2196,7 +2279,7 @@ func (ctx contactChatMessagesQuery) scanRows(rows *sql.Rows, req *app.SearchOpti
 					}
 					// ALLOC
 					if node == nil {
-						node = new(pb.ChatPeer)
+						node = new(pb.ContactChat)
 					}
 
 					for _, col := range scan {
@@ -2207,128 +2290,247 @@ func (ctx contactChatMessagesQuery) scanRows(rows *sql.Rows, req *app.SearchOpti
 						}
 					}
 
-					// data = append(data, node)
-					peer := &peer{
-						node: node, alias: pb.ChatPeer{
-							Id: strconv.Itoa(len(peers) + 1),
+					into.Chats = append(into.Chats, node)
+					chats = append(chats, &chat{
+						id:   UUID(uuid.MustParse(node.Id)),
+						node: node,
+						alias: pb.ContactChat{
+							Id: strconv.Itoa(len(chats) + 1),
 						},
-					}
-					peers = append(peers, peer)
-					if outFrom { // output: peers
-						into.Peers = append(into.Peers, node)
-					}
-
-					for _, chatId := range chatId.Elements {
-						// TODO: disclose peer(node).chat_id relation !
-						chatRow := &pb.ContactChat{
-							Id:   hex.EncodeToString(chatId.Bytes[:]),
-							Peer: &peer.alias,
-						}
-						chatRef := &chat{
-							// data
-							peer: peer,
-							node: chatRow,
-							// refs
-							id: chatId.Bytes,
-							alias: pb.ContactChat{
-								Id: strconv.Itoa(len(chats) + 1),
-							},
-						}
-						chats = append(chats, chatRef)
-						if outSender { // output: chats
-							into.Chats = append(into.Chats, chatRow)
-						}
-					}
+					})
 				}
 				return nil
-			}),
-			// messages
-			DecodeText(func(src []byte) error {
-				// parse: array(row(message))
-				rows, err := pgtype.ParseUntypedTextArray(
-					string(src),
-				)
-				if err != nil {
-					return err
-				}
+			}))
+	}
+	fetch = append(fetch,
+		// peers
+		DecodeText(func(src []byte) error {
+			// parse: array(row(sender))
+			rows, err := pgtype.ParseUntypedTextArray(string(src))
+			if err != nil {
+				return err
+			}
 
-				var (
-					node *pb.ChatMessage
-					heap []pb.ChatMessage
+			var (
+				node *pb.ChatPeer
+				heap []pb.ChatPeer
 
-					page = into.GetMessages() // input
-					data []*pb.ChatMessage    // output
+				page = into.GetPeers() // input
+				// data []*pb.Peer        // output
 
-					eval = make([]any, len(ctx.plan))
-					size = len(rows.Elements)
-				)
+				// eval = make([]any, 4) // len(ctx.plan))
+				size = len(rows.Elements)
 
-				if 0 < size {
-					data = make([]*pb.ChatMessage, 0, size)
-				}
+				text   pgtype.Text
+				chatId pgtype.UUIDArray
 
-				if n := size - len(page); 1 < n {
-					heap = make([]pb.ChatMessage, n) // mempage; tidy
-				}
-
-				var (
-					c   int // column
-					raw *pgtype.CompositeTextScanner
-				)
-				for r, row := range rows.Elements {
-					raw = pgtype.NewCompositeTextScanner(nil, []byte(row))
-					// RECORD
-					node = nil // NEW
-					if r < len(page) {
-						// [INTO] given page records
-						// [NOTE] order matters !
-						node = page[r]
-					} else if len(heap) > 0 {
-						node = &heap[0]
-						heap = heap[1:]
-					}
-					// ALLOC
-					if node == nil {
-						node = new(pb.ChatMessage)
-					}
-					// [BIND] data fields to scan row
-					c = 0
-					for _, bind := range ctx.plan {
-
-						df := bind(node)
-						if df != nil {
-							eval[c] = df
-							c++
-							continue
-						}
-						// (df == nil)
-						// omit; pseudo calc
-					}
-
-					for _, col := range eval {
-						raw.ScanDecoder(col.(TextDecoder))
-						err = raw.Err()
+				scan = []TextDecoder{
+					// id
+					DecodeText(func(src []byte) error {
+						err := text.DecodeText(nil, src)
 						if err != nil {
 							return err
 						}
-					}
-					// REFERENCES
-					senderId := uuid.MustParse(node.Sender.Id)
-					senderChat := getSender(UUID(senderId))
-					node.From = &senderChat.peer.alias
-					if outSender {
-						node.Sender = &senderChat.alias
-					} else {
-						node.Sender = nil
-					}
-					data = append(data, node)
+						node.Id = text.String
+						// ok = ok || text.String != "" // && str.Status == pgtype.Present
+						return nil
+					}),
+					// type
+					DecodeText(func(src []byte) error {
+						err := text.DecodeText(nil, src)
+						if err != nil {
+							return err
+						}
+						node.Type = text.String
+						// ok = ok || text.String != "" // && str.Status == pgtype.Present
+						return nil
+					}),
+					// name
+					DecodeText(func(src []byte) error {
+						err := text.DecodeText(nil, src)
+						if err != nil {
+							return err
+						}
+						node.Name = text.String
+						// ok = ok || text.String != "" // && str.Status == pgtype.Present
+						return nil
+					}),
+					// chat_id
+					DecodeText(func(src []byte) error {
+						err := chatId.DecodeText(nil, src)
+						if err != nil {
+							return err
+						}
+						// ok = ok || text.String != "" // && str.Status == pgtype.Present
+						return nil
+					}),
+				}
+			)
+
+			if 0 < size {
+				// data = make([]*pb.Peer, 0, size)
+				peers = make([]*peer, 0, size)
+			}
+
+			if n := size - len(page); 1 < n {
+				heap = make([]pb.ChatPeer, n) // mempage; tidy
+			}
+
+			var (
+				// c   int // column
+				raw *pgtype.CompositeTextScanner
+			)
+			for r, row := range rows.Elements {
+				raw = pgtype.NewCompositeTextScanner(nil, []byte(row))
+				// RECORD
+				node = nil // NEW
+				if r < len(page) {
+					// [INTO] given page records
+					// [NOTE] order matters !
+					node = page[r]
+				} else if len(heap) > 0 {
+					node = &heap[0]
+					heap = heap[1:]
+				}
+				// ALLOC
+				if node == nil {
+					node = new(pb.ChatPeer)
 				}
 
-				into.Messages = data
-				return nil
-			}),
-		}
-	)
+				for _, col := range scan {
+					raw.ScanDecoder(col)
+					err = raw.Err()
+					if err != nil {
+						return err
+					}
+				}
+
+				// data = append(data, node)
+				peer := &peer{
+					node: node, alias: pb.ChatPeer{
+						Id: strconv.Itoa(len(peers) + 1),
+					},
+				}
+				peers = append(peers, peer)
+				if outFrom { // output: peers
+					into.Peers = append(into.Peers, node)
+				}
+
+				for _, chatId := range chatId.Elements {
+					// TODO: disclose peer(node).chat_id relation !
+					chatRow := &pb.ContactChat{
+						Id:   hex.EncodeToString(chatId.Bytes[:]),
+						Peer: &peer.alias,
+					}
+					chatRef := &chatPeer{
+						// data
+						peer: peer,
+						node: chatRow,
+						// refs
+						id: chatId.Bytes,
+						alias: pb.ContactChat{
+							Id: strconv.Itoa(len(chatPeers) + 1),
+						},
+					}
+					chatPeers = append(chatPeers, chatRef)
+				}
+			}
+			return nil
+		}),
+
+		// messages
+		DecodeText(func(src []byte) error {
+			// parse: array(row(message))
+			rows, err := pgtype.ParseUntypedTextArray(
+				string(src),
+			)
+			if err != nil {
+				return err
+			}
+
+			var (
+				node *pb.ChatMessage
+				heap []pb.ChatMessage
+
+				page = into.GetMessages() // input
+				data []*pb.ChatMessage    // output
+
+				eval = make([]any, len(ctx.plan))
+				size = len(rows.Elements)
+			)
+
+			if 0 < size {
+				data = make([]*pb.ChatMessage, 0, size)
+			}
+
+			if n := size - len(page); 1 < n {
+				heap = make([]pb.ChatMessage, n) // mempage; tidy
+			}
+
+			var (
+				c   int // column
+				raw *pgtype.CompositeTextScanner
+			)
+			for r, row := range rows.Elements {
+				raw = pgtype.NewCompositeTextScanner(nil, []byte(row))
+				// RECORD
+				node = nil // NEW
+				if r < len(page) {
+					// [INTO] given page records
+					// [NOTE] order matters !
+					node = page[r]
+				} else if len(heap) > 0 {
+					node = &heap[0]
+					heap = heap[1:]
+				}
+				// ALLOC
+				if node == nil {
+					node = new(pb.ChatMessage)
+				}
+				// [BIND] data fields to scan row
+				c = 0
+				for _, bind := range ctx.plan {
+
+					df := bind(node)
+					if df != nil {
+						eval[c] = df
+						c++
+						continue
+					}
+					// (df == nil)
+					// omit; pseudo calc
+				}
+
+				for _, col := range eval {
+					raw.ScanDecoder(col.(TextDecoder))
+					err = raw.Err()
+					if err != nil {
+						return err
+					}
+				}
+				// REFERENCES
+				channelId := uuid.MustParse(node.Sender.Id)
+				senderChannel := getSender(UUID(channelId))
+				if outFrom {
+					node.From = &senderChannel.peer.alias
+				} else {
+					node.From = nil
+				}
+				if !outSender {
+					node.Sender = nil
+				}
+				if outChat {
+					chatId := uuid.MustParse(node.Chat.Id)
+					senderChat := getChat(UUID(chatId))
+					node.Chat = &senderChat.alias
+				}
+
+				data = append(data, node)
+			}
+
+			into.Messages = data
+			return nil
+		}))
 
 	for rows.Next() {
 		err := rows.Scan(fetch...)
