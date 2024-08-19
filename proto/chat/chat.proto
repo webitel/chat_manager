@@ -115,6 +115,7 @@ message UpdateChannelResponse {}
 
 message SaveAgentJoinMessageRequest {
   Message message = 1;
+  string receiver = 2;
 }
 
 message SaveAgentJoinMessageResponse {

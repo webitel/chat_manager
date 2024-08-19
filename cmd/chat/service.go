@@ -350,12 +350,11 @@ func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pb.SaveAgen
 		Int64("webitel_user", webitelUserID).
 		Str("type", sendMessage.GetType()).
 		Str("text", sendMessage.GetText()).
-		// Bool("file", sendMessage.GetFile() != nil).
 		Interface("file", sendMessage.GetFile()).
 		Msg("SEND Message")
 
-	// region: lookup target chat session by unique sender chat channel id
-	chat, err := s.repo.GetSessionByInternalUserId(ctx, webitelUserID)
+	// region: lookup target chat session by unique webitel user id
+	chat, err := s.repo.GetSessionByInternalUserId(ctx, webitelUserID, req.GetReceiver())
 
 	if err != nil {
 		// lookup operation error
@@ -383,26 +382,21 @@ func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pb.SaveAgen
 	if chat.IsClosed() {
 		// sender channel is already closed !
 		return errors.BadRequest(
-			"chat.send.channel.from.closed",
+			"chat.save_agent_join_message.channel.from.closed",
 			"send: FROM chat channel ID=%s is closed",
-			webitelUserID,
+			chat.ID,
 		)
 	}
 
 	sender := chat.Channel
 
-	// Validate and normalize message to send
-	// Mostly also stores non-service-level message to persistent DB
+	// save message from the sender perspective (remove me or do from the flow in the future)
 	_, err = s.saveMessage(ctx, nil, sender, sendMessage)
 
 	if err != nil {
 		// Failed to store message or validation error !
 		return err
 	}
-
-	// // show chat room state
-	// data, _ := json.MarshalIndent(chat, "", "  ")
-	// s.log.Debug().Msg(string(data))
 
 	// PERFORM message publish|broadcast
 	_, err = s.notifyAgentJoinToAllMembers(ctx, chat, sendMessage)

@@ -143,7 +143,11 @@ func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*Outgoing
 	// region PREPARING STRUCT
 
 	// Converting chat id to int
-	chatId, err := strconv.Atoi(update.Chat.ChatID)
+	if update.Chat == nil {
+		return nil, errors.BadRequest("bot.vk.check_args.chat.nil", "channel peer is nil")
+	}
+	channel := update.Chat
+	chatId, err := strconv.Atoi(channel.ChatID)
 	if err != nil {
 		return nil, errors.BadRequest("bot.vk.convert_chat_id.error", err.Error())
 	}
@@ -224,11 +228,14 @@ func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*Outgoing
 			CreatedAt: time.Now().UnixMilli(),
 			From:      peer,
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-		_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave})
-		cancel()
-		if err != nil {
-			return nil, err
+
+		if channel.ChannelID != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave, Receiver: channel.ChannelID})
+			cancel()
+			if err != nil {
+				return nil, err
+			}
 		}
 		result.Text = text
 		//}

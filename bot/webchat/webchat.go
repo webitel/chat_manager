@@ -484,9 +484,11 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 			CreatedAt: time.Now().UnixMilli(),
 			From:      peer,
 		}
-		_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave})
-		if err != nil {
-			return err
+		if channel != nil && channel.ChannelID != "" {
+			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave, Receiver: channel.ChannelID})
+			if err != nil {
+				return err
+			}
 		}
 		// Send Text
 		message.Type = "text"

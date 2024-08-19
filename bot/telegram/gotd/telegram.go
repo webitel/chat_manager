@@ -409,9 +409,11 @@ func (c *app) SendNotify(ctx context.Context, notify *bot.Update) error {
 			CreatedAt: time.Now().UnixMilli(),
 			From:      peer,
 		}
-		_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave})
-		if err != nil {
-			return err
+		if peerChannel != nil && peerChannel.ChannelID != "" {
+			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave, Receiver: peerChannel.ChannelID})
+			if err != nil {
+				return err
+			}
 		}
 		_, err = sendMessage.StyledText(
 			ctx, markdown.FormatText(messageText),

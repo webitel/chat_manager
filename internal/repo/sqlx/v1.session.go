@@ -42,8 +42,8 @@ func (s *sqlxRepository) GetSession(ctx context.Context, chatID string) (chat *a
 	return room, nil // OK !
 }
 
-func (s *sqlxRepository) GetSessionByInternalUserId(ctx context.Context, userId int64) (chat *app.Session, err error) {
-	rows, err := s.db.QueryContext(ctx, psqlInternalSessionQ, userId)
+func (s *sqlxRepository) GetSessionByInternalUserId(ctx context.Context, userId int64, receiverChannelId string) (chat *app.Session, err error) {
+	rows, err := s.db.QueryContext(ctx, psqlInternalSessionQ, receiverChannelId)
 
 	if err != nil {
 		// Disclose DB schema specific errors !
@@ -61,7 +61,7 @@ func (s *sqlxRepository) GetSessionByInternalUserId(ctx context.Context, userId 
 
 	for i, member := range room.Members {
 		if member.User.ID == userId {
-			room.Channel = member // view for requested chatID as member
+			room.Channel = member // view from requested userId perspective
 			room.Members = append(room.Members[:i], room.Members[i+1:]...)
 			break
 		}
@@ -357,7 +357,7 @@ var psqlInternalSessionQ = CompactSQL(
 	`WITH session AS (select id
                  from (select conversation_id
                         from chat.channel
-                        where user_id = $1) chat(id)
+                        where id = $1) chat(id)
                  limit 1),
      channel as (select chat.domain_id                                          as dc,
                         channel.id                                              as room_id,
