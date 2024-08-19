@@ -122,9 +122,13 @@ func (c *Message) Normalize() error {
 	}
 	// combine sender type and id to recognize in future
 	if c.Sender.Type != "" {
-		c.Sender.Id = fmt.Sprintf("%s|%s", c.Sender.Type, c.Sender.Id)
+		c.Sender.Id = FormatSenderId(c.Sender.Type, c.Sender.Id)
 	}
 	return nil
+}
+
+func FormatSenderId(originSenderId string, senderType string) string {
+	return fmt.Sprintf("%s|%s", senderType, originSenderId)
 }
 
 // Message identifies message FROM/TO customer
