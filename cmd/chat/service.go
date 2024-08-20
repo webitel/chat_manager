@@ -2945,6 +2945,13 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 			Str("channel", member.Chat.Channel).
 			Str("TO", member.User.FirstName).
 			Msg("SENT")
+		if err != nil {
+			// since there are only can be two channels in that version of messages-srv (sender, receiver)
+			// so we should probably return that error
+			// NOTE: maybe in future there will be more than one receiver
+			// and we should decide what to do if message was sent to one receiver but wasn't to the other
+			return 0, err
+		}
 	}
 
 	if rebind {
