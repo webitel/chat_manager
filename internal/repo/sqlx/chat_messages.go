@@ -346,7 +346,6 @@ func getContactMessagesInput(req *app.SearchOptions) (args contactChatMessagesAr
 		}
 	}
 	args.DC = req.Context.Creds.Dc
-	args.Limit = req.GetSize()
 	args.Page = req.GetPage()
 
 	inputPeer := func(input *pb.Peer) error {
@@ -497,6 +496,8 @@ func getContactMessagesInput(req *app.SearchOptions) (args contactChatMessagesAr
 	// if peer not found then user wants to see all merged messages by contact
 	// split fields for merged and unmerged history
 	if args.Peer == nil {
+		// Provide default sizing
+		args.Limit = req.GetSize()
 		args.Fields = app.FieldsFunc(
 			req.Fields, // app.InlineFields,
 			app.SelectFields(
@@ -520,6 +521,16 @@ func getContactMessagesInput(req *app.SearchOptions) (args contactChatMessagesAr
 			),
 		)
 	} else {
+		// Provide
+		var size int
+		if req.Size <= 0 {
+			// get all history
+			size = 0
+		} else {
+			// sizing enabled, set
+			size = req.GetSize()
+		}
+		args.Limit = size
 		args.Fields = app.FieldsFunc(
 			req.Fields, // app.InlineFields,
 			app.SelectFields(
