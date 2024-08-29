@@ -53,6 +53,8 @@ message Dialog {
   // [TO]: Participants.
   // Leg[A+]. Schema / Agent.
   repeated Chat members = 12;
+  // Close reason if closed from the request sender perspective
+  string closed_cause = 13;
 
 }
 

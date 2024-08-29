@@ -22,6 +22,9 @@
     },
     {
       "name": "ContactsChatCatalog"
+    },
+    {
+      "name": "AgentChatsService"
     }
   ],
   "host": "nx.webitel.org",
@@ -36,6 +39,68 @@
     "application/json"
   ],
   "paths": {
+    "/agent/chats": {
+      "get": {
+        "operationId": "AgentChatsService_GetAgentChats",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/webitel.chat.GetAgentChatsResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "size",
+            "description": "default",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "only_closed",
+            "description": "filter",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          }
+        ],
+        "tags": [
+          "AgentChatsService"
+        ]
+      }
+    },
     "/chat/customers": {
       "get": {
         "summary": "Query of external chat customers",
@@ -914,6 +979,44 @@
     }
   },
   "definitions": {
+    "webitel.chat.AgentChat": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Chat id"
+        },
+        "title": {
+          "type": "string",
+          "title": "Chat title"
+        },
+        "gateway": {
+          "$ref": "#/definitions/webitel.chat.Peer",
+          "title": "Chat gateway"
+        },
+        "started_at": {
+          "type": "string",
+          "format": "int64",
+          "title": "Chat time length"
+        },
+        "closed_at": {
+          "type": "string",
+          "format": "int64"
+        },
+        "last_message": {
+          "$ref": "#/definitions/webitel.chat.Message",
+          "title": "Chat first message"
+        },
+        "queue": {
+          "$ref": "#/definitions/webitel.chat.Peer",
+          "title": "Queue name (unreal)"
+        },
+        "close_reason": {
+          "type": "string",
+          "title": "Close reason (from agent perspective)"
+        }
+      }
+    },
     "webitel.chat.Button": {
       "type": "object",
       "properties": {
@@ -1373,6 +1476,10 @@
             "$ref": "#/definitions/webitel.chat.Chat"
           },
           "description": "[TO]: Participants.\nLeg[A+]. Schema / Agent."
+        },
+        "closed_cause": {
+          "type": "string",
+          "title": "Close reason if closed from the request sender perspective"
         }
       },
       "description": "Chat Dialog. Conversation info."
@@ -1402,6 +1509,25 @@
         }
       },
       "description": "Media File."
+    },
+    "webitel.chat.GetAgentChatsResponse": {
+      "type": "object",
+      "properties": {
+        "next": {
+          "type": "boolean"
+        },
+        "page": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/webitel.chat.AgentChat"
+          }
+        }
+      }
     },
     "webitel.chat.GetContactChatHistoryRequest.Offset": {
       "type": "object",
