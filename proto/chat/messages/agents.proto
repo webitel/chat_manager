@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package webitel.chat;
+
+option go_package = "github.com/webitel/chat_manager/api/proto/chat/messages";
+
+import "chat/messages/peer.proto";
+import "chat/messages/message.proto";
+import "google/api/annotations.proto";
+
+
+service AgentChatsService {
+  rpc GetAgentChats(GetAgentChatsRequest) returns (GetAgentChatsResponse) {
+    option(google.api.http) = {
+      get: "/agent/chats"
+    };
+  }
+}
+
+message GetAgentChatsRequest {
+  // default
+  int32 size = 1;
+  int32 page = 2;
+  string q = 3;
+  repeated string fields = 4;
+  string sort = 5;
+  // filter
+  bool only_closed = 6;
+}
+
+message GetAgentChatsResponse {
+  bool next = 1;
+  int32 page = 2;
+  repeated AgentChat items = 3;
+}
+
+message AgentChat {
+   // Chat id
+  string id = 1;
+  // Chat title
+  string title = 2;
+  // Chat gateway
+  Peer gateway = 3;
+  // Chat time length
+  int64 started_at = 4;
+  int64 closed_at = 5;
+  // Chat first message
+  Message last_message = 6;
+  // Queue name (unreal)
+  Peer queue = 7;
+  // Close reason (from agent perspective)
+  string close_reason = 8;
+}

@@ -513,6 +513,25 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 			))
 			return alias
 		}
+		closedCauseAlias string
+		joinClosedCause  = func() string {
+			alias := closedCauseAlias
+			if alias != "" {
+				return alias
+			}
+			// once
+			alias = "closed_cause"
+			messageAlias = alias
+			ctx.Query = ctx.Query.JoinClause(CompactSQL(
+				` LEFT JOIN LATERAL (SELECT m.closed_cause
+                            FROM chat.channel m
+                            WHERE m.conversation_id = c.thread_id
+                            AND m.user_id = :self
+                            ORDER BY m.created_at DESC
+                            LIMIT 1) closed_cause ON true`,
+			))
+			return alias
+		}
 	)
 
 	for _, field := range req.Fields {
@@ -857,6 +876,16 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 						node.Members = data // contact(1):(N)contact_label
 						return nil
 					})
+				})
+			}
+		case "close_cause":
+			{
+				joinClosedCause()
+				ctx.Query = ctx.Query.Column(
+					"closed_cause", // participants
+				)
+				plan = append(plan, func(node *api.Dialog) any {
+					return postgres.Text{Value: &node.ClosedCause}
 				})
 			}
 
