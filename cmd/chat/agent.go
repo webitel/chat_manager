@@ -123,6 +123,7 @@ func (srv *AgentChatsService) GetAgentChats(ctx context.Context, req *pb.GetAgen
 					"started",
 					"message",
 					"close_cause",
+					"queue",
 				},
 				// extra
 				[]string{
@@ -161,6 +162,7 @@ func (srv *AgentChatsService) GetAgentChats(ctx context.Context, req *pb.GetAgen
 			CloseReason: conv.ClosedCause,
 			Gateway:     conv.Via,
 			LastMessage: conv.Message,
+			Queue:       conv.Queue,
 		}
 		res.Items = append(res.Items, agentChat)
 	}

@@ -614,6 +614,75 @@ func fetchPeerRow(value **api.Peer) any {
 	})
 }
 
+func fetchQueueRow(value **api.Peer) any {
+	return DecodeText(func(src []byte) error {
+
+		res := *(value) // cache
+		*(value) = nil  // NULLify
+
+		if len(src) == 0 {
+			return nil // NULL
+		}
+
+		if res == nil {
+			// ALLOC
+			res = new(api.Peer)
+		}
+
+		var (
+			ok  bool // false
+			str pgtype.Text
+			row = []TextDecoder{
+				DecodeText(func(src []byte) error {
+					err := str.DecodeText(nil, src)
+					if err != nil {
+						return err
+					}
+					res.Id = str.String
+					ok = ok || (str.String != "" && str.String != "0") // && str.Status == pgtype.Present
+					return nil
+				}),
+				DecodeText(func(src []byte) error {
+					err := str.DecodeText(nil, src)
+					if err != nil {
+						return err
+					}
+					res.Type = str.String
+					ok = ok || (str.String != "" && str.String != "unknown") // && str.Status == pgtype.Present
+					return nil
+				}),
+				DecodeText(func(src []byte) error {
+					err := str.DecodeText(nil, src)
+					if err != nil {
+						return err
+					}
+					res.Name = str.String
+					ok = ok || (str.String != "" && str.String != "unknown") // && str.Status == pgtype.Present
+					return nil
+				}),
+			}
+			raw = pgtype.NewCompositeTextScanner(nil, src)
+		)
+
+		var err error
+		for _, col := range row {
+
+			raw.ScanDecoder(col)
+
+			err = raw.Err()
+			if err != nil {
+				return err
+			}
+		}
+
+		if ok {
+			*(value) = res
+		}
+
+		return nil
+	})
+}
+
 func fetchInvitedRow(value **api.Chat_Invite) any {
 	return DecodeText(func(src []byte) error {
 

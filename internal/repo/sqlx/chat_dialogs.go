@@ -411,6 +411,7 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 		"join",
 		"invite",
 		"!context", // '!' -- NO fetch ! for ( members: [node!] )
+		"queue",
 	}
 
 	var chatPlan dataFetch[*api.Chat]
@@ -886,6 +887,15 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 				)
 				plan = append(plan, func(node *api.Dialog) any {
 					return postgres.Text{Value: &node.ClosedCause}
+				})
+			}
+		case "queue":
+			{
+				ctx.Query = ctx.Query.Column(
+					ident(left, "queue"), // "from"
+				)
+				plan = append(plan, func(node *api.Dialog) any {
+					return fetchQueueRow(&node.Queue)
 				})
 			}
 

@@ -376,13 +376,40 @@ func selectChatQuery(ctx *SELECT, req *app.SearchOptions) (plan dataFetch[*api.C
 			if _, ok := cols[alias]; ok {
 				return false // duplicate; ignore
 			}
-
 			expr := ident(left, "invite") // + alias
 			ctx.Query = ctx.Query.Column(expr)
 			cols[alias] = sq.Expr(expr)
 
 			plan = append(plan, func(node *api.Chat) any {
 				return fetchInvitedRow(&node.Invite)
+			})
+
+			return true
+		}
+		columnQueue = func() bool {
+			as := "q"
+			column := "queue"
+			if _, ok := cols[column]; ok {
+				return false // duplicate; ignore
+			}
+			expr := fmt.Sprintf(
+				`LEFT JOIN LATERAL (SELECT %[1]s.id, %[1]s.strategy, %[1]s.name
+							FROM call_center.cc_member_attempt_history m
+								LEFT JOIN call_center.cc_queue %[1]s ON m.queue_id = %[1]s.id
+							WHERE m.member_call_id = %[2]s.thread_id::::varchar
+							ORDER BY %[2]s."join" desc
+							LIMIT 1) %[3]s ON true`,
+				as, left, column,
+			)
+			ctx.Query = ctx.Query.JoinClause(expr)
+			join[column] = sq.Expr(expr)
+
+			expr = "(queue)" // + alias
+			ctx.Query = ctx.Query.Column(expr)
+			cols[column] = sq.Expr(expr)
+
+			plan = append(plan, func(node *api.Chat) any {
+				return fetchQueueRow(&node.Queue)
 			})
 
 			return true
@@ -488,6 +515,10 @@ func selectChatQuery(ctx *SELECT, req *app.SearchOptions) (plan dataFetch[*api.C
 						return dbx.ScanJSONBytes(&node.Context)(src)
 					})
 				})
+			}
+		case "queue":
+			{
+				columnQueue()
 			}
 		default:
 			err = errors.BadRequest(

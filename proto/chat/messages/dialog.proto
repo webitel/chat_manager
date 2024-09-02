@@ -55,6 +55,8 @@ message Dialog {
   repeated Chat members = 12;
   // Close reason if closed from the request sender perspective
   string closed_cause = 13;
+  // OPTIONAL. Last dialog queue
+  Peer queue = 14;
 
 }
 

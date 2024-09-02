@@ -54,6 +54,9 @@ message Chat {
 
   // Context. Variables.
   map<string, string> context = 15;
+
+  // OPTIONAL. Last dialog queue
+  Peer queue = 16;
 }
 
 // Timerange filter value.
