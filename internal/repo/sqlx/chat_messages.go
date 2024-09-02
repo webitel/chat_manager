@@ -67,6 +67,8 @@ type contactChatMessagesArgs struct {
 	Peer *pb.Peer
 	// Required contact ID
 	ContactId string
+	// Required contact ID
+	Closed bool
 	// Includes the history of ONLY those dialogs
 	// whose member channel(s) contain a specified set of variables
 	Group map[string]string
@@ -411,6 +413,19 @@ func getContactMessagesInput(req *app.SearchOptions) (args contactChatMessagesAr
 					err = errors.BadRequest(
 						"contact.messages.query.group.input",
 						"contact.messages( group: {variables} ); input: convert %T into variables",
+						input,
+					)
+				}
+			}
+		case "closed":
+			{
+				switch data := input.(type) {
+				case bool:
+					args.Closed = data
+				default:
+					err = errors.BadRequest(
+						"contact.messages.query.online.input",
+						"contact.messages; input: convert %T into variables",
 						input,
 					)
 				}
@@ -1302,6 +1317,10 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 				)
 			}
 		}
+	}
+
+	if ctx.Input.Closed {
+		ctx.Query = ctx.Query.Where(ident(left, "closed_at NOTNULL"))
 	}
 
 	if q := ctx.Input.Q; q != "" {

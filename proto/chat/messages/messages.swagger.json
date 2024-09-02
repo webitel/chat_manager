@@ -1107,6 +1107,10 @@
             "type": "string"
           },
           "description": "Context. Variables."
+        },
+        "queue": {
+          "$ref": "#/definitions/webitel.chat.Peer",
+          "title": "OPTIONAL. Last dialog queue"
         }
       },
       "description": "The Chat info.\nAlias: participant, subscriber, member, peer, leg."
@@ -1480,6 +1484,10 @@
         "closed_cause": {
           "type": "string",
           "title": "Close reason if closed from the request sender perspective"
+        },
+        "queue": {
+          "$ref": "#/definitions/webitel.chat.Peer",
+          "title": "OPTIONAL. Last dialog queue"
         }
       },
       "description": "Chat Dialog. Conversation info."
