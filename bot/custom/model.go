@@ -128,7 +128,7 @@ func (c *Message) Normalize() error {
 }
 
 func FormatSenderId(originSenderId string, senderType string) string {
-	return fmt.Sprintf("%s|%s", senderType, originSenderId)
+	return fmt.Sprintf("%s|%s",originSenderId, senderType)
 }
 
 // Message identifies message FROM/TO customer
