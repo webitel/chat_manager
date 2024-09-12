@@ -127,7 +127,7 @@ func (c *Message) Normalize() error {
 	return nil
 }
 
-func FormatSenderId(originSenderId string, senderType string) string {
+func FormatSenderId(senderType string, originSenderId string) string {
 	return fmt.Sprintf("%s|%s", senderType, originSenderId)
 }
 
