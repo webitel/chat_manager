@@ -1298,7 +1298,7 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 		ctx.Params.set("contact.id", ctId)
 		ctx.Query = ctx.Query.Where(sq.And{
 			sq.Expr(ident(relChat, "user_id") + " = any (SELECT user_id from contacts.contact_imclient where contact_id = :contact.id)"),
-		})
+		}).Where(sq.Expr(fmt.Sprintf("not %s.internal", relChat)))
 	}
 	if peer := ctx.Input.Peer; peer != nil {
 		switch ctx.Input.Peer.Type {
