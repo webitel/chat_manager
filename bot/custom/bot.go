@@ -461,7 +461,9 @@ func (c *CustomGateway) handleMessage(ctx context.Context, msg *Message) error {
 	}
 	internalMessage.CreatedAt = msg.Date
 	if channel.IsNew() {
-		internalMessage.Variables = msg.Metadata
+		if msg.Metadata != nil {
+			internalMessage.Variables = msg.Metadata
+		}
 		if sender := msg.Sender; sender != nil && sender.Type != "" {
 			internalMessage.Variables[sourceVariableName] = sender.Type
 		}
@@ -481,7 +483,7 @@ func (c *CustomGateway) handleMessage(ctx context.Context, msg *Message) error {
 		internalMessage.Type = bot.TextType
 		internalMessage.Text = msg.Text
 	}
-	// TODO id is empty!
+	// TODO msg.Id is empty!
 	internalMessage.Variables[conversationId] = msg.Id
 	return c.Gateway.Read(ctx, update)
 }
