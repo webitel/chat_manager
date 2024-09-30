@@ -417,19 +417,6 @@ func getContactMessagesInput(req *app.SearchOptions) (args contactChatMessagesAr
 					)
 				}
 			}
-		case "closed":
-			{
-				switch data := input.(type) {
-				case bool:
-					args.Closed = data
-				default:
-					err = errors.BadRequest(
-						"contact.messages.query.online.input",
-						"contact.messages; input: convert %T into variables",
-						input,
-					)
-				}
-			}
 		case "chat.id":
 			{
 				var chatId uuid.UUID
@@ -508,11 +495,13 @@ func getContactMessagesInput(req *app.SearchOptions) (args contactChatMessagesAr
 			"messages( peer( type: string! ) ); input: required but missing",
 		)
 	}
-	// if peer not found then user wants to see all merged messages by contact
+
 	// split fields for merged and unmerged history
+	// if peer not found then user wants to see all merged messages by contact
 	if args.Peer == nil {
 		// Provide default sizing
 		args.Limit = req.GetSize()
+		args.Closed = true
 		args.Fields = app.FieldsFunc(
 			req.Fields, // app.InlineFields,
 			app.SelectFields(
@@ -546,6 +535,7 @@ func getContactMessagesInput(req *app.SearchOptions) (args contactChatMessagesAr
 			size = req.GetSize()
 		}
 		args.Limit = size
+		args.Closed = false
 		args.Fields = app.FieldsFunc(
 			req.Fields, // app.InlineFields,
 			app.SelectFields(
@@ -1590,9 +1580,10 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 							%[1]s.file_id id,
 							%[1]s.file_size size,
 							%[1]s.file_type "type",
-							%[1]s.file_name "name"
+							%[1]s.file_name "name",
+							%[1]s.file_url "url"
 						WHERE
-						%[1]s.file_id NOTNULL
+						%[1]s.file_id NOTNULL OR m.file_url NOTNULL 
 					) %[2]s ON true`,
 						left, "file",
 					)))

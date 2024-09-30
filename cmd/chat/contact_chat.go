@@ -120,7 +120,6 @@ func (srv *ContactChatHistoryService) GetContactChatHistory(ctx context.Context,
 		Term: req.Q,
 		Filter: map[string]any{
 			"contact.id": req.GetContactId(), // mandatory(!)
-			"closed":     true,
 		},
 		Access: auth.READ,
 		Fields: req.Fields,

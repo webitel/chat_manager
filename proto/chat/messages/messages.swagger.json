@@ -1728,6 +1728,10 @@
         "name": {
           "type": "string",
           "title": "Filename"
+        },
+        "url": {
+          "type": "string",
+          "title": "Exact url of file (if exists)"
         }
       },
       "description": "Media File."

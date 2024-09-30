@@ -151,6 +151,9 @@ message MessageFile {
 
   // Filename
   string name = 5;
+
+  // Exact url of file (if exists)
+  string url = 6;
 }
 
 message MessageReplyMarkup {
