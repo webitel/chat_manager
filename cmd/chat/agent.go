@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -124,11 +125,11 @@ func (srv *AgentChatsService) GetAgentChats(ctx context.Context, req *pb.GetAgen
 					"message",
 					"close_cause",
 					"queue",
+					"context",
 				},
 				// extra
 				[]string{
 					"members",
-					"context",
 				},
 			),
 		),
@@ -154,19 +155,62 @@ func (srv *AgentChatsService) GetAgentChats(ctx context.Context, req *pb.GetAgen
 	}
 
 	for _, conv := range resultingChats.Data {
+		var unprocessedClose bool
+		if v, ok := conv.Context[store.ChatNeedsProcessingVariable]; ok {
+			raw, err := strconv.ParseBool(v)
+			if err == nil {
+				unprocessedClose = raw
+			}
+		}
 		agentChat := &pb.AgentChat{
-			Id:          conv.Id,
-			Title:       conv.Title,
-			StartedAt:   conv.Started,
-			ClosedAt:    conv.Closed,
-			CloseReason: conv.ClosedCause,
-			Gateway:     conv.Via,
-			LastMessage: conv.Message,
-			Queue:       conv.Queue,
+			Id:               conv.Id,
+			Title:            conv.Title,
+			StartedAt:        conv.Started,
+			ClosedAt:         conv.Closed,
+			CloseReason:      conv.ClosedCause,
+			Gateway:          conv.Via,
+			LastMessage:      conv.Message,
+			Queue:            conv.Queue,
+			UnprocessedClose: unprocessedClose,
 		}
 		res.Items = append(res.Items, agentChat)
 	}
 	res.Page = resultingChats.Page
 	res.Next = resultingChats.Next
+	return nil
+}
+
+func (srv *AgentChatsService) MarkChatProcessed(ctx context.Context, request *pb.MarkChatProcessedRequest, response *pb.MarkChatProcessedResponse) error {
+	// region: ----- Authentication -----
+	authN, err := app.GetContext(
+		ctx, app.AuthorizationRequire(
+			srv.authN.GetAuthorization,
+		),
+		srv.bindNativeClient,
+	)
+
+	if err != nil {
+		return err // 401
+	}
+	// endregion: ----- Authentication -----
+
+	// region: ----- Authorization -----
+	scope := authN.Authorization.HasObjclass(scopeChats)
+	if scope == nil {
+		return errors.Forbidden(
+			"chat.objclass.access.denied",
+			"denied: require r:chats access but not granted",
+		) // (403) Forbidden
+	}
+	// endregion
+
+	// database logic
+	affected, err := srv.catalogStore.MarkChatAsProcessed(ctx, request.ChatId, authN.Creds.GetUserId())
+	if err != nil {
+		return errors.New("chat.agent.mark_chat_processed.storage.error", err.Error(), http.StatusInternalServerError)
+	}
+	if affected == 0 {
+		return errors.New("chat.agent.mark_chat_processed.no_rows_affected.error", "user didn't take action in the given conversation or wrong conversation id", http.StatusInternalServerError)
+	}
 	return nil
 }

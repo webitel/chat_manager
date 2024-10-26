@@ -15,6 +15,11 @@ service AgentChatsService {
       get: "/agent/chats"
     };
   }
+  rpc MarkChatProcessed(MarkChatProcessedRequest) returns (MarkChatProcessedResponse) {
+    option(google.api.http) = {
+      patch: "/agent/chats/{chat_id}"
+    };
+  }
 }
 
 message GetAgentChatsRequest {
@@ -34,6 +39,13 @@ message GetAgentChatsResponse {
   repeated AgentChat items = 3;
 }
 
+message MarkChatProcessedRequest {
+  string chat_id = 1;
+}
+
+message MarkChatProcessedResponse {
+}
+
 message AgentChat {
    // Chat id
   string id = 1;
@@ -50,4 +62,7 @@ message AgentChat {
   Peer queue = 7;
   // Close reason (from agent perspective)
   string close_reason = 8;
+  // Special attribute for the closed-active chats (on fact closed but should be on active tab on the front-end)
+  // can be true only when close reason = any("client_leave")
+  bool unprocessed_close = 9;
 }

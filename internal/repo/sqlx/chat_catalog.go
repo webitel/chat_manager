@@ -1,6 +1,7 @@
 package sqlxrepo
 
 import (
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
@@ -1534,6 +1535,17 @@ func selectChatMemberQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch[
 	return // ctx, plan, nil
 }
 
+func (c *sqlxRepository) MarkChatAsProcessed(ctx context.Context, chatId string, agentId int64) (int64, error) {
+
+	result, err := c.db.ExecContext(
+		ctx, catalogMarkProcessedSQL, chatId, agentId,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 var (
 	catalogChannelSQL = CompactSQL(`SELECT
   row_number() over
@@ -1629,6 +1641,12 @@ left join
 m -- member
 `,
 	)
+	// $1 - conversation_id
+	// $2 - agent that should process the chat
+	catalogMarkProcessedSQL = CompactSQL(fmt.Sprintf(`
+	UPDATE chat.channel SET props = props - '%s'
+	WHERE conversation_id = $1 AND props->> '%[1]s' NOTNULL AND EXISTS(SELECT id FROM chat.channel WHERE conversation_id = $1 AND internal AND user_id = $2)
+	`, ChatNeedsProcessingVariable))
 
 	catalogParticipantSQL = CompactSQL(`SELECT
   row_number() over

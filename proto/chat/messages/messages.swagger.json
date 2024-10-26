@@ -101,6 +101,30 @@
         ]
       }
     },
+    "/agent/chats/{chat_id}": {
+      "patch": {
+        "operationId": "AgentChatsService_MarkChatProcessed",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/webitel.chat.MarkChatProcessedResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "AgentChatsService"
+        ]
+      }
+    },
     "/chat/customers": {
       "get": {
         "summary": "Query of external chat customers",
@@ -1014,6 +1038,10 @@
         "close_reason": {
           "type": "string",
           "title": "Close reason (from agent perspective)"
+        },
+        "unprocessed_close": {
+          "type": "boolean",
+          "title": "Special attribute for the closed-active chats (on fact closed but should be on active tab on the front-end)\ncan be true only when close reason = any(\"agent_timeout\", \"client_timeout\", \"silence_timeout\", \"client_leave\")"
         }
       }
     },
@@ -1606,6 +1634,9 @@
           "type": "string"
         }
       }
+    },
+    "webitel.chat.MarkChatProcessedResponse": {
+      "type": "object"
     },
     "webitel.chat.Message": {
       "type": "object",

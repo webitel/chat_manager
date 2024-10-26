@@ -19,6 +19,7 @@ import (
 
 	errs "github.com/pkg/errors"
 
+	proto "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/app"
 )
 
@@ -27,6 +28,10 @@ import (
 //func (strs StringIDs) Value() (driver.Value, error) {
 //	return strings.Join(strs, ", "), nil
 //}
+
+const (
+	ChatNeedsProcessingVariable = "needs_processing"
+)
 
 func (repo *sqlxRepository) GetConversationByID(ctx context.Context, id string) (*Conversation, error) {
 
@@ -92,7 +97,10 @@ func (repo *sqlxRepository) CreateConversation(ctx context.Context, session *Con
 
 // TODO: CloseConversation(ctx context.Context, id string, at time.Time) error {}
 func (repo *sqlxRepository) CloseConversation(ctx context.Context, id string, cause string) error {
-
+	var needsProcessing bool
+	if cause == proto.CloseConversationCause_client_leave.String() {
+		needsProcessing = true
+	}
 	at := time.Now()
 
 	// with cancellation context
@@ -100,7 +108,7 @@ func (repo *sqlxRepository) CloseConversation(ctx context.Context, id string, ca
 		// query statement
 		psqlSessionCloseQ,
 		// query params ...
-		id, at.UTC(), cause,
+		id, at.UTC(), cause, needsProcessing,
 	)
 
 	return err
@@ -764,6 +772,8 @@ func schemaConversationError(err error) error {
 // postgres: chat.session.close(!)
 // $1 - conversation_id
 // $2 - local timestamp
+// $3 - close cause
+// $4 - needs processing by agent
 const psqlSessionCloseQ = `WITH c0 AS (
   UPDATE chat.invite
      SET closed_at=$2
@@ -776,13 +786,13 @@ const psqlSessionCloseQ = `WITH c0 AS (
   DELETE FROM chat.conversation_node
    WHERE conversation_id=$1
 ), c3 AS (
-  UPDATE chat.conversation
+  UPDATE chat.conversation c
      SET closed_at=$2
    WHERE id=$1
      AND closed_at ISNULL
 )
 UPDATE chat.channel
-   SET closed_at=$2, closed_cause=$3
+   SET closed_at=$2, closed_cause=$3, props=(case when $4 AND id = any(SELECT id FROM chat.channel WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 1) then jsonb_set(props, ARRAY['` + ChatNeedsProcessingVariable + `'],to_jsonb('true'::text), true) else props end)
  WHERE conversation_id=$1
    AND closed_at ISNULL
 `
