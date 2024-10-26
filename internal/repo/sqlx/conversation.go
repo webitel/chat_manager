@@ -98,7 +98,11 @@ func (repo *sqlxRepository) CreateConversation(ctx context.Context, session *Con
 // TODO: CloseConversation(ctx context.Context, id string, at time.Time) error {}
 func (repo *sqlxRepository) CloseConversation(ctx context.Context, id string, cause string) error {
 	var needsProcessing bool
-	if cause == proto.CloseConversationCause_client_leave.String() {
+	switch cause {
+	case proto.CloseConversationCause_client_leave.String(),
+		proto.LeaveConversationCause_client_timeout.String(),
+		proto.LeaveConversationCause_agent_timeout.String(),
+		proto.LeaveConversationCause_silence_timeout.String():
 		needsProcessing = true
 	}
 	at := time.Now()
