@@ -123,9 +123,9 @@ func (srv *AgentChatsService) GetAgentChats(ctx context.Context, req *pb.GetAgen
 					"closed",
 					"started",
 					"message",
-					"close_cause",
+					"closed_cause",
 					"queue",
-					"context",
+					"needs_processing",
 				},
 				// extra
 				[]string{

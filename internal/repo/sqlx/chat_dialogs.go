@@ -3,6 +3,7 @@ package sqlxrepo
 import (
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 
 	"github.com/jackc/pgtype"
@@ -10,7 +11,6 @@ import (
 	api "github.com/webitel/chat_manager/api/proto/chat/messages"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/internal/repo/sqlx/proto"
-	dbx "github.com/webitel/chat_manager/store/database"
 	"github.com/webitel/chat_manager/store/postgres"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
@@ -521,8 +521,11 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 				return alias
 			}
 			// once
+			if args.Self <= 0 {
+				panic("closed cause perspective(self) is unknown")
+			}
 			alias = "closed_cause"
-			messageAlias = alias
+			closedCauseAlias = alias
 			ctx.Query = ctx.Query.JoinClause(CompactSQL(
 				` LEFT JOIN LATERAL (SELECT m.closed_cause
                             FROM chat.channel m
@@ -531,6 +534,28 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
                             ORDER BY m.created_at DESC
                             LIMIT 1) closed_cause ON true`,
 			))
+			return alias
+		}
+		needsProcessingAlias string
+		joinNeedsProcessing  = func() string {
+			alias := needsProcessingAlias
+			if alias != "" {
+				return alias
+			}
+			// once
+			if args.Self <= 0 {
+				panic("needs_processing perspective(self) is unknown")
+			}
+			alias = "needs_processing"
+			needsProcessingAlias = alias
+			ctx.Query = ctx.Query.JoinClause(CompactSQL(fmt.Sprintf(
+				` LEFT JOIN LATERAL (SELECT m.props->>'%s' needs_processing
+                            FROM chat.channel m
+                            WHERE m.conversation_id = c.thread_id
+                            AND m.user_id = :self
+                            ORDER BY m.created_at DESC
+                            LIMIT 1) needs_processing ON true`, ChatNeedsProcessingVariable,
+			)))
 			return alias
 		}
 	)
@@ -622,7 +647,32 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 						ident(left, "context"),
 					)
 					plan = append(plan, func(node *api.Dialog) any {
-						return dbx.ScanJSONBytes(&node.Context)
+						return ScanFunc(func(src interface{}) error {
+							if src == nil {
+								return nil
+							}
+							switch data := src.(type) {
+							case []byte:
+								if len(data) == 0 {
+									return nil
+								}
+								var buffer map[string]string
+								err := json.Unmarshal(data, &buffer)
+								if err != nil {
+									return err
+								}
+								if node.Context == nil {
+									node.Context = buffer
+								} else {
+									for k, v := range buffer {
+										node.Context[k] = v
+									}
+								}
+								return nil
+							default:
+								return fmt.Errorf("database: convert %[1]T value %[1]v to %[2]T type", src, node)
+							}
+						})
 					})
 				}
 			}
@@ -879,14 +929,49 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 					})
 				})
 			}
-		case "close_cause":
+		case "closed_cause":
 			{
-				joinClosedCause()
+				alias := joinClosedCause()
 				ctx.Query = ctx.Query.Column(
-					"closed_cause", // participants
+					alias,
 				)
 				plan = append(plan, func(node *api.Dialog) any {
 					return postgres.Text{Value: &node.ClosedCause}
+				})
+			}
+		case "needs_processing":
+			{
+				alias := joinNeedsProcessing()
+				ctx.Query = ctx.Query.Column(
+					alias,
+				)
+				plan = append(plan, func(node *api.Dialog) any {
+					return ScanFunc(func(src interface{}) error {
+						if src == nil {
+							return nil
+						}
+						var res string
+						switch data := src.(type) {
+						case []byte:
+							if len(data) == 0 {
+								return nil
+							}
+							res = string(data)
+						case string:
+							if len(data) == 0 {
+								return nil
+							}
+							res = data
+						default:
+							return fmt.Errorf("database: convert %[1]T value %[1]v to %[2]T type", src, node)
+						}
+						if node.Context != nil {
+							node.Context[ChatNeedsProcessingVariable] = res
+						} else {
+							node.Context = map[string]string{ChatNeedsProcessingVariable: res}
+						}
+						return nil
+					})
 				})
 			}
 		case "queue":

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	proto "github.com/webitel/chat_manager/api/proto/chat"
 	"strconv"
 	"strings"
 	"time"
@@ -350,11 +351,18 @@ func (repo *sqlxRepository) CloseChannel(ctx context.Context, id string, cause s
 	}
 
 	var (
-		now = time.Now()
+		now             = time.Now()
+		needsProcessing bool
 		// res = &Channel{}
 	)
+	switch cause {
+	case proto.LeaveConversationCause_client_timeout.String(),
+		proto.LeaveConversationCause_agent_timeout.String(),
+		proto.LeaveConversationCause_silence_timeout.String():
+		needsProcessing = true
+	}
 
-	rows, err := repo.db.QueryContext(ctx, psqlChannelCloseQ, id, now.UTC(), cause)
+	rows, err := repo.db.QueryContext(ctx, psqlChannelCloseQ, id, now.UTC(), cause, needsProcessing)
 
 	if err != nil {
 		return nil, err
@@ -1100,10 +1108,16 @@ func NewChannel(dcx sqlx.ExtContext, ctx context.Context, channel *Channel) erro
 // postgres: chat.channel.close(!)
 // $1 - channel_id
 // $2 - local timestamp
-const psqlChannelCloseQ = `WITH closed AS (UPDATE chat.channel c SET closed_at=$2, closed_cause = $3 WHERE c.id=$1 AND c.closed_at ISNULL RETURNING c.*)
+// $3 - close cause
+// $4 - needs_processing
+var psqlChannelCloseQ = fmt.Sprintf(`WITH closed AS (UPDATE chat.channel c SET 
+closed_at=$2, 
+closed_cause = $3, 
+props=(case when $4 AND c.internal then jsonb_set(c.props, ARRAY['%s'],to_jsonb('true'::text), true) else c.props end) 
+WHERE c.id=$1 AND c.closed_at ISNULL RETURNING c.*)
 UPDATE chat.conversation s SET updated_at=$2 FROM closed c WHERE s.id=c.conversation_id
 RETURNING c.*
-`
+`, ChatNeedsProcessingVariable)
 
 // Create NEW channel and attach to related conversation
 // $1  - id
