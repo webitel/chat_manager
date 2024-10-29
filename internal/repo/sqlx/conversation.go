@@ -793,7 +793,7 @@ const psqlSessionCloseQ = `WITH c0 AS (
      AND closed_at ISNULL
 )
 UPDATE chat.channel
-   SET closed_at=$2, closed_cause=$3, props=(case when $4 AND id = any(SELECT id FROM chat.channel WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 1) then jsonb_set(props, ARRAY['` + ChatNeedsProcessingVariable + `'],to_jsonb('true'::text), true) else props end)
+   SET closed_at=$2, closed_cause=$3, props=(case when $4 AND internal then jsonb_set(props, ARRAY['` + ChatNeedsProcessingVariable + `'],to_jsonb('true'::text), true) else props end)
  WHERE conversation_id=$1
    AND closed_at ISNULL
 `
