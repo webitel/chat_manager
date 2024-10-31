@@ -28,18 +28,18 @@ var _ context.Context
 var _ client.Option
 var _ server.Option
 
-// Api Endpoints for AgentChatsService service
+// Api Endpoints for AgentChatService service
 
-func NewAgentChatsServiceEndpoints() []*api.Endpoint {
+func NewAgentChatServiceEndpoints() []*api.Endpoint {
 	return []*api.Endpoint{
 		{
-			Name:    "AgentChatsService.GetAgentChats",
+			Name:    "AgentChatService.GetAgentChats",
 			Path:    []string{"/agent/chats"},
 			Method:  []string{"GET"},
 			Handler: "rpc",
 		},
 		{
-			Name:    "AgentChatsService.MarkChatProcessed",
+			Name:    "AgentChatService.MarkChatProcessed",
 			Path:    []string{"/agent/chats/{chat_id}"},
 			Method:  []string{"PATCH"},
 			Handler: "rpc",
@@ -47,27 +47,27 @@ func NewAgentChatsServiceEndpoints() []*api.Endpoint {
 	}
 }
 
-// Client API for AgentChatsService service
+// Client API for AgentChatService service
 
-type AgentChatsService interface {
+type AgentChatService interface {
 	GetAgentChats(ctx context.Context, in *GetAgentChatsRequest, opts ...client.CallOption) (*GetAgentChatsResponse, error)
 	MarkChatProcessed(ctx context.Context, in *MarkChatProcessedRequest, opts ...client.CallOption) (*MarkChatProcessedResponse, error)
 }
 
-type agentChatsService struct {
+type agentChatService struct {
 	c    client.Client
 	name string
 }
 
-func NewAgentChatsService(name string, c client.Client) AgentChatsService {
-	return &agentChatsService{
+func NewAgentChatService(name string, c client.Client) AgentChatService {
+	return &agentChatService{
 		c:    c,
 		name: name,
 	}
 }
 
-func (c *agentChatsService) GetAgentChats(ctx context.Context, in *GetAgentChatsRequest, opts ...client.CallOption) (*GetAgentChatsResponse, error) {
-	req := c.c.NewRequest(c.name, "AgentChatsService.GetAgentChats", in)
+func (c *agentChatService) GetAgentChats(ctx context.Context, in *GetAgentChatsRequest, opts ...client.CallOption) (*GetAgentChatsResponse, error) {
+	req := c.c.NewRequest(c.name, "AgentChatService.GetAgentChats", in)
 	out := new(GetAgentChatsResponse)
 	err := c.c.Call(ctx, req, out, opts...)
 	if err != nil {
@@ -76,8 +76,8 @@ func (c *agentChatsService) GetAgentChats(ctx context.Context, in *GetAgentChats
 	return out, nil
 }
 
-func (c *agentChatsService) MarkChatProcessed(ctx context.Context, in *MarkChatProcessedRequest, opts ...client.CallOption) (*MarkChatProcessedResponse, error) {
-	req := c.c.NewRequest(c.name, "AgentChatsService.MarkChatProcessed", in)
+func (c *agentChatService) MarkChatProcessed(ctx context.Context, in *MarkChatProcessedRequest, opts ...client.CallOption) (*MarkChatProcessedResponse, error) {
+	req := c.c.NewRequest(c.name, "AgentChatService.MarkChatProcessed", in)
 	out := new(MarkChatProcessedResponse)
 	err := c.c.Call(ctx, req, out, opts...)
 	if err != nil {
@@ -86,45 +86,45 @@ func (c *agentChatsService) MarkChatProcessed(ctx context.Context, in *MarkChatP
 	return out, nil
 }
 
-// Server API for AgentChatsService service
+// Server API for AgentChatService service
 
-type AgentChatsServiceHandler interface {
+type AgentChatServiceHandler interface {
 	GetAgentChats(context.Context, *GetAgentChatsRequest, *GetAgentChatsResponse) error
 	MarkChatProcessed(context.Context, *MarkChatProcessedRequest, *MarkChatProcessedResponse) error
 }
 
-func RegisterAgentChatsServiceHandler(s server.Server, hdlr AgentChatsServiceHandler, opts ...server.HandlerOption) error {
-	type agentChatsService interface {
+func RegisterAgentChatServiceHandler(s server.Server, hdlr AgentChatServiceHandler, opts ...server.HandlerOption) error {
+	type agentChatService interface {
 		GetAgentChats(ctx context.Context, in *GetAgentChatsRequest, out *GetAgentChatsResponse) error
 		MarkChatProcessed(ctx context.Context, in *MarkChatProcessedRequest, out *MarkChatProcessedResponse) error
 	}
-	type AgentChatsService struct {
-		agentChatsService
+	type AgentChatService struct {
+		agentChatService
 	}
-	h := &agentChatsServiceHandler{hdlr}
+	h := &agentChatServiceHandler{hdlr}
 	opts = append(opts, api.WithEndpoint(&api.Endpoint{
-		Name:    "AgentChatsService.GetAgentChats",
+		Name:    "AgentChatService.GetAgentChats",
 		Path:    []string{"/agent/chats"},
 		Method:  []string{"GET"},
 		Handler: "rpc",
 	}))
 	opts = append(opts, api.WithEndpoint(&api.Endpoint{
-		Name:    "AgentChatsService.MarkChatProcessed",
+		Name:    "AgentChatService.MarkChatProcessed",
 		Path:    []string{"/agent/chats/{chat_id}"},
 		Method:  []string{"PATCH"},
 		Handler: "rpc",
 	}))
-	return s.Handle(s.NewHandler(&AgentChatsService{h}, opts...))
+	return s.Handle(s.NewHandler(&AgentChatService{h}, opts...))
 }
 
-type agentChatsServiceHandler struct {
-	AgentChatsServiceHandler
+type agentChatServiceHandler struct {
+	AgentChatServiceHandler
 }
 
-func (h *agentChatsServiceHandler) GetAgentChats(ctx context.Context, in *GetAgentChatsRequest, out *GetAgentChatsResponse) error {
-	return h.AgentChatsServiceHandler.GetAgentChats(ctx, in, out)
+func (h *agentChatServiceHandler) GetAgentChats(ctx context.Context, in *GetAgentChatsRequest, out *GetAgentChatsResponse) error {
+	return h.AgentChatServiceHandler.GetAgentChats(ctx, in, out)
 }
 
-func (h *agentChatsServiceHandler) MarkChatProcessed(ctx context.Context, in *MarkChatProcessedRequest, out *MarkChatProcessedResponse) error {
-	return h.AgentChatsServiceHandler.MarkChatProcessed(ctx, in, out)
+func (h *agentChatServiceHandler) MarkChatProcessed(ctx context.Context, in *MarkChatProcessedRequest, out *MarkChatProcessedResponse) error {
+	return h.AgentChatServiceHandler.MarkChatProcessed(ctx, in, out)
 }

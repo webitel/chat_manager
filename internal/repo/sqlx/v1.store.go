@@ -2,6 +2,7 @@ package sqlxrepo
 
 import (
 	"context"
+	"github.com/webitel/chat_manager/api/proto/chat/messages"
 
 	"github.com/webitel/chat_manager/app"
 )
@@ -29,7 +30,15 @@ type ChatStore interface {
 	GetMessage(ctx context.Context, oid int64, senderChatID string, targetChatID string, searchProps map[string]string) (*Message, error)
 }
 
+type AgentChatStore interface {
+	// GetAgentChats used to get agent's active or closed chat ()
+	GetAgentChats(req *app.SearchOptions, res *messages.GetAgentChatsResponse) error
+	// MarkChatAsProcessed marks chat as processed by agent (WTEL-5331)
+	MarkChatAsProcessed(ctx context.Context, chatId string, agentId int64) (int64, error)
+}
+
 type Store interface {
 	CatalogStore
 	ChatStore
+	AgentChatStore
 }

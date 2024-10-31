@@ -17,9 +17,9 @@ import (
 )
 
 type AgentChatsService struct {
-	logs         *zerolog.Logger
-	authN        *auth.Client
-	catalogStore store.CatalogStore
+	logs  *zerolog.Logger
+	authN *auth.Client
+	store store.AgentChatStore
 }
 
 type AgentChatServiceOption func(srv *AgentChatsService) error
@@ -38,9 +38,9 @@ func AgentChatServiceAuthN(client *auth.Client) AgentChatServiceOption {
 	}
 }
 
-func AgentChatServiceConversationStore(store store.CatalogStore) AgentChatServiceOption {
+func AgentChatServiceConversationStore(store store.AgentChatStore) AgentChatServiceOption {
 	return func(srv *AgentChatsService) error {
-		srv.catalogStore = store
+		srv.store = store
 		return nil
 	}
 }
@@ -116,67 +116,40 @@ func (srv *AgentChatsService) GetAgentChats(ctx context.Context, req *pb.GetAgen
 				// default
 				[]string{
 					"id",
-					"via",
-					"from",
-					"date",
 					"title",
-					"closed",
-					"started",
-					"message",
+					"gateway",
+					"last_message",
+					"created_at",
+					"closed_at",
 					"closed_cause",
-					"queue",
 					"needs_processing",
+					"client",
+					"queue",
 				},
-				// extra
-				[]string{
-					"members",
-				},
+				[]string{},
 			),
 		),
 		Size: int(req.GetSize()),
 		Page: int(req.GetPage()),
 	}
-	// SELF related ONLY (!)
-	search.FilterAND("self", authN.Creds.GetUserId())
+	// only with current agent
+	search.FilterAND("agent", authN.Creds.GetUserId())
 	// Only closed
 	onlyClosed := req.GetOnlyClosed()
-	search.FilterAND("online", !onlyClosed)
+	search.FilterAND("closed", &onlyClosed)
 	// Only for current day
 	currentTime := app.CurrentTime()
 	year, month, day := currentTime.Date()
 	location := currentTime.Location()
 	startOfTheDay := time.Date(year, month, day, 0, 0, 0, 0, location)
 	search.FilterAND("date", &pb.Timerange{Since: startOfTheDay.UnixMilli(), Until: currentTime.UnixMilli()})
-	//userId := authN.Creds.GetUserId()
-	resultingChats := pb.ChatDialogs{}
-	err = srv.catalogStore.GetDialogs(&search, &resultingChats)
+	err = srv.store.GetAgentChats(&search, res)
 	if err != nil {
 		return err
 	}
-
-	for _, conv := range resultingChats.Data {
-		var unprocessedClose bool
-		if v, ok := conv.Context[store.ChatNeedsProcessingVariable]; ok {
-			raw, err := strconv.ParseBool(v)
-			if err == nil {
-				unprocessedClose = raw
-			}
-		}
-		agentChat := &pb.AgentChat{
-			Id:               conv.Id,
-			Title:            conv.Title,
-			StartedAt:        conv.Started,
-			ClosedAt:         conv.Closed,
-			CloseReason:      conv.ClosedCause,
-			Gateway:          conv.Via,
-			LastMessage:      conv.Message,
-			Queue:            conv.Queue,
-			UnprocessedClose: unprocessedClose,
-		}
-		res.Items = append(res.Items, agentChat)
+	if res.Page != 0 {
+		res.Page = int32(search.GetPage())
 	}
-	res.Page = resultingChats.Page
-	res.Next = resultingChats.Next
 	return nil
 }
 
@@ -205,7 +178,7 @@ func (srv *AgentChatsService) MarkChatProcessed(ctx context.Context, request *pb
 	// endregion
 
 	// database logic
-	affected, err := srv.catalogStore.MarkChatAsProcessed(ctx, request.ChatId, authN.Creds.GetUserId())
+	affected, err := srv.store.MarkChatAsProcessed(ctx, request.ChatId, authN.Creds.GetUserId())
 	if err != nil {
 		return errors.New("chat.agent.mark_chat_processed.storage.error", err.Error(), http.StatusInternalServerError)
 	}

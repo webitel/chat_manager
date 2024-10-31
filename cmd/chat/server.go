@@ -200,7 +200,7 @@ func Run(ctx *cli.Context) error {
 		AgentChatServiceConversationStore(store),
 	)
 
-	if err := pb2.RegisterAgentChatsServiceHandler(
+	if err := pb2.RegisterAgentChatServiceHandler(
 		service.Server(), agentChatService,
 	); err != nil {
 		logger.Fatal().

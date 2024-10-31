@@ -24,7 +24,7 @@
       "name": "ContactsChatCatalog"
     },
     {
-      "name": "AgentChatsService"
+      "name": "AgentChatService"
     }
   ],
   "host": "nx.webitel.org",
@@ -41,7 +41,7 @@
   "paths": {
     "/agent/chats": {
       "get": {
-        "operationId": "AgentChatsService_GetAgentChats",
+        "operationId": "AgentChatService_GetAgentChats",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -97,13 +97,13 @@
           }
         ],
         "tags": [
-          "AgentChatsService"
+          "AgentChatService"
         ]
       }
     },
     "/agent/chats/{chat_id}": {
       "patch": {
-        "operationId": "AgentChatsService_MarkChatProcessed",
+        "operationId": "AgentChatService_MarkChatProcessed",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -121,7 +121,7 @@
           }
         ],
         "tags": [
-          "AgentChatsService"
+          "AgentChatService"
         ]
       }
     },
@@ -1033,7 +1033,7 @@
         },
         "queue": {
           "$ref": "#/definitions/webitel.chat.Peer",
-          "title": "Queue name (unreal)"
+          "title": "Queue name"
         },
         "close_reason": {
           "type": "string",
@@ -1041,7 +1041,11 @@
         },
         "unprocessed_close": {
           "type": "boolean",
-          "title": "Special attribute for the closed-active chats (on fact closed but should be on active tab on the front-end)\ncan be true only when close reason = any(\"agent_timeout\", \"client_timeout\", \"silence_timeout\", \"client_leave\")"
+          "title": "Special attribute for the closed-active chats (on fact closed but should be on active tab on the front-end)\ncan be true only when close reason = any(\"client_leave\", \"client_timeout\", \"agent_timeout\", \"silence_timeout\")"
+        },
+        "client": {
+          "$ref": "#/definitions/webitel.chat.Peer",
+          "title": "External user (either type user or contact)"
         }
       }
     },

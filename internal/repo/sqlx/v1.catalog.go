@@ -1,7 +1,6 @@
 package sqlxrepo
 
 import (
-	"context"
 	"github.com/webitel/chat_manager/app"
 
 	api "github.com/webitel/chat_manager/api/proto/chat/messages"
@@ -20,7 +19,4 @@ type CatalogStore interface {
 	GetContactChatHistory(req *app.SearchOptions) (*api.GetContactChatHistoryResponse, error)
 	// Query of the chat updates ; offset: forward
 	GetUpdates(req *app.SearchOptions) (*api.ChatMessages, error)
-	// Mark chat as processed by operator (WTEL-5331)
-	// agentId - used to make sure that chat was with exactly this agent and in his domain
-	MarkChatAsProcessed(ctx context.Context, chatId string, agentId int64) (int64, error)
 }

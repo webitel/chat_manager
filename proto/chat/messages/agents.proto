@@ -9,7 +9,7 @@ import "chat/messages/message.proto";
 import "google/api/annotations.proto";
 
 
-service AgentChatsService {
+service AgentChatService {
   rpc GetAgentChats(GetAgentChatsRequest) returns (GetAgentChatsResponse) {
     option(google.api.http) = {
       get: "/agent/chats"
@@ -58,11 +58,13 @@ message AgentChat {
   int64 closed_at = 5;
   // Chat first message
   Message last_message = 6;
-  // Queue name (unreal)
+  // Queue name
   Peer queue = 7;
   // Close reason (from agent perspective)
   string close_reason = 8;
   // Special attribute for the closed-active chats (on fact closed but should be on active tab on the front-end)
-  // can be true only when close reason = any("client_leave")
+  // can be true only when close reason = any("client_leave", "client_timeout", "agent_timeout", "silence_timeout")
   bool unprocessed_close = 9;
+  // External user (either type user or contact)
+  Peer client = 10;
 }
