@@ -185,7 +185,7 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
 
                        UNION ALL
                        -- contact or user
-                       SELECT ROW (coalesce(ct.id, c.id), (CASE WHEN ct.id ISNULL THEN 'user' ELSE 'contact' END), coalesce(ct.common_name, c.name))
+                       SELECT ROW (coalesce(ct.id, c.id), (CASE WHEN ct.id ISNULL THEN 'client' ELSE 'contact' END), coalesce(ct.common_name, c.name))
                        FROM chat.client c
                                 LEFT JOIN contacts.contact_imclient im ON im.user_id = c.id
                                 LEFT JOIN contacts.contact ct ON im.contact_id = ct.id
@@ -323,7 +323,7 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
 				return postgres.BoolValue{Value: &node.UnprocessedClose}
 			})
 		case "client":
-			ctx.Query = ctx.Query.Column(CompactSQL(`(SELECT ROW (coalesce(ct.id, c.id), (CASE WHEN ct.id ISNULL THEN 'user' ELSE 'contact' END), coalesce(ct.common_name, c.name))
+			ctx.Query = ctx.Query.Column(CompactSQL(`(SELECT ROW (coalesce(ct.id, c.id), (CASE WHEN ct.id ISNULL THEN 'client' ELSE 'contact' END), coalesce(ct.common_name, c.name))
                        FROM chat.client c
                                 LEFT JOIN contacts.contact_imclient im ON im.user_id = c.id
                                 LEFT JOIN contacts.contact ct ON im.contact_id = ct.id
