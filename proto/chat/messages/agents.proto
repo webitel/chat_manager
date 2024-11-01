@@ -65,6 +65,6 @@ message AgentChat {
   // Special attribute for the closed-active chats (on fact closed but should be on active tab on the front-end)
   // can be true only when close reason = any("client_leave", "client_timeout", "agent_timeout", "silence_timeout")
   bool unprocessed_close = 9;
-  // External user (either type user or contact)
-  Peer client = 10;
+  // Connected contact
+  Peer contact = 10;
 }

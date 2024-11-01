@@ -1043,9 +1043,9 @@
           "type": "boolean",
           "title": "Special attribute for the closed-active chats (on fact closed but should be on active tab on the front-end)\ncan be true only when close reason = any(\"client_leave\", \"client_timeout\", \"agent_timeout\", \"silence_timeout\")"
         },
-        "client": {
+        "contact": {
           "$ref": "#/definitions/webitel.chat.Peer",
-          "title": "External user (either type user or contact)"
+          "title": "Connected contact"
         }
       }
     },

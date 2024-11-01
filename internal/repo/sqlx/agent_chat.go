@@ -322,13 +322,12 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
 			plan = append(plan, func(node *messages.AgentChat) any {
 				return postgres.BoolValue{Value: &node.UnprocessedClose}
 			})
-		case "client":
-			ctx.Query = ctx.Query.Column(CompactSQL(`(SELECT ROW (coalesce(ct.id, c.id), (CASE WHEN ct.id ISNULL THEN 'client' ELSE 'contact' END), coalesce(ct.common_name, c.name))
-                       FROM chat.client c
-                                LEFT JOIN contacts.contact_imclient im ON im.user_id = c.id
+		case "contact":
+			ctx.Query = ctx.Query.Column(CompactSQL(`(SELECT ROW (ct.id, null, ct.common_name)
+                       FROM contacts.contact_imclient im
                                 LEFT JOIN contacts.contact ct ON im.contact_id = ct.id
-                       WHERE c.id = ANY
-                             (SELECT user_id FROM chat.channel WHERE NOT internal AND conversation_id = ` + ident(left, "id") + ` LIMIT 1)) client`),
+                       WHERE im.user_id = ANY
+                             (SELECT user_id FROM chat.channel WHERE NOT internal AND conversation_id = ` + ident(left, "id") + ` LIMIT 1)) contact`),
 			)
 			plan = append(plan, func(node *messages.AgentChat) any {
 				return fetchPeerRow(&node.Contact)

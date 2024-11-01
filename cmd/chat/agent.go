@@ -123,7 +123,7 @@ func (srv *AgentChatsService) GetAgentChats(ctx context.Context, req *pb.GetAgen
 					"closed_at",
 					"closed_cause",
 					"needs_processing",
-					"client",
+					"contact",
 					"queue",
 				},
 				[]string{},

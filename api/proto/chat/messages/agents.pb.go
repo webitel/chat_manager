@@ -274,14 +274,15 @@ type AgentChat struct {
 	ClosedAt  int64 `protobuf:"varint,5,opt,name=closed_at,json=closedAt,proto3" json:"closed_at,omitempty"`
 	// Chat first message
 	LastMessage *Message `protobuf:"bytes,6,opt,name=last_message,json=lastMessage,proto3" json:"last_message,omitempty"`
-	// Queue name (unreal)
+	// Queue name
 	Queue *Peer `protobuf:"bytes,7,opt,name=queue,proto3" json:"queue,omitempty"`
 	// Close reason (from agent perspective)
 	CloseReason string `protobuf:"bytes,8,opt,name=close_reason,json=closeReason,proto3" json:"close_reason,omitempty"`
 	// Special attribute for the closed-active chats (on fact closed but should be on active tab on the front-end)
 	// can be true only when close reason = any("client_leave", "client_timeout", "agent_timeout", "silence_timeout")
-	UnprocessedClose bool  `protobuf:"varint,9,opt,name=unprocessed_close,json=unprocessedClose,proto3" json:"unprocessed_close,omitempty"`
-	Contact          *Peer `protobuf:"bytes,10,opt,name=contact,proto3" json:"contact,omitempty"`
+	UnprocessedClose bool `protobuf:"varint,9,opt,name=unprocessed_close,json=unprocessedClose,proto3" json:"unprocessed_close,omitempty"`
+	// Connected contact
+	Contact *Peer `protobuf:"bytes,10,opt,name=contact,proto3" json:"contact,omitempty"`
 }
 
 func (x *AgentChat) Reset() {
