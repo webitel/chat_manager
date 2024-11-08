@@ -250,6 +250,11 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 	// Flow Schema unique IDentifier
 	metadata["flow"] = strconv.FormatInt(c.Gateway.Bot.Flow.Id, 10)
 
+	// autobind
+	if c.Properties == nil {
+		c.Properties = metadata
+	}
+
 	start := chat.StartConversationRequest{
 		DomainId: c.DomainID(),
 		Username: c.Title, // title, // used: as channel title
