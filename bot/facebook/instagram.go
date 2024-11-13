@@ -1308,12 +1308,18 @@ func (c *Client) onIGMediaComment(IGSID string, comment *IGComment) {
 	}
 
 	if channel.IsNew() {
-		// Facebook Page VIA
+		// VIA: Facebook Page
 		sendMsg.Variables[paramFacebookPage] = account.Page.ID
 		sendMsg.Variables[paramFacebookName] = account.Page.Name
-		// Instagram Page FOR
+		// VIA: Instagram Page
 		sendMsg.Variables[paramInstagramPage] = instagram.ID
 		sendMsg.Variables[paramInstagramUser] = instagram.Username
+		// autobind to channel.properties
+		envar := channel.Properties.(map[string]string)
+		// MUST: channel.Properties.(map[string]string{externalChatID:})
+		for h, vs := range sendMsg.Variables {
+			envar[h] = vs
+		}
 	}
 
 	update := bot.Update{
@@ -1496,12 +1502,18 @@ func (c *Client) onIGMediaMention(IGSID string, mention *IGMention) {
 	}
 
 	if channel.IsNew() {
-		// Facebook Page VIA
+		// VIA: Facebook Page
 		sendMsg.Variables[paramFacebookPage] = account.Page.ID
 		sendMsg.Variables[paramFacebookName] = account.Page.Name
-		// Instagram Page FOR
+		// VIA: Instagram Page
 		sendMsg.Variables[paramInstagramPage] = instagram.ID
 		sendMsg.Variables[paramInstagramUser] = instagram.Username
+		// autobind to channel.properties
+		envar := channel.Properties.(map[string]string)
+		// MUST: channel.Properties.(map[string]string{externalChatID:})
+		for h, vs := range sendMsg.Variables {
+			envar[h] = vs
+		}
 	}
 
 	update := bot.Update{
