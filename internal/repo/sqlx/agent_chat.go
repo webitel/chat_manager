@@ -343,12 +343,12 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
 			return
 		}
 	}
-	if size := req.GetSize(); size > 0 {
-		if page := req.GetPage(); page > 1 {
-			ctx.Query = ctx.Query.Offset((uint64)((page - 1) * size))
-		}
-		ctx.Query = ctx.Query.Limit((uint64)(size + 1))
-	}
+	//if size := req.GetSize(); size > 0 {
+	//	if page := req.GetPage(); page > 1 {
+	//		ctx.Query = ctx.Query.Offset((uint64)((page - 1) * size))
+	//	}
+	//	ctx.Query = ctx.Query.Limit((uint64)(size + 1))
+	//}
 	return
 }
 
@@ -463,24 +463,24 @@ func fetchChatAgentRows(rows *sql.Rows, plan dataFetch[*messages.AgentChat], int
 		eval = make([]any, len(plan))
 	)
 
-	if 0 < limit {
-		data = make([]*messages.AgentChat, 0, limit)
-	}
-
-	if n := limit - len(page); 1 < n {
-		heap = make([]messages.AgentChat, n) // mempage; tidy
-	}
+	//if 0 < limit {
+	//	data = make([]*messages.AgentChat, 0, limit)
+	//}
+	//
+	//if n := limit - len(page); 1 < n {
+	//	heap = make([]messages.AgentChat, n) // mempage; tidy
+	//}
 
 	var r, c int // [r]ow, [c]olumn
 	for rows.Next() {
 		// LIMIT
-		if 0 < limit && len(data) == limit {
-			into.Next = true
-			if into.Page < 1 {
-				into.Page = 1
-			}
-			break
-		}
+		//if 0 < limit && len(data) == limit {
+		//	into.Next = true
+		//	if into.Page < 1 {
+		//		into.Page = 1
+		//	}
+		//	break
+		//}
 		// RECORD
 		node = nil // NEW
 		if r < len(page) {
