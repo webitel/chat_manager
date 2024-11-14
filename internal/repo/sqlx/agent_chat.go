@@ -98,13 +98,16 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
                             FROM call_center.cc_member_attempt_history m
                                      LEFT JOIN call_center.cc_queue q ON m.queue_id = q.id
                             WHERE m.member_call_id = main.id::::varchar
-                            AND agent_call_id = agent.id::::varchar
+                            AND m.agent_call_id = agent.id::::varchar
+							AND m.id = (agent.props->>'cc_attempt_id')::::int8
                             UNION ALL
                             SELECT aq.id, aq.strategy, aq.name
                             FROM call_center.cc_member_attempt m
                                      LEFT JOIN call_center.cc_queue aq ON m.queue_id = aq.id
                             WHERE m.member_call_id = main.id::::varchar
-                            AND agent_call_id = agent.id::::varchar) queue ON true`,
+                            AND m.agent_call_id = agent.id::::varchar
+							AND m.id = (agent.props->>'cc_attempt_id')::::int8
+) queue ON true`,
 			))
 			return alias
 		}
@@ -152,7 +155,7 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
 				return fetchPeerRow(&node.Gateway)
 			})
 		case "created_at":
-			ctx.Query = ctx.Query.Column(ident(threadAlias, "created_at"))
+			ctx.Query = ctx.Query.Column(ident(threadAlias, "joined_at"))
 			plan = append(plan, func(node *messages.AgentChat) any {
 				return postgres.Epochtime{
 					Precision: app.TimePrecision,
@@ -364,7 +367,7 @@ func selectAgentChatThread(args *agentChatArgs, params params) (cte sq.SelectBui
 	}
 	cte = postgres.PGSQL.
 		Select(
-			"conversation_id", "closed_cause", "props", "closed_at", "created_at", "id",
+			"conversation_id", "closed_cause", "props", "closed_at", "joined_at", "id",
 		).
 		From(
 			"chat.channel",
