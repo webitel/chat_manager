@@ -1253,7 +1253,7 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 	left = "t"
 	ctx.Query = postgres.PGSQL.
 		Select(
-			ident(left, "id"),
+			ident(left, "id"), ident(left, "created_at"),
 		).
 		From(
 			"chat.conversation " + left,
@@ -1263,9 +1263,6 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 		).
 		GroupBy(
 			ident(left, "id"),
-		).
-		OrderBy(
-			ident(left, "created_at") + " DESC",
 		)
 
 	var (
@@ -1310,7 +1307,7 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 	}
 
 	if ctx.Input.Closed {
-		ctx.Query = ctx.Query.Where(ident(left, "closed_at NOTNULL"))
+		ctx.Query = ctx.Query.Where(ident(aliasChat, "closed_at NOTNULL"))
 	}
 
 	if q := ctx.Input.Q; q != "" {
@@ -1386,7 +1383,7 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 			left, threadView, threadAlias,
 		)).
 		OrderBy(
-			ident(left, "id") + " " + resOrder,
+			fmt.Sprintf("%s %s, %s %[2]s", ident(threadAlias, "created_at"), resOrder, ident(left, "id")),
 		)
 	// mandatory(!)
 	ctx.plan = append(ctx.plan,
@@ -1684,7 +1681,7 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 	// Paging
 	if p := ctx.Input.Page; p > 1 {
 		ctx.Query = ctx.Query.Offset(
-			uint64(p * ctx.Input.Limit),
+			uint64((p - 1) * ctx.Input.Limit),
 		)
 	}
 
@@ -2564,6 +2561,7 @@ func (ctx contactChatMessagesQuery) scanRows(rows *sql.Rows, req *app.SearchOpti
 
 	if len(into.Messages) > req.GetSize() {
 		into.Next = true
+		into.Messages = into.Messages[:len(into.Messages)-1]
 	}
 	into.Page = int32(req.GetPage())
 
