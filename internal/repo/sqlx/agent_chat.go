@@ -85,34 +85,35 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
 	})
 
 	var (
-		queueAlias string
-		joinQueue  = func() string {
+		queueAlias  string
+		threadAlias string
+		joinQueue   = func() string {
 			alias := queueAlias
 			if alias != "" {
 				return alias
 			}
 			alias = "queue"
 			queueAlias = alias
-			ctx.Query = ctx.Query.JoinClause(CompactSQL(
+			ctx.Query = ctx.Query.JoinClause(CompactSQL(fmt.Sprintf(
 				`LEFT JOIN LATERAL (SELECT q.id, q.strategy, q.name
                             FROM call_center.cc_member_attempt_history m
                                      LEFT JOIN call_center.cc_queue q ON m.queue_id = q.id
                             WHERE m.member_call_id = main.id::::varchar
                             AND m.agent_call_id = agent.id::::varchar
-							AND m.id = (agent.props->>'cc_attempt_id')::::int8
+							AND m.id = (%s ->>'cc_attempt_id')::::int8
                             UNION ALL
                             SELECT aq.id, aq.strategy, aq.name
                             FROM call_center.cc_member_attempt m
                                      LEFT JOIN call_center.cc_queue aq ON m.queue_id = aq.id
                             WHERE m.member_call_id = main.id::::varchar
                             AND m.agent_call_id = agent.id::::varchar
-							AND m.id = (agent.props->>'cc_attempt_id')::::int8
+							AND m.id = (%[1]s ->>'cc_attempt_id')::::int8
 ) queue ON true`,
-			))
+				ident(threadAlias, "props"))))
 			return alias
 		}
-		threadAlias string
-		joinThread  = func() string {
+
+		joinThread = func() string {
 			alias := threadAlias
 			if alias != "" {
 				return alias
