@@ -93,7 +93,38 @@ func (srv *ContactChatHistoryService) GetContactChatHistory(ctx context.Context,
 	if err != nil {
 		return err // 401
 	}
-	// endregion: ----- Authentication -----
+	//endregion: ----- Authentication -----
+
+	// region: ----- Authorization -----
+	//var contactsAccess bool
+	scope := authN.Authorization.HasObjclass(scopeChats)
+	if scope == nil {
+		return errors.Forbidden(
+			"chat.objclass.access.denied",
+			"denied: require r:chats access but not granted",
+		) // (403) Forbidden
+	}
+	if !authN.Authorization.CanAccess(scope, auth.READ) {
+		return errors.Forbidden(
+			"contact_chat.objclass.access.denied",
+			"denied: require r:chats access but not granted",
+		) // (403) Forbidden
+	}
+	scope = authN.Authorization.HasObjclass(scopeContacts)
+	if scope == nil {
+		return errors.Forbidden(
+			"contact_chat.objclass.access.denied",
+			"denied: require r:contacts access but not granted",
+		) // (403) Forbidden
+	}
+	if !authN.Authorization.CanAccess(scope, auth.READ) {
+		return errors.Forbidden(
+			"contact_chat.objclass.access.denied",
+			"denied: require r:contacts access but not granted",
+		) // (403) Forbidden
+	}
+
+	// endregion
 
 	// region: ----- Validation -----
 	// required!
@@ -105,21 +136,13 @@ func (srv *ContactChatHistoryService) GetContactChatHistory(ctx context.Context,
 	}
 	// endregion: ----- Validation -----
 
-	// region: ----- Check contact access -----
-
-	_, err = srv.contactClient.SearchContacts(ctx, &contacts.SearchContactsRequest{Id: []string{req.ContactId}})
-	if err != nil {
-		return err
-	}
-	// endregion: ----- Check contact access -----
-
 	// ------- Filter(s) ------- //
 	search := app.SearchOptions{
 		Context: *(authN),
 		// ID:   []int64{},
 		Term: req.Q,
 		Filter: map[string]any{
-			"contact.id": req.GetContactId(), // mandatory(!)
+			"contact.id": req.GetContactId(),
 		},
 		Access: auth.READ,
 		Fields: req.Fields,

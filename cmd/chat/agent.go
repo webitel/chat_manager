@@ -99,38 +99,56 @@ func (srv *AgentChatsService) GetAgentChats(ctx context.Context, req *pb.GetAgen
 	scope := authN.Authorization.HasObjclass(scopeChats)
 	if scope == nil {
 		return errors.Forbidden(
-			"chat.objclass.access.denied",
+			"agent_chat.objclass.access.denied",
 			"denied: require r:chats access but not granted",
 		) // (403) Forbidden
 	}
+	if !authN.Authorization.CanAccess(scope, auth.READ) {
+		return errors.Forbidden(
+			"agent_chat.objclass.access.denied",
+			"denied: require r:chats access but not granted",
+		) // (403) Forbidden
+	}
+	//var contactsAccess bool
+	//scope = authN.Authorization.HasObjclass(scopeContacts)
+	//if scope != nil {
+	//	contactsAccess = authN.Authorization.CanAccess(scope, auth.READ)
+	//	// check rbac?
+	//}
+
 	// endregion
 
-	// Prepare SELECT request
+	fields := app.FieldsFunc(
+		req.Fields,
+		app.SelectFields(
+			// default
+			[]string{
+				"id",
+				"title",
+				"gateway",
+				"last_message",
+				"created_at",
+				"closed_at",
+				"closed_cause",
+				"needs_processing",
+				"queue",
+				"contact",
+			},
+			nil,
+		),
+	)
+	//if contactsAccess {
+	//	fields = append(fields, "contact")
+	//} else {
+	//	fields = append(fields, "user")
+	//}
 	search := app.SearchOptions{
 		Context: *(authN),
 		Term:    req.Q,
 		Access:  auth.READ,
-		Fields: app.FieldsFunc(
-			req.Fields, // app.InlineFields,
-			app.SelectFields(
-				// default
-				[]string{
-					"id",
-					"title",
-					"gateway",
-					"last_message",
-					"created_at",
-					"closed_at",
-					"closed_cause",
-					"needs_processing",
-					"contact",
-					"queue",
-				},
-				[]string{},
-			),
-		),
-		Size: int(req.GetSize()),
-		Page: int(req.GetPage()),
+		Fields:  fields,
+		Size:    int(req.GetSize()),
+		Page:    int(req.GetPage()),
 	}
 	// only with current agent
 	search.FilterAND("agent", authN.Creds.GetUserId())
