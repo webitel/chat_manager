@@ -999,9 +999,10 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 							%[1]s.file_id id,
 							%[1]s.file_size size,
 							%[1]s.file_type "type",
-							%[1]s.file_name "name"
+							%[1]s.file_name "name",
+							%[1]s.file_url "url"
 						WHERE
-						%[1]s.file_id NOTNULL
+						%[1]s.file_id NOTNULL OR %[1]s.file_url NOTNULL
 					) %[2]s ON true`,
 						left, "file",
 					)))
