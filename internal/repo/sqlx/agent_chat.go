@@ -73,7 +73,10 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
 	ctx = &SELECT{
 		Params: params{},
 	}
-	ctx.Query = postgres.PGSQL.Select().From("chat.conversation " + left)
+	ctx.Query = postgres.PGSQL.Select().
+		From("chat.conversation " + left).
+		// remove postprocessing case
+		Where(fmt.Sprintf("NOT EXISTS (SELECT FROM call_center.cc_member_attempt a WHERE a.agent_call_id = %s.id::::varchar AND a.state != 'leaving')", left))
 
 	threadQ, re := selectAgentChatThread(args, ctx.Params)
 	if err = re; err != nil {
