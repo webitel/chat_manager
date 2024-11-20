@@ -74,9 +74,7 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
 		Params: params{},
 	}
 	ctx.Query = postgres.PGSQL.Select().
-		From("chat.conversation " + left).
-		// remove postprocessing case
-		Where(fmt.Sprintf("NOT EXISTS (SELECT FROM call_center.cc_member_attempt a WHERE a.agent_call_id = %s.id::::varchar AND a.state != 'leaving')", left))
+		From("chat.conversation " + left)
 
 	threadQ, re := selectAgentChatThread(args, ctx.Params)
 	if err = re; err != nil {
@@ -371,14 +369,14 @@ func selectAgentChatThread(args *agentChatArgs, params params) (cte sq.SelectBui
 	}
 	cte = postgres.PGSQL.
 		Select(
-			"conversation_id", "closed_cause", "props", "closed_at", "joined_at", "id",
+			"ch.conversation_id", "ch.closed_cause", "ch.props", "ch.closed_at", "ch.joined_at", "ch.id",
 		).
 		From(
-			"chat.channel",
+			"chat.channel ch",
 		).
-		Where("internal").
-		Where("user_id = :agent").
-		OrderBy("created_at DESC")
+		Where("ch.internal").
+		Where("ch.user_id = :agent").
+		OrderBy("ch.created_at DESC")
 	if args.AgentId <= 0 {
 		err = errors.BadRequest("sqlxrepo.agent_chat.select_agent_chat_thread.check_args.agent", "agent id required")
 		return
@@ -390,18 +388,20 @@ func selectAgentChatThread(args *agentChatArgs, params params) (cte sq.SelectBui
 	}
 	if args.Timerange.Since > 0 {
 		params.set("dateFrom", time.UnixMilli(args.Timerange.Since))
-		cte = cte.Where("created_at >= :dateFrom")
+		cte = cte.Where("ch.created_at >= :dateFrom")
 	}
 	if args.Timerange.Until > 0 {
 		params.set("dateTo", time.UnixMilli(args.Timerange.Until))
-		cte = cte.Where("created_at <= :dateTo")
+		cte = cte.Where("ch.created_at <= :dateTo")
 	}
 
 	if args.Closed != nil {
 		if *args.Closed {
-			cte = cte.Where("closed_at NOTNULL")
+			cte = cte.Where("ch.closed_at NOTNULL").
+				// remove postprocessing case
+				Where("NOT EXISTS (SELECT FROM call_center.cc_member_attempt a WHERE a.agent_call_id = ch.id::::varchar AND a.state != 'leaving')")
 		} else {
-			cte = cte.Where("closed_at ISNULL")
+			cte = cte.Where("ch.closed_at ISNULL")
 		}
 	}
 	return // cte, nil
