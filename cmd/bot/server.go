@@ -179,17 +179,6 @@ func Run(ctx *cli.Context) error {
 	baseURL := ctx.String("site_url")
 	webRoot := ctx.String("web_root")
 	srvAddr := ctx.String("address")
-	/*
-		// LOGs
-		colorize := true
-		stdlog, err := log.Console(logsLvl, colorize) // NewLogger(cfg.LogLevel)
-		if err != nil {
-			return err
-		}
-
-		log.Default = *(stdlog)
-		logger = log.Default // *(stdlog)
-	*/
 
 	// CHECK: valid [host]:port address specified
 	if _, _, err := net.SplitHostPort(srvAddr); err != nil {
