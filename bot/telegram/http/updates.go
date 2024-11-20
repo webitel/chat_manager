@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -43,28 +44,28 @@ func (c *TelegramBot) onMyChatMember(ctx context.Context, e *telegram.ChatMember
 	case "member":
 		// MUST: kicked => member; Member just RESTARTed our bot. Welcome !
 		user := e.From
-		c.Gateway.Log.Info().
-			Int64("id", e.Chat.ID).
-			Str("username", user.UserName).
-			Str("dialog", strings.TrimSpace(
+		c.Gateway.Log.Info("TELEGRAM: RESTART",
+			slog.Int64("id", e.Chat.ID),
+			slog.String("username", user.UserName),
+			slog.String("dialog", strings.TrimSpace(
 				strings.Join([]string{user.FirstName, user.LastName}, " "),
-			)).
-			Str("notice", "Bot was restarted by the user").
-			Msg("TELEGRAM: RESTART")
+			)),
+			slog.String("notice", "Bot was restarted by the user"),
+		)
 	// Our bot, as a member, was banned in the chat
 	// and can't return to the chat or view chat messages.
 	// https://core.telegram.org/bots/api#chatmemberbanned
 	case "kicked":
 
 		user := e.From
-		c.Gateway.Log.Warn().
-			Int64("id", e.Chat.ID).
-			Str("username", user.UserName).
-			Str("dialog", strings.TrimSpace(
+		c.Gateway.Log.Warn("TELEGRAM: STOP & BLOCK",
+			slog.Int64("id", e.Chat.ID),
+			slog.String("username", user.UserName),
+			slog.String("dialog", strings.TrimSpace(
 				strings.Join([]string{user.FirstName, user.LastName}, " "),
-			)).
-			Str("error", "Bot was blocked by the user").
-			Msg("TELEGRAM: STOP & BLOCK")
+			)),
+			slog.String("error", "Bot was blocked by the user"),
+		)
 		// Force close active conversation dialog
 		dialog, err := c.getChannel(ctx, e.Chat)
 		if err == nil && !dialog.IsNew() {

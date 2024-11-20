@@ -4,6 +4,8 @@ import (
 	"context"
 	goerr "errors"
 	"fmt"
+	log2 "github.com/webitel/chat_manager/log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,7 +17,6 @@ import (
 	"github.com/gotd/td/telegram/peers"
 	"github.com/gotd/td/tg"
 	"github.com/gotd/td/tgerr"
-	"github.com/rs/zerolog"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
 	"go.uber.org/zap"
@@ -157,7 +158,9 @@ func (c *session) init() {
 						// CACHE processing error ?
 						if err != nil {
 							// return errors.Wrap(err, "hook")
-							c.App.Gateway.Log.Warn().Err(err).Msg("MIDDLEWARE")
+							c.App.Gateway.Log.Warn("MIDDLEWARE",
+								slog.Any("error", err),
+							)
 						}
 						// Operation error ?
 						return nil
@@ -263,7 +266,9 @@ func (c *session) backup() {
 		},
 	)
 	if err != nil {
-		c.App.Gateway.Log.Warn().Err(err).Msg("BACKUP: AUTH")
+		c.App.Gateway.Log.Warn("BACKUP: AUTH",
+			slog.Any("error", err),
+		)
 	}
 }
 
@@ -439,7 +444,9 @@ next: // paging
 				// return block{}, errors.Wrap(err, "get next chunk")
 				return err
 			}
-			c.App.Gateway.Log.Warn().Err(err).Msg("messages.getDialogs")
+			c.App.Gateway.Log.Warn("messages.getDialogs",
+				slog.Any("error", err),
+			)
 			break next
 
 		} else {
@@ -512,7 +519,7 @@ func (c *session) LoadSession(ctx context.Context) (data []byte, err error) {
 		// 	make([]byte, 0, len(data)),
 		// )
 		// err := json.Indent(buf, data, "", "  ")
-		log := c.App.Gateway.Log.Trace
+		//log := c.App.Gateway.Log.Trace
 		// if err != nil {
 		// 	log = func() *zerolog.Event {
 		// 		return c.App.Gateway.Log.Err(err)
@@ -520,7 +527,7 @@ func (c *session) LoadSession(ctx context.Context) (data []byte, err error) {
 		// 	buf.Reset()
 		// 	_, _ = buf.Write(data)
 		// }
-		log().Msg("session.Load")
+		c.App.Gateway.TraceLog("session.Load")
 		// fmt.Printf("%s\n", buf.String())
 	}()
 	// RESTORE Session configuration
@@ -563,7 +570,7 @@ func (c *session) StoreSession(ctx context.Context, data []byte) error {
 		// // log().Msg("session.Store")
 		// log().Msg("session.Cache")
 		// fmt.Printf("%s\n", buf.String())
-		c.App.Gateway.Log.Trace().Msg("session.Cache")
+		c.App.Gateway.TraceLog("session.Cache")
 	}()
 	// BACKUP Session configuration
 	if data == nil {
@@ -616,7 +623,12 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 		return nil
 	}
 
-	c.App.Gateway.Log.Debug().Interface("update", update).Interface("entities", e).Msg("updateNewMessage")
+	log := c.App.Gateway.Log
+
+	log.Debug("updateNewMessage",
+		slog.Any("update", log2.SlogObject(update)),
+		slog.Any("entities", log2.SlogObject(e)),
+	)
 
 	// NOTE: Handle Private chats only !
 	// var senderUser *tg.User // (.FromID == nil) == Self
@@ -634,7 +646,9 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 	}
 
 	if fromId == 0 {
-		c.App.Gateway.Log.Warn().Str("error", "not private; sender .from.userId is missing").Msg("IGNORE")
+		log.Warn("IGNORE",
+			slog.String("error", "not private; sender .from.userId is missing"),
+		)
 		return nil // IGNORE Unable to resolve sender
 	}
 
@@ -645,7 +659,10 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 	peer, err := c.peers.ResolveUserID(ctx, fromId)
 
 	if err != nil {
-		c.App.Gateway.Log.Err(err).Interface("peer", peerId).Msg("telegram/updateNewMessage.peer")
+		log.Error("telegram/updateNewMessage.peer",
+			slog.Any("error", err),
+			slog.Any("peer", log2.SlogObject(peerId)),
+		)
 		return nil // IGNORE Unable to resolve sender peer
 	}
 
@@ -663,7 +680,9 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 				errorMsg = "message.from.self"
 			}
 		}
-		c.App.Gateway.Log.Warn().Str("error", errorMsg).Msg("IGNORE")
+		log.Warn("IGNORE",
+			slog.String("error", errorMsg),
+		)
 		return nil
 	}
 
@@ -687,7 +706,9 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 
 	if err != nil {
 		// Failed locate chat channel !
-		c.App.Gateway.Log.Err(err).Msg("telegram/updateNewMessage")
+		log.Error("telegram/updateNewMessage",
+			slog.Any("error", err),
+		)
 		// re := errors.FromError(err)
 		// if re.Code == 0 {
 		// 	re.Code = (int32)(http.StatusBadGateway)
@@ -715,7 +736,9 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 			},
 		)
 		if re != nil {
-			c.App.Gateway.Log.Warn().Err(re).Msg("telegram/messages.readHistory")
+			log.Warn("telegram/messages.readHistory",
+				slog.Any("error", re),
+			)
 		}
 	}()
 
@@ -790,7 +813,9 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 
 			mediaFile, err := getFile(c.App, mediaFile, &location)
 			if err != nil {
-				c.App.Gateway.Log.Err(err).Msg("telegram.upload.getFile")
+				log.Error("telegram.upload.getFile",
+					slog.Any("error", err),
+				)
 				return nil // break
 			}
 			sendMessage.Type = "file"
@@ -844,7 +869,9 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 
 			doc, _ := media.Document.(*tg.Document)
 			if doc == nil {
-				c.App.Gateway.Log.Warn().Str("error", "MessageMediaDocument is not *tg.Document").Msg("IGNORE")
+				log.Warn("IGNORE",
+					slog.String("error", "MessageMediaDocument is not *tg.Document"),
+				)
 				return nil
 			}
 			mediaFile.Mime = doc.GetMimeType()
@@ -919,7 +946,9 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 
 			mediaFile, err := getFile(c.App, mediaFile, &location)
 			if err != nil {
-				c.App.Gateway.Log.Err(err).Msg("telegram.upload.getFile")
+				log.Error("telegram.upload.getFile",
+					slog.Any("error", err),
+				)
 				return nil // break
 			}
 			sendMessage.Type = "file"
@@ -941,7 +970,9 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 		}
 
 		if sendMessage.Type == "" {
-			c.App.Gateway.Log.Warn().Str("error", fmt.Sprintf("media.(%T) reaction not implemented", media)).Msg("telegram/updateNewMessage")
+			log.Warn("telegram/updateNewMessage",
+				slog.String("error", fmt.Sprintf("media.(%T) reaction not implemented", media)),
+			)
 			return nil // IGNORE
 		}
 
@@ -974,18 +1005,19 @@ func (c *session) onServiceNotification(ctx context.Context, e tg.Entities, upda
 
 	var (
 		tgWarn *tgerr.Error
-		notice *zerolog.Event
 	)
+	log := c.App.Gateway.Log.With()
+
 	if typeOf := update.GetType(); typeOf == "" {
-		notice = c.App.Gateway.Log.Info()
+		log.Info("Telegram Notifications (777000):")
 	} else {
 		tgWarn = tgerr.New(400, typeOf)
 		tgWarn.Message = update.GetMessage()
-		notice = c.App.Gateway.Log.Error().
-			Str("error", tgWarn.Type).
-			Str("backoff", (time.Second * time.Duration(tgWarn.Argument)).String())
+		log.Error("Telegram Notifications (777000):",
+			slog.String("error", tgWarn.Type),
+			slog.String("backoff", (time.Second*time.Duration(tgWarn.Argument)).String()),
+		)
 	}
-	notice.Msg("Telegram Notifications (777000):")
 	fmt.Printf("\n%s\n\n", update.GetMessage())
 	// notice.Msg("updateServiceNotification")
 	// fmt.Printf("Telegram Notifications (777000):\n\n%s\n\n", update.GetMessage())

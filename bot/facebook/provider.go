@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"path"
@@ -244,7 +245,9 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 				err = app.pages.restore(data)
 			}
 			if err != nil {
-				app.Log.Err(err).Msg("FACEBOOK: ACCOUNTS")
+				app.Log.Error("FACEBOOK: ACCOUNTS",
+					slog.Any("error", err),
+				)
 			}
 		}
 		if s := metadata["ig"]; s != "" {
@@ -254,7 +257,9 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 				err = app.instagram.restore(data)
 			}
 			if err != nil {
-				app.Log.Err(err).Msg("INSTAGRAM: ACCOUNTS")
+				app.Log.Error("INSTAGRAM: ACCOUNTS",
+					slog.Any("error", err),
+				)
 			}
 		}
 	}
@@ -477,7 +482,9 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 			recipientUserPSID,
 		)
 		// return err
-		c.Log.Err(err).Msg("messenger.sendMessage")
+		c.Log.Error("messenger.sendMessage",
+			slog.Any("error", err),
+		)
 		return nil
 	}
 
@@ -700,9 +707,10 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("join", peer)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", message.Type).
-				Msg(platform + ".updateChatMember")
+			c.Gateway.Log.Error(platform+".updateChatMember",
+				slog.Any("error", err),
+				slog.String("update", message.Type),
+			)
 		}
 		// Template for update specified ?
 		if text == "" {
@@ -731,9 +739,10 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("left", peer)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", message.Type).
-				Msg(platform + ".updateLeftMember")
+			c.Gateway.Log.Error(platform+".updateLeftMember",
+				slog.Any("error", err),
+				slog.String("update", message.Type),
+			)
 		}
 		// Template for update specified ?
 		if text == "" {
@@ -752,9 +761,10 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("close", nil)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", message.Type).
-				Msg(platform + ".updateChatClose")
+			c.Gateway.Log.Error(platform+".updateChatClose",
+				slog.Any("error", err),
+				slog.String("update", message.Type),
+			)
 		}
 		// Template for update specified ?
 		if text == "" {
@@ -765,9 +775,9 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 		sendMessage.Text = text
 
 	default:
-		c.Log.Warn().
-			Str("error", "send: content type="+message.Type+" not supported").
-			Msg(platform + ".sendMessage")
+		c.Log.Warn(platform+".sendMessage",
+			slog.String("error", "send: content type="+message.Type+" not supported"),
+		)
 		return nil
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	errors2 "errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"path"
@@ -22,6 +23,7 @@ import (
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/app"
 	access "github.com/webitel/chat_manager/auth"
+	wrapperLog "github.com/webitel/chat_manager/log"
 )
 
 const ExternalChatPropertyName = "externalChatID"
@@ -30,7 +32,7 @@ const ExternalChatPropertyName = "externalChatID"
 type Gateway struct {
 	// identity
 	*Bot // *chat.Profile
-	Log  *zerolog.Logger
+	Log  *slog.Logger
 	// Template of .Bot.Updates; Compiled
 	Template *Template
 	// communication
@@ -115,16 +117,14 @@ func (c *Gateway) Register(ctx context.Context, force bool) error {
 		err = c.External.Register(ctx, linkURI)
 	}
 
-	var event *zerolog.Event
-
 	if err == nil {
-		event = c.Log.Info()
+		c.Log.Info("REGISTER")
 	} else {
 		_ = c.Remove()
-		event = c.Log.Error().Err(err)
+		c.Log.Error("REGISTER",
+			slog.Any("error", err),
+		)
 	}
-
-	event.Msg("REGISTER")
 
 	return err
 }
@@ -194,20 +194,21 @@ func (c *Gateway) Deregister(ctx context.Context) error {
 	link := strings.TrimRight(srv.URL, "/") + uri
 
 	var (
-		event *zerolog.Event
 		// PERFORM: DEREGISTER
 		err = c.External.Deregister(ctx)
 	)
 
-	if err == nil {
-		event = c.Log.Warn()
-	} else {
-		event = c.Log.Error().Err(err)
-	}
+	log := c.Log.With(
+		slog.String("link", link),
+	)
 
-	event.
-		Str("link", link).
-		Msg("DEREGISTER")
+	if err == nil {
+		log.Warn("DEREGISTER")
+	} else {
+		log.Error("DEREGISTER",
+			slog.Any("error", err),
+		)
+	}
 
 	return err
 }
@@ -231,7 +232,7 @@ func (c *Gateway) Remove() bool {
 	srv.indexMx.Unlock() // -RW
 
 	if ok {
-		c.Log.Warn().Msg("DELETED")
+		c.Log.Warn("DELETED")
 	}
 
 	// var event *zerolog.Event
@@ -420,7 +421,9 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 		chat, err := c.Internal.Client.CheckSession(ctx, &lookup)
 
 		if err != nil {
-			c.Log.Error().Err(err).Msg("Failed to lookup chat channel")
+			c.Log.Error("Failed to lookup chat channel",
+				slog.Any("error", err),
+			)
 			return nil, err
 		}
 
@@ -444,14 +447,12 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 				Gateway:    c, // .profile.id
 				Properties: chat.Properties,
 
-				Log: c.Log.With().
-					Str("chat-id", chatID).
-					Str("username", contact.Username).
-
-					// Str("session-id", c.SessionID). // UNKNOWN
-					Str("channel-id", chat.ChannelId).
-					Int64("contact-id", chat.ClientId).
-					Logger(),
+				Log: c.Log.With(
+					slog.String("chat-id", chatID),
+					slog.String("username", contact.Username),
+					slog.String("channel-id", chat.ChannelId),
+					slog.Int64("contact-id", chat.ClientId),
+				),
 			}
 
 			c.Lock() // +RW
@@ -459,7 +460,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 			c.internal[channel.Account.ID] = channel // [channel.ContactID] = channel
 			c.Unlock()                               // -RW
 
-			channel.Log.Info().Msg("RECOVER")
+			channel.Log.Info("RECOVER")
 
 		} else {
 
@@ -471,7 +472,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 			// NO Channel FOUND !
 			// CHECK: Can we accept NEW one ?
 			if !c.Bot.GetEnabled() {
-				c.Log.Warn().Msg("DISABLED")
+				c.Log.Warn("DISABLED")
 				return nil, errors.New(
 					"chat.bot.channel.disabled",
 					"chat: bot is disabled",
@@ -496,13 +497,11 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 				// add
 				Properties: map[string]string{ExternalChatPropertyName: chatID},
 
-				Log: c.Log.With().
-					Str("chat-id", chatID).
-					Str("username", contact.Username).
-
-					// Str("session-id", c.SessionID). // UNKNOWN
-					Int64("contact-id", chat.ClientId).
-					Logger(),
+				Log: c.Log.With(
+					slog.String("chat-id", chatID),
+					slog.String("username", contact.Username),
+					slog.Int64("contact-id", chat.ClientId),
+				),
 			}
 
 			c.Lock() // +RW
@@ -510,7 +509,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 			c.internal[channel.Account.ID] = channel // [channel.ContactID] = channel
 			c.Unlock()                               // -RW
 
-			channel.Log.Info().Msg("PREPARE")
+			channel.Log.Info("PREPARE")
 
 			// // .IsNew() == true
 			// return channel, nil
@@ -541,7 +540,9 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 				var err error
 				channel.Title, err = c.Template.MessageText("title", customer)
 				if err != nil {
-					channel.Log.Warn().Err(err).Msg("BOT.onContactUpdate")
+					channel.Log.Warn("BOT.onContactUpdate",
+						slog.Any("error", err),
+					)
 					err = nil
 				}
 			}
@@ -556,15 +557,12 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 
 			if customer.Channel != "whatsapp" {
 				// panic("BOT.onContactUpdate: client.external_id changed; client.channel(" + customer.Channel + ") not supported")
-				channel.Log.Warn().
-					Str("error", customer.Channel+": no support; accept: whatsapp").
-					// Str("chat-id", chatID). // OLD client.external_id
-					// Int64("contact-id", customer.ID). // BOT.client.id
-					// Str("channel", c.GetProvider()). // BOT.provider(channel-type)
-					Str("new-contact", customer.Channel). // BOT.client.type
-					Str("new-chat-id", newChatId).        // NEW client.external_id
-					Str("new-title", channel.Title).
-					Msg("BOT.onContactUpdate")
+				channel.Log.Warn("BOT.onContactUpdate",
+					slog.String("error", customer.Channel+": no support; accept: whatsapp"),
+					slog.String("new-contact", customer.Channel), // BOT.client.type
+					slog.String("new-title", channel.Title),      // NEW client.external_id
+				)
+
 				return channel, nil
 			}
 
@@ -591,13 +589,12 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 
 		if updateChatId || updateChatTitle {
 			// Update channel logger info
-			channel.Log = c.Log.With().
-				Str("chat-id", channel.ChatID).
-				Str("username", customer.DisplayName()). // Username).
-				// Str("session-id", c.SessionID). // UNKNOWN
-				Str("channel-id", channel.ChannelID).
-				Int64("contact-id", customer.ID).
-				Logger()
+			channel.Log = c.Log.With(
+				slog.String("chat-id", channel.ChatID),
+				slog.String("username", customer.DisplayName()), // Username).
+				slog.String("channel-id", channel.ChannelID),
+				slog.Int64("contact-id", customer.ID),
+			)
 
 			// Persist store.clients changes
 			contactName := customer.DisplayName()
@@ -620,20 +617,21 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 				err = fmt.Errorf("client: not found")
 			}
 
-			var log *zerolog.Event
-			if err == nil {
-				log = channel.Log.Info()
-			} else {
-				log = channel.Log.Warn().Err(err)
-				err = nil // LOG -and- IGNORE
-			}
-			log.
+			log := channel.Log.With(
 				// Str("chat-id", chatID).             // NEW client.external_id
 				// Int64("contact-id", customer.ID).   // BOT.client.id
 				// Str("channel", c.GetProvider()).    // BOT.provider(channel-type)
-				Str("contact-type", customer.Channel). // BOT.client.type
-				Str("from-chat-id", chatID).           // OLD client.external_id
-				Msg("BOT.onContactUpdate")
+				slog.String("contact-type", customer.Channel), // BOT.client.type
+				slog.String("from-chat-id", chatID),           // OLD client.external_id
+			)
+			if err == nil {
+				log.Info("BOT.onContactUpdate")
+			} else {
+				log.Warn("BOT.onContactUpdate",
+					slog.Any("error", err),
+				)
+				err = nil // LOG -and- IGNORE
+			}
 		}
 
 	}
@@ -822,7 +820,13 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 	gate := recepient.Gateway
 	err = gate.External.SendNotify(ctx, &sendUpdate)
 
-	var event *zerolog.Event
+	log := recepient.Log.With(
+		slog.String("send", sendUpdate.Message.GetType()),
+		slog.String("text", sendUpdate.Message.GetText()),
+		wrapperLog.SlogObject(
+			slog.Any("file", sendUpdate.Message.GetFile()),
+		),
+	)
 
 	if err == nil {
 		// FIXME: .GetChannel() does not provide full contact info on recover,
@@ -830,16 +834,12 @@ func (c *Gateway) Send(ctx context.Context, notify *gate.SendMessageRequest) err
 		// if recepient.Title == "" {
 		// 	recepient.Title = recepient.Account.DisplayName()
 		// }
-		event = recepient.Log.Debug()
+		log.Debug("<<<<< SEND <<<<<<")
 	} else {
-		event = recepient.Log.Error().Err(err)
+		log.Error("<<<<< SEND <<<<<<",
+			slog.Any("error", err),
+		)
 	}
-
-	event.
-		Str("send", sendUpdate.Message.GetType()). // sendUpdate.Event).
-		Str("text", sendUpdate.Message.GetText()).
-		EmbedObject(ZerologJSON("file", sendUpdate.Message.GetFile())).
-		Msg("<<<<< SEND <<<<<<")
 
 	if err != nil {
 		return err
@@ -930,7 +930,9 @@ func (c *Gateway) Read(ctx context.Context, notify *Update) (err error) {
 
 	if channel.IsNew() {
 		if channel.Title, err = c.Template.MessageText("title", contact); err != nil {
-			channel.Log.Warn().Err(err).Msg("bot.updateChatTitle")
+			channel.Log.Warn("bot.updateChatTitle",
+				slog.Any("error", err),
+			)
 			err = nil
 		}
 	}
@@ -946,4 +948,8 @@ func (c *Gateway) Read(ctx context.Context, notify *Update) (err error) {
 	}
 
 	return nil // ACK(+)
+}
+
+func (c *Gateway) TraceLog(msg string, args ...any) {
+	wrapperLog.TraceLog(c.Log, msg, args...)
 }

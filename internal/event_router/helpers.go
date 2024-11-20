@@ -3,6 +3,7 @@ package event_router
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	// "strings"
 	"database/sql"
@@ -101,7 +102,13 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 	// }
 	// return nil
 
-	recepient := channel{to, c.log}
+	recepient := channel{to, c.log.With(
+		slog.String("conversation_id", to.ConversationID),
+		slog.Int64("user_id", to.UserID),
+		slog.String("channel_id", to.ID),
+		slog.String("type", to.Type),
+		slog.String("connection", to.Connection.String),
+	)}
 	requestNode := recepient.Hostname()
 	sentMessage, err := c.botClient.SendMessage(
 
@@ -126,13 +133,10 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 				if _, err := c.repo.BindChannel(
 					context.TODO(), to.ID, sentBinding,
 				); err != nil {
-
-					c.log.Error().Err(err).
-
-						// Str("chat-id", target.User.Contact). // client.ExternalID.String).
-						Str("channel-id", to.ID). // client.ExternalID.String).
-
-						Msg("FAILED To bind channel properties")
+					c.log.Error("FAILED To bind channel properties",
+						slog.Any("error", err),
+						slog.String("channel-id", to.ID),
+					)
 				}
 
 			} else {
@@ -158,10 +162,11 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 		// RE-HOSTED! TODO: update DB channel state .host
 		err := c.repo.UpdateChannelHost(context.TODO(), recepient.ID, respondNode)
 		if err != nil {
-			c.log.Error().Err(err).
-				Str("chat-id", client.ExternalID.String).
-				Str("channel-id", client.ExternalID.String).
-				Msg("RELOCATE")
+			c.log.Error("RELOCATE",
+				slog.Any("error", err),
+				slog.String("chat-id", client.ExternalID.String),
+				slog.String("channel-id", client.ExternalID.String),
+			)
 			// panic(err)
 		}
 	}
@@ -225,7 +230,12 @@ func (c *eventRouter) SendMessageToGateway(sender, target *app.Channel, message 
 	// return nil
 
 	recepient := channel{
-		trace: c.log,
+		trace: c.log.With(
+			slog.String("conversation_id", target.Chat.Invite),
+			slog.Int64("user_id", target.User.ID),
+			slog.String("channel_id", target.Chat.ID),
+			slog.String("type", target.Chat.Channel),
+		),
 		// simple transform to store.Channel
 		Channel: &store.Channel{
 			ID:             target.Chat.ID,
@@ -291,12 +301,11 @@ func (c *eventRouter) SendMessageToGateway(sender, target *app.Channel, message 
 				if _, err := c.repo.BindChannel(
 					context.TODO(), target.ID, sentBinding,
 				); err != nil {
-
-					c.log.Error().Err(err).
-						Str("chat-id", target.User.Contact). // client.ExternalID.String).
-						Str("channel-id", target.Chat.ID).   // client.ExternalID.String).
-
-						Msg("FAILED To bind channel properties")
+					c.log.Error("FAILED To bind channel properties",
+						slog.Any("error", err),
+						slog.String("chat-id", target.User.Contact), // client.ExternalID.String).
+						slog.String("channel-id", target.Chat.ID),   // client.ExternalID.String).
+					)
 				}
 
 			} else {
@@ -323,11 +332,11 @@ func (c *eventRouter) SendMessageToGateway(sender, target *app.Channel, message 
 		// RE-HOSTED! TODO: update DB channel state .host
 		err := c.repo.UpdateChannelHost(context.TODO(), recepient.ID, respondNode)
 		if err != nil {
-			c.log.Error().Err(err).
-				Str("chat-id", target.User.Contact). // client.ExternalID.String).
-				Str("channel-id", target.Chat.ID).   // client.ExternalID.String).
-
-				Msg("RELOCATE")
+			c.log.Error("RELOCATE",
+				slog.Any("error", err),
+				slog.String("chat-id", target.User.Contact), // client.ExternalID.String).
+				slog.String("channel-id", target.Chat.ID),   // client.ExternalID.String).
+			)
 			// panic(err)
 		}
 	}
@@ -361,7 +370,12 @@ func (c *eventRouter) SendUserActionToGateway(target *app.Channel, sender *chat.
 	}
 
 	recepient := channel{
-		trace: c.log,
+		trace: c.log.With(
+			slog.String("conversation_id", target.Chat.Invite),
+			slog.Int64("user_id", target.User.ID),
+			slog.String("channel_id", target.Chat.ID),
+			slog.String("type", target.Chat.Channel),
+		),
 		// simple transform to store.Channel
 		Channel: &store.Channel{
 			ID:             target.Chat.ID,
@@ -417,11 +431,11 @@ func (c *eventRouter) SendUserActionToGateway(target *app.Channel, sender *chat.
 		// RE-HOSTED! TODO: update DB channel state .host
 		err := c.repo.UpdateChannelHost(context.TODO(), recepient.ID, respondNode)
 		if err != nil {
-			c.log.Error().Err(err).
-				Str("chat-id", target.User.Contact). // client.ExternalID.String).
-				Str("channel-id", target.Chat.ID).   // client.ExternalID.String).
-
-				Msg("RELOCATE")
+			c.log.Error("RELOCATE",
+				slog.Any("error", err),
+				slog.String("chat-id", target.User.Contact), // client.ExternalID.String).
+				slog.String("channel-id", target.Chat.ID),   // client.ExternalID.String).
+			)
 			// panic(err)
 		}
 	}

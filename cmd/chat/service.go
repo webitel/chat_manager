@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	trace "github.com/webitel/chat_manager/log"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
@@ -16,8 +18,6 @@ import (
 	"unicode"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/rs/zerolog"
-
 	"github.com/micro/micro/v3/service/broker"
 	"github.com/micro/micro/v3/service/client"
 	"github.com/micro/micro/v3/service/context/metadata"
@@ -66,7 +66,7 @@ type Service interface {
 
 type chatService struct {
 	repo          pg.Repository
-	log           *zerolog.Logger
+	log           *slog.Logger
 	flowClient    flow.Client
 	authClient    auth.Client
 	botClient     pbbot.BotsService
@@ -78,7 +78,7 @@ var _ pb.ChatServiceHandler = (*chatService)(nil)
 
 func NewChatService(
 	repo pg.Repository,
-	log *zerolog.Logger,
+	log *slog.Logger,
 	flowClient flow.Client,
 	authClient auth.Client,
 	botClient pbbot.BotsService,
@@ -129,12 +129,11 @@ func (s *chatService) UpdateChannel(
 		localtime = app.CurrentTime()
 		readUntil = localtime // default: ALL
 	)
-
-	s.log.Trace().
-		Str("channel_id", channelChatID).
-		Int64("auth_user_id", channelFromID).
-		Int64("read_until", messageAt).
-		Msg("UPDATE Channel")
+	trace.TraceLog(s.log, "UPDATE Channel",
+		slog.String("channel_id", channelChatID),  // TODO fields diff
+		slog.Int64("auth_user_id", channelFromID), // TODO fields diff
+		slog.Int64("read_until", messageAt),
+	)
 
 	// PERFORM find sender channel
 	channel, err := s.repo.CheckUserChannel(
@@ -143,21 +142,20 @@ func (s *chatService) UpdateChannel(
 
 	if err != nil {
 
-		s.log.Error().
-			Err(err).
-			Str("chat-id", channelChatID).
-			Int64("contact-id", channelFromID).
-			Msg("FAILED Lookup Channel")
+		s.log.Error("FAILED Lookup Channel",
+			slog.Any("error", err),
+			slog.String("chat-id", channelChatID),   // TODO fields diff
+			slog.Int64("contact-id", channelFromID), // TODO fields diff
+		)
 
 		return err
 	}
 
 	if channel == nil {
-
-		s.log.Warn().
-			Str("chat-id", channelChatID).
-			Int64("contact-id", channelFromID).
-			Msg("Channel NOT Found")
+		s.log.Warn("Channel NOT Found",
+			slog.String("chat-id", channelChatID),   // TODO fields diff
+			slog.Int64("contact-id", channelFromID), // TODO fields diff
+		)
 
 		return errors.BadRequest(
 			"chat.channel.not_found",
@@ -240,15 +238,15 @@ func (s *chatService) SendMessage(
 		targetChatID = req.GetConversationId()
 	)
 
-	s.log.Debug().
-		Str("channel_id", senderChatID).
-		Str("conversation_id", targetChatID).
-		Int64("auth_user_id", senderFromID).
-		Str("type", sendMessage.GetType()).
-		Str("text", sendMessage.GetText()).
-		// Bool("file", sendMessage.GetFile() != nil).
-		Interface("file", sendMessage.GetFile()).
-		Msg("SEND Message")
+	log := s.log.With(
+		slog.String("channel_id", senderChatID),
+		slog.String("conversation_id", targetChatID),
+		slog.Int64("auth_user_id", senderFromID),
+		slog.String("type", sendMessage.GetType()),
+		slog.String("text", sendMessage.GetText()),
+		slog.Any("file", sendMessage.GetFile()))
+
+	log.Debug("SEND Message")
 
 	if senderChatID == "" {
 		senderChatID = targetChatID
@@ -314,8 +312,9 @@ func (s *chatService) SendMessage(
 	_, err = s.sendMessage(ctx, chat, sendMessage)
 
 	if err != nil {
-		s.log.Error().Err(err).
-			Msg("FAILED Sending Message")
+		log.Error("FAILED Sending Message",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -346,12 +345,14 @@ func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pb.SaveAgen
 		return errors.BadRequest("chat.service.save_agent_join_message.check_args.message.from.id", "message.from.id required")
 	}
 
-	s.log.Debug().
-		Int64("webitel_user", webitelUserID).
-		Str("type", sendMessage.GetType()).
-		Str("text", sendMessage.GetText()).
-		Interface("file", sendMessage.GetFile()).
-		Msg("SEND Message")
+	log := s.log.With(
+		slog.Int64("webitel_user", webitelUserID),
+		slog.String("type", sendMessage.GetType()),
+		slog.String("text", sendMessage.GetText()),
+		slog.Any("file", sendMessage.GetFile()),
+	)
+
+	log.Debug("SEND Message")
 
 	// region: lookup target chat session by unique webitel user id
 	chat, err := s.repo.GetSessionByInternalUserId(ctx, webitelUserID, req.GetReceiver())
@@ -402,8 +403,9 @@ func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pb.SaveAgen
 	_, err = s.notifyAgentJoinToAllMembers(ctx, chat, sendMessage)
 
 	if err != nil {
-		s.log.Error().Err(err).
-			Msg("FAILED Notify Websocket")
+		log.Error("FAILED Notify Websocket",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -422,11 +424,12 @@ func (s *chatService) DeleteMessage(
 		senderFromID = req.GetAuthUserId()     // FROM: User.ID
 	)
 
-	s.log.Debug().
-		Str("channel_id", senderChatID).
-		Str("conversation_id", dialogChatID).
-		Int64("auth_user_id", senderFromID).
-		Msg("DEL Message")
+	log := s.log.With(
+		slog.String("conversation_id", dialogChatID),
+		slog.String("channel_id", senderChatID),
+		slog.Int64("auth_user_id", senderFromID),
+	)
+	log.Debug("DEL Message")
 
 	msg, err := s.repo.GetMessage(
 		ctx, req.Id,
@@ -571,14 +574,16 @@ func (s *chatService) StartConversation(
 		delete(metadata, "")
 	}
 
-	s.log.Trace().
-		Int64("domain.id", req.GetDomainId()).
-		Str("user.contact", user.GetConnection()).
-		Str("user.type", user.GetType()).
-		Int64("user.id", user.GetUserId()).
-		Str("user.name", title).
-		Bool("user.internal", user.GetInternal()).
-		Msg("START Conversation")
+	log := s.log.With(
+		slog.Int64("domain.id", req.GetDomainId()),
+		slog.String("user.contact", user.GetConnection()),
+		slog.String("user.type", user.GetType()),
+		slog.Int64("user.id", user.GetUserId()),
+		slog.String("user.name", title),
+		slog.Bool("user.internal", user.GetInternal()),
+	)
+
+	log.Debug("START Conversation")
 
 	// ORIGINATOR: CHAT channel, sender
 	channel := pg.Channel{
@@ -739,7 +744,9 @@ func (s *chatService) StartConversation(
 		//       when got "go.micro.client; service: not found" error
 		return nil
 	}); err != nil {
-		s.log.Error().Msg(err.Error())
+		log.Error(err.Error(),
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -867,11 +874,12 @@ func (s *chatService) CloseConversation(
 	res *pb.CloseConversationResponse,
 ) error {
 	cause := req.GetCause().String()
-	s.log.Trace().
-		Str("conversation_id", req.GetConversationId()).
-		Str("cause", cause).
-		Str("closer_channel_id", req.GetCloserChannelId()).
-		Msg("CLOSE Conversation")
+	log := s.log.With(
+		slog.String("conversation_id", req.GetConversationId()),
+		slog.String("closer_channel_id", req.GetCloserChannelId()),
+		slog.String("cause", cause),
+	)
+	log.Debug("CLOSE Conversation")
 
 	var (
 
@@ -949,8 +957,9 @@ func (s *chatService) CloseConversation(
 	_, err = s.sendChatClosed(ctx, chat, cause)
 
 	if err != nil {
-		s.log.Error().Err(err).
-			Msg("FAILED Notify Chat Members")
+		log.Error("FAILED Notify Chat Members",
+			slog.Any("error", err),
+		)
 		// return err
 	}
 
@@ -968,7 +977,9 @@ func (s *chatService) CloseConversation(
 	// TODO: flow_end, flow_err or client_leave
 	err = s.closeConversation(ctx, &targetChatID, cause)
 	if err != nil {
-		s.log.Error().Err(err).Msg("Failed to close chat channels")
+		log.Error("Failed to close chat channels",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -1097,17 +1108,19 @@ func (s *chatService) JoinConversation(
 		)
 	}
 
-	s.log.Trace().
-		Int64("user_id", from).
-		Str("invite_id", token).
-		Msg("JOIN Conversation")
+	log := s.log.With(
+		slog.Int64("user_id", from),
+		slog.String("invite_id", token),
+	)
+
+	log.Debug("JOIN Conversation")
 
 	invite, err := s.repo.GetInviteByID(ctx, token)
 
 	if err != nil {
-		s.log.Error().Err(err).
-			Str("invite_id", token).
-			Msg("FAILED Lookup INVITE token")
+		log.Error("FAILED Lookup INVITE token",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -1128,10 +1141,11 @@ func (s *chatService) JoinConversation(
 	user, err := s.repo.GetWebitelUserByID(ctx, from)
 
 	if err != nil {
-		s.log.Error().Err(err).
-			Int64("user_id", invite.UserID).
-			Int64("domain_id", invite.DomainID).
-			Msg("FAILED Lookup Chat User")
+		log.Error("FAILED Lookup Chat User",
+			slog.Any("error", err),
+			slog.Int64("user_id", invite.UserID),
+			slog.Int64("domain_id", invite.DomainID),
+		)
 		return err
 	}
 
@@ -1176,7 +1190,9 @@ func (s *chatService) JoinConversation(
 		res.ChannelId = channel.ID
 		return nil
 	}); err != nil {
-		s.log.Error().Msg(err.Error())
+		log.Error(err.Error(),
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -1186,12 +1202,13 @@ func (s *chatService) JoinConversation(
 	)
 
 	if err != nil {
-		s.log.Error().Err(err).
-			Str("event", "new_chat_member").
-			Str("invite_id", invite.ID). // TODO: same as NEW channel.ID
-			Str("conversation_id", invite.ConversationID).
-			Int64("user_id", invite.UserID).
-			Msg("FAILED Notify Chat Members")
+		s.log.Error("FAILED Notify Chat Members",
+			slog.Any("error", err),
+			slog.String("event", "new_chat_member"),
+			slog.String("invite_id", invite.ID), // TODO: same as NEW channel.ID
+			slog.String("conversation_id", invite.ConversationID),
+			slog.Int64("user_id", invite.UserID),
+		)
 		// return err // NON Fatal !
 	}
 
@@ -1207,21 +1224,22 @@ func (s *chatService) leaveChat(ctx context.Context, req *pb.LeaveConversationRe
 		leaveCause     = req.GetCause()
 	)
 
-	s.log.Trace().
-		Str("channel_id", channelChatID).
-		Int64("auth_user_id", channelFromID).
-		Str("conversation_id", conversationID).
-		Msg("LEAVE Conversation")
+	log := s.log.With(
+		slog.String("channel_id", channelChatID),
+		slog.Int64("auth_user_id", channelFromID),
+		slog.String("conversation_id", conversationID),
+	)
+
+	log.Debug("LEAVE Conversation")
 
 	sender, err := s.repo.CheckUserChannel(
 		ctx, channelChatID, channelFromID,
 	)
 
 	if err != nil {
-		s.log.Error().Err(err).
-			Str("channel_id", channelChatID).
-			Int64("auth_user_id", channelFromID).
-			Msg("FAILED Lookup CHAT Channel")
+		log.Error("FAILED Lookup CHAT Channel",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -1251,7 +1269,9 @@ func (s *chatService) leaveChat(ctx context.Context, req *pb.LeaveConversationRe
 	// 1. Mark given .channel.id as "closed" !
 	closed, err := s.repo.CloseChannel(ctx, sender.ID, leaveCause.String()) // channelChatID)
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		log.Error(err.Error(),
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -1298,12 +1318,12 @@ func (s *chatService) leaveChat(ctx context.Context, req *pb.LeaveConversationRe
 
 	for i := 0; i < 2; i++ {
 		if err = <-await; err != nil {
-			s.log.Error().Err(err).
-				Str("event", "left_chat_member").
-				Str("channel_id", sender.ID).
-				Int64("user_id", sender.UserID).
-				Str("conversation_id", sender.ConversationID).
-				Msg("FAILED Notify Chat Members")
+			s.log.Error("FAILED Notify Chat Members",
+				slog.String("event", "left_chat_member"),
+				slog.String("channel_id", sender.ID),
+				slog.Int64("user_id", sender.UserID),
+				slog.String("conversation_id", sender.ConversationID),
+			)
 			// return err // NON Fatal !
 		}
 	}
@@ -1363,24 +1383,24 @@ func (s *chatService) InviteToConversation(
 		delete(metadata, "")
 	}
 
-	s.log.Trace().
-		Str("user.connection", req.GetUser().GetConnection()).
-		Str("user.type", req.GetUser().GetType()).
-		Int64("user.id", req.GetUser().GetUserId()).
-		Bool("user.internal", req.GetUser().GetInternal()).
-		Str("conversation_id", req.GetConversationId()).
-		Str("inviter_channel_id", req.GetInviterChannelId()).
-		Int64("domain_id", req.GetDomainId()).
-		Int64("timeout_sec", req.GetTimeoutSec()).
-		Int64("auth_user_id", req.GetAuthUserId()).
-		Interface("variables", metadata).
-		// Bool("from_flow", req.GetFromFlow()).
-		Msg("INVITE TO Conversation")
+	log := s.log.With(
+		slog.String("conversation_id", req.GetConversationId()),
+		slog.String("user.connection", req.GetUser().GetConnection()),
+		slog.String("user.type", req.GetUser().GetType()),
+		slog.Bool("user.internal", req.GetUser().GetInternal()),
+		slog.String("inviter_channel_id", req.GetInviterChannelId()),
+		slog.Int64("domain_id", req.GetDomainId()),
+		slog.Int64("timeout_sec", req.GetTimeoutSec()),
+		slog.Int64("auth_user_id", req.GetAuthUserId()),
+		slog.Any("variables", metadata),
+	)
+
+	log.Debug("INVITE TO Conversation")
 
 	servName := s.authClient.GetServiceName(&ctx)
 	if servName != "workflow" &&
 		(req.GetInviterChannelId() == "" || req.GetAuthUserId() == 0) {
-		s.log.Error().Msg("failed auth")
+		log.Error("failed auth")
 		return errors.BadRequest("failed auth", "")
 	}
 
@@ -1402,11 +1422,13 @@ func (s *chatService) InviteToConversation(
 	if req.GetInviterChannelId() != "" {
 		channel, err := s.repo.CheckUserChannel(ctx, req.GetInviterChannelId(), req.GetAuthUserId())
 		if err != nil {
-			s.log.Error().Msg(err.Error())
+			log.Error(err.Error(),
+				slog.Any("error", err),
+			)
 			return err
 		}
 		if channel == nil {
-			s.log.Warn().Msg("channel not found")
+			log.Warn("channel not found")
 			return errors.BadRequest("channel not found", "")
 		}
 		invite.InviterChannelID = sql.NullString{
@@ -1414,14 +1436,16 @@ func (s *chatService) InviteToConversation(
 		}
 	}
 	if err := s.repo.CreateInvite(ctx, invite); err != nil {
-		s.log.Error().Err(err).Msg("FAILED Create INVITE Token")
+		log.Error("FAILED Create INVITE Token",
+			slog.Any("error", err),
+		)
 		return err
 	}
 	conversation, err := s.repo.GetConversations(ctx, req.GetConversationId(), 0, 0, nil, nil, 0, false, 0, 0)
 	if err != nil {
-		s.log.Error().Err(err).
-			Str("id", req.ConversationId).
-			Msg("FAILED Lookup Conversation")
+		log.Error("FAILED Lookup Conversation",
+			slog.Any("error", err),
+		)
 		return err
 	}
 	if conversation == nil {
@@ -1454,7 +1478,9 @@ func (s *chatService) InviteToConversation(
 	for i := 0; i < 2; i++ {
 		err = <-await
 		if err != nil {
-			s.log.Error().Err(err).Msg("FAILED Notify Chat Members")
+			log.Error("FAILED Notify Chat Members",
+				slog.Any("error", err),
+			)
 			return err
 		}
 	}
@@ -1515,12 +1541,16 @@ func (s *chatService) InviteToConversation(
 			}*/
 			closed, err := s.repo.CloseInvite(context.Background(), invite.ID)
 
+			ilog := s.log.With(
+				slog.String("invite_id", invite.ID),
+				slog.Int64("user_id", invite.UserID),
+				slog.String("conversation_id", invite.ConversationID),
+			)
+
 			if err != nil {
-				s.log.Error().Err(err).
-					Str("invite_id", invite.ID).
-					Int64("user_id", invite.UserID).
-					Str("conversation_id", invite.ConversationID).
-					Msg("FAILED Closing INVITE")
+				ilog.Error("FAILED Closing INVITE",
+					slog.Any("error", err),
+				)
 				return
 			}
 
@@ -1529,11 +1559,7 @@ func (s *chatService) InviteToConversation(
 				return
 			}
 			// NOTE: closed !
-			s.log.Warn().
-				Str("invite_id", invite.ID).
-				Int64("user_id", invite.UserID).
-				Str("conversation_id", invite.ConversationID).
-				Msg("INVITE Timeout")
+			ilog.Warn("INVITE Timeout")
 
 			if req.InviterChannelId == "" { // FROM: workflow !
 
@@ -1542,7 +1568,9 @@ func (s *chatService) InviteToConversation(
 				)
 
 				if err != nil {
-					s.log.Error().Msg(err.Error())
+					ilog.Error(err.Error(),
+						slog.Any("error", err),
+					)
 				}
 			}
 			// NOTIFY: timed out !
@@ -1552,8 +1580,9 @@ func (s *chatService) InviteToConversation(
 			)
 
 			if err != nil {
-				s.log.Error().Err(err).
-					Msg("FAILED Notify User INVITE Timeout")
+				ilog.Error("FAILED Notify User INVITE Timeout",
+					slog.Any("error", err),
+				)
 			}
 
 		}()
@@ -1571,16 +1600,20 @@ func (s *chatService) DeclineInvitation(
 	userID := req.GetAuthUserId()
 	conversationID := req.GetConversationId()
 
-	s.log.Trace().
-		Str("invite_id", req.GetInviteId()).
-		Str("conversation_id", conversationID).
-		Int64("auth_user_id", userID).
-		Msg("DECLINE Invitation")
+	log := s.log.With(
+		slog.String("invite_id", req.GetInviteId()),
+		slog.String("conversation_id", conversationID),
+		slog.Int64("auth_user_id", userID),
+	)
+
+	log.Debug("DECLINE Invitation")
 
 	invite, err := s.repo.GetInviteByID(ctx, req.GetInviteId())
 
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		log.Error(err.Error(),
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -1651,12 +1684,13 @@ func (s *chatService) DeclineInvitation(
 
 	for i := 0; i < 2; i++ {
 		if err = <-await; err != nil {
-			s.log.Error().Err(err).
-				Str("event", "declined").
-				Str("invite_id", invite.ID).
-				Str("conversation_id", invite.ConversationID).
-				Int64("user_id", invite.UserID).
-				Msg("FAILED Notify Chat Members")
+			s.log.Error("FAILED Notify Chat Members",
+				slog.Any("error", err),
+				slog.String("event", "declined"),
+				slog.String("invite_id", invite.ID),
+				slog.String("conversation_id", invite.ConversationID),
+				slog.Int64("user_id", invite.UserID),
+			)
 			// return err // NON Fatal !
 		}
 	}
@@ -1733,10 +1767,12 @@ func (s *chatService) DeclineInvitation(
 }
 
 func (s *chatService) WaitMessage(ctx context.Context, req *pb.WaitMessageRequest, res *pb.WaitMessageResponse) error {
-	s.log.Debug().
-		Str("conversation_id", req.GetConversationId()).
-		Str("confirmation_id", req.GetConfirmationId()).
-		Msg("accept confirmation")
+	log := s.log.With(
+		slog.String("conversation_id", req.GetConversationId()),
+		slog.String("confirmation_id", req.GetConfirmationId()),
+	)
+
+	log.Debug("accept confirmation")
 	// cachedMessages, err := s.chatCache.ReadCachedMessages(req.GetConversationId())
 	// if err != nil {
 	// 	s.log.Error().Msg(err.Error())
@@ -1763,7 +1799,9 @@ func (s *chatService) WaitMessage(ctx context.Context, req *pb.WaitMessageReques
 	// }
 	err := s.flowClient.WaitMessage(req.GetConversationId(), req.GetConfirmationId())
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		log.Error(err.Error(),
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -1781,21 +1819,26 @@ func (s *chatService) WaitMessage(ctx context.Context, req *pb.WaitMessageReques
 //     requested chat-bot gateway profile.id
 func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequest, res *pb.CheckSessionResponse) error {
 
-	s.log.Trace().
-		Str("external_id", req.GetExternalId()).
-		Int64("profile_id", req.GetProfileId()).
-		Msg("check session")
+	log := s.log.With(
+		slog.String("external_id", req.GetExternalId()),
+		slog.Int64("profile_id", req.GetProfileId()),
+	)
+	log.Debug("check session")
 
 	contact, err := s.repo.GetClientByExternalID(ctx, req.GetExternalId())
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		log.Error(err.Error(),
+			slog.Any("error", err),
+		)
 		return err
 	}
 
 	if contact == nil {
 		contact, err = s.createClient(ctx, req)
 		if err != nil {
-			s.log.Error().Msg(err.Error())
+			log.Error(err.Error(),
+				slog.Any("error", err),
+			)
 			return err
 		}
 		res.ClientId = contact.ID
@@ -1809,7 +1852,9 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 	if oid := req.GetProfileId(); oid > 0 {
 		profileId := strconv.FormatInt(oid, 10)
 		if err != nil {
-			s.log.Error().Msg(err.Error())
+			log.Error(err.Error(),
+				slog.Any("error", err),
+			)
 			return err
 		}
 		profileOf = &profileId
@@ -1819,7 +1864,9 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 	active := true
 	channels, err := s.repo.GetChannels(ctx, &contact.ID, nil, profileOf, &externalBool, nil, &active)
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		log.Error(err.Error(),
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -1854,12 +1901,17 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 }
 
 func (s *chatService) GetConversations(ctx context.Context, req *pb.GetConversationsRequest, res *pb.GetConversationsResponse) error {
-	s.log.Trace().
-		Str("conversation_id", req.GetId()).
-		Msg("get conversations")
+
+	log := s.log.With(
+		slog.String("conversation_id", req.GetId()),
+	)
+	log.Debug("get conversations")
+
 	user, err := s.authClient.MicroAuthentication(&ctx)
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		log.Error(err.Error(),
+			slog.Any("error", err),
+		)
 		return err
 	}
 	conversations, err := s.repo.GetConversations(
@@ -1875,7 +1927,9 @@ func (s *chatService) GetConversations(ctx context.Context, req *pb.GetConversat
 		req.GetMessageSize(),
 	)
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		log.Error(err.Error(),
+			slog.Any("error", err),
+		)
 		return err
 	}
 	res.Items = transformConversationsFromRepoModel(conversations)
@@ -1883,18 +1937,24 @@ func (s *chatService) GetConversations(ctx context.Context, req *pb.GetConversat
 }
 
 func (s *chatService) GetConversationByID(ctx context.Context, req *pb.GetConversationByIDRequest, res *pb.GetConversationByIDResponse) error {
-	s.log.Trace().
-		Str("conversation_id", req.GetId()).
-		Msg("get conversation by id")
+	log := s.log.With(
+		slog.String("conversation_id", req.GetId()),
+	)
+	log.Debug("get conversation by id")
+
 	user, err := s.authClient.MicroAuthentication(&ctx)
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		log.Error(err.Error(),
+			slog.Any("error", err),
+		)
 		return err
 	}
 	conversation, err := s.repo.GetConversations(ctx, req.GetId(), 0, 0, nil, nil, user.DomainID, false, 0, 0)
 	//conversation, err := s.repo.GetConversationByID(ctx, req.GetId())
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		log.Error(err.Error(),
+			slog.Any("error", err),
+		)
 		return err
 	}
 	if conversation == nil {
@@ -1905,12 +1965,16 @@ func (s *chatService) GetConversationByID(ctx context.Context, req *pb.GetConver
 }
 
 func (s *chatService) GetHistoryMessages(ctx context.Context, req *pb.GetHistoryMessagesRequest, res *pb.GetHistoryMessagesResponse) error {
-	s.log.Trace().
-		Str("conversation_id", req.GetConversationId()).
-		Msg("get history")
+	log := s.log.With(
+		slog.String("conversation_id", req.GetConversationId()),
+	)
+	log.Debug("get history")
+
 	user, err := s.authClient.MicroAuthentication(&ctx)
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		log.Error(err.Error(),
+			slog.Any("error", err),
+		)
 		return err
 	}
 	messages, err := s.repo.GetMessages(
@@ -1924,7 +1988,9 @@ func (s *chatService) GetHistoryMessages(ctx context.Context, req *pb.GetHistory
 		req.GetConversationId(),
 	)
 	if err != nil {
-		s.log.Error().Msg(err.Error())
+		log.Error(err.Error(),
+			slog.Any("error", err),
+		)
 		return err
 	}
 	res.Items = transformMessagesFromRepoModel(messages)
@@ -2137,6 +2203,15 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		}
 	}
 
+	log := c.log
+	if saveMessage != nil {
+		log = log.With(
+			slog.String("conversation_id", saveMessage.ConversationID),
+			slog.String("channel_id", saveMessage.ChannelID),
+			slog.String("type", saveMessage.Type),
+		)
+	}
+
 	if forward {
 
 		forwardFromChatID := sendMessage.ForwardFromChatId
@@ -2158,7 +2233,11 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 				"forward: message %v lookup: %s",
 				forwardFrom, err,
 			)
-			c.log.Warn().Interface("sender", sender.Chat).AnErr("error", err).Msg("FORWARD[FROM]")
+
+			log.Warn("FORWARD[FROM]",
+				slog.Any("sender", sender.Chat),
+				slog.Any("error", err),
+			)
 			forwardMessage = nil
 			err = nil // continue
 			// return nil, errors.BadRequest(
@@ -2199,7 +2278,10 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 				"forward: original message %v not found",
 				forwardFrom,
 			)
-			c.log.Warn().Interface("sender", sender.Chat).AnErr("error", err).Msg("FORWARD[FROM]")
+			log.Warn("FORWARD[FROM]",
+				slog.Any("sender", sender.Chat),
+				slog.Any("error", err),
+			)
 			err = nil // continue
 
 		} else {
@@ -2252,7 +2334,10 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 					"reply: message %v lookup: %s",
 					replyTo, err,
 				)
-				c.log.Warn().Interface("sender", sender.Chat).AnErr("error", err).Msg("REPLY[TO]")
+				log.Warn("REPLY[TO]",
+					slog.Any("sender", sender.Chat),
+					slog.Any("error", err),
+				)
 				replyToMessage = nil
 				err = nil // continue
 			}
@@ -2288,7 +2373,10 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 					"reply: original message %v not found",
 					replyTo,
 				)
-				c.log.Warn().Interface("sender", sender.Chat).AnErr("error", err).Msg("REPLY[TO]")
+				log.Warn("REPLY[TO]",
+					slog.Any("sender", sender.Chat),
+					slog.Any("error", err),
+				)
 				err = nil // continue
 
 			} else {
@@ -2429,10 +2517,11 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 				err = c.repo.UpdateClientNumber(ctx, sender.User.ID, contact.Contact)
 			}
 			if err != nil {
-				c.log.Err(err).
-					Int64("client.id", sender.User.ID).
-					Str(contact.Channel, contact.Contact).
-					Msg("Failed to persist Contact update")
+				log.Error("Failed to persist Contact update",
+					slog.Any("error", err),
+					slog.Int64("client.id", sender.User.ID),
+					slog.String(contact.Channel, contact.Contact),
+				)
 				return nil, err
 			}
 		}
@@ -2524,7 +2613,9 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			)
 
 			if err != nil {
-				c.log.Error().Err(err).Msg("Failed to UploadFileUrl")
+				log.Error("Failed to UploadFileUrl",
+					slog.Any("error", err),
+				)
 				return nil, errors.InternalServerError(
 					"chat.upload.document.error",
 					"upload: %s", err.Error(),
@@ -2714,7 +2805,9 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 	}
 
 	if err != nil {
-		c.log.Error().Err(err).Msg("Failed to store message")
+		log.Error("Failed to store message",
+			slog.Any("error", err),
+		)
 		return nil, err
 	}
 
@@ -2931,20 +3024,21 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 
 		(sent)++ // calc active recepients !
 
-		var trace *zerolog.Event
+		log := c.log.With(
+			slog.String("chat-id", member.Chat.ID),
+			slog.String("channel", member.Chat.Channel),
+			slog.String("TO", member.User.FirstName),
+		)
 
 		if err != nil {
 			// FIXME: just log failed attempt ?
-			trace = c.log.Error().Err(err)
+			log.Error("SENT",
+				slog.Any("error", err),
+			)
 		} else {
-			trace = c.log.Trace()
+			log.Debug("SENT")
 		}
 
-		trace.
-			Str("chat-id", member.Chat.ID).
-			Str("channel", member.Chat.Channel).
-			Str("TO", member.User.FirstName).
-			Msg("SENT")
 		if err != nil {
 			// since there are only can be two channels in that version of messages-srv (sender, receiver)
 			// so we should probably return that error
@@ -2960,7 +3054,9 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 
 	if sent == 0 {
 		// ERR: unreachable code
-		c.log.Warn().Str("error", "no any recepients").Msg("SEND")
+		c.log.Warn("SEND",
+			slog.Any("error", "no any recepients"),
+		)
 	}
 
 	return sent, nil // err
@@ -3196,20 +3292,20 @@ func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session,
 
 		(sent)++ // calc active recepients !
 
-		var trace *zerolog.Event
+		log := c.log.With(
+			slog.String("chat-id", member.Chat.ID),
+			slog.String("channel", member.Chat.Channel),
+			slog.String("TO", member.User.FirstName),
+		)
 
 		if err != nil {
 			// FIXME: just log failed attempt ?
-			trace = c.log.Error().Err(err)
+			log.Error("CLOSED",
+				slog.Any("error", err),
+			)
 		} else {
-			trace = c.log.Trace()
+			log.Debug("CLOSED")
 		}
-
-		trace.
-			Str("chat-id", member.Chat.ID).
-			Str("channel", member.Chat.Channel).
-			Str("TO", member.User.FirstName).
-			Msg("CLOSED")
 	}
 	// // Otherwise, if NO-ONE in the room - route message to the chat-flow !
 	// if sent == 0 && chatflow != nil {
@@ -3290,12 +3386,12 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 		chatFlowID = req.GetConversationId()
 	)
 
-	c.log.Debug().
-		Str("conversation_id", chatFlowID).
-		Str("channel_id", chatFromID).
-		Int64("schema_id", schemaToID).
-		Int64("user_id", userToID).
-		Msg("TRANSFER Conversation")
+	c.log.Debug("TRANSFER Conversation",
+		slog.String("conversation_id", chatFlowID),
+		slog.String("channel_id", chatFromID),
+		slog.Int64("schema_id", schemaToID),
+		slog.Int64("user_id", userToID),
+	)
 
 	if chatFlowID == "" && chatFromID == "" {
 		return errors.BadRequest(
@@ -3517,7 +3613,10 @@ func (c *chatService) SendUserAction(ctx context.Context, req *pb.SendUserAction
 			{
 				ok, err := c.eventRouter.SendUserActionToGateway(member, req)
 				if err != nil {
-					c.log.Warn().Err(err).Msg("ACTION [TO]")
+					c.log.Warn("ACTION [TO]",
+						slog.Any("error", err),
+						slog.String("channel_id", req.ChannelId),
+					)
 					continue
 				}
 				res.Ok = (res.Ok || ok)

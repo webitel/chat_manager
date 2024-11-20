@@ -41,8 +41,10 @@ func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Cha
 	list, err := GetChannels(repo.db, ctx, &search)
 
 	if err != nil {
-		repo.log.Error().Err(err).Str("id", id).
-			Msg("Failed lookup DB chat.channel")
+		repo.log.Error("Failed lookup DB chat.channel",
+			"error", err,
+			"id", id,
+		)
 		return nil, err
 	}
 

@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -111,21 +112,20 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 		return nil, err
 	}
 
-	log := srv.Log.With().
-		Int64("pid", add.GetId()).
-		Int64("pdc", add.GetDc().GetId()).
-		Int64("bot", add.GetFlow().GetId()).
-		Str("uri", add.GetUri()).
-		Str("title", add.GetName()).
-		Str("channel", add.GetProvider()).
-		Logger()
+	log := srv.Log.With(
+		slog.Int64("pid", add.GetId()),
+		slog.Int64("pdc", add.GetDc().GetId()),
+		slog.Int64("bot", add.GetFlow().GetId()),
+		slog.String("uri", add.GetUri()),
+		slog.String("title", add.GetName()),
+		slog.String("channel", add.GetProvider()),
+	)
 
 	// Find provider implementation by code name
 	setup := GetProvider(add.GetProvider())
 
 	if setup == nil {
-
-		log.Warn().Msg("PROVIDER: NOT SUPPORTED")
+		log.Warn("PROVIDER: NOT SUPPORTED")
 		// Client Request Error !
 		return nil, errors.BadRequest(
 			"chat.bot.provider.invalid",
@@ -141,7 +141,7 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 	// CHECK: Provider specific options are well formed !
 	agent := &Gateway{
 
-		Log:      &log,
+		Log:      log,
 		Bot:      add,
 		Internal: srv,
 		// Template: NewTemplate(add.Provider),
@@ -199,7 +199,9 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 			re.Status = http.StatusText(code)
 		}
 
-		log.Error().Str("error", re.Detail).Msg("SETUP")
+		log.Error("SETUP",
+			slog.String("error", re.Detail),
+		)
 
 		return nil, re
 	}
@@ -223,7 +225,9 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 						"updates: this provider does not implement templates yet",
 					).(*errors.Error)
 
-					log.Error().Str("error", re.Detail).Msg("SETUP")
+					log.Error("SETUP",
+						slog.String("error", re.Detail),
+					)
 					return nil, re
 				}
 			}

@@ -2,11 +2,11 @@ package chat
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 
 	"github.com/micro/micro/v3/service/context/metadata"
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/rs/zerolog"
 	oauth "github.com/webitel/chat_manager/api/proto/auth"
 	pb "github.com/webitel/chat_manager/api/proto/chat/messages"
 	"github.com/webitel/chat_manager/app"
@@ -16,7 +16,7 @@ import (
 )
 
 type ContactLinkingService struct {
-	logs                  *zerolog.Logger
+	logs                  *slog.Logger
 	authN                 *auth.Client
 	channelStore          store.ChannelRepository
 	clientStore           store.ClientRepository
@@ -26,7 +26,7 @@ type ContactLinkingService struct {
 
 type ContactsLinkingServiceOption func(srv *ContactLinkingService) error
 
-func ContactLinkingServiceLogs(logs *zerolog.Logger) ContactsLinkingServiceOption {
+func ContactLinkingServiceLogs(logs *slog.Logger) ContactsLinkingServiceOption {
 	return func(srv *ContactLinkingService) error {
 		srv.logs = logs
 		return nil

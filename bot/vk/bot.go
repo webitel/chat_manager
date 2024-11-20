@@ -11,6 +11,7 @@ import (
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"strconv"
@@ -167,7 +168,9 @@ func (c *VKBot) Register(ctx context.Context, callbackURL string) error {
 	params := vk.Params{"group_id": c.creds.GroupId, "url": callbackURL, "title": hookName}
 	resp, err := c.BotApi.GroupsAddCallbackServer(params)
 	if err != nil {
-		c.Gateway.Log.Error().Err(err).Msg("Failed to .Register webhook")
+		c.Gateway.Log.Error("Failed to .Register webhook",
+			slog.Any("error", err),
+		)
 		return err
 	}
 	c.serverId = int64(resp.ServerID)
@@ -271,7 +274,9 @@ func (c *VKBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	err := json.NewDecoder(notice.Body).Decode(&recvEvent)
 	if err != nil {
 		http.Error(reply, "Failed to decode vk .Update event", http.StatusBadRequest)
-		c.Log.Error().Str("error", "vk.Update: "+err.Error()).Msg("VK: UPDATE")
+		c.Log.Error("VK: UPDATE",
+			slog.String("error", "vk.Update: "+err.Error()),
+		)
 		return // 400 Bad Request
 	}
 

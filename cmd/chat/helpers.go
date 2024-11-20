@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	pb "github.com/webitel/chat_manager/api/proto/chat"
@@ -17,7 +18,10 @@ import (
 func (s *chatService) closeConversation(ctx context.Context, conversationID *string, cause string) error {
 	err := s.repo.CloseConversation(ctx, *conversationID, cause)
 	if err != nil {
-		s.log.Error().Err(err).Msg("Failed to update chat CLOSED")
+		s.log.Error("Failed to update chat CLOSED",
+			slog.Any("error", err),
+			slog.String("conversation_id", *conversationID),
+		)
 		return err
 	}
 	return nil

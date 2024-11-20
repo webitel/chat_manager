@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"mime"
 	"mime/multipart"
@@ -152,13 +153,14 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 				http.Error(rsp, err.Error() /*http.StatusText(code)*/, code) // err.Error(), code)
 
 				if err == nil {
-					agent.Log.Error().
-						Str("peer", webChatRemoteIP(req)).
-						Msgf("%d %s", code, http.StatusText(code))
+					agent.Log.Error("%d %s", code, http.StatusText(code),
+						slog.String("peer", webChatRemoteIP(req)),
+					)
 				} else {
-					agent.Log.Err(err).
-						Str("peer", webChatRemoteIP(req)).
-						Msgf("%d %s", code, http.StatusText(code))
+					agent.Log.Error("%d %s", code, http.StatusText(code),
+						slog.Any("error", err),
+						slog.String("peer", webChatRemoteIP(req)),
+					)
 				}
 			},
 		},
@@ -434,7 +436,9 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 			return nil
 		}
 		defer channel.Close()
-		c.Log.Error().Str("chat-id", channel.ChatID).Msg("CHAT: Channel NOT connected; Force .Close(!)")
+		c.Log.Error("CHAT: Channel NOT connected; Force .Close(!)",
+			slog.String("chat-id", channel.ChatID),
+		)
 		return errors.New("chat: no channel connection")
 	}
 
@@ -449,9 +453,10 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("left", peer)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", message.Type).
-				Msg("webchat.onLeftMember")
+			c.Gateway.Log.Error("webchat.onLeftMember",
+				slog.Any("error", err),
+				slog.String("update", message.Type),
+			)
 		}
 		// Template for update specified ?
 		if text == "" {
@@ -468,9 +473,10 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("join", peer)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", message.Type).
-				Msg("webchat.onChatMember")
+			c.Gateway.Log.Error("webchat.onChatMember",
+				slog.Any("error", err),
+				slog.String("update", message.Type),
+			)
 		}
 		// Template for update specified ?
 		if text == "" {
@@ -515,13 +521,14 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 						),
 					)
 					if err != nil {
-						c.Log.Err(err).
-							Str("conn", conn.RemoteAddr().String()).
-							Msg("WS.Close(!)")
+						c.Log.Error("WS.Close(!)",
+							slog.Any("error", err),
+							slog.String("conn", conn.RemoteAddr().String()),
+						)
 					} else {
-						c.Log.Debug().
-							Str("conn", conn.RemoteAddr().String()).
-							Msg("WS.Close(!)")
+						c.Log.Debug("WS.Close(!)",
+							slog.String("conn", conn.RemoteAddr().String()),
+						)
 					}
 					conn.Close()
 				}
@@ -533,9 +540,10 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("close", nil)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", message.Type).
-				Msg("webchat.onChatClose")
+			c.Gateway.Log.Error("webchat.onChatClose",
+				slog.Any("error", err),
+				slog.String("update", message.Type),
+			)
 		}
 		// Template for update specified ?
 		if text == "" {
@@ -547,10 +555,9 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		message.Text = text
 
 	default:
-
-		c.Gateway.Log.Warn().
-			Str("error", "message.type: unknown").
-			Msg("webchat.doSendMessage")
+		c.Gateway.Log.Warn("webchat.doSendMessage",
+			slog.String("error", "message.type: unknown"),
+		)
 		return nil // IGNORE
 	}
 
@@ -1125,7 +1132,9 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 
 		if err != nil {
 			// MAY: bot is disabled !
-			c.Gateway.Log.Err(err).Msg("Failed to .GetChannel()")
+			c.Gateway.Log.Error("Failed to .GetChannel()",
+				slog.Any("error", err),
+			)
 			// Failed locate chat channel !
 			re := errs.FromError(err)
 			if re.Code == 0 {
@@ -1189,7 +1198,9 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 
 	// NOTE: req released !
 	if err != nil {
-		c.Log.Err(err)
+		c.Log.Error(err.Error(),
+			slog.Any("error", err),
+		)
 		return
 	}
 
@@ -1271,7 +1282,7 @@ func (c *WebChatBot) join(client *webChat, conn *websocket.Conn) {
 		c.chat[client.ChatID] = client
 		c.RWMutex.Unlock() // -RW
 		// secondary = false
-		client.Log.Info().Msg("JOIN")
+		client.Log.Info("JOIN")
 	}
 
 	// STARTUP (!)
@@ -1296,9 +1307,11 @@ func (c *WebChatBot) join(client *webChat, conn *websocket.Conn) {
 			err := client.Gateway.Read(context.TODO(), &commandStart)
 
 			if err != nil {
-				client.Log.Err(err).Msg("START")
+				client.Log.Error("START",
+					slog.Any("error", err),
+				)
 			} else {
-				client.Log.Info().Msg("START")
+				client.Log.Info("START")
 			}
 
 		} else {
@@ -1358,9 +1371,9 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 			// // page reloaded conn may return !
 		}:
 		default:
-			c.Log.Error().
-				Str("ws", conn.RemoteAddr().String()).
-				Msg("[WS] >>> READ.Close(!) <<< OMITTED")
+			c.Log.Error("[WS] >>> READ.Close(!) <<< OMITTED",
+				slog.String("ws", conn.RemoteAddr().String()),
+			)
 			// FIXME: Expect to be closed !
 			// How to check it's NOT but full ?
 		}
@@ -1387,9 +1400,9 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 		conn.SetReadDeadline(time.Now().Add(pongTimeout))
 		return nil
 	})
-	c.Log.Info().
-		Str("ws", conn.RemoteAddr().String()).
-		Msg("[WS] >>> Listen <<<")
+	c.Log.Info("[WS] >>> Listen <<<",
+		slog.String("ws", conn.RemoteAddr().String()),
+	)
 
 	// reader := bytes.NewReader(nil)
 
@@ -1404,9 +1417,10 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 				websocket.CloseAbnormalClosure,
 				websocket.CloseNoStatusReceived, // FIXME: Normal Close just with NO status text provided ?
 			) {
-				c.Log.Err(err).
-					Str("ws", conn.RemoteAddr().String()).
-					Msg("READ.Unexpected(!)")
+				c.Log.Error("READ.Unexpected(!)",
+					slog.Any("error", err),
+					slog.String("ws", conn.RemoteAddr().String()),
+				)
 			} else {
 				// 	c.Log.Warn().Err(err).
 				// 		Str("ws", conn.RemoteAddr().String()).
@@ -1470,7 +1484,10 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 		// }
 		if err != nil {
 			res.Error = err.Error()
-			c.Log.Err(err).Str("ws", conn.RemoteAddr().String()).Msg("Request Error")
+			c.Log.Error("Request Error",
+				slog.Any("error", err),
+				slog.String("ws", conn.RemoteAddr().String()),
+			)
 			// panic(err)
 			// TODO: send reply to originator channel only !
 		} else {
@@ -1520,7 +1537,7 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 		select {
 		case c.send <- broadcast:
 		default:
-			c.Log.Warn().Msg("Broadcast to closed(c.send) channel")
+			c.Log.Warn("Broadcast to closed(c.send) channel")
 			return
 		}
 	}
@@ -1551,13 +1568,13 @@ func (c *webChat) writePump() {
 			_ = c.Channel.Close()
 		}
 		if found {
-			c.Log.Warn().Msg("[WS] <<< STOP >>>")
+			c.Log.Warn("[WS] <<< STOP >>>")
 		}
 		// }
 		// c.Log.Warn().Msg("[WS] >>> Shutdown <<<")
 	}()
 
-	c.Log.Info().Msg("[WS] >>> START <<<")
+	c.Log.Info("[WS] >>> START <<<")
 
 	for {
 		select {
@@ -1577,13 +1594,14 @@ func (c *webChat) writePump() {
 						),
 					)
 					if err != nil {
-						c.Log.Err(err).
-							Str("ws", conn.RemoteAddr().String()).
-							Msg("WRITE.Close(!)")
+						c.Log.Error("WRITE.Close(!)",
+							slog.Any("error", err),
+							slog.String("ws", conn.RemoteAddr().String()),
+						)
 					} else {
-						c.Log.Warn().
-							Str("ws", conn.RemoteAddr().String()).
-							Msg("WRITE.Close(!)")
+						c.Log.Warn("WRITE.Close(!)",
+							slog.String("ws", conn.RemoteAddr().String()),
+						)
 					}
 					defer conn.Close()
 				}
@@ -1603,13 +1621,14 @@ func (c *webChat) writePump() {
 				if err != nil {
 					// [sync] remove: bad connection ...
 					c.conn = append(c.conn[0:i], c.conn[i+1:]...)
-					c.Log.Err(err).
-						Str("ws", conn.RemoteAddr().String()).
-						Msg("PING")
+					c.Log.Error("PING",
+						slog.Any("error", err),
+						slog.String("ws", conn.RemoteAddr().String()),
+					)
 				} else {
-					c.Log.Debug().
-						Str("ws", conn.RemoteAddr().String()).
-						Msg("PING")
+					c.Log.Debug("PING",
+						slog.String("ws", conn.RemoteAddr().String()),
+					)
 				}
 			}
 			// Next PING: no connections !..
@@ -1647,9 +1666,10 @@ func (c *webChat) sendFrame(conn *websocket.Conn, typeof int, data []byte) (err 
 	err = conn.SetWriteDeadline(time.Now().Add(c.Bot.WriteTimeout))
 
 	if err != nil {
-		c.Log.Err(err).
-			Str("ws", conn.RemoteAddr().String()).
-			Msg("WS.SetWriteDeadline(!)")
+		c.Log.Error("WS.SetWriteDeadline(!)",
+			slog.Any("error", err),
+			slog.String("ws", conn.RemoteAddr().String()),
+		)
 		return // err
 	}
 	// if !ok {
@@ -1662,17 +1682,19 @@ func (c *webChat) sendFrame(conn *websocket.Conn, typeof int, data []byte) (err 
 	w, err = conn.NextWriter(typeof)
 	if err != nil {
 		// if err == websocket.ErrCloseSent {}
-		c.Log.Err(err).
-			Str("ws", conn.RemoteAddr().String()).
-			Msg("WS.NextWriter(!)")
+		c.Log.Error("WS.NextWriter(!)",
+			slog.Any("error", err),
+			slog.String("ws", conn.RemoteAddr().String()),
+		)
 		return // err
 	}
 
 	_, err = w.Write(data)
 	if err != nil {
-		c.Log.Err(err).
-			Str("ws", conn.RemoteAddr().String()).
-			Msg("WS.Write(!)")
+		c.Log.Error("WS.Write(!)",
+			slog.Any("error", err),
+			slog.String("ws", conn.RemoteAddr().String()),
+		)
 		return // err
 	}
 
@@ -1685,16 +1707,17 @@ func (c *webChat) sendFrame(conn *websocket.Conn, typeof int, data []byte) (err 
 
 	err = w.Close()
 	if err != nil {
-		c.Log.Err(err).
-			Str("ws", conn.RemoteAddr().String()).
-			Msg("WS.Flush(!)")
+		c.Log.Error("WS.Flush(!)",
+			slog.Any("error", err),
+			slog.String("ws", conn.RemoteAddr().String()),
+		)
 		return // err
 	}
 
-	c.Log.Debug().
-		Str("ws", conn.RemoteAddr().String()).
-		Str("data", string(data)).
-		Msg("WS.Write(!)")
+	c.Log.Debug("WS.Write(!)",
+		slog.String("data", string(data)),
+		slog.String("ws", conn.RemoteAddr().String()),
+	)
 
 	return // nil
 }

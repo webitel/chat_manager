@@ -3,6 +3,7 @@ package flow
 import (
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/internal/contact"
+	"log/slog"
 
 	"strconv"
 	"sync"
@@ -10,8 +11,6 @@ import (
 	// "errors"
 	// "context"
 	// "github.com/micro/go-micro/v2/errors"
-
-	"github.com/rs/zerolog"
 
 	// strategy "github.com/webitel/chat_manager/internal/selector"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
@@ -50,7 +49,7 @@ type Client interface {
 
 // Agent "workflow" (internal: chat@bot) channel service provider
 type Agent struct {
-	Log    *zerolog.Logger
+	Log    *slog.Logger
 	Store  store.CacheRepository
 	Client flow.FlowChatServerService
 	// cache: memory
@@ -61,7 +60,7 @@ type Agent struct {
 
 func NewClient(
 
-	log *zerolog.Logger,
+	log *slog.Logger,
 	store store.CacheRepository,
 	client flow.FlowChatServerService,
 

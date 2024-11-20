@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
@@ -82,9 +83,9 @@ func (c *Client) WebhookVerification(rsp http.ResponseWriter, req *http.Request)
 			rsp.WriteHeader(http.StatusOK)
 			_, _ = rsp.Write([]byte(hook.Verified))
 
-			c.Log.Info().
-				Str("uri", uri).
-				Msg("WEBHOOK: VERIFIED")
+			c.Log.Info("WEBHOOK: VERIFIED",
+				slog.String("uri", uri),
+			)
 			return // 200 OK
 		}
 
@@ -93,10 +94,10 @@ func (c *Client) WebhookVerification(rsp http.ResponseWriter, req *http.Request)
 			http.StatusForbidden,
 		)
 
-		c.Log.Error().
-			Str("uri", uri).
-			Str("error", "verify token is invalid or missing").
-			Msg("WEBHOOK: NOT VERIFIED")
+		c.Log.Error("WEBHOOK: NOT VERIFIED",
+			slog.String("uri", uri),
+			slog.String("error", "verify token is invalid or missing"),
+		)
 		return // 403 Forbidden
 
 		// default:
@@ -108,10 +109,10 @@ func (c *Client) WebhookVerification(rsp http.ResponseWriter, req *http.Request)
 		http.StatusBadRequest,
 	)
 
-	c.Log.Error().
-		Str("uri", uri).
-		Str("error", "setup mode is invalid or missing").
-		Msg("WEBHOOK: NOT VERIFIED")
+	c.Log.Error("WEBHOOK: NOT VERIFIED",
+		slog.String("uri", uri),
+		slog.String("error", "setup mode is invalid or missing"),
+	)
 	// return // 400 Bad Request
 }
 
@@ -135,7 +136,9 @@ func (c *Client) WebhookEvent(rsp http.ResponseWriter, req *http.Request) {
 
 	if err != nil {
 		http.Error(rsp, err.Error(), http.StatusBadRequest)
-		c.Log.Err(err).Msg("WEBHOOK")
+		c.Log.Error("WEBHOOK",
+			slog.Any("error", err),
+		)
 		return // (400) Bad Request
 	}
 
@@ -153,14 +156,18 @@ func (c *Client) WebhookEvent(rsp http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		// TODO: FIXME: Broken model due to API version ?
 		http.Error(rsp, "Failed to decode webhook event", http.StatusBadRequest)
-		c.Log.Err(err).Msg("WEBHOOK: EVENT")
+		c.Log.Error("WEBHOOK: EVEN",
+			slog.Any("error", err),
+		)
 		return // (400) Bad Request
 	}
 
 	// X-Hub-Signature: Verification !
 	if err = content.Close(); err != nil {
 		http.Error(rsp, err.Error(), http.StatusBadRequest)
-		c.Log.Err(err).Msg("WEBHOOK: INVALID SIGNATURE")
+		c.Log.Error("WEBHOOK: INVALID SIGNATURE",
+			slog.Any("error", err),
+		)
 		return // (400) Bad Request ! IGNORE !
 	} // else {
 	// 	c.Log.Debug().Msg("WEBHOOK: SIGNATURE VERIFIED")
@@ -175,7 +182,9 @@ func (c *Client) WebhookEvent(rsp http.ResponseWriter, req *http.Request) {
 		if err = json.Unmarshal(data, &batch); err != nil {
 			// 200 OK / IGNORE REDELIVERY
 			rsp.WriteHeader(http.StatusOK)
-			c.Log.Err(err).Msg("WEBHOOK: PAGE")
+			c.Log.Error("WEBHOOK: PAG",
+				slog.Any("error", err),
+			)
 			// FIXME: Invalid subscribed object's field API version ?
 			return
 		}
@@ -202,7 +211,9 @@ func (c *Client) WebhookEvent(rsp http.ResponseWriter, req *http.Request) {
 		var batch []*webhooks.Entry
 		if err = json.Unmarshal(data, &batch); err != nil {
 			//
-			c.Log.Err(err).Msg("meta.onWhatsAppBusinessAccount")
+			c.Log.Error("meta.onWhatsAppBusinessAccount",
+				slog.Any("error", err),
+			)
 			// 200 OK / IGNORE REDELIVERY
 			rsp.WriteHeader(http.StatusOK)
 			return
@@ -213,9 +224,10 @@ func (c *Client) WebhookEvent(rsp http.ResponseWriter, req *http.Request) {
 		}
 
 	default:
-		c.Log.Warn().Str("object", event.Object).
-			Str("error", "update: object not supported").
-			Msg("messenger.onUpdate")
+		c.Log.Warn("messenger.onUpdate",
+			slog.String("object", event.Object),
+			slog.String("error", "update: object not supported"),
+		)
 	}
 
 	// 200 OK / IGNORE [RE]DELIVERY !
@@ -272,9 +284,9 @@ func (c *Client) WebhookPage(batch []*messenger.Entry) {
 
 		if err != nil {
 			re := errors.FromError(err)
-			c.Gateway.Log.Error().
-				Str("error", re.Detail).
-				Msg(on)
+			c.Gateway.Log.Error(on,
+				slog.String("error", re.Detail),
+			)
 			err = nil
 			// continue
 		}
@@ -496,9 +508,9 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 		fromId := userPSID
 		sender := c.getPage(fromId)
 		if sender == nil || sender.Page == nil {
-			c.Gateway.Log.Warn().
-				Str("error", "account: page.id="+fromId+" not found").
-				Msg("messenger.onMessage")
+			c.Gateway.Log.Warn("messenger.onMessage",
+				slog.String("error", "account: page.id="+fromId+" not found"),
+			)
 		}
 		platform := "facebook"
 		pageName := sender.Name
@@ -509,11 +521,12 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 				pageName = sender.Instagram.Username
 			}
 		}
-		c.Gateway.Log.Warn().
-			Str("asid", fromId).
-			Str(platform, pageName).
-			Str("echo", "ignore: @self publication echo").
-			Msg(platform + ".onMessage")
+
+		c.Gateway.Log.Warn(platform+".onMessage",
+			slog.String("asid", fromId),
+			slog.String(platform, pageName),
+			slog.String("echo", "ignore: @self publication echo"),
+		)
 		// IGNORE // (200) OK
 		return nil
 	}
@@ -571,12 +584,13 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 			},
 		)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("asid", pageASID).
-				Str(platform, pageName).
-				Str("psid", userPSID).
-				Str("from", channel.Account.DisplayName()).
-				Msg(platform + ".onMessageDelete")
+			c.Gateway.Log.Warn(platform+".onMessageDelete",
+				slog.Any("error", err),
+				slog.String("asid", pageASID),
+				slog.String(platform, pageName),
+				slog.String("psid", userPSID),
+				slog.String("from", channel.Account.DisplayName()),
+			)
 		}
 		// return nil // (200) OK
 		return err
@@ -662,11 +676,11 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 		case "story_mention":
 			hook := c.hookIGStoryMention
 			if hook == nil {
-				c.Gateway.Log.Warn().
-					Str("asid", pageASID).
-					Str(platform, pageName).
-					Str("error", "update: instagram{story_mentions} is disabled").
-					Msg("instagram.onStoryMention")
+				c.Gateway.Log.Warn("instagram.onStoryMention",
+					slog.String("error", "update: instagram{story_mentions} is disabled"),
+					slog.String("asid", pageASID),
+					slog.String(platform, pageName),
+				)
 				continue
 			}
 			// mention := IGStoryMention{
@@ -734,7 +748,9 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 			url, err := url.Parse(data.URL)
 			if err != nil {
 				// Invalid Attachment URL !
-				c.Log.Err(err).Msg("ATTACHMENT: INVALID")
+				c.Log.Error("ATTACHMENT: INVALID",
+					slog.Any("error", err),
+				)
 				continue // NEXT !
 			}
 

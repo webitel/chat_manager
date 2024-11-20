@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -15,7 +16,6 @@ import (
 	"net/http/pprof"
 
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/rs/zerolog"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/auth"
@@ -39,7 +39,7 @@ type Service struct {
 	Addr    string
 	WebRoot string
 
-	Log    zerolog.Logger
+	Log    slog.Logger
 	Auth   *auth.Client
 	Client chat.ChatService
 	exit   chan chan error
@@ -57,7 +57,7 @@ type Service struct {
 
 func NewService(
 	store Store,
-	logger *zerolog.Logger,
+	logger *slog.Logger,
 	client chat.ChatService,
 	auditClient *audit.Client,
 	// router *mux.Router,
@@ -79,7 +79,7 @@ func NewService(
 
 func (srv *Service) onStart() {
 
-	srv.Log.Info().Msg("Server [bots] Connecting recipient subscriptions . . .")
+	srv.Log.Info("Server [bots] Connecting recipient subscriptions . . .")
 
 	ctx := context.TODO()
 	lookup := app.SearchOptions{
@@ -131,7 +131,9 @@ func (srv *Service) onStart() {
 
 	bots, err := srv.store.Search(&lookup)
 	if err != nil {
-		srv.Log.Err(err).Msg("service.onStart")
+		srv.Log.Error("service.onStart",
+			slog.Any("error", err),
+		)
 	}
 
 	for _, profile := range bots {
@@ -145,7 +147,10 @@ func (srv *Service) onStart() {
 		err = gate.Register(ctx, force)
 		if err != nil {
 			// return nil, err
-			srv.Log.Err(err).Int64("pid", pid).Msg("service.onStart.bot.register")
+			srv.Log.Error("service.onStart.bot.register",
+				slog.Any("error", err),
+				slog.Int64("pid", pid),
+			)
 		}
 	}
 }
@@ -192,9 +197,9 @@ func (srv *Service) Start() error {
 	}
 	// Normalize address
 	srv.Addr = ln.Addr().String()
-	if log := srv.Log.Info(); log.Enabled() {
-		log.Msgf("Server [http] Listening on %s", srv.Addr)
-	}
+
+	srv.Log.Info("Server [http] Listening on " + srv.Addr)
+
 	// Normalize Reverse URL
 	var hostURL *url.URL
 	if srv.URL == "" {
@@ -215,9 +220,7 @@ func (srv *Service) Start() error {
 		}
 	}
 	srv.URL = hostURL.String()
-	if log := srv.Log.Info(); log.Enabled() {
-		log.Msgf("Server [http] Reverse Host %s", srv.URL)
-	}
+	srv.Log.Info("Server [http] Reverse Host " + srv.URL)
 
 	rmux := http.NewServeMux()
 	rmux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -243,12 +246,10 @@ func (srv *Service) Start() error {
 			// }
 		}
 
-		if log := srv.Log.Warn(); log.Enabled() {
-
-			log.Err(err).
-				Str("addr", ln.Addr().String()).
-				Msg("Server [http] Shutted down")
-		}
+		srv.Log.Error("Server [http] Shutted down",
+			slog.Any("error", err),
+			slog.String("addr", ln.Addr().String()),
+		)
 
 	}()
 
@@ -282,7 +283,9 @@ func (srv *Service) Close() error {
 	for _, gate := range srv.profiles {
 		_ = gate.Remove()
 		if re := gate.External.Close(); re != nil {
-			gate.Log.Err(re).Msg("STOP")
+			gate.Log.Error("STOP",
+				slog.Any("error", re),
+			)
 		}
 	}
 
@@ -408,9 +411,10 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 
 	if err != nil {
 
-		srv.Log.Error().Err(err).
-			Int64("pid", pid).
-			Msg("Failed lookup bot.profile")
+		srv.Log.Error("Failed lookup bot.profile",
+			slog.Any("error", err),
+			slog.Int64("pid", pid),
+		)
 
 		return nil, err
 	}
@@ -419,8 +423,10 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 
 	if profile.GetId() == 0 {
 		// NOT FOUND !
-		srv.Log.Warn().Int64("pid", pid).Str("uri", uri).
-			Msg("PROFILE: NOT FOUND")
+		srv.Log.Warn("PROFILE: NOT FOUND",
+			slog.String("uri", uri),
+			slog.Int64("pid", pid),
+		)
 
 		return nil, errors.NotFound(
 			"chat.gateway.profile.not_found",
@@ -431,9 +437,10 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 
 	if pid != 0 && pid != profile.GetId() {
 		// NOT FOUND !
-		srv.Log.Warn().Int64("pid", pid).
-			Str("error", "mismatch profile.id requested").
-			Msg("PROFILE: NOT FOUND")
+		srv.Log.Warn("PROFILE: NOT FOUND",
+			slog.String("error", "mismatch profile.id requested"),
+			slog.Int64("pid", pid),
+		)
 
 		return nil, errors.NotFound(
 			"chat.bot.profile.not_found",
@@ -455,9 +462,10 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 	// }
 	if uri != "" && uri != profile.GetUri() {
 		// NOT FOUND !
-		srv.Log.Warn().Str("uri", uri).
-			Str("error", "mismatch profile.uri requested").
-			Msg("PROFILE: NOT FOUND")
+		srv.Log.Warn("PROFILE: NOT FOUND",
+			slog.String("error", "mismatch profile.uri requested"),
+			slog.String("uri", uri),
+		)
 
 		return nil, errors.NotFound(
 			"chat.bot.profile.not_found",
@@ -729,10 +737,10 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		uri = strings.TrimSuffix(uri, CaptchaSuffix)
 	}
 
-	srv.Log.Debug().
-		Str("uri", r.URL.Path).
-		Str("method", r.Method).
-		Msg("<<<<< WEBHOOK <<<<<")
+	srv.Log.Debug("<<<<< WEBHOOK <<<<<",
+		slog.String("uri", r.URL.Path),
+		slog.String("method", r.Method),
+	)
 
 	//uri := r.URL.Path // strings.TrimLeft(r.URL.Path, "/")
 
