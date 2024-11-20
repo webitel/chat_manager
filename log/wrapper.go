@@ -2,7 +2,6 @@ package log
 
 import (
 	"log/slog"
-	"os"
 	"reflect"
 	"time"
 
@@ -108,11 +107,11 @@ func TraceLog(log *slog.Logger, msg string, args ...any) {
 
 func FataLog(log *slog.Logger, msg string, args ...any) {
 	log.Log(context.Background(), LevelFatal, msg, args...)
-	os.Exit(1)
+	//os.Exit(1) deffer not working
 }
 
 func SlogObject(obj interface{}) []slog.Attr {
-	res := make([]slog.Attr, 0, 0)
+	res := make([]slog.Attr, 0)
 
 	v := reflect.ValueOf(obj)
 
@@ -127,21 +126,44 @@ func SlogObject(obj interface{}) []slog.Attr {
 		for i := 0; i < t.NumField(); i++ {
 			field := t.Field(i)
 			value := v.Field(i)
+
 			if field.IsExported() {
-				key := field.Tag.Get("json")
-				if key == "" {
-					key = field.Name
+				tag := field.Tag.Get("json")
+				if tag == "" {
+					tag = field.Name
+				} else {
+					if commaIdx := strings.Index(tag, ","); commaIdx != -1 {
+						tag = tag[:commaIdx]
+					}
 				}
-				res = append(res, slog.Any(key, value))
+
+				if value.Kind() == reflect.Struct || value.Kind() == reflect.Map {
+					res = append(res, slog.Group(tag, convertAttrsToAny(SlogObject(value.Interface()))...))
+				} else {
+					res = append(res, slog.Any(tag, value.Interface()))
+				}
 			}
 		}
 	case reflect.Map:
 		for _, key := range v.MapKeys() {
-			res = append(res, slog.Any(key.String(), v.MapIndex(key)))
+			mapValue := v.MapIndex(key)
+			if mapValue.Kind() == reflect.Struct || mapValue.Kind() == reflect.Map {
+				res = append(res, slog.Group(key.String(), convertAttrsToAny(SlogObject(mapValue.Interface()))...))
+			} else {
+				res = append(res, slog.Any(key.String(), mapValue.Interface()))
+			}
 		}
 	default:
 		res = append(res, slog.Any("_BADKEY_", obj))
 	}
 
 	return res
+}
+
+func convertAttrsToAny(attrs []slog.Attr) []any {
+	anyAttrs := make([]any, len(attrs))
+	for i, attr := range attrs {
+		anyAttrs[i] = attr
+	}
+	return anyAttrs
 }

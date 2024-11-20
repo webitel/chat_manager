@@ -1,8 +1,20 @@
 package chat
 
 import (
+	micro "github.com/micro/micro/v3/service"
+	"github.com/micro/micro/v3/service/broker"
+	"github.com/micro/micro/v3/service/logger"
 	"github.com/micro/micro/v3/service/server"
+	"github.com/urfave/cli/v2"
+	pbauth "github.com/webitel/chat_manager/api/proto/auth"
+	pbbot "github.com/webitel/chat_manager/api/proto/bot"
+	pb "github.com/webitel/chat_manager/api/proto/chat"
+	pb2 "github.com/webitel/chat_manager/api/proto/chat/messages"
+	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
+	pbmanager "github.com/webitel/chat_manager/api/proto/workflow"
+	"github.com/webitel/chat_manager/cmd"
 	"github.com/webitel/chat_manager/log"
+	pbcontact "github.com/webitel/protos/gateway/contacts"
 	slogutil "github.com/webitel/webitel-go-kit/otel/log/bridge/slog"
 	otelsdk "github.com/webitel/webitel-go-kit/otel/sdk"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
@@ -13,19 +25,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-
-	micro "github.com/micro/micro/v3/service"
-	"github.com/micro/micro/v3/service/broker"
-	"github.com/urfave/cli/v2"
-	pbauth "github.com/webitel/chat_manager/api/proto/auth"
-	pbbot "github.com/webitel/chat_manager/api/proto/bot"
-	pb "github.com/webitel/chat_manager/api/proto/chat"
-	pb2 "github.com/webitel/chat_manager/api/proto/chat/messages"
-	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
-	pbmanager "github.com/webitel/chat_manager/api/proto/workflow"
-	pbcontact "github.com/webitel/protos/gateway/contacts"
-
-	"github.com/webitel/chat_manager/cmd"
 
 	authN "github.com/webitel/chat_manager/auth"
 	"github.com/webitel/chat_manager/internal/auth"
@@ -111,17 +110,20 @@ func Run(ctx *cli.Context) error {
 
 	// Retrieve log level from the environment, default to info
 	var verbose slog.LevelVar
+	var slogger *slog.Logger
 	verbose.Set(slog.LevelInfo)
-	if input := os.Getenv("OTEL_LOG_LEVEL"); input != "" {
-		_ = verbose.UnmarshalText([]byte(input))
+
+	// TODO
+	textLvl := os.Getenv("OTEL_LOG_LEVEL")
+	if textLvl == "" {
+		textLvl = os.Getenv("MICRO_LOG_LEVEL")
 	}
 
-	slogger := slog.New(
-		slogutil.WithLevel(
-			&verbose,                    // Filter level for otelslog.Handler
-			otelslog.NewHandler("slog"), // otelslog Handler for OpenTelemetry
-		),
-	)
+	if textLvl != "" {
+		_ = verbose.UnmarshalText([]byte(textLvl))
+	}
+	slogger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: verbose.Level()}))
+	logger.DefaultLogger = log.NewSlogAdapter(slogger)
 
 	version := cmd.Version()
 	if version == "" {
@@ -149,6 +151,12 @@ func Run(ctx *cli.Context) error {
 			resourceAttrs...,
 		)),
 		otelsdk.WithLogBridge(func() {
+			slogger = slog.New(
+				slogutil.WithLevel(
+					&verbose,                    // Filter level for otelslog.Handler
+					otelslog.NewHandler("slog"), // otelslog Handler for OpenTelemetry
+				),
+			)
 			slog.SetDefault(slogger)
 		}),
 	)
@@ -159,6 +167,7 @@ func Run(ctx *cli.Context) error {
 	defer func() {
 		shutdown(ctx.Context)
 	}()
+	logger.DefaultLogger = log.NewSlogAdapter(slogger)
 
 	service = micro.New(
 		micro.Name(name),

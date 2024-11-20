@@ -12,12 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"encoding/json"
-
 	"github.com/micro/micro/v3/service/context/metadata"
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/rs/zerolog"
-
 	auth "github.com/webitel/chat_manager/api/proto/auth"
 	gate "github.com/webitel/chat_manager/api/proto/bot"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
@@ -879,32 +875,6 @@ func (c *Gateway) DeleteMessage(ctx context.Context, update *Update) error {
 	}
 
 	return nil // ACK(+)
-}
-
-type zerologFunc func(event *zerolog.Event)
-
-func (fn zerologFunc) MarshalZerologObject(event *zerolog.Event) {
-	fn(event)
-}
-
-func ZerologJSON(key string, obj interface{}) zerolog.LogObjectMarshaler {
-	return zerologFunc(func(event *zerolog.Event) {
-
-		if obj == nil {
-			event.Str(key, "")
-			return
-		}
-
-		data, err := json.Marshal(obj)
-
-		if err != nil {
-			event.Err(err)
-			return
-		}
-
-		event.RawJSON(key, data)
-
-	})
 }
 
 // Read notification [FROM] external: chat.provider [TO] internal: chat.server

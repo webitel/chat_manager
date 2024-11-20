@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/rs/zerolog/log"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
 	"github.com/webitel/chat_manager/bot/facebook/messenger"
@@ -825,10 +824,11 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 		err = c.Gateway.Read(ctx, &update)
 
 		if err != nil {
-			log.Err(err).
-				Str("asid", pageASID).
-				Str(platform, pageName).
-				Msg(platform + ".onMessage")
+			c.Gateway.Log.Error(platform+".onMessage",
+				slog.Any("error", err),
+				slog.String("asid", pageASID),
+				slog.String(platform, pageName),
+			)
 			// http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
 			// return err // 502 Bad Gateway
 			if re == nil {
@@ -908,7 +908,9 @@ func (c *Client) WebhookPostback(event *messenger.Messaging) error {
 	err = c.Gateway.Read(ctx, &update)
 
 	if err != nil {
-		log.Error().Msg(err.Error())
+		c.Gateway.Log.Error(err.Error(),
+			slog.Any("error", err),
+		)
 		// http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
 		return err // 502 Bad Gateway
 	}
@@ -974,7 +976,9 @@ func (c *Client) WebhookReferral(event *messenger.Messaging) error {
 	err = c.Gateway.Read(ctx, &update)
 
 	if err != nil {
-		log.Error().Msg(err.Error())
+		c.Gateway.Log.Error(err.Error(),
+			slog.Any("error", err.Error()),
+		)
 		// http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
 		return err // 502 Bad Gateway
 	}

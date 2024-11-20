@@ -2,6 +2,7 @@ package bot
 
 import (
 	"github.com/micro/micro/v3/service/broker"
+	"github.com/micro/micro/v3/service/logger"
 	"github.com/micro/micro/v3/service/server"
 	"github.com/pkg/errors"
 	audProto "github.com/webitel/chat_manager/api/proto/logger"
@@ -104,19 +105,22 @@ func Run(ctx *cli.Context) error {
 		return nil
 	}
 
+	var slogger *slog.Logger
 	// Retrieve log level from the environment, default to info
 	var verbose slog.LevelVar
 	verbose.Set(slog.LevelInfo)
-	if input := os.Getenv("OTEL_LOG_LEVEL"); input != "" {
-		_ = verbose.UnmarshalText([]byte(input))
+
+	// TODO
+	textLvl := os.Getenv("OTEL_LOG_LEVEL")
+	if textLvl == "" {
+		textLvl = os.Getenv("MICRO_LOG_LEVEL")
 	}
 
-	slogger := slog.New(
-		slogutil.WithLevel(
-			&verbose,                    // Filter level for otelslog.Handler
-			otelslog.NewHandler("slog"), // otelslog Handler for OpenTelemetry
-		),
-	)
+	if textLvl != "" {
+		_ = verbose.UnmarshalText([]byte(textLvl))
+	}
+
+	slogger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: verbose.Level()}))
 
 	version := cmd.Version()
 	if version == "" {
@@ -144,6 +148,12 @@ func Run(ctx *cli.Context) error {
 			resourceAttrs...,
 		)),
 		otelsdk.WithLogBridge(func() {
+			slogger = slog.New(
+				slogutil.WithLevel(
+					&verbose,                    // Filter level for otelslog.Handler
+					otelslog.NewHandler("slog"), // otelslog Handler for OpenTelemetry
+				),
+			)
 			slog.SetDefault(slogger)
 		}),
 	)
@@ -154,6 +164,7 @@ func Run(ctx *cli.Context) error {
 	defer func() {
 		shutdown(ctx.Context)
 	}()
+	logger.DefaultLogger = log.NewSlogAdapter(slogger)
 
 	service = micro.New(
 		micro.Name(name),             // ("chat.bot"),
@@ -206,7 +217,7 @@ func Run(ctx *cli.Context) error {
 	// cfg.ConversationTimeout = c.Uint64("conversation_timeout")
 
 	// Open persistent [D]ata[S]ource[N]ame ...
-	dbo, err := postgres.OpenDB(ctx.String("db-dsn"))
+	dbo, err := postgres.OpenDB(slogger, ctx.String("db-dsn"))
 	if err != nil {
 		return errors.Wrap(err, "Invalid DSN String")
 	}
