@@ -1214,68 +1214,194 @@ func (c *Client) SubscribeObjects(ctx context.Context, uri string) error {
 	return nil
 }
 
-func (c *Client) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
-	peers := req.GetPeer()
-	text := req.GetMessage().GetText()
-	var channel *chat.Channel
-	for _, peer := range peers {
-		// check CACHE !
-		if v, ok := c.peerCache.Get(peer); !ok {
-			resp, err := c.Gateway.Internal.Client.GetChannelByPeer(ctx, &chat.GetChannelByPeerRequest{PeerId: peer, FromId: req.GetFrom()})
-			if err != nil {
-				return err
-			}
-
-			c.peerCache.Add(peer, resp)
-			channel = resp
-		} else {
-			channel = v
-		}
-		props := make(map[string]string)
+func (c *Client) getChannelWithParsedProps(ctx context.Context, peerID string, fromID int64) (*chat.Channel, map[string]string, error) {
+	props := make(map[string]string)
+	channel, ok := c.peerCache.Get(peerID)
+	if ok {
 		err := json.Unmarshal([]byte(channel.Props), &props)
+
+		return channel, props, err
+	}
+
+	channel, err := c.Gateway.Internal.Client.GetChannelByPeer(ctx, &chat.GetChannelByPeerRequest{
+		PeerId: peerID,
+		FromId: fromID,
+	})
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	c.peerCache.Add(peerID, channel)
+
+	err = json.Unmarshal([]byte(channel.Props), &props)
+
+	return channel, props, err
+}
+
+func (c *Client) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
+	from := req.GetFrom()
+	peers := req.GetPeer()
+	message := req.GetMessage()
+
+	for _, peer := range peers {
+		// Get the cached channel and parsed props
+		channel, props, err := c.getChannelWithParsedProps(ctx, peer, from)
 		if err != nil {
-			return errors.InternalServerError("facebook.broadcast.unmarshal_props.error", err.Error())
+			return errors.InternalServerError("facebook.broadcast.error", err.Error())
 		}
+
 		// PSID | IGSID | WAID required
 		switch channel.Type {
 		case "instagram":
-			if p := c.instagram.getPage(props[paramInstagramPage]); p != nil {
-				_, err := c.SendInstagramText(p, peer, text)
-				if err != nil {
-					return err // nil
-				}
-			} else {
-				return errors.BadRequest("facebook.provider.broadcast_message.instagram.page_not_found.error", fmt.Sprintf("instagram page not found (IGSID - %s)", p.IGSID()))
+			senderPage := c.instagram.getPage(props[paramInstagramPage])
+			if senderPage == nil {
+				return errors.BadRequest(
+					"facebook.provider.broadcast_message.instagram.page_not_found.error",
+					fmt.Sprintf("instagram page not found (IGSID - %s)", senderPage.IGSID()),
+				)
 			}
+
+			sendMessage := messenger.NewSendMessage()
+
+			switch message.Type {
+			case "text":
+				err := sendMessage.SetText(message.GetText())
+				if err != nil {
+					return err
+				}
+
+				_, err = c.SendMessage(senderPage, peer, sendMessage)
+				if err != nil {
+					return err
+				}
+
+			case "file":
+				file := message.GetFile()
+				caption := message.GetText()
+
+				err := sendMessage.SetFile(file.GetMime(), file.GetUrl())
+				if err != nil {
+					return err
+				}
+
+				_, err = c.SendMessage(senderPage, peer, sendMessage)
+				if err != nil {
+					return err
+				}
+
+				// Instagram does not support sending files with a specific caption,
+				// so we send a separate message with the text if it is available
+				if len(caption) > 0 {
+					messageWithCaption := messenger.NewSendMessage()
+					err = messageWithCaption.SetText(message.GetText())
+					if err != nil {
+						return err
+					}
+
+					_, err = c.SendMessage(senderPage, peer, messageWithCaption)
+					if err != nil {
+						return err
+					}
+				}
+			}
+
 		case "facebook":
 			v, ok := props[paramFacebookPage]
 			if !ok {
 				return errors.BadRequest("facebook.provider.broadcast_message.facebook.missing_args.error", "facebook page id not specified !")
 			}
-			_, err := c.SendText(v, peer, text)
-			if err != nil {
-				return err
+
+			senderPage := c.pages.getPage(v)
+			if senderPage == nil || !senderPage.IsAuthorized() {
+				return errors.NotFound(
+					"bot.messenger.page.not_found",
+					"messenger: page=%s not found",
+					v,
+				)
 			}
+
+			sendMessage := messenger.NewSendMessage()
+
+			switch message.Type {
+			case "text":
+				err := sendMessage.SetText(message.GetText())
+				if err != nil {
+					return err
+				}
+
+				_, err = c.SendMessage(senderPage, peer, sendMessage)
+				if err != nil {
+					return err
+				}
+
+			case "file":
+				file := message.GetFile()
+				caption := message.GetText()
+
+				err := sendMessage.SetFile(file.GetMime(), file.GetUrl())
+				if err != nil {
+					return err
+				}
+
+				_, err = c.SendMessage(senderPage, peer, sendMessage)
+				if err != nil {
+					return err
+				}
+
+				// Facebook does not support sending files with a specific caption,
+				// so we send a separate message with the text if it is available
+				if len(caption) > 0 {
+					messageWithCaption := messenger.NewSendMessage()
+					err = messageWithCaption.SetText(message.GetText())
+					if err != nil {
+						return err
+					}
+
+					_, err = c.SendMessage(senderPage, peer, messageWithCaption)
+					if err != nil {
+						return err
+					}
+				}
+			}
+
 		case "whatsapp":
 			v, ok := props[paramWhatsAppNumberID]
 			if !ok {
-				return errors.BadRequest("facebook.provider.broadcast_message.whatsapp.missing_args.error", "whatsapp page number id not specified !")
+				return errors.BadRequest(
+					"facebook.provider.broadcast_message.whatsapp.missing_args.error",
+					"whatsapp page number id not specified !",
+				)
 			}
-			sendMsg := &whatsapp.SendMessage{
-				MessagingProduct: "whatsapp",
-				RecipientType:    "individual",
-				Status:           "",
-				TO:               peer,
-				Text: &whatsapp.Text{
-					Body: text,
-				},
-				Type: "text",
-			}
+
 			account := c.whatsApp.GetPhoneNumber(v)
 			if account == nil {
-				return errors.BadRequest("facebook.provider.broadcast_message.missing_args.error", "whatsapp page number not specified !")
+				return errors.BadRequest(
+					"facebook.provider.broadcast_message.missing_args.error",
+					"whatsapp page number not specified !",
+				)
 			}
-			_, err := c.whatsAppSendMessage(ctx, account, sendMsg)
+
+			sendMessage := whatsapp.NewSendMessage(peer)
+
+			switch message.Type {
+			case "text":
+				err := sendMessage.SetText(message.GetText())
+				if err != nil {
+					return err
+				}
+
+			case "file":
+				file := message.GetFile()
+				caption := message.GetText()
+
+				err := sendMessage.SetFile(file.GetName(), file.GetMime(), file.GetUrl(), caption)
+				if err != nil {
+					return err
+				}
+			}
+
+			_, err := c.whatsAppSendMessage(ctx, account, sendMessage)
 			if err != nil {
 				return err
 			}

@@ -44,6 +44,7 @@ func NewFileServiceEndpoints() []*api.Endpoint {
 type FileService interface {
 	UploadFile(ctx context.Context, opts ...client.CallOption) (FileService_UploadFileService, error)
 	UploadFileUrl(ctx context.Context, in *UploadFileUrlRequest, opts ...client.CallOption) (*UploadFileUrlResponse, error)
+	GenerateFileLink(ctx context.Context, in *GenerateFileLinkRequest, opts ...client.CallOption) (*GenerateFileLinkResponse, error)
 }
 
 type fileService struct {
@@ -114,17 +115,29 @@ func (c *fileService) UploadFileUrl(ctx context.Context, in *UploadFileUrlReques
 	return out, nil
 }
 
+func (c *fileService) GenerateFileLink(ctx context.Context, in *GenerateFileLinkRequest, opts ...client.CallOption) (*GenerateFileLinkResponse, error) {
+	req := c.c.NewRequest(c.name, "FileService.GenerateFileLink", in)
+	out := new(GenerateFileLinkResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for FileService service
 
 type FileServiceHandler interface {
 	UploadFile(context.Context, FileService_UploadFileStream) error
 	UploadFileUrl(context.Context, *UploadFileUrlRequest, *UploadFileUrlResponse) error
+	GenerateFileLink(context.Context, *GenerateFileLinkRequest, *GenerateFileLinkResponse) error
 }
 
 func RegisterFileServiceHandler(s server.Server, hdlr FileServiceHandler, opts ...server.HandlerOption) error {
 	type fileService interface {
 		UploadFile(ctx context.Context, stream server.Stream) error
 		UploadFileUrl(ctx context.Context, in *UploadFileUrlRequest, out *UploadFileUrlResponse) error
+		GenerateFileLink(ctx context.Context, in *GenerateFileLinkRequest, out *GenerateFileLinkResponse) error
 	}
 	type FileService struct {
 		fileService
@@ -182,4 +195,8 @@ func (x *fileServiceUploadFileStream) Recv() (*UploadFileRequest, error) {
 
 func (h *fileServiceHandler) UploadFileUrl(ctx context.Context, in *UploadFileUrlRequest, out *UploadFileUrlResponse) error {
 	return h.FileServiceHandler.UploadFileUrl(ctx, in, out)
+}
+
+func (h *fileServiceHandler) GenerateFileLink(ctx context.Context, in *GenerateFileLinkRequest, out *GenerateFileLinkResponse) error {
+	return h.FileServiceHandler.GenerateFileLink(ctx, in, out)
 }

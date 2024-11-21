@@ -3,12 +3,9 @@ package telegram
 import (
 	"context"
 	"fmt"
-	"io"
-	"path"
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"net/http"
 
@@ -22,6 +19,8 @@ import (
 
 	telegram "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/webitel/chat_manager/bot/telegram/internal/builder"
+	"github.com/webitel/chat_manager/bot/telegram/internal/helper"
 	"github.com/webitel/chat_manager/bot/telegram/internal/markdown"
 )
 
@@ -38,15 +37,6 @@ type TelegramBot struct {
 	*bot.Gateway
 	*telegram.BotAPI
 	contacts map[int64]*bot.Account
-}
-
-func (_ *TelegramBot) Close() error {
-	return nil
-}
-
-// String "telegram" provider's name
-func (_ *TelegramBot) String() string {
-	return provider
 }
 
 // NewTelegramBotV1 initialize new agent.profile service provider
@@ -150,6 +140,15 @@ func NewTelegramBot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 	}, nil
 }
 
+func (*TelegramBot) Close() error {
+	return nil
+}
+
+// String "telegram" provider's name
+func (*TelegramBot) String() string {
+	return provider
+}
+
 // Register Telegram Bot Webhook endpoint URI
 func (c *TelegramBot) Register(ctx context.Context, callbackURL string) error {
 
@@ -200,54 +199,35 @@ func (c *TelegramBot) Deregister(ctx context.Context) error {
 	return nil
 }
 
-func contactPeer(peer *chat.Account) *chat.Account {
-	if peer.LastName == "" {
-		peer.FirstName, peer.LastName =
-			bot.FirstLastName(peer.FirstName)
-	}
-	return peer
-}
-
-func messageMode(messageText string) (mode, text string) {
-	text = strings.TrimSpace(messageText)
-	colon := strings.IndexByte(text, ':')
-	if colon > 1 {
-		mode = text[0:colon]
-		switch strings.ToLower(mode) {
-		case "html":
-			mode = telegram.ModeHTML
-		case "markdown", "md":
-			mode = telegram.ModeMarkdown
-		case "markdownv2", "md2":
-			mode = telegram.ModeMarkdownV2
-		default:
-			mode = "" // default: "plain";
-			return    // mode, text
-		}
-		text = strings.TrimLeftFunc(
-			text[colon+1:], unicode.IsSpace,
-		)
-	}
-	return // mode, text
-}
-
 // SendNotify implements provider.Sender interface for Telegram
 func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error {
-	// send *gate.SendMessageRequest
-	// externalID, err := strconv.ParseInt(send.ExternalUserId, 10, 64)
 
 	var (
-		channel = notify.Chat // recepient
-		// localtime = time.Now()
-		message = notify.Message
+		channel = notify.Chat    // recepient
+		message = notify.Message // message to send
 
-		binding map[string]string
+		binding map[string]string           // variables map
+		bind    = func(key, value string) { // set variable to map
+			if binding == nil {
+				binding = make(map[string]string)
+			}
+			binding[key] = value
+		}
+
+		contactPeer = func(peer *chat.Account) *chat.Account { // get peer helper
+			if peer.LastName == "" {
+				peer.FirstName, peer.LastName =
+					bot.FirstLastName(peer.FirstName)
+			}
+			return peer
+		}
 	)
 
-	// region: recover latest chat channel state
+	// REGION: recover latest chat channel state
 	chatID, err := strconv.ParseInt(channel.ChatID, 10, 64)
 	if err != nil {
 		c.Log.Error().Str("error", "invalid chat "+channel.ChatID+" integer identifier").Msg("TELEGRAM: SEND")
+
 		return errors.InternalServerError(
 			"chat.gateway.telegram.chat.id.invalid",
 			"telegram: invalid chat %s unique identifier; expect integer values", channel.ChatID)
@@ -258,128 +238,32 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		//                      just it's unique identifier ...  =(
 	}
 
-	// // TESTS
-	// props, _ := channel.Properties.(map[string]string)
-	// endregion
+	// Create message builder
+	sendMessageBuilder := builder.NewSendMessageBuilder()
 
-	bind := func(key, value string) {
-		if binding == nil {
-			binding = make(map[string]string)
-		}
-		binding[key] = value
+	// Set chat ID to message
+	err = sendMessageBuilder.SetChatID(chatID)
+	if err != nil {
+		return err
 	}
 
-	var (
-		chatAction  string
-		sendUpdate  telegram.Chattable
-		sendOptions *telegram.BaseChat
-		sentMessage telegram.Message // result
-	)
 	// TODO: resolution for various notify content !
 	switch message.Type { // notify.Event {
 	case "text": // default
-
-		messageText := strings.TrimSpace(
-			message.GetText(),
-		)
-		// messageText, textEntities := markdown.TextEntities(message.GetText())
-		// // parseMode, messageText := messageMode(messageText)
-		if messageText == "" {
-			// IGNORE: message text is missing
-			return nil
+		err := sendMessageBuilder.SetText(message.GetText())
+		if err != nil {
+			return err
 		}
-		sendMessage := telegram.NewMessage(
-			chatID, messageText,
-		)
-		// // sendMessage.ParseMode = parseMode
-		// sendMessage.Entities = textEntities
-
-		// if message.Buttons != nil {
-		// 	if len(message.Buttons) == 0 { // CLEAR Buttons
-		// 		sendMessage.ReplyMarkup = telegram.NewRemoveKeyboard(false)
-		// 	} else {
-		// 		sendMessage.ReplyMarkup = newInlineKeyboard(message.Buttons) // newReplyKeyboard(message.Buttons)
-		// 	}
-		// } // else if message.Inline != nil {
-		// // NOTE: We does NOT support /setinline for connected bots
-		// // AND flow_manager NEVER provide .Inline buttons, ONLY .Buttons ...  =(
-		// // 	sendMessage.ReplyMarkup = newInlineKeyboard(message.Inline)
-		// // }
-
-		sendOptions = &sendMessage.BaseChat
-		sendUpdate = &sendMessage
-		// if props != nil {
-		// 	title := props["interlocutor"]
-		// 	_, title = decodeInterlocutorInfo(title)
-		// 	if title != "" {
-		// 		text = "["+ title +"] "+ text
-		// 	}
-		// }
-	//	update = telegram.NewMessage(chatID, text)
 
 	case "file":
+		file := message.GetFile()
 
-		doc := message.GetFile()
-		// mime.ParseMediaType()
-		mediaType := func(mtyp string) string {
-			mtyp = strings.TrimSpace(mtyp)
-			mtyp = strings.ToLower(mtyp)
-			subt := strings.IndexByte(mtyp, '/')
-			if subt > 0 {
-				return mtyp[:subt]
-			}
-			return mtyp
+		err := sendMessageBuilder.SetFile(file.GetName(), file.GetMime(), file.GetUrl(), message.GetText())
+		if err != nil {
+			return err
 		}
-		// var file telegram.RequestFileData
-		switch mediaType(doc.Mime) {
-		case "image":
-			sendPhoto := telegram.NewPhoto(
-				chatID, sendFile{doc.Url, doc.Name},
-			)
-			sendPhoto.Caption = notify.Message.GetText()
-			sendOptions = &sendPhoto.BaseChat
-			sendUpdate = &sendPhoto
-			chatAction = "upload_photo"
-		case "audio":
-			sendAudio := telegram.NewAudio(
-				chatID, sendFile{doc.Url, doc.Name},
-			)
-			sendAudio.Caption = notify.Message.GetText()
-			sendOptions = &sendAudio.BaseChat
-			sendUpdate = &sendAudio
-			chatAction = "upload_voice"
-		case "video":
-			sendVideo := telegram.NewVideo(
-				chatID, sendFile{doc.Url, doc.Name},
-			)
-			sendVideo.Caption = notify.Message.GetText()
-			sendOptions = &sendVideo.BaseChat
-			sendUpdate = &sendVideo
-			chatAction = "upload_video"
-		default:
-			sendDocument := telegram.NewDocument(
-				chatID, sendFile{doc.Url, doc.Name},
-			)
-			sendDocument.Caption = notify.Message.GetText()
-			sendOptions = &sendDocument.BaseChat
-			sendUpdate = &sendDocument
-			chatAction = "upload_document"
-		}
-		//                    b/Kb/Mb
-		// const fileMinSize = (1<<10<<10) // 1Mb
-		// if doc.Size < fileMinSize {
-		// 	chatAction = "" // Too small
-		// }
 
-	// case "edit":
-	// case "send":
-
-	// case "read":
-	// case "seen":
-
-	// case "kicked":
 	case "joined": // ACK: ChatService.JoinConversation()
-
 		peer := contactPeer(message.NewChatMembers[0])
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("join", peer)
@@ -388,13 +272,13 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 				Str("update", message.Type).
 				Msg("telegram/bot.updateChatMember")
 		}
-		text, entities := markdown.TextEntities(text)
-		// parseMode, messageText := messageMode(messageText)
+
+		// IGNORE: message text is missing
 		if text == "" {
-			// IGNORE: message text is missing
 			return nil
 		}
-		// format new message to the engine for saving it in the DB as operator message [WTEL-4695]
+
+		// Format new message to the engine for saving it in the DB as operator message [WTEL-4695]
 		messageToSave := &chat.Message{
 			Type:      "text",
 			Text:      text,
@@ -402,152 +286,122 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 			From:      peer,
 		}
 		if channel != nil && channel.ChannelID != "" {
-			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave, Receiver: channel.ChannelID})
+			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{
+				Message:  messageToSave,
+				Receiver: channel.ChannelID,
+			})
+
 			if err != nil {
 				return err
 			}
 		}
-		sendMessage := telegram.NewMessage(
-			chatID, text,
-		)
-		// sendMessage.ParseMode = parseMode
-		sendMessage.Entities = entities
 
-		sendUpdate = sendMessage
+		// Set text to message
+		err = sendMessageBuilder.SetText(text)
+		if err != nil {
+			return err
+		}
 
 	case "left": // ACK: ChatService.LeaveConversation()
-
 		peer := contactPeer(message.LeftChatMember)
 		updates := c.Gateway.Template
-		messageText, err := updates.MessageText("left", peer)
+		text, err := updates.MessageText("left", peer)
 		if err != nil {
 			c.Gateway.Log.Err(err).
 				Str("update", message.Type).
 				Msg("telegram/bot.updateLeftMember")
 		}
-		messageText, textEntities := markdown.TextEntities(messageText)
-		// parseMode, messageText := messageMode(messageText)
-		if messageText == "" {
-			// IGNORE: message text is missing
+
+		// IGNORE: message text is missing
+		if text == "" {
 			return nil
 		}
-		sendMessage := telegram.NewMessage(
-			chatID, messageText,
-		)
-		// sendMessage.ParseMode = parseMode
-		sendMessage.Entities = textEntities
 
-		sendUpdate = sendMessage
+		// Set text to message
+		err = sendMessageBuilder.SetText(text)
+		if err != nil {
+			return err
+		}
 
-	// case "typing":
-	// case "upload":
-
-	// case "invite":
 	case "closed":
-
 		updates := c.Gateway.Template
-		messageText, err := updates.MessageText("close", nil)
+		text, err := updates.MessageText("close", nil)
 		if err != nil {
 			c.Gateway.Log.Err(err).
 				Str("update", message.Type).
 				Msg("telegram/bot.updateChatClose")
 		}
-		// parseMode, messageText := messageMode(messageText)
-		messageText, textEntities := markdown.TextEntities(messageText)
-		if messageText == "" {
-			// IGNORE: message text is missing
+
+		// IGNORE: message text is missing
+		if text == "" {
 			return nil
 		}
-		sendMessage := telegram.NewMessage(
-			chatID, messageText,
-		)
-		// sendMessage.ParseMode = parseMode
-		sendMessage.Entities = textEntities
-		// Force clear persistent keyboard
-		sendMessage.ReplyMarkup = telegram.NewRemoveKeyboard(true)
 
-		sendUpdate = sendMessage
+		// Set text to message
+		err = sendMessageBuilder.SetText(text)
+		if err != nil {
+			return err
+		}
+
+		// Remove keyboard
+		err = sendMessageBuilder.SetRemoveKeyboard()
+		if err != nil {
+			return err
+		}
+
+	// Not implemented
+	// case "typing":
+	// case "upload":
+	// case "invite":
+	// case "edit":
+	// case "send":
+	// case "read":
+	// case "seen":
+	// case "kicked":
 
 	default:
-
+		// Pass
 	}
 
-	if sendUpdate == nil {
+	// Inline: Next to this specific message ONLY !
+	// Reply:  Persistent keyboard buttons, under the input ! (Location, Contact, Persistent Text postback)
+	buttons := message.GetButtons()
+	if len(buttons) > 0 {
+		// NOT <nil> BUT <zero>: designed to clear all persistent menu (keyboard buttons)
+		// Prepare SEND Telegram (Inline|Reply)Keyboard(Markup|Remove)
+		// https://core.telegram.org/bots/api#sendmessage
+		// https://core.telegram.org/bots/api#updating-messages
+		err := sendMessageBuilder.SetMargedKeyboad(buttons)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Build message data with action
+	data, action, err := sendMessageBuilder.BuildWithAction()
+	if err != nil {
+		return err
+	}
+
+	// Check data is nil
+	if data == nil {
 		channel.Log.Warn().
-			Str("send", message.Type).
+			Str("send", message.GetType()).
 			Str("error", "reaction not implemented").
 			Msg("TELEGRAM: SEND")
 		return nil
 	}
 
-	// Inline: Next to this specific message ONLY !
-	// Reply:  Persistent keyboard buttons, under the input ! (Location, Contact, Persistent Text postback)
-	if message.Buttons != nil && sendOptions != nil {
-		// NOT <nil> BUT <zero>: designed to clear all persistent menu (keyboard buttons)
-		// Prepare SEND Telegram (Inline|Reply)Keyboard(Markup|Remove)
-		// https://core.telegram.org/bots/api#sendmessage
-		// https://core.telegram.org/bots/api#updating-messages
-		quickReplies, keyboardMenu := newKeyboardMarkup(message.Buttons)
-		if len(quickReplies) != 0 {
-			sendOptions.ReplyMarkup = telegram.InlineKeyboardMarkup{
-				InlineKeyboard: quickReplies,
-			}
-			if keyboardMenu != nil {
-				c.Log.Warn().
-					Str("error", "reply_markup: single message supports one of (Inline|Reply)Keyboard(Markup|Remove) only").
-					Str("hint", "spread different types of keyboard buttons into separate messages").
-					Msg("TELEGRAM: SEND")
-			}
-		} else if keyboardMenu != nil {
-			sendOptions.ReplyMarkup = keyboardMenu
-		}
-
-		// if keyboardMenu != nil {
-		// 	// Quiet [RE]SET OR REMOVE keyboard buttons !
-		// 	sendMessage.ReplyMarkup = keyboardMenu
-		// 	if len(quickReplies) != 0 {
-		// 		// FIXME: According to https://core.telegram.org/bots/api#sendmessage
-		// 		// we cannot send different types of keyboad markup together,
-		// 		// for example: InlineKeyboardMarkup with ReplyKeyboardMarkup
-		// 		// NOTE: So, first we setup persistent ReplyKeyboard buttons
-		// 		//       And than edit sent message with InlineKeyboard buttons set
-		// 		// BUT https://core.telegram.org/bots/api#updating-messages
-		// 		// Please note, that it is currently only possible to edit messages
-		// 		// without reply_markup or with inline keyboards.
-		// 		defer func() {
-		// 			sentMessageID := sentMessage.MessageID
-		// 			if sentMessageID == 0 {
-		// 				return // ERR SEND ! DO NOTHING !
-		// 			}
-		// 			editInlineKeyboard := telegram.NewEditMessageReplyMarkup(
-		// 				chatID, sentMessageID, telegram.InlineKeyboardMarkup{
-		// 					InlineKeyboard: quickReplies,
-		// 				},
-		// 			)
-		// 			// EDIT: {"reply_markup": InlineKeyboardMarkup{}}
-		// 			// {"ok":false,"error_code":400,"description":"Bad Request: message can't be edited"}
-		// 			_, _ = c.BotAPI.Send(editInlineKeyboard)
-		// 		} ()
-		// 	}
-		// } else {
-		// 	sendMessage.ReplyMarkup = telegram.InlineKeyboardMarkup{
-		// 		InlineKeyboard: quickReplies,
-		// 	}
-		// }
-	}
+	// Send message logic
+	var sentMessage telegram.Message
 
 retry:
-
-	if chatAction != "" {
-		_, err = c.BotAPI.Request(
-			telegram.NewChatAction(
-				chatID, chatAction,
-			),
-		)
+	if action != nil {
+		_, err = c.BotAPI.Request(action)
 	}
 
 	if err == nil {
-		sentMessage, err = c.BotAPI.Send(sendUpdate)
+		sentMessage, err = c.BotAPI.Send(data)
 	}
 
 	if err != nil {
@@ -593,7 +447,6 @@ retry:
 						goto retry
 					}
 				}
-				// default:
 			}
 		}
 		return err
@@ -614,288 +467,8 @@ retry:
 	return nil
 }
 
-/*func getBytes(url string) ([]byte, error) {
-
-	response, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-
-	data, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
-	return data, nil
-}*/
-
-type readCloser struct {
-	rc io.ReadCloser
-}
-
-func (c readCloser) Close() error {
-	return c.rc.Close()
-}
-func (c readCloser) Read(p []byte) (n int, err error) {
-	n, err = c.rc.Read(p)
-	if err == io.EOF {
-		_ = c.Close()
-	}
-	return n, err
-}
-
-// sendFile contains information about an internal File to upload as a File to Telegram.
-type sendFile struct {
-	URL  string
-	Name string
-}
-
-var _ telegram.RequestFileData = sendFile{}
-
-// NeedsUpload shows if the file needs to be uploaded.
-func (src sendFile) NeedsUpload() bool {
-	return true
-}
-
-// UploadData gets the file name and an `io.Reader` for the file to be uploaded. This
-// must only be called when the file needs to be uploaded.
-func (src sendFile) UploadData() (string, io.Reader, error) {
-	ftp, err := http.Get(src.URL)
-	if err != nil {
-		return src.Name, nil, err
-	}
-
-	// defer res.Body.Close()
-	return src.Name, readCloser{ftp.Body}, nil
-}
-
-// SendData gets the file data to send when a file does not need to be uploaded. This
-// must only be called when the file does not need to be uploaded.
-func (src sendFile) SendData() string {
-	panic("sendFile must be uploaded")
-}
-
-func newKeyboardMarkup(buttons []*chat.Buttons) (quickReplies [][]telegram.InlineKeyboardButton, keyboardMenu interface{}) {
-
-	var (
-		buttonsRemove bool
-		buttonsMarkup [][]telegram.KeyboardButton
-		repliesMarkup [][]telegram.InlineKeyboardButton
-
-		buttonsLayout []telegram.KeyboardButton
-		repliesLayout []telegram.InlineKeyboardButton
-	)
-
-	for _, markup := range buttons {
-		for _, button := range markup.Button {
-			switch strings.ToLower(button.Type) {
-			// remove_keyboard
-			case "clear", "remove", "remove_keyboard":
-				// Invalidate keyboard (persistent menu)
-				// return telegram.NewRemoveKeyboard(true)
-				buttonsRemove = true
-			// keyboard_button (persistent menu)
-			case "phone", "contact":
-				if buttonsRemove {
-					break
-				}
-				buttonsLayout = append(buttonsLayout,
-					telegram.NewKeyboardButtonContact(button.Text),
-				)
-			case "email", "mail":
-				if buttonsRemove {
-					break
-				}
-				// NOT Supported !
-			// keyboard_button (persistent menu)
-			case "location":
-				if buttonsRemove {
-					break
-				}
-				buttonsLayout = append(buttonsLayout,
-					telegram.NewKeyboardButtonLocation(button.Text),
-				)
-			// inline_keyboard: quick_reply
-			case "url":
-				repliesLayout = append(repliesLayout,
-					telegram.NewInlineKeyboardButtonURL(
-						button.Text, button.Url,
-					),
-				)
-			case "reply": //, "postback":
-				repliesLayout = append(repliesLayout,
-					telegram.NewInlineKeyboardButtonData(
-						button.Text, button.Code,
-					),
-				)
-			case "postback":
-				if buttonsRemove {
-					break
-				}
-				// NOTE: In this (Telegram) implementation .code attribute cannot be involved,
-				// so you must be vigilant in handling localized menu button labels as postback messages !
-				buttonsLayout = append(buttonsLayout,
-					telegram.NewKeyboardButton(button.Text),
-				)
-			default:
-				// case "reply", "postback":
-				if buttonsRemove {
-					break
-				}
-				buttonsLayout = append(buttonsLayout,
-					telegram.NewKeyboardButton(button.Text),
-				)
-			}
-		}
-
-		// rotate keyboard row(s) ...
-
-		if len(repliesLayout) != 0 {
-			repliesMarkup = append(repliesMarkup, repliesLayout)
-			repliesLayout = nil
-		}
-
-		if len(buttonsLayout) != 0 {
-			buttonsMarkup = append(buttonsMarkup, buttonsLayout)
-			buttonsLayout = nil
-		}
-	}
-
-	quickReplies = repliesMarkup
-	if buttonsRemove {
-		keyboardMenu = telegram.NewRemoveKeyboard(true)
-	} else if len(buttonsMarkup) != 0 {
-		keyboardMenu = telegram.NewOneTimeReplyKeyboard(
-			buttonsMarkup...,
-		)
-	}
-
-	return quickReplies, keyboardMenu
-}
-
-func newReplyKeyboard(buttons []*chat.Buttons) interface{} { // telegram.ReplyKeyboardMarkup {
-
-	keyboard := make([][]telegram.KeyboardButton, 0, len(buttons))
-	for _, markup := range buttons {
-		layout := make([]telegram.KeyboardButton, 0, len(markup.GetButton()))
-		for _, button := range markup.Button {
-			switch button.Type {
-			case "remove_keyboard", "remove", "clear":
-				return telegram.NewRemoveKeyboard(true)
-			case "contact", "phone":
-				layout = append(layout,
-					telegram.NewKeyboardButtonContact(button.Text),
-				)
-			case "location":
-				layout = append(layout,
-					telegram.NewKeyboardButtonLocation(button.Text),
-				)
-			default:
-				// case "reply", "postback":
-				layout = append(layout,
-					telegram.NewKeyboardButton(button.Text),
-				)
-			}
-		}
-		keyboard = append(keyboard, layout)
-	}
-
-	return telegram.NewOneTimeReplyKeyboard(keyboard...)
-}
-
-/*func newInlineKeyboard(buttons []*chat.Buttons) telegram.InlineKeyboardMarkup {
-
-	var rows = make([][]telegram.InlineKeyboardButton, 0)
-
-	for _, v := range buttons {
-
-		var row = make([]telegram.InlineKeyboardButton, 0)
-
-		for _, b := range v.Button {
-
-			if b.Type == "url" {
-				row = append(row, telegram.NewInlineKeyboardButtonURL(b.Text, b.Url))
-
-			}else if b.Type =="switch" {
-				row = append(row, telegram.NewInlineKeyboardButtonSwitch(b.Text, b.Code))
-
-			}else if b.Type =="postback" && b.Code != "" {
-				row = append(row, telegram.NewInlineKeyboardButtonData(b.Text, b.Code))
-			}
-		}
-		rows = append(rows, row)
-	}
-
-	keyboard := telegram.NewInlineKeyboardMarkup(rows...)
-
-	return keyboard
-}*/
-
-/*func newInlineKeyboard(buttons []*chat.Buttons) telegram.InlineKeyboardMarkup {
-
-	keyboard := make([][]telegram.InlineKeyboardButton, 0, len(buttons))
-	for _, markup := range buttons {
-		layout := make([]telegram.InlineKeyboardButton, 0, len(markup.GetButton()))
-		for _, button := range markup.Button {
-			switch strings.ToLower(button.Type) {
-			case "url":
-				layout = append(layout,
-					telegram.NewInlineKeyboardButtonURL(
-						button.Text, button.Url,
-					),
-				)
-			case "switch":
-				layout = append(layout,
-					telegram.NewInlineKeyboardButtonSwitch(
-						button.Text, button.Code,
-					),
-				)
-			case "postback", "reply":
-				layout = append(layout,
-					telegram.NewInlineKeyboardButtonData(
-						button.Text, button.Code,
-					),
-				)
-			default:
-
-			}
-		}
-		keyboard = append(keyboard, layout)
-	}
-
-	return telegram.NewInlineKeyboardMarkup(keyboard...)
-}*/
-
-type File telegram.File
-
-func (fd *File) Link(token string) string {
-	return ((*telegram.File)(fd)).Link(token)
-}
-
-func (fd *File) FileName() string {
-
-	if fd == nil {
-		return ""
-	}
-
-	// name := path.Base(fd.FilePath)
-	// switch name {
-	// case ".", "/":
-	// 	name = ""
-	// }
-
-	if s := fd.FilePath; s != "" {
-		if s = path.Base(s); s == "/" {
-			s = ""
-		}
-		return s
-	}
-
-	return ""
-}
-
 // GetFile is a shorthand for c.BotAPI.GetFile() with some extra .File methods
-func (c *TelegramBot) GetFile(fileID string) (File, error) {
+func (c *TelegramBot) GetFile(fileID string) (helper.File, error) {
 	file, err := c.BotAPI.GetFile(
 		telegram.FileConfig{
 			FileID: fileID,
@@ -904,7 +477,7 @@ func (c *TelegramBot) GetFile(fileID string) (File, error) {
 	if err != nil {
 		c.Log.Err(err).Str("file-id", fileID).Msg("TELEGRAM: FILE")
 	}
-	return File(file), err
+	return helper.File(file), err
 }
 
 func (c *TelegramBot) GetFileDirectURL(fileID string) (string, error) {
@@ -1479,12 +1052,10 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 func (c *TelegramBot) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
 
 	var (
-		n              = len(req.GetPeer())
-		broadcastError = func(peerId int, err error) {
-
+		setError = func(peerId int, err error) { // set error to response
 			res := rsp.GetFailure()
 			if res == nil {
-				res = make([]*chat.BroadcastPeer, 0, n)
+				res = make([]*chat.BroadcastPeer, 0, len(req.GetPeer()))
 			}
 
 			var re *status.Status
@@ -1504,32 +1075,96 @@ func (c *TelegramBot) BroadcastMessage(ctx context.Context, req *chat.BroadcastM
 
 			rsp.Failure = res
 		}
-		template = telegram.MessageConfig{
-			Text: req.GetMessage().GetText(),
-			// // https://core.telegram.org/bots/api#formatting-options
-			// ParseMode: "MarkdownV2",
+
+		setVariable = func(key, value string) { // set variable to response
+			if rsp.GetVariables() == nil {
+				rsp.Variables = make(map[string]string)
+			}
+			rsp.Variables[key] = value
 		}
 	)
 
+	// Get message params from request
+	message := req.GetMessage()
+
+	// Sorting out users for sending messages
 	for i, peer := range req.GetPeer() {
-		chatId, err := strconv.ParseInt(peer, 10, 64)
+
+		// Conversion peer to chat ID
+		chatID, err := strconv.ParseInt(peer, 10, 64)
 		if err != nil {
-			// ERR: Peer NOT Acceptable !
-			broadcastError(i, errors.BadRequest("", "chat.id: expect integer identifier"))
+			setError(i, errors.BadRequest("", "chat.id: expect integer identifier"))
 			continue
 		}
 
-		template.ChatID = chatId
-		// template.ChannelUsername
-		_, err = c.BotAPI.Send(template)
+		// Start build message for user
+		sendMessageBuilder := builder.NewSendMessageBuilder()
+
+		// Set user chat ID to message
+		err = sendMessageBuilder.SetChatID(chatID)
 		if err != nil {
-			// ERR: Send failed !
-			broadcastError(i, err)
+			setError(i, err)
 			continue
+		}
+
+		// Set text or file to message
+		switch message.GetType() {
+		case "text":
+			err := sendMessageBuilder.SetText(message.GetText())
+			if err != nil {
+				setError(i, err)
+			}
+
+		case "file":
+			file := message.GetFile()
+
+			err := sendMessageBuilder.SetFile(file.GetName(), file.GetMime(), file.GetUrl(), message.GetText())
+			if err != nil {
+				setError(i, err)
+			}
+		}
+
+		// Set keyboad to message
+		// Important: inline is a priority
+		buttons := message.GetButtons()
+		if len(buttons) > 0 {
+			err := sendMessageBuilder.SetMargedKeyboad(buttons)
+			if err != nil {
+				setError(i, err)
+			}
+		}
+
+		// Build message data with action
+		data, action, err := sendMessageBuilder.BuildWithAction()
+		if err != nil {
+			setError(i, err)
+			continue
+		}
+
+		// Send message to chat with user
+		err = c.doTelegramAPI(ctx, func() error {
+			_, err := c.BotAPI.Request(action)
+			if err != nil {
+				return err
+			}
+
+			resp, err := c.BotAPI.Send(data)
+			if err != nil {
+				return err
+			}
+
+			if message.Id != 0 {
+				setVariable(peer, strconv.Itoa(resp.MessageID))
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			setError(i, err)
 		}
 	}
 
-	// rsp.Peers[].Erro detailed
 	return nil
 }
 
@@ -1576,4 +1211,60 @@ func (c *TelegramBot) SendUserAction(ctx context.Context, peerId string, action 
 
 	ok = sentMessage.Ok
 	return // true, nil
+}
+
+func (c *TelegramBot) doTelegramAPI(ctx context.Context, callback func() error) error {
+	return c.do(callback, func(err error) bool {
+		switch e := err.(type) {
+		case *telegram.Error:
+			switch e.Code {
+			// HTTP/1.1 403 Forbidden
+			// Content-Length: 84
+			// Access-Control-Allow-Origin: *
+			// Access-Control-Expose-Headers: Content-Length,Content-Type,Date,Server,Connection
+			// Connection: keep-alive
+			// Content-Type: application/json
+			// Date: Fri, 11 Dec 2020 11:13:29 GMT
+			// Server: nginx/1.16.1
+			// Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+			//
+			// {"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}
+			case 403:
+				return false
+			// HTTP/1.1 429 Too Many Requests
+			// Content-Length: 109
+			// Access-Control-Allow-Origin: *
+			// Access-Control-Expose-Headers: Content-Length,Content-Type,Date,Server,Connection
+			// Connection: keep-alive
+			// Content-Type: application/json
+			// Date: Fri, 11 Dec 2020 13:12:39 GMT
+			// Retry-After: 1
+			// Server: nginx/1.16.1
+			// Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+			//
+			// {"ok":false,"error_code":429,"description":"Too Many Requests: retry after 1","parameters":{"retry_after":1}}
+			case 429, 420:
+				floodwait := time.Duration(e.RetryAfter) * time.Second
+				if floodwait > 0 {
+					select {
+					case <-ctx.Done():
+						return false
+					case <-time.After(floodwait):
+						return true
+					}
+				}
+			}
+		}
+
+		return false
+	})
+}
+
+func (c *TelegramBot) do(callback func() error, handler func(error) bool) error {
+	for {
+		err := callback()
+		if err == nil || !handler(err) {
+			return err
+		}
+	}
 }

@@ -85,6 +85,8 @@ message BroadcastMessageRequest {
   repeated string peer = 3;
   //
   int64 timeout = 4;
+
+  int64 domain_id = 5;
 }
 
 // Broadcast recepient status
