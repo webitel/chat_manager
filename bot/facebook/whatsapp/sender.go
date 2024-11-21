@@ -1,5 +1,7 @@
 package whatsapp
 
+import "strings"
+
 // SendMessage request
 // https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages
 type SendMessage struct {
@@ -125,4 +127,70 @@ type Template struct {
 
 	// OPTIONAL. Array of components objects containing the parameters of the message.
 	Components []interface{} `json:"components,omitempty"`
+}
+
+// NewSendMessage is used to create new SendMessage struct
+func NewSendMessage(peer string) *SendMessage {
+	return &SendMessage{
+		MessagingProduct: "whatsapp",
+		RecipientType:    "individual",
+		Status:           "",
+		TO:               peer,
+	}
+}
+
+// NewSendMessage is used to set text in message
+func (sm *SendMessage) SetText(text string) error {
+	sm.Type = "text"
+	sm.Text = &Text{
+		Body: text,
+	}
+
+	return nil
+}
+
+// SetFile is used to send a file of type: image, audio, video, document
+func (sm *SendMessage) SetFile(fileName, mimeType, url, caption string) error {
+	switch getMediaType(mimeType) {
+	case "image":
+		sm.Type = "image"
+		sm.Image = &Media{
+			Link:    url,
+			Caption: caption,
+		}
+
+	case "audio":
+		sm.Type = "audio"
+		sm.Audio = &Media{
+			Link:    url,
+			Caption: caption,
+		}
+
+	case "video":
+		sm.Type = "video"
+		sm.Video = &Media{
+			Link:    url,
+			Caption: caption,
+		}
+
+	default:
+		sm.Type = "document"
+		sm.Document = &Media{
+			Link:    url,
+			Caption: caption,
+		}
+	}
+
+	return nil
+}
+
+// getMediaType parse mimetype and return file type, like: image, audio and video
+func getMediaType(mtyp string) string {
+	mtyp = strings.TrimSpace(mtyp)
+	mtyp = strings.ToLower(mtyp)
+	subt := strings.IndexByte(mtyp, '/')
+	if subt > 0 {
+		return mtyp[:subt]
+	}
+	return mtyp
 }

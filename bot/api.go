@@ -4,12 +4,17 @@ import (
 	"context"
 	"crypto/md5"
 	"fmt"
-	audit "github.com/webitel/chat_manager/logger"
-	"google.golang.org/grpc/metadata"
+	"mime"
 	"net/http"
+	"net/url"
+	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
+
+	audit "github.com/webitel/chat_manager/logger"
+	"google.golang.org/grpc/metadata"
 
 	// "github.com/golang/protobuf/proto"
 	"github.com/micro/micro/v3/service/errors"
@@ -18,6 +23,7 @@ import (
 
 	"github.com/webitel/chat_manager/api/proto/bot"
 	pbchat "github.com/webitel/chat_manager/api/proto/chat"
+	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/auth"
 )
@@ -1329,31 +1335,201 @@ func (srv *Service) SendUserAction(ctx context.Context, req *bot.SendUserActionR
 	return nil
 }
 
-type (
-	BroadcastMessageRequest  = pbchat.BroadcastMessageRequest
-	BroadcastMessageResponse = pbchat.BroadcastMessageResponse
-)
-
 // Broadcast message [from] bot profile [to] multiple recipients
 func (srv *Service) BroadcastMessage(ctx context.Context, req *pbchat.BroadcastMessageRequest, rsp *pbchat.BroadcastMessageResponse) error {
 
-	sendMessage := req.GetMessage()
-	if sendMessage == nil {
+	/*
+
+		+------------------------------------------------------+
+		|                    Сonstraints                       |
+		|------------------------------------------------------|
+		| Topic       | Viber | Telegram | WhatsApp | Facebook |
+		|-------------|-------|----------|----------|----------|
+		| Text len    | 4096  | 4096     | 4096     | 2000     |
+		| File size   | 1-3MB | 5-50MB   | 5-100MB  | 25MB     |
+		| Caption len | 768   | 1024     | 1024     | NONE     |
+		+------------------------------------------------------+
+
+		+------------------------------------------------------------------------------------------------------------------------+
+		|                                                  Documents                                                             |
+		|------------------------------------------------------------------------------------------------------------------------|
+		| Viber    | Text len    - https://developers.viber.com/docs/api/rest-bot-api/#send-message                              |
+		|          | File size   - https://developers.viber.com/docs/api/rest-bot-api/#send-message                              |
+		|          | Caption len - https://developers.viber.com/docs/api/rest-bot-api/#send-message                              |
+		|----------|-------------------------------------------------------------------------------------------------------------|
+		| Telegram | Text len    - https://core.telegram.org/bots/api#sendmessage                                                |
+		|          | File size   - https://core.telegram.org/bots/api#sending-files                                              |
+		|          | Caption len - https://core.telegram.org/bots/api#sendphoto                                                  |
+		|----------|-------------------------------------------------------------------------------------------------------------|
+		| WhatsApp | Text len    - https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages#text-object        |
+		|          | File size   - https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media#supported-media-types |
+		|          | Caption len - https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages#media-object       |
+		|----------|-------------------------------------------------------------------------------------------------------------|
+		| Facebook | Text len    - https://developers.facebook.com/docs/messenger-platform/reference/send-api/#properties        |
+		|          | File size   - https://developers.facebook.com/docs/messenger-platform/reference/send-api/#properties        |
+		|          | Caption len - NONE                                                                                          |
+		+------------------------------------------------------------------------------------------------------------------------+
+
+	*/
+
+	// Сonstraints
+	const maxTextLen int = 2000               // Max text length (in message)
+	const maxCaptionLen int = 768             // Max caption length (text under the file)
+	const maxFileSize int64 = 1 * 1024 * 1024 // Max file size, 1МБ in bytes
+	var allowedFileExtensions []string = []string{
+		".png", ".jpg", ".jpeg", ".pdf", ".doc", ".docx",
+	} // Allowed file extensions list
+
+	// Get domain ID from request
+	domainID := req.GetDomainId()
+	if domainID < 1 {
+		return errors.BadRequest(
+			"chat.broadcast.domain_id.required",
+			"broadcast: domain_id required but missing",
+		)
+	}
+
+	// Get message params from request
+	message := req.GetMessage()
+	if message == nil {
 		return errors.BadRequest(
 			"chat.broadcast.message.required",
 			"broadcast: message required but missing",
 		)
 	}
-	contentType := strings.ToLower(sendMessage.Type)
-	sendMessage.Type = contentType
-	switch contentType {
-	case "text", "":
-		messageText := strings.TrimSpace(sendMessage.Text)
-		sendMessage.Text = messageText
-		if messageText == "" {
+
+	// Data normalization
+	message.Type = strings.ToLower(message.Type)
+	if message.Type == "" {
+		if message.GetFile() == nil {
+			message.Type = "text"
+		} else {
+			message.Type = "file"
+		}
+	}
+	message.Text = strings.TrimSpace(message.GetText())
+
+	switch message.Type {
+	case "text":
+		text := message.GetText()
+
+		if text == "" {
 			return errors.BadRequest(
 				"chat.broadcast.message.text.required",
 				"broadcast: message.text required but missing",
+			)
+		}
+
+		if len(text) > maxTextLen {
+			return errors.BadRequest(
+				"chat.broadcast.message.text.invalid",
+				fmt.Sprintf("broadcast: message.text too many characters, the max number of characters is %d", maxTextLen),
+			)
+		}
+	case "file":
+		text := message.GetText()
+		if len(text) > maxCaptionLen {
+			return errors.BadRequest(
+				"chat.broadcast.message.text.invalid",
+				"broadcast: message.text too many characters",
+			)
+		}
+
+		file := message.GetFile()
+		if file == nil {
+			return errors.BadRequest(
+				"chat.broadcast.message.file.required",
+				"broadcast: message.file required but missing",
+			)
+		}
+
+		// Data normalization
+		file.Url = strings.TrimSpace(file.GetUrl())
+
+		// When we want to send file by ID
+		isValidCaseByID := file.GetId() > 0
+
+		// When we want to send file by URL
+		isValidCaseByURL := file.GetUrl() != ""
+
+		switch {
+		case isValidCaseByID:
+			mediaFile, err := srv.mediaFileService.ReadMediaFileNA(ctx, &pbstorage.ReadMediaFileRequest{
+				Id:       file.GetId(),
+				DomainId: domainID,
+			})
+			if err != nil {
+				return err
+			}
+
+			extension := strings.ToLower(path.Ext(mediaFile.Name))
+			if !slices.Contains(allowedFileExtensions, extension) {
+				return errors.BadRequest(
+					"chat.broadcast.message.file.invalid",
+					fmt.Sprintf("broadcast: not allowed file extension, allowed extensions: %s", strings.Join(allowedFileExtensions, ", ")),
+				)
+			}
+
+			if mediaFile.GetSize() > maxFileSize {
+				return errors.BadRequest(
+					"chat.broadcast.message.file.invalid",
+					fmt.Sprintf("broadcast: message.file size is too large, max size is %s", formatBytes(maxFileSize)),
+				)
+			}
+
+			link, err := srv.fileService.GenerateFileLink(ctx, &pbstorage.GenerateFileLinkRequest{
+				FileId:   file.GetId(),
+				DomainId: domainID,
+				Source:   "media",
+				Action:   "download",
+			})
+			if err != nil {
+				return err
+			}
+
+			file.Name = mediaFile.GetName()
+			file.Mime = mediaFile.GetMimeType()
+			file.Size = mediaFile.GetSize()
+			file.Url = link.GetBaseUrl() + link.GetUrl()
+
+		case isValidCaseByURL:
+			fileName, mimeType, extension, size, err := fetchFileByURL(file.GetUrl())
+			if err != nil {
+				return errors.BadRequest(
+					"chat.broadcast.message.file.url.invalid",
+					"broadcast: unable to retrieve file information by this url",
+				)
+			}
+
+			if fileName == "" || mimeType == "" || extension == "" {
+				return errors.BadRequest(
+					"chat.broadcast.message.file.invalid",
+					"broadcast: incorrect file type",
+				)
+			}
+
+			if !slices.Contains(allowedFileExtensions, extension) {
+				return errors.BadRequest(
+					"chat.broadcast.message.file.invalid",
+					fmt.Sprintf("broadcast: not allowed file extension, allowed extensions: %s", strings.Join(allowedFileExtensions, ", ")),
+				)
+			}
+
+			if size > maxFileSize {
+				return errors.BadRequest(
+					"chat.broadcast.message.file.invalid",
+					fmt.Sprintf("broadcast: message.file size is too large, max size is %s", formatBytes(maxFileSize)),
+				)
+			}
+
+			file.Name = fileName
+			file.Mime = mimeType
+			file.Size = size
+
+		default:
+			return errors.BadRequest(
+				"chat.broadcast.message.file.(id|url).required",
+				"broadcast: file must have either id or url",
 			)
 		}
 	default:
@@ -1390,7 +1566,7 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbchat.BroadcastM
 	// Does provider support .Broadcast interface ?
 	provider := from.External
 	sender, is := provider.(interface {
-		BroadcastMessage(ctx context.Context, req *BroadcastMessageRequest, res *BroadcastMessageResponse) error
+		BroadcastMessage(ctx context.Context, req *pbchat.BroadcastMessageRequest, res *pbchat.BroadcastMessageResponse) error
 	})
 
 	if !is {
@@ -1419,4 +1595,69 @@ func getClientIp(ctx context.Context) string {
 	}
 
 	return ip
+}
+
+// fetchFileByURL get file data by url and returns: fileName, mimeType, extension, size, error
+func fetchFileByURL(link string) (string, string, string, int64, error) {
+
+	// Get file name
+	parsedURL, err := url.Parse(link)
+	if err != nil {
+		return "", "", "", 0, err
+	}
+
+	fileName := path.Base(parsedURL.Path)
+
+	// Get file extension
+	extension := strings.ToLower(path.Ext(fileName))
+
+	// Get file mime type
+	mimeType := mime.TypeByExtension(extension)
+
+	// Get file size
+	resp, err := http.Head(link)
+	if err != nil {
+		return "", "", "", 0, err
+	}
+	defer resp.Body.Close()
+
+	contentLength := resp.Header.Get("Content-Length")
+	if contentLength == "" {
+		return "", "", "", 0, err
+	}
+
+	size, err := strconv.ParseInt(contentLength, 10, 64)
+	if err != nil {
+		return "", "", "", 0, err
+	}
+
+	// If mime type is unknown set file mime type from headers
+	if mimeType == "" {
+		mimeType = resp.Header.Get("Content-Type")
+	}
+
+	return fileName, mimeType, extension, size, nil
+}
+
+// Converts the size in bytes to a readable format
+func formatBytes(bytes int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+		TB = GB * 1024
+	)
+
+	switch {
+	case bytes >= TB:
+		return fmt.Sprintf("%.2f TB", float64(bytes)/float64(TB))
+	case bytes >= GB:
+		return fmt.Sprintf("%.2f GB", float64(bytes)/float64(GB))
+	case bytes >= MB:
+		return fmt.Sprintf("%.2f MB", float64(bytes)/float64(MB))
+	case bytes >= KB:
+		return fmt.Sprintf("%.2f KB", float64(bytes)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
 }
