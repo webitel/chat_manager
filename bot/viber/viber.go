@@ -520,11 +520,10 @@ func (c *Bot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 func (c *Bot) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
 
 	var (
-		n       = len(req.GetPeer())
-		castErr = func(peerId string, err error) {
+		setError = func(peerId string, err error) {
 			res := rsp.GetFailure()
 			if res == nil {
-				res = make([]*chat.BroadcastPeer, 0, n)
+				res = make([]*chat.BroadcastPeer, 0, len(req.GetPeer()))
 			}
 
 			var re *status.Status
@@ -563,22 +562,35 @@ func (c *Bot) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRe
 		}
 	)
 
-	// Prepare message text to broadcast
-	_ = cast.Text(req.GetMessage().GetText())
-	// Perform broadcast request
-	err := c.do(&cast, &res)
-	if err == nil {
-		err = res.Err()
+	// Get message params from request
+	message := req.GetMessage()
+
+	// Set text or file to message
+	switch message.GetType() {
+	case "text":
+		cast.Text(message.GetText())
+	case "file":
+		cast.Media(
+			req.Message.GetFile(),
+			req.Message.GetText(), // Max 512 characters !
+		)
 	}
 
+	// Perform broadcast request
+	err := c.do(&cast, &res)
 	if err != nil {
-		return err // ERR
+		return err
+	}
+
+	err = res.Err()
+	if err != nil {
+		return err
 	}
 
 	// Populate failed peer(s) status
 	for _, fail := range res.FailStatus {
-		castErr(fail.PeerId, fail.Err())
+		setError(fail.PeerId, fail.Err())
 	}
 
-	return nil // OK
+	return nil
 }

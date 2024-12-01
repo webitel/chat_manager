@@ -1,12 +1,14 @@
 package bot
 
 import (
-	"github.com/micro/micro/v3/service/broker"
-	audProto "github.com/webitel/chat_manager/api/proto/logger"
-	aud "github.com/webitel/chat_manager/logger"
 	"net"
 	"net/url"
 	"os"
+
+	"github.com/micro/micro/v3/service/broker"
+	audProto "github.com/webitel/chat_manager/api/proto/logger"
+	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
+	aud "github.com/webitel/chat_manager/logger"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
@@ -155,7 +157,9 @@ func Run(ctx *cli.Context) error {
 	// configure
 	store := sqlxrepo.NewBotStore(&logger, dbo.DB)
 	auditor := aud.NewClient(broker.DefaultBroker, audProto.NewConfigService("logger", sender))
-	srv = bot.NewService(store, &logger, agent, auditor)
+	fileService := pbstorage.NewFileService("storage", sender)
+	mediaFileService := pbstorage.NewMediaFileService("storage", sender)
+	srv = bot.NewService(store, &logger, agent, auditor, fileService, mediaFileService)
 	srv.WebRoot = webRoot // Static assets base folder
 
 	// AUTH: go.webitel.app
