@@ -885,6 +885,15 @@ func fetchFileRow(value **api.File) any {
 					}
 					return err
 				}),
+				// url (for TTS files)
+				DecodeText(func(src []byte) error {
+					err := text.DecodeText(nil, src)
+					if err == nil && text.Status == pgtype.Present {
+						res.Url = text.String
+						ok = true
+					}
+					return err
+				}),
 			}
 			raw = pgtype.NewCompositeTextScanner(nil, src)
 		)

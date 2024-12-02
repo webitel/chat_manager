@@ -49,6 +49,7 @@ func (c *sqlxRepository) GetAgentChats(req *app.SearchOptions, res *messages.Get
 	err = fetchChatAgentRows(
 		rows, plan, res, req.GetSize(),
 	)
+	res.Page = int32(req.GetPage())
 	if err != nil {
 		return err
 	}
@@ -73,7 +74,8 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
 	ctx = &SELECT{
 		Params: params{},
 	}
-	ctx.Query = postgres.PGSQL.Select().From("chat.conversation " + left)
+	ctx.Query = postgres.PGSQL.Select().
+		From("chat.conversation " + left)
 
 	threadQ, re := selectAgentChatThread(args, ctx.Params)
 	if err = re; err != nil {
@@ -204,8 +206,8 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
                    (file),
                    content)
         FROM chat.message m
-                 LEFT JOIN LATERAL (SELECT m.file_id, m.file_size, m.file_type, m.file_name
-                                    WHERE m.file_id NOTNULL) file ON true
+                 LEFT JOIN LATERAL (SELECT m.file_id, m.file_size, m.file_type, m.file_name, m.file_url
+                                    WHERE m.file_id NOTNULL OR m.file_url NOTNULL) file ON true
         WHERE m.conversation_id = ` + ident(left, "id") + `
         ORDER BY m.id DESC
         LIMIT 1) `,
@@ -352,12 +354,12 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
 			return
 		}
 	}
-	//if size := req.GetSize(); size > 0 {
-	//	if page := req.GetPage(); page > 1 {
-	//		ctx.Query = ctx.Query.Offset((uint64)((page - 1) * size))
-	//	}
-	//	ctx.Query = ctx.Query.Limit((uint64)(size + 1))
-	//}
+	if size := req.GetSize(); size > 0 {
+		if page := req.GetPage(); page > 1 {
+			ctx.Query = ctx.Query.Offset((uint64)((page - 1) * size))
+		}
+		ctx.Query = ctx.Query.Limit((uint64)(size + 1))
+	}
 	return
 }
 
@@ -368,14 +370,14 @@ func selectAgentChatThread(args *agentChatArgs, params params) (cte sq.SelectBui
 	}
 	cte = postgres.PGSQL.
 		Select(
-			"conversation_id", "closed_cause", "props", "closed_at", "joined_at", "id",
+			"ch.conversation_id", "ch.closed_cause", "ch.props", "ch.closed_at", "ch.joined_at", "ch.id",
 		).
 		From(
-			"chat.channel",
+			"chat.channel ch",
 		).
-		Where("internal").
-		Where("user_id = :agent").
-		OrderBy("created_at DESC")
+		Where("ch.internal").
+		Where("ch.user_id = :agent").
+		OrderBy("ch.created_at DESC")
 	if args.AgentId <= 0 {
 		err = errors.BadRequest("sqlxrepo.agent_chat.select_agent_chat_thread.check_args.agent", "agent id required")
 		return
@@ -387,18 +389,20 @@ func selectAgentChatThread(args *agentChatArgs, params params) (cte sq.SelectBui
 	}
 	if args.Timerange.Since > 0 {
 		params.set("dateFrom", time.UnixMilli(args.Timerange.Since))
-		cte = cte.Where("created_at >= :dateFrom")
+		cte = cte.Where("ch.created_at >= :dateFrom")
 	}
 	if args.Timerange.Until > 0 {
 		params.set("dateTo", time.UnixMilli(args.Timerange.Until))
-		cte = cte.Where("created_at <= :dateTo")
+		cte = cte.Where("ch.created_at <= :dateTo")
 	}
 
 	if args.Closed != nil {
 		if *args.Closed {
-			cte = cte.Where("closed_at NOTNULL")
+			cte = cte.Where("ch.closed_at NOTNULL").
+				// remove postprocessing case
+				Where("NOT EXISTS (SELECT FROM call_center.cc_member_attempt a WHERE a.agent_call_id = ch.id::::varchar AND a.state != 'leaving')")
 		} else {
-			cte = cte.Where("closed_at ISNULL")
+			cte = cte.Where("ch.closed_at ISNULL")
 		}
 	}
 	return // cte, nil
@@ -472,24 +476,24 @@ func fetchChatAgentRows(rows *sql.Rows, plan dataFetch[*messages.AgentChat], int
 		eval = make([]any, len(plan))
 	)
 
-	//if 0 < limit {
-	//	data = make([]*messages.AgentChat, 0, limit)
-	//}
-	//
-	//if n := limit - len(page); 1 < n {
-	//	heap = make([]messages.AgentChat, n) // mempage; tidy
-	//}
+	if 0 < limit {
+		data = make([]*messages.AgentChat, 0, limit)
+	}
+
+	if n := limit - len(page); 1 < n {
+		heap = make([]messages.AgentChat, n) // mempage; tidy
+	}
 
 	var r, c int // [r]ow, [c]olumn
 	for rows.Next() {
 		// LIMIT
-		//if 0 < limit && len(data) == limit {
-		//	into.Next = true
-		//	if into.Page < 1 {
-		//		into.Page = 1
-		//	}
-		//	break
-		//}
+		if 0 < limit && len(data) == limit {
+			into.Next = true
+			if into.Page < 1 {
+				into.Page = 1
+			}
+			break
+		}
 		// RECORD
 		node = nil // NEW
 		if r < len(page) {

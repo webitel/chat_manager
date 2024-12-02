@@ -109,13 +109,13 @@ func (srv *AgentChatsService) GetAgentChats(ctx context.Context, req *pb.GetAgen
 			"denied: require r:chats access but not granted",
 		) // (403) Forbidden
 	}
-	//var contactsAccess bool
-	//scope = authN.Authorization.HasObjclass(scopeContacts)
-	//if scope != nil {
-	//	contactsAccess = authN.Authorization.CanAccess(scope, auth.READ)
-	//	// check rbac?
-	//}
-
+	var contactAccess bool
+	scope = authN.Authorization.HasObjclass(scopeContacts)
+	if scope != nil {
+		if authN.Authorization.CanAccess(scope, auth.READ) {
+			contactAccess = true
+		}
+	}
 	// endregion
 
 	fields := app.FieldsFunc(
@@ -132,16 +132,13 @@ func (srv *AgentChatsService) GetAgentChats(ctx context.Context, req *pb.GetAgen
 				"closed_cause",
 				"needs_processing",
 				"queue",
-				"contact",
 			},
 			nil,
 		),
 	)
-	//if contactsAccess {
-	//	fields = append(fields, "contact")
-	//} else {
-	//	fields = append(fields, "user")
-	//}
+	if contactAccess {
+		fields = append(fields, "contact")
+	}
 	search := app.SearchOptions{
 		Context: *(authN),
 		Term:    req.Q,

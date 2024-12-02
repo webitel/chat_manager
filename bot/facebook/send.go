@@ -10,6 +10,20 @@ import (
 	"github.com/webitel/chat_manager/bot/facebook/messenger"
 )
 
+// SendMessage is wrapped Send function, for convenience
+func (c *Client) SendMessage(from *Page, recipientID string, sendMessage *messenger.SendMessage) (string, error) {
+	sendRequest := messenger.SendRequest{
+		// https://developers.facebook.com/docs/messenger-platform/send-messages/#messaging_types
+		Type: "RESPONSE",
+		Recipient: &messenger.SendRecipient{
+			ID: recipientID,
+		},
+		Message: sendMessage,
+	}
+
+	return c.Send(from, &sendRequest)
+}
+
 func (c *Client) Send(from *Page, send *messenger.SendRequest) (mid string, err error) {
 
 	body := bytes.NewBuffer(nil)

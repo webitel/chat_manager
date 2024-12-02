@@ -1546,6 +1546,10 @@
         "name": {
           "type": "string",
           "title": "Filename"
+        },
+        "url": {
+          "type": "string",
+          "title": "File url (optional)"
         }
       },
       "description": "Media File."

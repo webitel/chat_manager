@@ -17,6 +17,7 @@ import (
 
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/api/proto/chat"
+	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/auth"
 	audit "github.com/webitel/chat_manager/logger"
@@ -53,6 +54,9 @@ type Service struct {
 	gateways map[string]int64   // map[URI]profile.id
 	profiles map[int64]*Gateway // map[profile.id]gateway
 	audit    *audit.Client
+
+	fileService      pbstorage.FileService
+	mediaFileService pbstorage.MediaFileService
 }
 
 func NewService(
@@ -61,6 +65,8 @@ func NewService(
 	client chat.ChatService,
 	auditClient *audit.Client,
 	// router *mux.Router,
+	fileService pbstorage.FileService,
+	mediaFileService pbstorage.MediaFileService,
 ) *Service {
 	return &Service{
 
@@ -74,6 +80,9 @@ func NewService(
 		gateways: make(map[string]int64),
 		profiles: make(map[int64]*Gateway),
 		audit:    auditClient,
+
+		fileService:      fileService,
+		mediaFileService: mediaFileService,
 	}
 }
 

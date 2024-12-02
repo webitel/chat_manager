@@ -499,8 +499,9 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 						, m.file_size
 						, m.file_type
 						, m.file_name
+						, m.file_url
 						WHERE
-							m.file_id NOTNULL
+							m.file_id NOTNULL OR m.file_url NOTNULL
 					) file ON true
 					WHERE
 						m.conversation_id = c.thread_id

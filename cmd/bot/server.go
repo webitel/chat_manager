@@ -1,22 +1,25 @@
 package bot
 
 import (
+	"net"
+	"net/url"
+	"os"
+
+	"log/slog"
+	"strings"
+
 	"github.com/micro/micro/v3/service/broker"
 	"github.com/micro/micro/v3/service/logger"
 	"github.com/micro/micro/v3/service/server"
 	"github.com/pkg/errors"
 	audProto "github.com/webitel/chat_manager/api/proto/logger"
+	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	aud "github.com/webitel/chat_manager/logger"
 	slogutil "github.com/webitel/webitel-go-kit/otel/log/bridge/slog"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
-	"log/slog"
-	"net"
-	"net/url"
-	"os"
-	"strings"
 
 	micro "github.com/micro/micro/v3/service"
 	"github.com/urfave/cli/v2"
@@ -223,7 +226,9 @@ func Run(ctx *cli.Context) error {
 	// configure
 	store := sqlxrepo.NewBotStore(slogger, dbo.DB)
 	auditor := aud.NewClient(broker.DefaultBroker, audProto.NewConfigService("logger", sender))
-	srv = bot.NewService(store, slogger, agent, auditor)
+	fileService := pbstorage.NewFileService("storage", sender)
+	mediaFileService := pbstorage.NewMediaFileService("storage", sender)
+	srv = bot.NewService(store, slogger, agent, auditor, fileService, mediaFileService)
 	srv.WebRoot = webRoot // Static assets base folder
 
 	// AUTH: go.webitel.app

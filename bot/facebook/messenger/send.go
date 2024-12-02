@@ -1,6 +1,10 @@
 package messenger
 
-import graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
+import (
+	"strings"
+
+	graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
+)
 
 // https://developers.facebook.com/docs/messenger-platform/reference/send-api/#response
 type SendResponse struct {
@@ -209,4 +213,47 @@ type FileAttachment struct {
 
 	// Optional. Set to true to make the saved asset sendable to other message recipients. Defaults to false.
 	IsReusable bool `json:"is_reusable,omitempty"`
+}
+
+// NewSendMessage is used to create new SendMessage struct
+func NewSendMessage() *SendMessage {
+	return &SendMessage{}
+}
+
+// SetFile is used to send a text in messsage
+func (sm *SendMessage) SetText(text string) error {
+	sm.Text = text
+	return nil
+}
+
+// SetFile is used to send a file of type: image, audio, video, document
+func (sm *SendMessage) SetFile(mimeType, url string) error {
+	mimeType = getMediaType(mimeType)
+	switch mimeType {
+	case "image", "audio", "video":
+	default:
+		{
+			mimeType = "document"
+		}
+	}
+
+	sm.Attachment = &SendAttachment{
+		Type: mimeType,
+		Payload: &FileAttachment{
+			URL: url,
+		},
+	}
+
+	return nil
+}
+
+// getMediaType parse mimetype and return file type, like: image, audio and video
+func getMediaType(mtyp string) string {
+	mtyp = strings.TrimSpace(mtyp)
+	mtyp = strings.ToLower(mtyp)
+	subt := strings.IndexByte(mtyp, '/')
+	if subt > 0 {
+		return mtyp[:subt]
+	}
+	return mtyp
 }
