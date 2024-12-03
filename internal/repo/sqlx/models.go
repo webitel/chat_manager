@@ -37,6 +37,7 @@ type Channel struct {
 	// FlowID         int64          `db:"-" json:"flow_id"`
 	FlowBridge  bool           `db:"flow_bridge" json:"flow_bridge"`
 	Name        string         `db:"name" json:"name"`
+	PublicName  sql.NullString `db:"public_name" json:"public_name"`
 	ClosedCause sql.NullString `db:"closed_cause" json:"closed_cause,omitempty"`
 	JoinedAt    sql.NullTime   `db:"joined_at" json:"joined_at,omitempty"`
 	Variables   Metadata       `db:"props" json:"props,omitempty"`
@@ -302,9 +303,10 @@ type Profile struct {
 }
 
 type WebitelUser struct {
-	ID       int64  `db:"id" json:"id"`
-	Name     string `db:"name" json:"name"`
-	DomainID int64  `db:"dc" json:"dc"`
+	ID             int64          `db:"id" json:"id"`
+	Name           string         `db:"name" json:"name"`
+	DomainID       int64          `db:"dc" json:"dc"`
+	ChatPublicName sql.NullString `db:"chat_public_name" json:"chat_public_name"`
 }
 
 type ConversationNode struct {
