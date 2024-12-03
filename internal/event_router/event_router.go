@@ -15,6 +15,7 @@ import (
 	gate "github.com/webitel/chat_manager/api/proto/bot"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	store "github.com/webitel/chat_manager/internal/repo/sqlx"
+	"github.com/webitel/chat_manager/internal/util"
 )
 
 type eventRouter struct {
@@ -499,6 +500,8 @@ func (e *eventRouter) RouteJoinConversation(channel *store.Channel, conversation
 			// TODO: notify message.new_chat_members
 			// prepare message event once !
 			if notice == nil {
+				firstName, lastName := util.ParseFullName(channel.FullName())
+
 				notice = &chat.Message{
 					Id:   0,        // SERVICE MESSAGE !
 					Type: "joined", // "event/joined",
@@ -507,8 +510,8 @@ func (e *eventRouter) RouteJoinConversation(channel *store.Channel, conversation
 							Id:        channel.UserID,
 							Channel:   "user",
 							Contact:   "",
-							FirstName: channel.Name,
-							LastName:  "",
+							FirstName: firstName,
+							LastName:  lastName,
 							Username:  "",
 						},
 					},
@@ -601,6 +604,8 @@ func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversatio
 			// TODO: notify message.left_chat_member
 			// prepare message event once !
 			if externalM == nil {
+				firstName, lastName := util.ParseFullName(channel.FullName())
+
 				externalM = &chat.Message{
 					Id:   0,      // SERVICE MESSAGE !
 					Type: "left", // "event/left_chat_member",
@@ -608,8 +613,8 @@ func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversatio
 						Id:        channel.UserID,
 						Channel:   "user",
 						Contact:   "",
-						FirstName: channel.Name,
-						LastName:  "",
+						FirstName: firstName,
+						LastName:  lastName,
 						Username:  "",
 					},
 				}

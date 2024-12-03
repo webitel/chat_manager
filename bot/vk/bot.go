@@ -5,17 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	vk "github.com/SevereCloud/vksdk/v2/api"
-	"github.com/SevereCloud/vksdk/v2/object"
-	"github.com/micro/micro/v3/service/errors"
-	chat "github.com/webitel/chat_manager/api/proto/chat"
-	"github.com/webitel/chat_manager/bot"
 	"io"
 	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
+
+	vk "github.com/SevereCloud/vksdk/v2/api"
+	"github.com/SevereCloud/vksdk/v2/object"
+	"github.com/micro/micro/v3/service/errors"
+	chat "github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/webitel/chat_manager/bot"
 )
 
 const (
@@ -196,14 +197,6 @@ func (c *VKBot) Deregister(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func contactPeer(peer *chat.Account) *chat.Account {
-	if peer.LastName == "" {
-		peer.FirstName, peer.LastName =
-			bot.FirstLastName(peer.FirstName)
-	}
-	return peer
 }
 
 // SendNotify implements provider.Sender interface for VK

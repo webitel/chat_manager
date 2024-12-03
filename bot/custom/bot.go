@@ -9,11 +9,6 @@ import (
 	"encoding/json"
 	goerr "errors"
 	"fmt"
-	"github.com/beevik/guid"
-	"github.com/micro/micro/v3/service/errors"
-	"github.com/webitel/chat_manager/api/proto/chat"
-	"github.com/webitel/chat_manager/bot"
-	"google.golang.org/genproto/googleapis/rpc/status"
 	"io"
 	"log/slog"
 	"net/http"
@@ -21,6 +16,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/beevik/guid"
+	"github.com/micro/micro/v3/service/errors"
+	"github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/webitel/chat_manager/bot"
+	"google.golang.org/genproto/googleapis/rpc/status"
 )
 
 const (
@@ -252,9 +253,9 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 			Size: doc.Size,
 			Name: doc.Name,
 		}
-	case "joined":
 
-		peer := contactPeer(message.NewChatMembers[0])
+	case "joined":
+		peer := message.NewChatMembers[0]
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("join", peer)
 		if err != nil {
@@ -284,8 +285,7 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 		webhookMessage.Text = text
 
 	case "left":
-
-		peer := contactPeer(message.LeftChatMember)
+		peer := message.LeftChatMember
 		updates := c.Gateway.Template
 		messageText, err := updates.MessageText("left", peer)
 		if err != nil {
@@ -767,14 +767,6 @@ func returnErrorStringToResp(rsp http.ResponseWriter, code int, err string) {
 
 func formatErrorString(error string) string {
 	return fmt.Sprintf("custom: %s", error)
-}
-
-func contactPeer(peer *chat.Account) *chat.Account {
-	if peer.LastName == "" {
-		peer.FirstName, peer.LastName =
-			bot.FirstLastName(peer.FirstName)
-	}
-	return peer
 }
 
 func Requestify(ctx context.Context, body any, method string, url string, secret string) (*http.Request, []byte, error) {
