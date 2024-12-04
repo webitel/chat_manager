@@ -375,7 +375,7 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		// Prepare SEND Telegram (Inline|Reply)Keyboard(Markup|Remove)
 		// https://core.telegram.org/bots/api#sendmessage
 		// https://core.telegram.org/bots/api#updating-messages
-		err := sendMessageBuilder.SetMargedKeyboad(buttons)
+		err := sendMessageBuilder.SetMergedKeyboard(buttons)
 		if err != nil {
 			return err
 		}
@@ -1183,7 +1183,7 @@ func (c *TelegramBot) BroadcastMessage(ctx context.Context, req *chat.BroadcastM
 		// Important: inline is a priority
 		buttons := message.GetButtons()
 		if len(buttons) > 0 {
-			err := sendMessageBuilder.SetMargedKeyboad(buttons)
+			err := sendMessageBuilder.SetMergedKeyboard(buttons)
 			if err != nil {
 				setError(i, err)
 			}

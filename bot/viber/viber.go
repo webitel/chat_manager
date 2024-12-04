@@ -547,40 +547,53 @@ func (c *Bot) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRe
 
 			rsp.Failure = res
 		}
+
 		// https://developers.viber.com/docs/api/rest-bot-api/#response-1
 		res BroadcastResponse
-		// https://developers.viber.com/docs/api/rest-bot-api/#post-parameters
-		cast = BroadcastMessage{
-			// Recipient(s)
-			PeerId: req.GetPeer(),
-			// SendOptions
-			sendOptions: sendOptions{
-				Sender: c.Sender,
-			},
-		}
 	)
+
+	// Get recipients from request
+	peer := req.GetPeer()
 
 	// Get message params from request
 	message := req.GetMessage()
 
+	// IMPORTAINT: Viber doesn't support sending caption text with files.
+	// Therefore, we send another separate message with the text.
+	// If the 1st message was successful, then this is a successful sending.
+
 	// Set text or file to message
 	switch message.GetType() {
 	case "text":
-		cast.Text(message.GetText())
+		cast := sendText(c.Sender, peer, message.GetText())
+
+		// Perform broadcast request
+		err := c.do(&cast, &res)
+		if err != nil {
+			return err
+		}
+
 	case "file":
-		cast.Media(
-			req.Message.GetFile(),
-			req.Message.GetText(), // Max 512 characters !
-		)
+		castWithFile, castWithText := sendFile(c.Sender, peer, message.GetFile(), message.GetText())
+
+		if castWithText != nil {
+			// Perform broadcast request
+			err := c.do(castWithText, &res)
+			if err != nil {
+				return err
+			}
+
+			_ = c.do(&castWithFile, &res)
+		} else {
+			// Perform broadcast request
+			err := c.do(&castWithFile, &res)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
-	// Perform broadcast request
-	err := c.do(&cast, &res)
-	if err != nil {
-		return err
-	}
-
-	err = res.Err()
+	err := res.Err()
 	if err != nil {
 		return err
 	}
