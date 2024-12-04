@@ -10,6 +10,26 @@ import (
 	"github.com/webitel/chat_manager/bot/telegram/internal/markdown"
 )
 
+const (
+	// Ignore button types
+	buttonTypeMail  = "mail"
+	buttonTypeEmail = "email"
+
+	// Remove button types
+	buttonTypeClear          = "clear"
+	buttonTypeRemove         = "remove"
+	buttonTypeRemoveKeyboard = "remove_keyboard"
+
+	// Other button types
+	buttonTypeContact  = "contact"
+	buttonTypePhone    = "phone"
+	buttonTypeLocation = "location"
+	buttonTypePostback = "postback"
+	buttonTypeUrl      = "url"
+	buttonTypeSwitch   = "switch"
+	buttonTypeReply    = "reply"
+)
+
 // SendMessageBuilder is designed to create a message with text or a file for the Telegram environment
 type SendMessageBuilder struct {
 	chatID        int64
@@ -105,14 +125,17 @@ func (b *SendMessageBuilder) SetFile(filename, mimetype, url, caption string) er
 	return nil
 }
 
-// SetKeyboad setter for classic keyboard
-func (b *SendMessageBuilder) SetKeyboad(buttons []*pbchat.Buttons) error {
-	var keyboad []telegram.KeyboardButton
-	var removeKeyboad bool
+// SetKeyboard setter for classic keyboard
+func (b *SendMessageBuilder) SetKeyboard(buttons []*pbchat.Buttons) error {
+	var keyboard [][]telegram.KeyboardButton
 
 	for _, markup := range buttons {
 		var row []telegram.KeyboardButton
 		for _, button := range markup.Button {
+			if isMustIgnoreButton(button) {
+				continue
+			}
+
 			if btn, ok := getKeyboardButton(button); ok {
 				row = append(row, btn)
 				continue
@@ -124,60 +147,25 @@ func (b *SendMessageBuilder) SetKeyboad(buttons []*pbchat.Buttons) error {
 		}
 
 		if len(row) > 0 {
-			keyboad = append(keyboad, telegram.NewKeyboardButtonRow(row...)...)
+			keyboard = append(keyboard, row)
 		}
 	}
 
-	if removeKeyboad {
-		b.SetRemoveKeyboard()
-	} else if len(keyboad) > 0 {
-		b.baseChat.ReplyMarkup = telegram.NewOneTimeReplyKeyboard(keyboad)
+	if len(keyboard) > 0 {
+		b.baseChat.ReplyMarkup = telegram.NewOneTimeReplyKeyboard(keyboard...)
 	}
 
 	return nil
 }
 
-// SetKeyboad setter for inline keyboard
-func (b *SendMessageBuilder) SetInlineKeyboad(buttons []*pbchat.Buttons) error {
-	var keyboad []telegram.InlineKeyboardButton
+// SetKeyboard setter for inline keyboard
+func (b *SendMessageBuilder) SetInlineKeyboard(buttons []*pbchat.Buttons) error {
+	var inlineKeyboard [][]telegram.InlineKeyboardButton
 
 	for _, markup := range buttons {
-		var row []telegram.InlineKeyboardButton
-		for _, button := range markup.Button {
-			if btn, ok := getInlineKeyboardButton(button); ok {
-				row = append(row, btn)
-				continue
-			}
-
-			row = append(row,
-				telegram.NewInlineKeyboardButtonData(button.Text, button.Code),
-			)
-		}
-
-		if len(row) > 0 {
-			keyboad = append(keyboad, telegram.NewInlineKeyboardRow(row...)...)
-		}
-	}
-
-	if len(keyboad) > 0 {
-		b.baseChat.ReplyMarkup = telegram.NewInlineKeyboardMarkup(keyboad)
-	}
-
-	return nil
-}
-
-// SetMargedKeyboad accepts both conventional and inline keyboards, but the classic keyboard will always be a priority
-func (b *SendMessageBuilder) SetMargedKeyboad(buttons []*pbchat.Buttons) error {
-	var buttonsKeyboad []telegram.KeyboardButton
-	var inlineKeyboad []telegram.InlineKeyboardButton
-	var removeKeyboad bool
-
-	for _, markup := range buttons {
-		var buttonsRow []telegram.KeyboardButton
 		var inlineRow []telegram.InlineKeyboardButton
 		for _, button := range markup.Button {
-			if btn, ok := getKeyboardButton(button); ok {
-				buttonsRow = append(buttonsRow, btn)
+			if isMustIgnoreButton(button) {
 				continue
 			}
 
@@ -186,26 +174,68 @@ func (b *SendMessageBuilder) SetMargedKeyboad(buttons []*pbchat.Buttons) error {
 				continue
 			}
 
-			buttonsRow = append(buttonsRow,
+			inlineRow = append(inlineRow,
+				telegram.NewInlineKeyboardButtonData(button.Text, button.Code),
+			)
+		}
+
+		if len(inlineRow) > 0 {
+			inlineKeyboard = append(inlineKeyboard, inlineRow)
+		}
+	}
+
+	if len(inlineKeyboard) > 0 {
+		b.baseChat.ReplyMarkup = telegram.NewInlineKeyboardMarkup(inlineKeyboard...)
+	}
+
+	return nil
+}
+
+// SetMergedKeyboard accepts both conventional and inline keyboards, but the classic keyboard will always be a priority
+func (b *SendMessageBuilder) SetMergedKeyboard(buttons []*pbchat.Buttons) error {
+	var keyboard [][]telegram.KeyboardButton
+	var inlineKeyboard [][]telegram.InlineKeyboardButton
+
+	for _, markup := range buttons {
+		var row []telegram.KeyboardButton
+		var inlineRow []telegram.InlineKeyboardButton
+		for _, button := range markup.Button {
+			if isMustIgnoreButton(button) {
+				continue
+			}
+
+			if isRemoveKeyboard(button) {
+				return b.SetRemoveKeyboard()
+			}
+
+			if btn, ok := getKeyboardButton(button); ok {
+				row = append(row, btn)
+				continue
+			}
+
+			if btn, ok := getInlineKeyboardButton(button); ok {
+				inlineRow = append(inlineRow, btn)
+				continue
+			}
+
+			row = append(row,
 				telegram.NewKeyboardButton(button.Text),
 			)
 		}
 
-		if len(buttonsRow) > 0 {
-			buttonsKeyboad = append(buttonsKeyboad, telegram.NewKeyboardButtonRow(buttonsRow...)...)
+		if len(row) > 0 {
+			keyboard = append(keyboard, row)
 		}
 
 		if len(inlineRow) > 0 {
-			inlineKeyboad = append(inlineKeyboad, telegram.NewInlineKeyboardRow(inlineRow...)...)
+			inlineKeyboard = append(inlineKeyboard, inlineRow)
 		}
 	}
 
-	if removeKeyboad {
-		b.SetRemoveKeyboard()
-	} else if len(inlineKeyboad) > 0 {
-		b.baseChat.ReplyMarkup = telegram.NewInlineKeyboardMarkup(inlineKeyboad)
-	} else if len(buttonsKeyboad) > 0 {
-		b.baseChat.ReplyMarkup = telegram.NewOneTimeReplyKeyboard(buttonsKeyboad)
+	if len(inlineKeyboard) > 0 {
+		b.baseChat.ReplyMarkup = telegram.NewInlineKeyboardMarkup(inlineKeyboard...)
+	} else if len(keyboard) > 0 {
+		b.baseChat.ReplyMarkup = telegram.NewOneTimeReplyKeyboard(keyboard...)
 	}
 
 	return nil
@@ -242,15 +272,33 @@ func getMediaType(mtyp string) string {
 	return mtyp
 }
 
+// isMustIgnoreButton returns true if button must be ignored
+func isMustIgnoreButton(button *pbchat.Button) bool {
+	switch strings.ToLower(button.Type) {
+	case buttonTypeMail, buttonTypeEmail:
+		return true
+	}
+	return false
+}
+
+// isRemoveKeyboard returns true if button is clear/remove type
+func isRemoveKeyboard(button *pbchat.Button) bool {
+	switch strings.ToLower(button.Type) {
+	case buttonTypeClear, buttonTypeRemove, buttonTypeRemoveKeyboard:
+		return true
+	}
+	return false
+}
+
 // getKeyboardButton returns button by type
 func getKeyboardButton(button *pbchat.Button) (telegram.KeyboardButton, bool) {
 	switch strings.ToLower(button.Type) {
-	case "contact", "phone":
+	case buttonTypeContact, buttonTypePhone:
 		return telegram.NewKeyboardButtonContact(button.Text), true
-	case "email", "mail":
-		// Not supported yet
-	case "location":
+	case buttonTypeLocation:
 		return telegram.NewKeyboardButtonLocation(button.Text), true
+	case buttonTypePostback:
+		return telegram.NewKeyboardButton(button.Text), true
 	}
 
 	return telegram.KeyboardButton{}, false
@@ -259,11 +307,11 @@ func getKeyboardButton(button *pbchat.Button) (telegram.KeyboardButton, bool) {
 // getInlineKeyboardButton returns inline button by type
 func getInlineKeyboardButton(button *pbchat.Button) (telegram.InlineKeyboardButton, bool) {
 	switch strings.ToLower(button.Type) {
-	case "url":
+	case buttonTypeUrl:
 		return telegram.NewInlineKeyboardButtonURL(button.Text, button.Url), true
-	case "switch":
+	case buttonTypeSwitch:
 		return telegram.NewInlineKeyboardButtonSwitch(button.Text, button.Code), true
-	case "reply", "postback":
+	case buttonTypeReply:
 		return telegram.NewInlineKeyboardButtonData(button.Text, button.Code), true
 	}
 
