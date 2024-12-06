@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync"
 	tmpl "text/template"
-	"unicode"
 
 	"github.com/pkg/errors"
 	"github.com/webitel/chat_manager/api/proto/bot"
@@ -126,15 +125,4 @@ func (m *Template) MessageText(name string, ctx interface{}) (text string, err e
 		text = buf.String()
 	}
 	return // text|"", err|nil
-}
-
-func FirstLastName(displayName string) (firstName, lastName string) {
-	trimSpace := unicode.IsSpace
-	firstName = strings.TrimFunc(displayName, trimSpace)
-	if sp := strings.LastIndexFunc(firstName, trimSpace); sp > 1 {
-		lastName, firstName =
-			strings.TrimLeftFunc(firstName[sp:], trimSpace),
-			strings.TrimRightFunc(firstName[0:sp], trimSpace)
-	}
-	return
 }
