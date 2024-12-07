@@ -2,10 +2,10 @@ package sqlxrepo
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/rs/zerolog"
 )
 
 type Repository interface {
@@ -137,10 +137,10 @@ type CacheRepository interface {
 
 type sqlxRepository struct {
 	db  *sqlx.DB
-	log *zerolog.Logger
+	log *slog.Logger
 }
 
-func NewRepository(db *sqlx.DB, log *zerolog.Logger) Repository {
+func NewRepository(db *sqlx.DB, log *slog.Logger) Repository {
 	return &sqlxRepository{
 		db,
 		log,

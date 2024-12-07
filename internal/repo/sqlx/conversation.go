@@ -38,8 +38,9 @@ func (repo *sqlxRepository) GetConversationByID(ctx context.Context, id string) 
 	list, err := repo.GetConversations(ctx, id, 1, 1, nil, nil, 0, false, 0, 0)
 
 	if err != nil {
-		repo.log.Error().Err(err).Str("id", id).
-			Msg("Failed lookup DB chat.conversation")
+		repo.log.Error("Failed lookup DB chat.conversation",
+			"id", id,
+		)
 		return nil, err
 	}
 

@@ -2,13 +2,13 @@ package auth
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	pbauth "github.com/webitel/chat_manager/api/proto/auth"
 
 	"github.com/micro/micro/v3/service/context/metadata"
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/rs/zerolog"
 )
 
 const (
@@ -42,13 +42,13 @@ type Client interface {
 }
 
 type client struct {
-	log *zerolog.Logger
+	log *slog.Logger
 	//chatCache  cache.ChatCache
 	authClient pbauth.AuthService
 }
 
 func NewClient(
-	log *zerolog.Logger,
+	log *slog.Logger,
 	//chatCache cache.ChatCache,
 	authClient pbauth.AuthService,
 ) Client {

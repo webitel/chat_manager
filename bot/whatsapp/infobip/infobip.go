@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
@@ -254,7 +255,11 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 	)
 
 	if err != nil {
-		c.Gateway.Log.Err(err).Str("url", media.Url).Str("stage", "http.NewRequest()").Msg("INFOBIP: FILE")
+		c.Gateway.Log.Error("INFOBIP: FILE",
+			slog.Any("error", err),
+			slog.String("url", media.Url),
+			slog.String("stage", "http.NewRequest()"),
+		)
 		return nil, err
 	}
 
@@ -271,7 +276,10 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 	rsp, err := httpClient.Do(req)
 
 	if err != nil {
-		c.Gateway.Log.Err(err).Str("stage", "http.Client.Do()").Msg("INFOBIP: SEND")
+		c.Gateway.Log.Error("INFOBIP: FILE",
+			slog.Any("error", err),
+			slog.String("stage", "http.Client.Do()"),
+		)
 		return nil, err
 	}
 
@@ -531,10 +539,10 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 	// // case "invite":
 	// case "closed":
 	default:
-		c.Gateway.Log.Warn().
-			Str("content", sentMessage.Type).
-			Str("error", "send: reaction not implemented").
-			Msg("INFOBIP: SEND")
+		c.Gateway.Log.Warn("INFOBIP: SEND",
+			slog.String("content", sentMessage.Type),
+			slog.String("error", "send: reaction not implemented"),
+		)
 		return nil // IGNORE
 	}
 
@@ -557,9 +565,9 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 		message.Action.Buttons = replies
 		message.Body.Text = trimChars(sentMessage.Text, 1024)
 		if message.Body.Text == "" {
-			c.Gateway.Log.Error().
-				Str("error", "content: interactive.body.text required but missing").
-				Msg("INFOBIP: SEND")
+			c.Gateway.Log.Error("INFOBIP: SEND",
+				slog.String("error", "content: interactive.body.text required but missing"),
+			)
 			return nil
 		}
 		sendContent = message
@@ -587,9 +595,9 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 	}
 
 	if sendContent == nil {
-		c.Gateway.Log.Warn().
-			Str("error", "send: no content").
-			Msg("INFOBIP: SEND")
+		c.Gateway.Log.Warn("INFOBIP: SEND",
+			slog.String("error", "send: no content"),
+		)
 		return nil // IGNORE
 	}
 	sendRequest.Content = sendContent
@@ -599,7 +607,9 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 	err := enc.Encode(sendRequest)
 
 	if err != nil {
-		c.Gateway.Log.Err(err).Msg("INFOBIP: SEND")
+		c.Gateway.Log.Error("INFOBIP: SEND",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -609,7 +619,10 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 	)
 
 	if err != nil {
-		c.Gateway.Log.Err(err).Str("stage", "http.NewRequest()").Msg("INFOBIP: SEND")
+		c.Gateway.Log.Error("INFOBIP: SEND",
+			slog.Any("error", err),
+			slog.String("stage", "http.NewRequest()"),
+		)
 		return err
 	}
 
@@ -626,7 +639,10 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		c.Gateway.Log.Err(err).Str("stage", "http.Client.Do()").Msg("INFOBIP: SEND")
+		c.Gateway.Log.Error("INFOBIP: SEND",
+			slog.Any("error", err),
+			slog.String("stage", "http.Client.Do()"),
+		)
 		return err
 	}
 
@@ -635,7 +651,10 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 
 	err = json.NewDecoder(resp.Body).Decode(&res)
 	if err != nil {
-		c.Gateway.Log.Err(err).Str("stage", "http.sendResponse()").Msg("INFOBIP: SEND")
+		c.Gateway.Log.Error("INFOBIP: SEND",
+			slog.Any("error", err),
+			slog.String("stage", "http.sendResponse()"),
+		)
 		return err
 	}
 
@@ -644,7 +663,9 @@ func (c *App) SendNotify(ctx context.Context, notify *bot.Update) error {
 	}
 
 	if err != nil {
-		c.Gateway.Log.Err(err).Msg("INFOBIP: SEND")
+		c.Gateway.Log.Error("INFOBIP: SEND",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -729,9 +750,9 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 		// switch e := err.(type) {
 		// case *json.InvalidUTF8Error:
 		// }
-		c.Gateway.Log.Error().
-			Str("error", "decode: "+err.Error()).
-			Msg("INFOBIP: UPDATE")
+		c.Gateway.Log.Error("INFOBIP: UPDATE",
+			slog.String("error", "decode: "+err.Error()),
+		)
 		// REDUCE [RE]DELIVERIES
 		return // (200) OK
 	}
@@ -849,7 +870,9 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 			}
 			_, err = c.forwardFile(doc, channel)
 			if err != nil {
-				c.Gateway.Log.Err(err).Msg("INFOBIP: MEDIA")
+				c.Gateway.Log.Error("INFOBIP: MEDIA",
+					slog.Any("error", err),
+				)
 			}
 			sendMessage.File = doc
 			// // Normalize filename
@@ -917,12 +940,12 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 
 		default:
 
-			c.Gateway.Log.Warn().
-				Str("to", recvUpdate.To).
-				Str("from", recvUpdate.From).
-				Str("type", strings.ToLower(recvMessage.Type)).
-				Str("error", "message type not supported").
-				Msg("INFOBIP: RECV")
+			c.Gateway.Log.Warn("INFOBIP: RECV",
+				slog.String("error", "message type not supported"),
+				slog.String("to", recvUpdate.To),
+				slog.String("from", recvUpdate.From),
+				slog.String("type", strings.ToLower(recvMessage.Type)),
+			)
 
 			continue
 		}
@@ -931,7 +954,9 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 		err = c.Gateway.Read(ctx, &sendUpdate)
 
 		if err != nil {
-			c.Gateway.Log.Err(err).Msg("INFOBIP: FORWARD")
+			c.Gateway.Log.Error("INFOBIP: FORWARD",
+				slog.Any("error", err),
+			)
 			http.Error(w,
 				"Failed to deliver Message",
 				http.StatusBadGateway,

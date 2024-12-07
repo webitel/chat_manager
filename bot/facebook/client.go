@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"path"
@@ -127,10 +128,10 @@ func (c *Client) completeOAuth(req *http.Request, scope ...string) (*oauth2.Toke
 		default:
 		}
 
-		c.Log.Error().
-			Str("error", err).
-			Str("details", query.Get("error_description")).
-			Msg("Facebook: Login FAILED")
+		c.Log.Error("Facebook: Login FAILED",
+			slog.Any("error", err),
+			slog.String("details", query.Get("error_description")),
+		)
 
 		if re := query.Get("error_description"); re != "" {
 			err += ": " + re
@@ -144,9 +145,9 @@ func (c *Client) completeOAuth(req *http.Request, scope ...string) (*oauth2.Toke
 	if code == "" {
 		err := "oauth2: authorization ?code= is misiing"
 		// http.Error(rsp, err, http.StatusBadGateway)
-		c.Log.Error().
-			Str("error", err).
-			Msg("Facebook: Login FAILED")
+		c.Log.Error("Facebook: Login FAILED",
+			slog.Any("error", err),
+		)
 		return nil, fmt.Errorf(err)
 	}
 
@@ -305,17 +306,17 @@ func (c *Client) Deauthorize(signedRequest string) error {
 	req, err := c.DeauthorizeRequest(signedRequest)
 
 	if err != nil {
-		c.Log.Error().
-			Str("error", "signature: invalid").
-			Msg("DEAUTHORIZE: REQUEST")
+		c.Log.Error("DEAUTHORIZE: REQUEST",
+			slog.String("error", "signature: invalid"),
+		)
 		return err
 	}
 
-	c.Log.Warn().
-		Str("page-id", req.PageID).
-		Str("user-id", req.UserID).
-		Time("issued", time.Unix(req.IssuedAt, 0)).
-		Msg("MESSENGER: DEAUTHORIZE")
+	c.Log.Warn("MESSENGER: DEAUTHORIZE",
+		slog.String("page-id", req.PageID),
+		slog.String("user-id", req.UserID),
+		slog.Time("issued", time.Unix(req.IssuedAt, 0)),
+	)
 
 	if req.UserID == "" {
 		// FIXME: Triggered by myself !
@@ -334,8 +335,9 @@ func (c *Client) Deauthorize(signedRequest string) error {
 	pages, err := c.pages.getPages(pageId...) // LOCK: +R
 
 	if err != nil {
-		c.Log.Err(err).
-			Msg("MESSENGER: DEAUTHORIZE")
+		c.Log.Error("MESSENGER: DEAUTHORIZE",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -350,8 +352,9 @@ func (c *Client) Deauthorize(signedRequest string) error {
 	pages, err = c.instagram.getPages(pageId...) // LOCK: +R
 
 	if err != nil {
-		c.Log.Err(err).
-			Msg("INSTAGRAM: DEAUTHORIZE")
+		c.Log.Error("INSTAGRAM: DEAUTHORIZE",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -519,12 +522,13 @@ func (c *Client) getChat(page *Page, psid string) (conn *Chat, err error) {
 					pageName = instagram.Username
 				}
 			}
-			c.Gateway.Log.Err(err).
-				Str("page.asid", page.ID). // recipient
-				Str(platform, pageName).
-				Str("user.psid", psid). // sender
+			c.Log.Error(platform+".getUserProfile",
+				slog.Any("error", err),
+				slog.String("page.asid", page.ID), // recipient
+				slog.String(platform, pageName),   // sender
 				// Str("from", "noname").  // Unavailable(!)
-				Msg(platform + ".getUserProfile")
+				slog.String("user.psid", psid),
+			)
 			// err = res.Error
 			err = nil
 		}

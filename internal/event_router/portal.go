@@ -3,6 +3,7 @@ package event_router
 import (
 	"context"
 	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -50,20 +51,21 @@ func (c *eventRouter) pushUpdate(host, addr string, push *chat.Update) error {
 	)
 
 	if err != nil {
-		c.log.Warn().Err(err).
-			Str("addr", addr).
-			Str("host", host).
-			Str("push", push.Message.GetType()).
-			Msg("Update: NACK")
+		c.log.Warn("Update: NACK",
+			slog.Any("error", err),
+			slog.String("addr", addr),
+			slog.String("host", host),
+			slog.String("push", push.Message.GetType()),
+		)
 
 		return err
 	}
 
-	c.log.Info().
-		Str("addr", addr).
-		Str("host", host).
-		Str("push", push.Message.GetType()).
-		Msg("Update: ACK")
+	c.log.Debug("Update: ACK",
+		slog.String("addr", addr),
+		slog.String("host", host),
+		slog.String("push", push.Message.GetType()),
+	)
 
 	return nil
 }

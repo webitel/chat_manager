@@ -576,8 +576,10 @@ func (repo *sqlxRepository) GetMessage(ctx context.Context, oid int64, senderCha
 	list, err := GetMessages(repo.db, &search)
 
 	if err != nil {
-		repo.log.Error().Err(err).Int64("id", oid).
-			Msg("Failed lookup DB chat.message")
+		repo.log.Error("Failed lookup DB chat.message",
+			"error", err,
+			"id", oid,
+		)
 		return nil, err
 	}
 

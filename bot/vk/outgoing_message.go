@@ -8,6 +8,7 @@ import (
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
+	"log/slog"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -216,9 +217,10 @@ func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*Outgoing
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("join", peer)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", message.Type).
-				Msg("vk/bot.updateChatMember")
+			c.Gateway.Log.Error("vk/bot.updateChatMember",
+				slog.Any("error", err),
+				slog.String("update", message.Type),
+			)
 		}
 		//if text != "" {
 		// format new message to the engine for saving it in the DB as operator message [WTEL-4695]
@@ -245,9 +247,10 @@ func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*Outgoing
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("left", peer)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", message.Type).
-				Msg("vk/bot.updateChatMember")
+			c.Gateway.Log.Error("vk/bot.updateChatMember",
+				slog.Any("error", err),
+				slog.String("update", message.Type),
+			)
 		}
 		//if text != "" {
 		result.Text = text
@@ -256,9 +259,10 @@ func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*Outgoing
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("close", nil)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", message.Type).
-				Msg("vk/bot.updateChatMember")
+			c.Gateway.Log.Error("vk/bot.updateChatMember",
+				slog.Any("error", err),
+				slog.String("update", message.Type),
+			)
 		}
 		//if text != "" {
 		result.Text = text

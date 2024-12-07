@@ -3,6 +3,7 @@ package corezoid
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -14,8 +15,6 @@ import (
 	"net/url"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
-
 	// "github.com/golang/protobuf/proto"
 	errs "github.com/micro/micro/v3/service/errors"
 
@@ -350,7 +349,9 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		authzToken := notice.Header.Get("X-Access-Token")
 		if authzToken != c.accessToken {
 			http.Error(reply, "Invalid access token", http.StatusForbidden)
-			c.Gateway.Log.Error().Str("error", "invalid access token").Msg("FORBIDDEN")
+			c.Gateway.Log.Error("FORBIDDEN",
+				slog.String("error", "invalid access token"),
+			)
 			return
 		}
 	}
@@ -362,14 +363,16 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	)
 
 	if err := json.NewDecoder(notice.Body).Decode(&update); err != nil {
-		log.Error().Err(err).Msg("Failed to decode update request")
+		c.Gateway.Log.Error("Failed to decode update request",
+			slog.Any("error", err),
+		)
 		err = errors.Wrap(err, "Failed to decode update request")
 		http.Error(reply, err.Error(), http.StatusBadRequest) // 400
 		return
 	}
 
 	if update.ChatID == "" {
-		log.Error().Msg("Got request with no chat.id; ignore")
+		c.Gateway.Log.Error("Got request with no chat.id; ignore")
 		http.Error(reply, "request: chat.id required but missing", http.StatusBadRequest) // 400
 		return
 	}
@@ -386,13 +389,13 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	contact := update.GetContact()
 	// endregion
 
-	c.Gateway.Log.Debug().
-		Str("chat-id", update.ChatID).
-		Str("channel", update.Channel).
-		Str("action", update.Event).
-		Str("title", contact.DisplayName()).
-		Str("text", update.Text).
-		Msg("RECV Update")
+	c.Gateway.Log.Debug("RECV Update",
+		slog.String("chat-id", update.ChatID),
+		slog.String("channel", update.Channel),
+		slog.String("action", update.Event),
+		slog.String("title", contact.DisplayName()),
+		slog.String("text", update.Text),
+	)
 
 	// region: bind internal channel
 	chatID := update.ChatID
@@ -401,10 +404,9 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	)
 
 	if err != nil {
-
-		c.Gateway.Log.Error().
-			Str("error", "lookup: "+err.Error()).
-			Msg("CHANNEL")
+		c.Gateway.Log.Error("CHANNEL",
+			slog.String("error", "lookup: "+err.Error()),
+		)
 
 		http.Error(reply,
 			errors.Wrap(err, "Failed lookup chat channel").Error(),
@@ -419,10 +421,11 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 	if err != nil {
 
-		c.Gateway.Log.Error().Err(err).
-			Str("chat-id", update.ChatID).
-			Str("channel", update.Channel).
-			Msg("FAILED Restore corezoid chat state")
+		c.Gateway.Log.Error("FAILED Restore corezoid chat state",
+			slog.Any("error", err),
+			slog.String("chat-id", update.ChatID),
+			slog.String("channel", update.Channel),
+		)
 
 		http.Error(reply,
 			errors.Wrap(err, "Failed restore chat channel state").Error(),
@@ -563,11 +566,11 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		// TODO: break flow execution !
 		if channel.IsNew() {
 
-			channel.Log.Warn().Msg("CLOSE Request NO Channel; IGNORE")
+			channel.Log.Warn("CLOSE Request NO Channel; IGNORE")
 			return // TODO: NOTHING !
 		}
 
-		channel.Log.Info().Msg("CLOSE External request; PERFORM")
+		channel.Log.Info("CLOSE External request; PERFORM")
 
 		// DO: .CloseConversation(!)
 		// cause := commandCloseRecvDisposiotion
@@ -590,9 +593,9 @@ func (c *CorezoidBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 	default:
 		// UNKNOWN !
-		c.Gateway.Log.Warn().
-			Str("error", update.Event+": reaction not implemented").
-			Msg("IGNORE")
+		c.Gateway.Log.Warn("IGNORE",
+			slog.String("error", update.Event+": reaction not implemented"),
+		)
 
 		return // HTTP 200 OK // to avoid redeliver !
 	}
@@ -663,8 +666,9 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 			re.Status = http.StatusText(code)
 		}
 
-		c.Gateway.Log.Error().Str("error", re.Detail).
-			Msg("FAILED Restore corezoid chat state")
+		c.Gateway.Log.Error("FAILED Restore corezoid chat state",
+			slog.String("error", re.Detail),
+		)
 
 		return re // HTTP 500 Internal Server Error
 	}
@@ -719,10 +723,11 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 
 		default:
 			// panic(errors.Errorf("corezoid: send %q within %q state invalid", notify.Event, chat.corezoidRequest.Event))
-			recepient.Log.Warn().Str("notice",
-				update.Type+": reaction to "+
+			recepient.Log.Warn("IGNORE",
+				slog.String("notice", update.Type+": reaction to "+
 					chat.corezoidRequest.Event+" not implemented",
-			).Msg("IGNORE")
+				),
+			)
 
 			return nil // HTTP 200 OK
 		}
@@ -801,20 +806,21 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 
 		default:
 
-			recepient.Log.Warn().Str("notice",
-				update.Type+": reaction to "+
+			recepient.Log.Warn("IGNORE",
+				slog.String("notice", update.Type+": reaction to "+
 					chat.corezoidRequest.Event+" intentionally disabled",
-			).Msg("IGNORE")
+				),
+			)
 
 			return nil
 		}
 
 	default:
-
-		recepient.Log.Warn().Str("notice",
-			update.Type+": reaction to "+
+		recepient.Log.Warn("IGNORE",
+			slog.String("notice", update.Type+": reaction to "+
 				chat.corezoidRequest.Event+" not implemented",
-		).Msg("IGNORE")
+			),
+		)
 
 		return nil
 	}
@@ -872,8 +878,11 @@ func (c *CorezoidBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		// // adjust := channel.corezoidOutcome // continuation for latest reply message -if- !adjust.Date.IsZero()
 		// chat.corezoidReply = *(reply) // shallowcopy
 	} else {
-
-		recepient.Log.Error().Int("code", code).Str("status", res.Status).Str("error", "send: failure").Msg("SEND")
+		recepient.Log.Error("SEND",
+			slog.Int("code", code),
+			slog.String("status", res.Status),
+			slog.String("error", "send: failure"),
+		)
 	}
 
 	// OK

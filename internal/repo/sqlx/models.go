@@ -168,6 +168,9 @@ func (m *Channel) Scan(row *sql.Rows) error {
 		case "props":
 			target(&m.Variables)
 
+		case "public_name":
+			target(ScanFunc(nil)) // FIXME
+
 		default:
 
 			return errors.Errorf("sql: scan %T column %q not supported", m, att)

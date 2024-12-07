@@ -4,11 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/micro/micro/v3/service/broker"
-	"github.com/rs/zerolog"
-
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/pkg/events"
 	"github.com/webitel/chat_manager/service/broker/rabbitmq"
@@ -23,7 +22,7 @@ type eventRouter struct {
 	// flowClient flow.Client
 	broker broker.Broker
 	repo   store.Repository
-	log    *zerolog.Logger
+	log    *slog.Logger
 }
 
 type Router interface {
@@ -49,7 +48,7 @@ func NewRouter(
 	// flowClient flow.Client,
 	broker broker.Broker,
 	repo store.Repository,
-	log *zerolog.Logger,
+	log *slog.Logger,
 ) Router {
 	return &eventRouter{
 		botClient,
@@ -106,14 +105,15 @@ func (e *eventRouter) RouteCloseConversation(channel *store.Channel, cause strin
 			}
 		}
 		if err != nil {
-			e.log.Warn().
-				Str("channel_id", item.ID).
-				Bool("internal", item.Internal).
-				Int64("user_id", item.UserID).
-				Str("conversation_id", item.ConversationID).
-				Str("type", item.Type).
-				Str("connection", item.Connection.String).
-				Msg("failed to send close conversation event to channel")
+			e.log.Warn("failed to send close conversation event to channel",
+				slog.Any("error", err),
+				slog.String("channel_id", item.ID),
+				slog.Bool("internal", item.Internal),
+				slog.Int64("user_id", item.UserID),
+				slog.String("conversation_id", item.ConversationID),
+				slog.String("type", item.Type),
+				slog.String("connection", item.Connection.String),
+			)
 		}
 	}
 	return nil
@@ -149,14 +149,15 @@ func (e *eventRouter) RouteCloseConversationFromFlow(conversationID *string, cau
 				})
 				err = e.sendEventToWebitelUser(nil, item, events.CloseConversationEventType, body)
 				if err != nil {
-					e.log.Warn().
-						Str("channel_id", item.ID).
-						Bool("internal", item.Internal).
-						Int64("user_id", item.UserID).
-						Str("conversation_id", item.ConversationID).
-						Str("type", item.Type).
-						Str("connection", item.Connection.String).
-						Msg("failed to send close conversation event to 'webitel' channel")
+					e.log.Warn("failed to send close conversation event to 'webitel' channel",
+						slog.Any("error", err),
+						slog.String("channel_id", item.ID),
+						slog.Bool("internal", item.Internal),
+						slog.Int64("user_id", item.UserID),
+						slog.String("conversation_id", item.ConversationID),
+						slog.String("type", item.Type),
+						slog.String("connection", item.Connection.String),
+					)
 				}
 			}
 		default: // "telegram", "infobip-whatsapp":
@@ -166,14 +167,15 @@ func (e *eventRouter) RouteCloseConversationFromFlow(conversationID *string, cau
 				Text: text,
 			}
 			if err := e.sendMessageToBotUser(nil, item, reqMessage); err != nil {
-				e.log.Warn().
-					Str("channel_id", item.ID).
-					Bool("internal", item.Internal).
-					Int64("user_id", item.UserID).
-					Str("conversation_id", item.ConversationID).
-					Str("type", item.Type).
-					Str("connection", item.Connection.String).
-					Msg("failed to send close conversation event to 'gateway' channel")
+				e.log.Warn("failed to send close conversation event to 'gateway' channel",
+					slog.Any("error", err),
+					slog.String("channel_id", item.ID),
+					slog.Bool("internal", item.Internal),
+					slog.Int64("user_id", item.UserID),
+					slog.String("conversation_id", item.ConversationID),
+					slog.String("type", item.Type),
+					slog.String("connection", item.Connection.String),
+				)
 			}
 
 		}
@@ -203,14 +205,15 @@ func (e *eventRouter) RouteDeclineInvite(userID *int64, conversationID *string) 
 		case "webitel":
 			{
 				if err := e.sendEventToWebitelUser(nil, item, events.DeclineInvitationEventType, body); err != nil {
-					e.log.Warn().
-						Str("channel_id", item.ID).
-						Bool("internal", item.Internal).
-						Int64("user_id", item.UserID).
-						Str("conversation_id", item.ConversationID).
-						Str("type", item.Type).
-						Str("connection", item.Connection.String).
-						Msg("failed to send invite conversation event to channel")
+					e.log.Warn("failed to send invite conversation event to channel",
+						slog.Any("error", err),
+						slog.String("channel_id", item.ID),
+						slog.Bool("internal", item.Internal),
+						slog.Int64("user_id", item.UserID),
+						slog.String("conversation_id", item.ConversationID),
+						slog.String("type", item.Type),
+						slog.String("connection", item.Connection.String),
+					)
 				}
 			}
 		default:
@@ -243,14 +246,15 @@ func (e *eventRouter) RouteInvite(conversationID *string, userID *int64) error {
 		case "webitel":
 			{
 				if err := e.sendEventToWebitelUser(nil, item, events.InviteConversationEventType, body); err != nil {
-					e.log.Warn().
-						Str("channel_id", item.ID).
-						Bool("internal", item.Internal).
-						Int64("user_id", item.UserID).
-						Str("conversation_id", item.ConversationID).
-						Str("type", item.Type).
-						Str("connection", item.Connection.String).
-						Msg("failed to send invite conversation event to channel")
+					e.log.Warn("failed to send invite conversation event to channel",
+						slog.Any("error", err),
+						slog.String("channel_id", item.ID),
+						slog.Bool("internal", item.Internal),
+						slog.Int64("user_id", item.UserID),
+						slog.String("conversation_id", item.ConversationID),
+						slog.String("type", item.Type),
+						slog.String("connection", item.Connection.String),
+					)
 				}
 			}
 		default:
@@ -482,13 +486,14 @@ func (e *eventRouter) RouteJoinConversation(channel *store.Channel, conversation
 			}
 
 			if err := e.sendEventToWebitelUser(nil, item, events.JoinConversationEventType, data); err != nil {
-				e.log.Warn().Err(err).
-					Str("notify", "new_chat_member").
-					Str("channel_id", item.ID).
-					Int64("user_id", item.UserID).
-					Str("conversation_id", item.ConversationID).
-					Str("channel_type", item.Type).
-					Msg("FAILED To NOTIFY Channel")
+				e.log.Error("FAILED To NOTIFY Channel",
+					slog.Any("error", err),
+					slog.String("notify", "new_chat_member"),
+					slog.String("channel_id", item.ID),
+					slog.Int64("user_id", item.UserID),
+					slog.String("conversation_id", item.ConversationID),
+					slog.String("channel_type", item.Type),
+				)
 			}
 		default: // TO: webitel.chat.bot (gateway)
 			// TODO: notify message.new_chat_members
@@ -513,14 +518,15 @@ func (e *eventRouter) RouteJoinConversation(channel *store.Channel, conversation
 			err = e.sendMessageToBotUser(channel, item, notice)
 
 			if err != nil {
-				e.log.Warn().Err(err).
-					Str("notify", "new_chat_member").
-					Str("channel_id", item.ID).
-					Int64("user_id", item.UserID).
-					Str("conversation_id", item.ConversationID).
-					Str("channel_type", item.Type).
-					Str("gateway_id", item.Connection.String).
-					Msg("FAILED To NOTIFY Gateway")
+				e.log.Warn("FAILED To NOTIFY Gateway",
+					slog.Any("error", err),
+					slog.String("notify", "new_chat_member"),
+					slog.String("channel_id", item.ID),
+					slog.Int64("user_id", item.UserID),
+					slog.String("conversation_id", item.ConversationID),
+					slog.String("channel_type", item.Type),
+					slog.String("gateway_id", item.Connection.String),
+				)
 			}
 		}
 	}
@@ -545,13 +551,14 @@ func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversatio
 	)
 
 	if err != nil {
-		e.log.Warn().Err(err).
-			Str("notify", "left_chat_member").
-			Str("channel_id", channel.ID).
-			Int64("user_id", channel.UserID).
-			Str("conversation_id", channel.ConversationID).
-			Str("channel_type", channel.Type).
-			Msg("FAILED To NOTIFY Channel")
+		e.log.Warn("FAILED To NOTIFY Channel",
+			slog.Any("error", err),
+			slog.String("notify", "left_chat_member"),
+			slog.String("channel_id", channel.ID),
+			slog.Int64("user_id", channel.UserID),
+			slog.String("conversation_id", channel.ConversationID),
+			slog.String("channel_type", channel.Type),
+		)
 	}
 	// Get CHAT related member(s) TO notify ...
 	active := true
@@ -580,13 +587,14 @@ func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversatio
 			)
 
 			if err != nil {
-				e.log.Warn().Err(err).
-					Str("notify", "left_chat_member").
-					Str("channel_id", member.ID).
-					Int64("user_id", member.UserID).
-					Str("conversation_id", member.ConversationID).
-					Str("channel_type", member.Type).
-					Msg("FAILED To NOTIFY Channel")
+				e.log.Warn("FAILED To NOTIFY Channel",
+					slog.Any("error", err),
+					slog.String("notify", "left_chat_member"),
+					slog.String("channel_id", member.ID),
+					slog.Int64("user_id", member.UserID),
+					slog.String("conversation_id", member.ConversationID),
+					slog.String("channel_type", member.Type),
+				)
 			}
 
 		default: // TO: webitel.chat.bot (gateway)
@@ -610,15 +618,16 @@ func (e *eventRouter) RouteLeaveConversation(channel *store.Channel, conversatio
 			err = e.sendMessageToBotUser(channel, member, externalM)
 
 			if err != nil {
-				e.log.Warn().Err(err).
-					Str("notify", "left_chat_member").
-					Str("channel_id", member.ID).
-					Bool("internal", member.Internal).
-					Int64("user_id", member.UserID).
-					Str("conversation_id", member.ConversationID).
-					Str("channel_type", member.Type).
-					Str("gateway_id", member.Connection.String).
-					Msg("FAILED To NOTIFY Gateway")
+				e.log.Warn("FAILED To NOTIFY Gateway",
+					slog.Any("error", err),
+					slog.String("notify", "left_chat_member"),
+					slog.String("channel_id", member.ID),
+					slog.Bool("internal", member.Internal),
+					slog.Int64("user_id", member.UserID),
+					slog.String("conversation_id", member.ConversationID),
+					slog.String("channel_type", member.Type),
+					slog.String("gateway_id", member.Connection.String),
+				)
 			}
 		}
 	}
@@ -708,14 +717,15 @@ func (e *eventRouter) RouteMessage(sender *store.Channel, message *chat.Message)
 
 		}
 		if err != nil {
-			e.log.Warn().Err(err).
-				Str("channel_id", member.ID).
-				Bool("internal", member.Internal).
-				Int64("user_id", member.UserID).
-				Str("conversation_id", member.ConversationID).
-				Str("type", member.Type).
-				Str("connection", member.Connection.String).
-				Msg("FAILED Sending message TO channel")
+			e.log.Warn("FAILED Sending message TO channel",
+				slog.Any("error", err),
+				slog.String("channel_id", member.ID),
+				slog.Bool("internal", member.Internal),
+				slog.Int64("user_id", member.UserID),
+				slog.String("conversation_id", member.ConversationID),
+				slog.String("type", member.Type),
+				slog.String("connection", member.Connection.String),
+			)
 		}
 	}
 
@@ -796,14 +806,15 @@ func (e *eventRouter) RouteMessageFromFlow(conversationID *string, message *chat
 		}
 
 		if err != nil {
-			e.log.Error().Err(err).
-				Str("channel_id", item.ID).
-				Bool("internal", item.Internal).
-				Int64("user_id", item.UserID).
-				Str("conversation_id", item.ConversationID).
-				Str("type", item.Type).
-				Str("connection", item.Connection.String).
-				Msg("FAILED Sending message TO channel")
+			e.log.Error("FAILED Sending message TO channel",
+				slog.Any("error", err),
+				slog.String("channel_id", item.ID),
+				slog.Bool("internal", item.Internal),
+				slog.Int64("user_id", item.UserID),
+				slog.String("conversation_id", item.ConversationID),
+				slog.String("type", item.Type),
+				slog.String("connection", item.Connection.String),
+			)
 		}
 	}
 

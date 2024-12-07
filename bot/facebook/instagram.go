@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	log2 "github.com/webitel/chat_manager/log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"path"
@@ -12,7 +14,6 @@ import (
 	"time"
 
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/rs/zerolog/log"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
 	graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
@@ -1147,17 +1148,18 @@ func (c *Client) WebhookInstagram(batch []*messenger.Entry) {
 					hook := c.hookIGMediaComment
 					// c.onInstagramComment
 					if hook == nil {
-						c.Gateway.Log.Warn().
-							Str("error", "update: instagram{comments} is disabled").
-							Msg("instagram.onComment")
+						c.Gateway.Log.Warn("instagram.onComment",
+							slog.String("error", "update: instagram{comments} is disabled"),
+						)
 						break // switch // (200) OK
 					}
 
 					var comment IGComment
 					err = e.GetValue(&comment)
 					if err != nil {
-						c.Gateway.Log.Err(err).
-							Msg("instagram.onComment")
+						c.Gateway.Log.Error("instagram.onComment",
+							slog.Any("error", err),
+						)
 						break // switch // (200) OK
 					}
 					// Handle update event
@@ -1170,27 +1172,28 @@ func (c *Client) WebhookInstagram(batch []*messenger.Entry) {
 					hook := c.hookIGMediaMention
 					// c.onInstagramMention
 					if hook == nil {
-						c.Gateway.Log.Warn().
-							Str("error", "update: instagram{mentions} is disabled").
-							Msg("instagram.onMention")
+						c.Gateway.Log.Warn("instagram.onMention",
+							slog.String("error", "update: instagram{mentions} is disabled"),
+						)
 						break // switch // (200) OK
 					}
 
 					var mention IGMention
 					err := e.GetValue(&mention)
 					if err != nil {
-						c.Gateway.Log.Err(err).
-							Msg("instagram.onMention")
+						c.Gateway.Log.Error("instagram.onMention",
+							slog.Any("error", err),
+						)
 						break
 					}
 					// Handle update event
 					hook(entry.ObjectID, &mention)
 
 				default:
-					c.Gateway.Log.Warn().
-						Str("field", e.Field).
-						Str("error", "update: instagram{"+e.Field+"} field is unknown").
-						Msg("instagram.onUpdate")
+					c.Gateway.Log.Warn("instagram.onUpdate",
+						slog.String("field", e.Field),
+						slog.String("error", "update: instagram{"+e.Field+"} field is unknown"),
+					)
 				}
 			}
 
@@ -1212,9 +1215,9 @@ func (c *Client) WebhookInstagram(batch []*messenger.Entry) {
 
 		if err != nil {
 			re := errors.FromError(err)
-			c.Gateway.Log.Error().
-				Str("error", re.Detail).
-				Msg(on)
+			c.Gateway.Log.Error(on,
+				slog.String("error", re.Detail),
+			)
 			err = nil
 			// continue
 		}
@@ -1230,10 +1233,10 @@ func (c *Client) onIGMediaComment(IGSID string, comment *IGComment) {
 	// Resolve comment's Instagram Account ID related TO
 	account := c.instagram.getPage(IGSID)
 	if account == nil {
-		c.Gateway.Log.Error().
-			Str("error", "instagram: page not found").
-			Str("igsid", IGSID).
-			Msg("instagram.onComment")
+		c.Gateway.Log.Error("instagram.onComment",
+			slog.String("error", "instagram: page not found"),
+			slog.String("igsid", IGSID),
+		)
 		return
 	}
 	// GET more comment's data to be able to generate valid comment permalink
@@ -1243,18 +1246,19 @@ func (c *Client) onIGMediaComment(IGSID string, comment *IGComment) {
 		"media{id,caption,media_type,media_product_type,shortcode,permalink}",
 	)
 	if err != nil {
-		c.Gateway.Log.Err(err).
-			Str("igsid", IGSID).
-			Msg("instagram.onComment")
+		c.Gateway.Log.Error("instagram.onComment",
+			slog.Any("error", err),
+			slog.String("igsid", IGSID),
+		)
 		return
 	}
 
 	commentLink, ok := comment.GetPermaLink()
 	if !ok {
-		c.Gateway.Log.Warn().
-			Str("error", "instagram: not enough data to generate a comment permalink").
-			Str("igsid", IGSID).
-			Msg("instagram.onComment")
+		c.Gateway.Log.Warn("instagram.onComment",
+			slog.String("error", "instagram: not enough data to generate a comment permalink"),
+			slog.String("igsid", IGSID),
+		)
 		return
 	}
 
@@ -1333,24 +1337,26 @@ func (c *Client) onIGMediaComment(IGSID string, comment *IGComment) {
 	err = c.Gateway.Read(ctx, &update)
 
 	if err != nil {
-		log.Err(err).Msg("instagram.onComment")
+		c.Gateway.Log.Error("instagram.onComment",
+			slog.Any("error", err),
+		)
 		// http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
 		return // err // 502 Bad Gateway
 	}
 
-	c.Gateway.Log.Debug().
-		Interface("sender", comment.From).
-		Interface("comment", comment.Text).
-		Interface("permalink", commentLink).
+	c.Gateway.Log.Debug("instagram.onComment",
+		slog.Any("sender", log2.SlogObject(comment.From)),
+		slog.String("comment", comment.Text),
+		slog.String("permalink", commentLink),
 		// Authenticated VIA Facebook Page
-		Interface("facebook", IGCommentFromUser{
+		slog.Any("facebook", log2.SlogObject(IGCommentFromUser{
 			ID: account.ID, Username: account.Name,
-		}).
+		})),
 		// Comment FOR Instagram Account
-		Interface("instagram", IGCommentFromUser{
+		slog.Any("instagram", log2.SlogObject(IGCommentFromUser{
 			ID: instagram.ID, Username: instagram.Username,
-		}).
-		Msg("instagram.onComment")
+		})),
+	)
 }
 
 // account, as a recipient; Instagram Page, which was just mentioned
@@ -1359,10 +1365,10 @@ func (c *Client) onIGMediaMention(IGSID string, mention *IGMention) {
 	// Resolve comment's Instagram Account ID related TO
 	account := c.instagram.getPage(IGSID)
 	if account == nil {
-		c.Gateway.Log.Error().
-			Str("error", "instagram: page account not found").
-			Str("igsid", IGSID).
-			Msg("instagram.onMention")
+		c.Gateway.Log.Error("instagram.onMention",
+			slog.String("error", "instagram: page account not found"),
+			slog.String("igsid", IGSID),
+		)
 		return
 	}
 
@@ -1392,9 +1398,10 @@ func (c *Client) onIGMediaMention(IGSID string, mention *IGMention) {
 		// "media_product_type",
 		// "owner{id,username}",
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("igsid", IGSID).
-				Msg("instagram.onMention")
+			c.Gateway.Log.Error("instagram.onMention",
+				slog.Any("error", err),
+				slog.String("igsid", IGSID),
+			)
 			return
 		}
 
@@ -1430,9 +1437,10 @@ func (c *Client) onIGMediaMention(IGSID string, mention *IGMention) {
 		// "media{id,caption,media_type,media_product_type,shortcode,permalink}",
 
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("igsid", IGSID).
-				Msg("instagram.onMention")
+			c.Gateway.Log.Error("instagram.onMention",
+				slog.Any("error", err),
+				slog.String("igsid", IGSID),
+			)
 			return
 		}
 
@@ -1527,25 +1535,26 @@ func (c *Client) onIGMediaMention(IGSID string, mention *IGMention) {
 	err = c.Gateway.Read(ctx, &update)
 
 	if err != nil {
-		log.Err(err).Msg("instagram.onMention")
+		c.Gateway.Log.Error("instagram.onMention",
+			slog.Any("error", err),
+		)
 		// http.Error(reply, "Failed to deliver facebook .Update message", http.StatusInternalServerError)
 		return // err // 502 Bad Gateway
 	}
 
-	c.Gateway.Log.Debug().
-		// Interface("from", comment.From).
-		Interface("sender", sender).
-		Interface("mention", mentionText).
-		Interface("permalink", mentionLink).
+	c.Gateway.Log.Debug("instagram.onMention",
+		slog.Any("sender", log2.SlogObject(sender)),
+		slog.String("mentionText", mentionText),
+		slog.String("permalink", mentionLink),
 		// Authenticated VIA Facebook Page
-		Interface("facebook", IGCommentFromUser{
+		slog.Any("facebook", log2.SlogObject(IGCommentFromUser{
 			ID: account.ID, Username: account.Name,
-		}).
+		})),
 		// Comment FOR Instagram Account
-		Interface("instagram", IGCommentFromUser{
+		slog.Any("instagram", log2.SlogObject(IGCommentFromUser{
 			ID: instagram.ID, Username: instagram.Username,
-		}).
-		Msg("instagram.onMention")
+		})),
+	)
 }
 
 func (c *Client) onIGStoryMention(IGSID string, mention *IGStoryMention) {

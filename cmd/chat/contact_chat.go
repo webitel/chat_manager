@@ -4,18 +4,18 @@ import (
 	"context"
 	"github.com/micro/micro/v3/service/context/metadata"
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/rs/zerolog"
 	oauth "github.com/webitel/chat_manager/api/proto/auth"
 	pb "github.com/webitel/chat_manager/api/proto/chat/messages"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/auth"
 	store "github.com/webitel/chat_manager/internal/repo/sqlx"
 	"github.com/webitel/protos/gateway/contacts"
+	"log/slog"
 	"strconv"
 )
 
 type ContactChatHistoryService struct {
-	logs          *zerolog.Logger
+	logs          *slog.Logger
 	authN         *auth.Client
 	store         store.CatalogStore
 	contactClient contacts.ContactsService
@@ -31,7 +31,7 @@ func NewContactChatHistoryService(opts ...ContactChatHistoryServiceOption) *Cont
 	return srv
 }
 
-func ContactChatHistoryServiceLogs(logs *zerolog.Logger) ContactChatHistoryServiceOption {
+func ContactChatHistoryServiceLogs(logs *slog.Logger) ContactChatHistoryServiceOption {
 	return func(srv *ContactChatHistoryService) error {
 		srv.logs = logs
 		return nil

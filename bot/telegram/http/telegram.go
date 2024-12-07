@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -158,7 +159,9 @@ func (c *TelegramBot) Register(ctx context.Context, callbackURL string) error {
 
 	webhook, err := telegram.NewWebhook(callbackURL)
 	if err != nil {
-		c.Gateway.Log.Error().Err(err).Msg("Failed to .Register webhook")
+		c.Gateway.Log.Error("Failed to .Register webhook",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -166,7 +169,9 @@ func (c *TelegramBot) Register(ctx context.Context, callbackURL string) error {
 	// _, err := c.BotAPI.SetWebhook(webhook)
 
 	if err != nil {
-		c.Gateway.Log.Error().Err(err).Msg("Failed to .Register webhook")
+		c.Gateway.Log.Error("Failed to .Register webhook",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -226,8 +231,9 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 	// REGION: recover latest chat channel state
 	chatID, err := strconv.ParseInt(channel.ChatID, 10, 64)
 	if err != nil {
-		c.Log.Error().Str("error", "invalid chat "+channel.ChatID+" integer identifier").Msg("TELEGRAM: SEND")
-
+		c.Log.Error("TELEGRAM: SEND",
+			slog.String("error", "invalid chat "+channel.ChatID+" integer identifier"),
+		)
 		return errors.InternalServerError(
 			"chat.gateway.telegram.chat.id.invalid",
 			"telegram: invalid chat %s unique identifier; expect integer values", channel.ChatID)
@@ -268,11 +274,12 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("join", peer)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", message.Type).
-				Msg("telegram/bot.updateChatMember")
+			c.Gateway.Log.Error(
+				"telegram/bot.updateChatMember",
+				slog.Any("error", err),
+				slog.String("update", message.Type),
+			)
 		}
-
 		// IGNORE: message text is missing
 		if text == "" {
 			return nil
@@ -308,9 +315,11 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("left", peer)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", message.Type).
-				Msg("telegram/bot.updateLeftMember")
+			c.Gateway.Log.Error(
+				"telegram/bot.updateLeftMember",
+				slog.Any("error", err),
+				slog.String("update", message.Type),
+			)
 		}
 
 		// IGNORE: message text is missing
@@ -328,9 +337,11 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("close", nil)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", message.Type).
-				Msg("telegram/bot.updateChatClose")
+			c.Gateway.Log.Error(
+				"telegram/bot.updateChatClose",
+				slog.Any("error", err),
+				slog.String("update", message.Type),
+			)
 		}
 
 		// IGNORE: message text is missing
@@ -386,10 +397,11 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 
 	// Check data is nil
 	if data == nil {
-		channel.Log.Warn().
-			Str("send", message.GetType()).
-			Str("error", "reaction not implemented").
-			Msg("TELEGRAM: SEND")
+		channel.Log.Warn(
+			"TELEGRAM: SEND",
+			slog.String("send", message.Type),
+			slog.String("error", "reaction not implemented"),
+		)
 		return nil
 	}
 
@@ -406,7 +418,9 @@ retry:
 	}
 
 	if err != nil {
-		channel.Log.Err(err).Msg("TELEGRAM: SEND")
+		channel.Log.Error("TELEGRAM: SEND",
+			slog.Any("error", err),
+		)
 		switch e := err.(type) {
 		case *telegram.Error:
 			switch e.Code {
@@ -476,7 +490,10 @@ func (c *TelegramBot) GetFile(fileID string) (helper.File, error) {
 		},
 	)
 	if err != nil {
-		c.Log.Err(err).Str("file-id", fileID).Msg("TELEGRAM: FILE")
+		c.Log.Error("TELEGRAM: FILE",
+			slog.Any("error", err),
+			slog.String("file-id", fileID),
+		)
 	}
 	return helper.File(file), err
 }
@@ -484,7 +501,10 @@ func (c *TelegramBot) GetFile(fileID string) (helper.File, error) {
 func (c *TelegramBot) GetFileDirectURL(fileID string) (string, error) {
 	href, err := c.BotAPI.GetFileDirectURL(fileID)
 	if err != nil {
-		c.Log.Err(err).Str("file-id", fileID).Msg("TELEGRAM: FILE")
+		c.Log.Error("TELEGRAM: FILE",
+			slog.Any("error", err),
+			slog.String("file-id", fileID),
+		)
 	}
 	return href, err
 }
@@ -513,7 +533,9 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 	if err != nil {
 		http.Error(reply, "Failed to decode telegram .Update event", http.StatusBadRequest)
-		c.Log.Error().Str("error", "telegram.Update: "+err.Error()).Msg("TELEGRAM: UPDATE")
+		c.Log.Error("TELEGRAM: UPDATE",
+			slog.String("error", "telegram.Update: "+err.Error()),
+		)
 		return // 400 Bad Request
 	}
 
@@ -565,7 +587,9 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		)
 
 		if _, err = c.BotAPI.Send(inlineKeyboardRemove); err != nil {
-			c.Log.Warn().Str("error", "InlineKeyboardRemove: "+err.Error()).Msg("TELEGRAM: INLINE")
+			c.Log.Warn("TELEGRAM: INLINE",
+				slog.String("error", "InlineKeyboardRemove: "+err.Error()),
+			)
 		}
 
 	}
@@ -576,11 +600,11 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		code := http.StatusOK // 200
 		reply.WriteHeader(code)
 
-		c.Gateway.Log.Warn().
-			Int("code", code).
-			Str("status", http.StatusText(code)).
-			Str("notice", "Update event is NOT either NEW nor EDIT Message").
-			Msg("TELEGRAM: IGNORE")
+		c.Gateway.Log.Warn("TELEGRAM: IGNORE",
+			slog.Int("code", code),
+			slog.String("status", http.StatusText(code)),
+			slog.String("notice", "Update event is NOT either NEW nor EDIT Message"),
+		)
 
 		return
 	}
@@ -679,7 +703,11 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			}
 			// FIXME
 			http.Error(reply, err.Error(), code)
-			c.Log.Err(err).Int("code", code).Msg("TELEGRAM: FILE")
+			c.Log.Error("TELEGRAM: FILE",
+				slog.Any("error", err),
+				slog.Int("code", code),
+				slog.String("status", http.StatusText(code)),
+			)
 			return // IGNORE Update !
 		}
 		// Prepare internal message content
@@ -708,7 +736,11 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			}
 			// FIXME
 			http.Error(reply, err.Error(), code)
-			c.Log.Err(err).Int("code", code).Msg("TELEGRAM: FILE")
+			c.Log.Error("TELEGRAM: FILE",
+				slog.Any("error", err),
+				slog.Int("code", code),
+				slog.String("status", http.StatusText(code)),
+			)
 			return // IGNORE Update !
 		}
 		// Prepare internal message content
@@ -753,7 +785,11 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			}
 			// FIXME
 			http.Error(reply, err.Error(), code)
-			c.Log.Err(err).Int("code", code).Msg("TELEGRAM: FILE")
+			c.Log.Error("TELEGRAM: FILE",
+				slog.Any("error", err),
+				slog.Int("code", code),
+				slog.String("status", http.StatusText(code)),
+			)
 			return // IGNORE Update !
 		}
 
@@ -785,7 +821,11 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			}
 			// FIXME
 			http.Error(reply, err.Error(), code)
-			c.Log.Err(err).Int("code", code).Msg("TELEGRAM: FILE")
+			c.Log.Error("TELEGRAM: FILE",
+				slog.Any("error", err),
+				slog.Int("code", code),
+				slog.String("status", http.StatusText(code)),
+			)
 			return // IGNORE Update !
 		}
 		// Prepare internal message content
@@ -817,7 +857,11 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			}
 			// FIXME
 			http.Error(reply, err.Error(), code)
-			c.Log.Err(err).Int("code", code).Msg("TELEGRAM: FILE")
+			c.Log.Error("TELEGRAM: FILE",
+				slog.Any("error", err),
+				slog.Int("code", code),
+				slog.String("status", http.StatusText(code)),
+			)
 			return // IGNORE Update !
 		}
 		// Prepare internal message content
@@ -848,7 +892,11 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			}
 			// FIXME
 			http.Error(reply, err.Error(), code)
-			c.Log.Err(err).Int("code", code).Msg("TELEGRAM: FILE")
+			c.Log.Error("TELEGRAM: FILE",
+				slog.Any("error", err),
+				slog.Int("code", code),
+				slog.String("status", http.StatusText(code)),
+			)
 			return // IGNORE Update !
 		}
 		// Prepare internal message content
@@ -879,7 +927,11 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			}
 			// FIXME
 			http.Error(reply, err.Error(), code)
-			c.Log.Err(err).Int("code", code).Msg("TELEGRAM: FILE")
+			c.Log.Error("TELEGRAM: FILE",
+				slog.Any("error", err),
+				slog.Int("code", code),
+				slog.String("status", http.StatusText(code)),
+			)
 			return // IGNORE Update !
 		}
 
@@ -923,7 +975,11 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			}
 			// FIXME
 			http.Error(reply, err.Error(), code)
-			c.Log.Err(err).Int("code", code).Msg("TELEGRAM: FILE")
+			c.Log.Error("TELEGRAM: FILE",
+				slog.Any("error", err),
+				slog.Int("code", code),
+				slog.String("status", http.StatusText(code)),
+			)
 			return // IGNORE Update !
 		}
 		// Prepare internal message content
@@ -983,9 +1039,9 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		code := http.StatusOK
 		reply.WriteHeader(code)
 		// IGNORE: not applicable yet !
-		channel.Log.Warn().
-			Str("notice", "message: is NOT a text, photo, audio, video or document").
-			Msg("TELEGRAM: UPDATE")
+		channel.Log.Warn("TELEGRAM: UPDATE",
+			slog.String("notice", "message: is NOT a text, photo, audio, video or document"),
+		)
 
 		return
 	}
@@ -1186,11 +1242,11 @@ func (c *TelegramBot) SendUserAction(ctx context.Context, peerId string, action 
 	}
 
 	if chatAction == "" {
-		c.Log.Warn().
-			Str("chat_id", peerId).
-			Str("action", fmt.Sprintf("(%d) %[1]s", action)).
-			Str("error", "no such [re]action").
-			Msg("telegram.bot.sendChatAction")
+		c.Log.Warn("telegram.bot.sendChatAction",
+			slog.String("chat_id", peerId),
+			slog.String("action", fmt.Sprintf("(%d) %[1]s", action)),
+			slog.String("error", "no such [re]action"),
+		)
 		return // false, err
 	}
 

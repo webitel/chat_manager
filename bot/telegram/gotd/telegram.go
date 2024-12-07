@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"mime"
 	"net/http"
 	"path/filepath"
@@ -153,11 +154,11 @@ func connect(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 		Gateway: agent,
 	}
 
-	log := agent.Log.With().
-		Str("tg", fmt.Sprintf("/app%d:%s", apiId, apiHash)).
-		Logger()
+	log := agent.Log.With(
+		slog.String("tg", fmt.Sprintf("/app%d:%s", apiId, apiHash)),
+	)
 
-	agent.Log = &log
+	agent.Log = log
 	// await connection
 	return app, app.connect()
 }
@@ -220,7 +221,9 @@ func (c *app) SendNotify(ctx context.Context, notify *bot.Update) error {
 	// region: recover latest chat channel state
 	chatID, err := strconv.ParseInt(peerChannel.ChatID, 10, 64)
 	if err != nil {
-		c.Log.Error().Str("error", "invalid chat "+peerChannel.ChatID+" integer identifier").Msg("TELEGRAM: SEND")
+		c.Log.Error("TELEGRAM: SEND",
+			slog.String("error", "invalid chat "+peerChannel.ChatID+" integer identifier"),
+		)
 		return errors.InternalServerError(
 			"chat.gateway.telegram.chat.id.invalid",
 			"telegram: invalid chat %s unique identifier; expect integer values", peerChannel.ChatID)
@@ -269,7 +272,9 @@ func (c *app) SendNotify(ctx context.Context, notify *bot.Update) error {
 			ctx, FormatText(sentMessage.Text), // markdown.FormatText(sentMessage.Text),
 		)
 		if err != nil {
-			c.Gateway.Log.Err(err).Msg("telegram/messages.sendMessage")
+			c.Gateway.Log.Error("telegram/messages.sendMessage",
+				slog.Any("error", err),
+			)
 			return err
 		}
 	case "file":
@@ -348,7 +353,9 @@ func (c *app) SendNotify(ctx context.Context, notify *bot.Update) error {
 		}
 
 		if err != nil {
-			c.Gateway.Log.Err(err).Msg("telegram/messages.sendMedia")
+			c.Gateway.Log.Error("telegram/messages.sendMedia",
+				slog.Any("error", err),
+			)
 			return err
 		}
 
@@ -365,9 +372,10 @@ func (c *app) SendNotify(ctx context.Context, notify *bot.Update) error {
 		updates := c.Gateway.Template
 		messageText, err := updates.MessageText("left", peer)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", sentMessage.Type).
-				Msg("telegram/bot.updateLeftMember")
+			c.Gateway.Log.Error("telegram/bot.updateLeftMember",
+				slog.Any("error", err),
+				slog.String("update", sentMessage.Type),
+			)
 		}
 		messageText = strings.TrimSpace(
 			messageText,
@@ -380,8 +388,10 @@ func (c *app) SendNotify(ctx context.Context, notify *bot.Update) error {
 			ctx, markdown.FormatText(messageText),
 		)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Msg("telegram/bot.updateLeftMember")
+			c.Gateway.Log.Error("telegram/bot.updateLeftMember",
+				slog.Any("error", err),
+				slog.String("update", sentMessage.Type),
+			)
 			return err
 		}
 
@@ -391,9 +401,10 @@ func (c *app) SendNotify(ctx context.Context, notify *bot.Update) error {
 		updates := c.Gateway.Template
 		messageText, err := updates.MessageText("join", peer)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", sentMessage.Type).
-				Msg("telegram/bot.updateChatMember")
+			c.Gateway.Log.Error("telegram/bot.updateChatMember",
+				slog.Any("error", err),
+				slog.String("update", sentMessage.Type),
+			)
 		}
 		messageText = strings.TrimSpace(
 			messageText,
@@ -419,8 +430,10 @@ func (c *app) SendNotify(ctx context.Context, notify *bot.Update) error {
 			ctx, markdown.FormatText(messageText),
 		)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Msg("telegram/bot.updateChatMember")
+			c.Gateway.Log.Error("telegram/bot.updateChatMember",
+				slog.Any("error", err),
+				slog.String("update", sentMessage.Type),
+			)
 			return err
 		}
 
@@ -429,9 +442,10 @@ func (c *app) SendNotify(ctx context.Context, notify *bot.Update) error {
 		updates := c.Gateway.Template
 		messageText, err := updates.MessageText("close", nil)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", sentMessage.Type).
-				Msg("telegram/bot.updateChatClose")
+			c.Gateway.Log.Error("telegram/bot.updateChatClose",
+				slog.Any("error", err),
+				slog.String("update", sentMessage.Type),
+			)
 		}
 		messageText = strings.TrimSpace(
 			messageText,
@@ -444,13 +458,16 @@ func (c *app) SendNotify(ctx context.Context, notify *bot.Update) error {
 			ctx, markdown.FormatText(messageText),
 		)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Msg("telegram/bot.updateChatClose")
+			c.Gateway.Log.Error("telegram/bot.updateChatClose",
+				slog.Any("error", err),
+			)
 			return err
 		}
 
 	default:
-		c.Gateway.Log.Warn().Str("error", "message.type("+sentMessage.Type+") reaction not implemented").Msg("telegram/messages.sendMessage")
+		c.Gateway.Log.Warn("telegram/messages.sendMessage",
+			slog.Any("error", "message.type("+sentMessage.Type+") reaction not implemented"),
+		)
 		return nil // IGNORE
 	}
 

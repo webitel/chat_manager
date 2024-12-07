@@ -1,12 +1,14 @@
 package chat
 
 import (
+	"log/slog"
 	"net/http"
-	"os"
+	"strings"
 
 	micro "github.com/micro/micro/v3/service"
 	"github.com/micro/micro/v3/service/broker"
-	"github.com/rs/zerolog"
+	"github.com/micro/micro/v3/service/server"
+	microgrpcsrv "github.com/micro/micro/v3/service/server/grpc"
 	"github.com/urfave/cli/v2"
 	pbauth "github.com/webitel/chat_manager/api/proto/auth"
 	pbbot "github.com/webitel/chat_manager/api/proto/bot"
@@ -14,10 +16,16 @@ import (
 	pb2 "github.com/webitel/chat_manager/api/proto/chat/messages"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	pbmanager "github.com/webitel/chat_manager/api/proto/workflow"
-	pbcontact "github.com/webitel/protos/gateway/contacts"
-
 	"github.com/webitel/chat_manager/cmd"
 	"github.com/webitel/chat_manager/log"
+	"github.com/webitel/chat_manager/otel"
+	pbcontact "github.com/webitel/protos/gateway/contacts"
+	otelsdk "github.com/webitel/webitel-go-kit/otel/sdk"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/resource"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	"google.golang.org/grpc"
 
 	authN "github.com/webitel/chat_manager/auth"
 	"github.com/webitel/chat_manager/internal/auth"
@@ -36,7 +44,6 @@ const (
 
 var (
 	service *micro.Service
-	logger  = zerolog.New(os.Stdout)
 	//redisStore store.Store
 	// rabbitBroker broker.Broker
 	//redisTable    string
@@ -49,9 +56,9 @@ var (
 	Flags = []cli.Flag{
 		&cli.StringFlag{
 			Name:    "log_level",
-			EnvVars: []string{"LOG_LEVEL"},
-			Value:   "debug",
+			EnvVars: []string{"WBTL_LOG_LEVEL"},
 			Usage:   "Log Level",
+			// Value:   "info",
 		},
 		// &cli.StringFlag{
 		// 	Name:    "db_host",
@@ -94,38 +101,81 @@ var (
 
 func Run(ctx *cli.Context) error {
 
+	if ctx.Bool("help") {
+		cli.ShowSubcommandHelp(ctx)
+		// os.Exit(1)
+		return nil
+	}
+
+	version := cmd.GitTag
+	if version == "" {
+		version = "dev"
+	}
+	resourceAttrs := []attribute.KeyValue{
+		semconv.ServiceName(name),
+		semconv.ServiceVersion(version),
+		semconv.ServiceInstanceID(server.DefaultId),
+	}
+	for key, value := range map[string]string{
+		"service.version.build": cmd.BuildDate,
+		"service.version.patch": cmd.GitCommit,
+	} {
+		if value = strings.TrimSpace(value); value != "" {
+			resourceAttrs = append(resourceAttrs,
+				attribute.String(key, value),
+			)
+		}
+	}
+
+	err := otel.Configure(ctx.Context,
+		otelsdk.WithResource(resource.NewSchemaless(
+			resourceAttrs...,
+		)),
+	)
+
+	if err != nil {
+		// fatal(fmt.Errorf("[O]pen[Tel]emetry configuration failed"))
+		return err // log(FATAL) & exit(1)
+	}
+
+	defer otel.Shutdown(ctx.Context)
+	stdlog := slog.Default()
+
+	server := server.DefaultServer
+	err = server.Init(microgrpcsrv.Options(
+		grpc.StatsHandler(otelgrpc.NewServerHandler(
+			// ...otelgrpc.Option
+			otelgrpc.WithMessageEvents(
+				otelgrpc.ReceivedEvents,
+				otelgrpc.SentEvents,
+			),
+		)),
+	))
+	if err != nil {
+		// Failed to setup micro/grpc.Server
+		return err
+	}
+
 	service = micro.New(
 		micro.Name(name),
 		micro.Version(cmd.Version()),
-		micro.WrapHandler(log.HandlerWrapper(&logger)),
-		micro.WrapCall(log.CallWrapper(&logger)),
+		micro.WrapCall(log.CallWrapper(stdlog)),
+		micro.WrapHandler(log.HandlerWrapper(stdlog)),
 	)
-	// Setup LOGs
-	logs := "error"
-	if ctx.IsSet("log_level") {
-		logs = ctx.String("log_level")
-	}
-	colorize := true
-	stdlog, err := log.Console(logs, colorize) // NewLogger(cfg.LogLevel)
-	if err != nil {
-		logger.Fatal().
-			Str("app", "failed to parse log level").
-			Msg(err.Error())
-		return err
-	}
-	logger = *(stdlog)
-	log.Default = *(stdlog)
 
 	// Setup DSN; Persistant store
-	dbo, err := OpenDB(ctx.String("db-dsn"))
+	dbo, err := OpenDB(stdlog, ctx.String("db-dsn"))
 	if err != nil {
-		logger.Fatal().Err(err).Msg("[--db-dsn] Invalid DSN String")
+		log.FataLog(stdlog,
+			"[--db-dsn] Invalid DSN String",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
 	// redisTable = c.String("store_table")
 	timeout = 600 // c.Uint64("conversation_timeout_sec")
-	store := pg.NewRepository(dbo, &logger)
+	store := pg.NewRepository(dbo, stdlog)
 
 	//cache := cache.NewChatCache(service.Options().Store)
 
@@ -142,27 +192,28 @@ func Run(ctx *cli.Context) error {
 	imClientsClient := pbcontact.NewIMClientsService(webitelGo, sender)
 	contactsClient := pbcontact.NewContactsService(webitelGo, sender)
 
-	flow := flow.NewClient(&logger, store, flowClient)
-	auth := auth.NewClient(&logger, authClient)
-	eventRouter := event.NewRouter(botClient /*flow,*/, broker.DefaultBroker, store, &logger)
+	flow := flow.NewClient(stdlog, store, flowClient)
+	auth := auth.NewClient(stdlog, authClient)
+	eventRouter := event.NewRouter(botClient /*flow,*/, broker.DefaultBroker, store, stdlog)
 	// serv := NewChatService(pgstore, repo, &logger, flow, auth, botClient, storageClient, eventRouter)
-	serv := NewChatService(store, &logger, flow, auth, botClient, storageClient, eventRouter)
+	serv := NewChatService(store, stdlog, flow, auth, botClient, storageClient, eventRouter)
 
-	if err := pb.RegisterChatServiceHandler(service.Server(), serv); err != nil {
-		logger.Fatal().
-			Str("app", "failed to register service").
-			Msg(err.Error())
-		return err
-	}
-	if err := pb.RegisterMessagesHandler(service.Server(), serv); err != nil {
-		logger.Fatal().
-			Str("app", "failed to register service").
-			Msg(err.Error())
-		return err
+	for _, regErr := range []error{
+		pb.RegisterChatServiceHandler(service.Server(), serv),
+		pb.RegisterMessagesHandler(service.Server(), serv),
+		// register more micro/gRPC service(s) here ...
+	} {
+		if regErr != nil {
+			log.FataLog(nil, // nil,
+				"failed to register service",
+				slog.Any("error", regErr),
+			)
+			return regErr
+		}
 	}
 
 	catalog := NewCatalog(
-		CatalogLogs(&logger),
+		CatalogLogs(stdlog),
 		CatalogAuthN(authN.NewClient(
 			authN.ClientService(service),
 			authN.ClientCache(authN.NewLru(4096)),
@@ -173,14 +224,15 @@ func Run(ctx *cli.Context) error {
 	if err := pb2.RegisterCatalogHandler(
 		service.Server(), catalog,
 	); err != nil {
-		logger.Fatal().
-			Str("app", "failed to register service").
-			Msg(err.Error())
+		log.FataLog(stdlog,
+			"failed to register service",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
 	contactLinking := NewContactLinkingService(
-		ContactLinkingServiceLogs(&logger),
+		ContactLinkingServiceLogs(stdlog),
 		ContactLinkingServiceAuthN(authN.NewClient(
 			authN.ClientService(service),
 			authN.ClientCache(authN.NewLru(4096)),
@@ -192,7 +244,7 @@ func Run(ctx *cli.Context) error {
 	)
 
 	agentChatService := NewAgentChatService(
-		AgentChatServiceLogs(&logger),
+		AgentChatServiceLogs(stdlog),
 		AgentChatServiceAuthN(authN.NewClient(
 			authN.ClientService(service),
 			authN.ClientCache(authN.NewLru(4096)),
@@ -203,14 +255,15 @@ func Run(ctx *cli.Context) error {
 	if err := pb2.RegisterAgentChatServiceHandler(
 		service.Server(), agentChatService,
 	); err != nil {
-		logger.Fatal().
-			Str("app", "failed to register service").
-			Msg(err.Error())
+		log.FataLog(stdlog,
+			"failed to register service",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
 	contactChatHistory := NewContactChatHistoryService(
-		ContactChatHistoryServiceLogs(&logger),
+		ContactChatHistoryServiceLogs(stdlog),
 		ContactChatHistoryServiceAuthN(authN.NewClient(
 			authN.ClientService(service),
 			authN.ClientCache(authN.NewLru(4096)),
@@ -222,18 +275,20 @@ func Run(ctx *cli.Context) error {
 	if err := pb2.RegisterContactLinkingServiceHandler(
 		service.Server(), contactLinking,
 	); err != nil {
-		logger.Fatal().
-			Str("app", "failed to register service").
-			Msg(err.Error())
+		log.FataLog(stdlog,
+			"failed to register service",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
 	if err := pb2.RegisterContactsChatCatalogHandler(
 		service.Server(), contactChatHistory,
 	); err != nil {
-		logger.Fatal().
-			Str("app", "failed to register service").
-			Msg(err.Error())
+		log.FataLog(stdlog,
+			"failed to register service",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -245,15 +300,16 @@ func Run(ctx *cli.Context) error {
 	go func() {
 		_ = httpsrv.ListenAndServe()
 	}()
+	defer httpsrv.Close()
 
 	if err := service.Run(); err != nil {
-		_ = httpsrv.Close()
-		logger.Fatal().
-			Str("app", "failed to run service").
-			Msg(err.Error())
+		log.FataLog(stdlog,
+			"failed to run service",
+			slog.Any("error", err),
+		)
+		return err
 	}
 
-	_ = httpsrv.Close()
 	return nil
 }
 

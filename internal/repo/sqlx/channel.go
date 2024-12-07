@@ -7,10 +7,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	proto "github.com/webitel/chat_manager/api/proto/chat"
 	"strconv"
 	"strings"
 	"time"
+
+	proto "github.com/webitel/chat_manager/api/proto/chat"
 
 	"github.com/google/uuid"
 	errs "github.com/micro/micro/v3/service/errors"
@@ -41,8 +42,10 @@ func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Cha
 	list, err := GetChannels(repo.db, ctx, &search)
 
 	if err != nil {
-		repo.log.Error().Err(err).Str("id", id).
-			Msg("Failed lookup DB chat.channel")
+		repo.log.Error("Failed lookup DB chat.channel",
+			"error", err,
+			"id", id,
+		)
 		return nil, err
 	}
 
@@ -947,7 +950,7 @@ func ChannelList(rows *sql.Rows, limit int) ([]*Channel, error) {
 			row = new(Channel)
 		}
 
-		err := row.Scan(rows) // , plan)
+		err = row.Scan(rows) // , plan)
 
 		if err != nil {
 			break

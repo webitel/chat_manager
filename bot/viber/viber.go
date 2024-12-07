@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"path"
 	"strconv"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -49,7 +49,7 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 	profile := agent.Bot.GetMetadata()
 	botToken, ok := profile["token"]
 	if !ok {
-		log.Error().Msg("AppToken not found")
+		agent.Log.Error("AppToken not found")
 		return nil, errors.BadRequest(
 			"chat.gateway.viber.token.required",
 			"viber: bot API token required",
@@ -178,7 +178,9 @@ func (c *Bot) Register(ctx context.Context, linkURL string) error {
 	}
 
 	if err != nil {
-		c.Gateway.Log.Err(err).Msg("viber/bot.setWebhook")
+		c.Gateway.Log.Error("viber/bot.setWebhook",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -276,9 +278,10 @@ func (c *Bot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		updates := c.Gateway.Template
 		messageText, err := updates.MessageText("left", peer)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", sentMessage.Type).
-				Msg("viber/bot.updateLeftMember")
+			c.Gateway.Log.Error("viber/bot.updateLeftMember",
+				slog.Any("error", err),
+				slog.String("update", sentMessage.Type),
+			)
 		}
 		messageText = strings.TrimSpace(
 			messageText,
@@ -295,9 +298,10 @@ func (c *Bot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		updates := c.Gateway.Template
 		messageText, err := updates.MessageText("join", peer)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", sentMessage.Type).
-				Msg("vider/bot.updateChatMember")
+			c.Gateway.Log.Error("viber/bot.updateChatMember",
+				slog.Any("error", err),
+				slog.String("update", sentMessage.Type),
+			)
 		}
 		messageText = strings.TrimSpace(
 			messageText,
@@ -326,9 +330,10 @@ func (c *Bot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		updates := c.Gateway.Template
 		messageText, err := updates.MessageText("close", nil)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", sentMessage.Type).
-				Msg("viber/bot.updateChatClose")
+			c.Gateway.Log.Error("viber/bot.updateChatClose",
+				slog.Any("error", err),
+				slog.String("update", sentMessage.Type),
+			)
 		}
 		messageText = strings.TrimSpace(
 			messageText,
@@ -445,7 +450,9 @@ func (c *Bot) do(r request, w interface{}) error {
 	}
 
 	if err != nil {
-		c.Gateway.Log.Err(err).Msg("viber/" + r.method() + ":result")
+		c.Gateway.Log.Error("viber/"+r.method()+":result",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -474,7 +481,7 @@ func (c *Bot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 	var event Update
 	err := json.NewDecoder(notice.Body).Decode(&event)
 	if err != nil {
-		c.Gateway.Log.Err(err).Msg("viber/bot.onUpdate")
+		c.Gateway.Log.Error("viber/bot.onUpdate")
 		return // (200) IGNORE
 	}
 
@@ -499,17 +506,18 @@ func (c *Bot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 		updateFailMessage:
 		hook = c.onMsgStatus
 	default:
-		c.Gateway.Log.Warn().
-			Str("event", event.Type).
-			Str("error", "event: no update reaction").
-			Msg("viber/bot.onUpdate")
+		c.Gateway.Log.Warn("viber/bot.onUpdate",
+			slog.String("event", event.Type),
+			slog.String("error", "event: no update reaction"),
+		)
 		return // (200) IGNORE
 	}
 	// Handle update event
 	err = hook(ctx, &event)
 	if err != nil {
-		c.Gateway.Log.Err(err).
-			Msg("viber/bot.on" + strings.Title(event.Type))
+		c.Gateway.Log.Error("viber/bot.on"+strings.Title(event.Type),
+			slog.Any("error", err),
+		)
 		return // (200) IGNORE
 	}
 

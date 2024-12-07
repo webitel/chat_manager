@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/md5"
 	"fmt"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
@@ -17,7 +18,6 @@ import (
 
 	// "github.com/golang/protobuf/proto"
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/webitel/chat_manager/api/proto/bot"
@@ -430,8 +430,9 @@ func (srv *Service) CreateBot(ctx context.Context, add *bot.Bot, obj *bot.Bot) e
 			re.Code = (int32)(code)
 			re.Status = http.StatusText(code)
 		}
-
-		log.Error().Str("error", re.Detail).Msg("REGISTER")
+		srv.Log.Error("REGISTER",
+			slog.String("error", re.Detail),
+		)
 
 		return re
 	}

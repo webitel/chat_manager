@@ -33,7 +33,9 @@ func (repo *sqlxRepository) GetClientByID(ctx context.Context, id int64) (*Clien
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		repo.log.Error().Err(err).Msg("GetClientByID")
+		repo.log.Error("GetClientByID",
+			"error", err,
+		)
 		return nil, err
 	}
 	return result, nil
@@ -46,7 +48,9 @@ func (repo *sqlxRepository) GetClientByExternalID(ctx context.Context, externalI
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		repo.log.Error().Err(err).Msg("GetClientByExternalID")
+		repo.log.Error("GetClientByExternalID",
+			"error", err,
+		)
 		return nil, err
 	}
 	return result, nil
@@ -88,18 +92,20 @@ func (repo *sqlxRepository) CreateClient(ctx context.Context, c *Client) error {
 		if err == sql.ErrNoRows {
 			err = fmt.Errorf("INSERT: no result")
 		}
-		repo.log.Error().Err(err).Msg("CreateClient")
+		repo.log.Error("CreateClient",
+			"error", err,
+		)
 		return err
 	}
 
-	repo.log.Info().
-		Int64("oid", c.ID).
-		Str("name", c.Name.String).
-		Str("phone", c.Number.String).
-		Str("contact", c.ExternalID.String).
-		Str("first_name", c.FirstName.String).
-		Str("last_name", c.LastName.String).
-		Msg("CONTACT")
+	repo.log.Info("CONTACT",
+		"oid", c.ID,
+		"name", c.Name.String,
+		"phone", c.Number.String,
+		"contact", c.ExternalID.String,
+		"first_name", c.FirstName.String,
+		"last_name", c.LastName.String,
+	)
 
 	return nil
 
