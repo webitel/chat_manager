@@ -42,7 +42,7 @@ func (b *SendMessageBuilder) SetText(text string) error {
 		return errors.New("text cannot be allowed in the message to be sent")
 	}
 
-	b.chatAction = telegram.ChatTyping
+	b.chatAction = "" // telegram.ChatTyping
 
 	text, entities := markdown.TextEntities(text)
 	message := telegram.NewMessage(
@@ -224,11 +224,14 @@ func (b *SendMessageBuilder) Build() (telegram.Chattable, error) {
 }
 
 // Build all message data with chat action status
-func (b *SendMessageBuilder) BuildWithAction() (telegram.Chattable, telegram.Chattable, error) {
-	action := telegram.NewChatAction(
-		b.chatID, b.chatAction,
-	)
-	return b.messageConfig, action, nil
+func (b *SendMessageBuilder) BuildWithAction() (message, action telegram.Chattable, err error) {
+	message = b.messageConfig
+	if b.chatAction != "" {
+		action = telegram.NewChatAction(
+			b.chatID, b.chatAction,
+		)
+	}
+	return // b.messageConfig, b.chatAction, nil
 }
 
 // getMediaType parse mimetype and return file type, like: image, audio and video

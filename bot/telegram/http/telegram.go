@@ -1206,9 +1206,12 @@ func (c *TelegramBot) BroadcastMessage(ctx context.Context, req *chat.BroadcastM
 
 		// Send message to chat with user
 		err = c.doTelegramAPI(ctx, func() error {
-			_, err := c.BotAPI.Request(action)
-			if err != nil {
-				return err
+
+			if action != nil {
+				_, err = c.BotAPI.Request(action)
+				if err != nil {
+					return err
+				}
 			}
 
 			resp, err := c.BotAPI.Send(data)
