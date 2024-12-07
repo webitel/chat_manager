@@ -2,11 +2,12 @@ package bot
 
 import (
 	"context"
-	wrapperLog "github.com/webitel/chat_manager/log"
 	"log/slog"
 	"strconv"
 	"sync"
 	"time"
+
+	wlog "github.com/webitel/chat_manager/log"
 
 	"github.com/micro/micro/v3/service/client"
 	"github.com/micro/micro/v3/service/server"
@@ -93,7 +94,7 @@ func (c *Channel) Close() (err error) {
 				_ = bot.Remove()
 				_ = bot.External.Close()
 			} else if !bot.Enabled {
-				bot.Log.Warn("DISABLED")
+				c.Log.Warn("[ CHAT::CLOSE ]", "error", "gateway is disabled")
 			}
 		}
 		// if len(bot.external) == 0 {
@@ -131,7 +132,7 @@ func (c *Channel) Close() (err error) {
 
 		if c.Closed != 0 {
 			// NOTE: we are done ! Close confirmed by server sent final .message.text "Conversation closed" !
-			c.Log.Warn(">>>>> CLOSED <<<<<") // CONFIRMED Chat State !
+			c.Log.Warn("[ CHAT::CLOSED ]") // CONFIRMED Chat State !
 			return nil
 		}
 		cause := chat.CloseConversationCause_client_leave
@@ -139,7 +140,7 @@ func (c *Channel) Close() (err error) {
 		// Mark SENT .CloseConversation(!)
 		c.Closed = time.Now().Unix()
 
-		c.Log.Warn(">>>>> CLOSING >>>>>",
+		c.Log.Warn("[ CHAT::CLOSE ]", // Start request
 			slog.String("cause", cause.String()),
 		)
 		// PREPARE: request parameters
@@ -175,7 +176,7 @@ func (c *Channel) Close() (err error) {
 						_ = bot.Remove()
 						_ = bot.External.Close()
 					} else if !bot.Enabled {
-						bot.Log.Warn("DISABLED")
+						c.Log.Warn("[ CHAT::CLOSE ]", "error", "gateway is disabled")
 					}
 				}
 				// if len(bot.external) == 0 {
@@ -199,9 +200,9 @@ func (c *Channel) Close() (err error) {
 			bot.Unlock() // -RW
 
 			// TODO: defer c.Send("error: %s", err)
-			c.Log.Error(">>>>> CLOSING >>>>>",
-				slog.Any("error", err),
+			c.Log.Error("[ CHAT::CLOSE ]", // Start request
 				slog.String("cause", cause.String()),
+				slog.Any("error", err),
 			)
 		}
 
@@ -230,7 +231,7 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 	// }
 
 	if message.UpdatedAt != 0 {
-		c.Log.Warn("BOT: START",
+		c.Log.Warn("[ CHAT::START ]",
 			slog.Any("error", "ignore: start the conversation by editing the message"),
 		)
 		return nil
@@ -277,8 +278,11 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 
 	agent := c.Gateway
 	span := agent.Log.With(
-		slog.String("chat-id", c.ChatID),
-		slog.String("username", c.Title),
+		"chat", slog.GroupValue(
+			slog.String("user", c.Account.Channel+":"+c.ChatID),
+			slog.String("title", c.Title),
+			slog.Int64("uid", c.Account.ID),
+		),
 	)
 
 	// PERFORM: /start external chat channel
@@ -289,7 +293,7 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 		StartConversation(ctx, &start, c.callOpts)
 
 	if err != nil {
-		span.Error(">>>>> START <<<<<",
+		span.Error("[ CHAT::START ]",
 			slog.Any("error", err),
 		)
 		return err
@@ -301,9 +305,14 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 	c.SessionID = chat.ConversationId
 
 	span = span.With(
-		slog.String("session-id", c.SessionID),
-		slog.String("channel-id", c.ChannelID),
-		slog.String("host", c.Host), // webitel.chat.server
+		"chat", slog.GroupValue(
+			slog.String("user", c.Account.Channel+":"+c.ChatID),
+			slog.String("title", c.Title),
+			slog.Int64("uid", c.Account.ID),
+			slog.String("id", c.ChannelID),
+			slog.String("thread.id", c.SessionID),
+			slog.String("host", c.Host), // webitel.chat.server
+		),
 	)
 
 	c.Log = span
@@ -327,7 +336,7 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 	c.Gateway.internal[c.Account.ID] = c // [c.ContactID] = c
 	c.Gateway.Unlock()                   // -RW
 
-	c.Log.Info(">>>>> START <<<<<")
+	c.Log.Info("[ CHAT::START ]")
 
 	return nil
 }
@@ -433,7 +442,7 @@ func (c *Channel) DeleteMessage(ctx context.Context, message *chat.Message) erro
 	)
 
 	log := c.Log.With(
-		slog.Any("deleted", wrapperLog.SlogObject(msg)),
+		slog.Any("deleted", wlog.SlogObject(msg)),
 	)
 
 	if err == nil {
@@ -462,9 +471,11 @@ func (c *Channel) callWrap(next client.CallFunc) client.CallFunc {
 		//
 		if err != nil {
 			if c.Host != "" {
-				c.Log.Warn("LOST",
-					slog.String("seed", c.Host), // WANTED
-					slog.String("peer", addr),   // REQUESTED
+				c.Log.Warn("[ CHAT::LOST ]",
+					"chat", slog.GroupValue(
+						slog.String("lost", c.Host), // WANTED
+						slog.String("host", addr),   // REQUESTED
+					),
 				)
 			}
 			c.Host = ""
@@ -475,15 +486,17 @@ func (c *Channel) callWrap(next client.CallFunc) client.CallFunc {
 			// NEW! Hosted!
 			c.Host = addr
 
-			c.Log.Info("HOSTED",
-				slog.String("peer", c.Host),
+			c.Log.Info("[ CHAT::HOSTED ]",
+				slog.String("chat.host", c.Host),
 			)
 
 		} else if addr != c.Host {
 			// Hosted! But JUST Served elsewhere ...
-			c.Log.Info("RE-HOST",
-				slog.String("seed", c.Host), // WANTED
-				slog.String("peer", addr),   // SERVED
+			c.Log.Info("[ CHAT::REHOST ]",
+				"chat", slog.GroupValue(
+					slog.String("lost", c.Host), // WANTED
+					slog.String("host", addr),   // SERVED
+				),
 			)
 
 			c.Host = addr
@@ -543,24 +556,30 @@ func (c channelLookup) Select(hosts []string, opts ...selector.SelectOption) (se
 
 	if peer == "" {
 
-		c.Log.Warn(perform,
-			slog.String("seed", c.Host),   // WANTED
-			slog.String("peer", "random"), // SELECT
-			slog.String("error", "host: service unavailable"),
+		c.Log.Warn("[ HOST::LOOKUP ]",
+			"conn", wlog.DeferValue(func() slog.Value {
+				return slog.GroupValue(
+					slog.String("addr", c.Host),   // WANTED
+					slog.String("next", "random"), // SELECT
+				)
+			}),
+			"error", "host: service unavailable",
 		)
 
 		return lookup(hosts, opts...)
 	}
 
-	log := c.Log.With(
-		slog.String("seed", c.Host), // WANTED
-		slog.String("peer", peer),   // FOUND
+	emit := c.Log.With(
+		"conn", slog.GroupValue(
+			slog.String("last", c.Host), // WANTED
+			slog.String("addr", peer),   // FOUND
+		),
 	)
 
 	if perform == "RECOVER" { // TODO  is always 'false'
-		log.Info(perform)
+		emit.Info("[ HOST::RECOVER ]")
 	} else {
-		log.Debug(perform)
+		emit.Debug("[ HOST::LOOKUP ]")
 	}
 
 	return func() string {

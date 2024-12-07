@@ -21,6 +21,7 @@ import (
 	bot "github.com/webitel/chat_manager/api/proto/workflow"
 	"github.com/webitel/chat_manager/app"
 	store "github.com/webitel/chat_manager/internal/repo/sqlx"
+	wlog "github.com/webitel/chat_manager/log"
 )
 
 // Channel [FROM] chat.srv [TO] workflow
@@ -215,13 +216,15 @@ func (c *Channel) callWrap(next client.CallFunc) client.CallFunc {
 		if err != nil {
 
 			if c.Host != "" {
-				c.Log.Warn("LOST",
-					slog.Int64("pid", c.UserID()),      // channel: schema@bot.profile (external)
-					slog.Int64("pdc", c.DomainID()),    // channel: primary domain component id
+				c.Log.Warn("[ CHAT::FLOW ] LOST",
+					slog.Int64("pid", c.UserID()),   // channel: schema@bot.profile (external)
+					slog.Int64("pdc", c.DomainID()), // channel: primary domain component id
+					// slog.String("channel", "chatflow"),
 					slog.String("chat-id", c.ChatID()), // channel: chat@workflow.schema.bot (internal)
-					slog.String("channel", "chatflow"),
-					slog.String("seed", c.Host), // WANTED
-					slog.String("peer", addr),   // REQUESTED
+					slog.String("conversation_id", c.ChatID()),
+					slog.String("host", c.Host), // WANTED
+					slog.String("addr", addr),   // REQUESTED
+					slog.Any("error", err),
 				)
 			}
 			c.Host = ""
@@ -247,12 +250,13 @@ func (c *Channel) callWrap(next client.CallFunc) client.CallFunc {
 				return err
 			}
 
-			c.Log.Info("HOSTED",
+			c.Log.Info("[ CHAT::FLOW ] HOSTED",
 				slog.Int64("pid", c.UserID()),      // channel: schema@bot.profile (external)
 				slog.Int64("pdc", c.DomainID()),    // channel: primary domain component id
 				slog.String("chat-id", c.ChatID()), // channel: chat@workflow.schema.bot (internal)
-				slog.String("channel", "chatflow"),
-				slog.String("peer", c.Host), // == addr
+				// slog.String("channel", "chatflow"),
+				slog.String("conversation_id", c.ChatID()),
+				slog.String("host", c.Host), // == addr
 			)
 
 		} else if addr != c.Host {
@@ -265,13 +269,14 @@ func (c *Channel) callWrap(next client.CallFunc) client.CallFunc {
 				return err
 			}
 
-			c.Log.Info("RE-HOST",
+			c.Log.Info("[ CHAT::FLOW ] REHOST",
 				slog.Int64("pid", c.UserID()),      // channel: schema@bot.profile (external)
 				slog.Int64("pdc", c.DomainID()),    // channel: primary domain component id
 				slog.String("chat-id", c.ChatID()), // channel: chat@workflow.schema.bot (internal)
-				slog.String("channel", "chatflow"),
-				slog.String("peer", seed), // WANTED
-				slog.String("peer", addr), // SERVED
+				// slog.String("channel", "chatflow"),
+				slog.String("conversation_id", c.ChatID()),
+				slog.String("lost", seed), // WANTED
+				slog.String("host", addr), // SERVED
 			)
 
 			// c.Host = addr
@@ -302,6 +307,11 @@ var randomize = random.NewSelector()
 
 // Select a route from the pool using the strategy
 func (c chatFlowSelector) Select(hosts []string, opts ...selector.SelectOption) (selector.Next, error) {
+	lookup := client.DefaultClient.Options().Selector
+	if lookup == nil {
+		lookup = randomize
+	}
+
 	perform := "LOOKUP"
 	// region: recover .this channel@workflow service node
 	if c.Host == "lookup" {
@@ -314,6 +324,7 @@ func (c chatFlowSelector) Select(hosts []string, opts ...selector.SelectOption) 
 			c.Log.Error("RECOVER Failed lookup store for chat@workflow channel host",
 				slog.String("chat-id", c.ID), // channel: chat@workflow.schema.bot (internal)
 				slog.String("channel", "chatflow"),
+				slog.String("conversation_id", c.ID),
 			)
 
 			c.Host = ""
@@ -347,7 +358,7 @@ func (c chatFlowSelector) Select(hosts []string, opts ...selector.SelectOption) 
 	if c.Host == "" {
 		// START
 		// return selector.Random(services)
-		return randomize.Select(hosts, opts...)
+		return lookup.Select(hosts, opts...)
 		// return strategy.PrefferedHost("127.0.0.1")(hosts, opts...) // workflow
 	}
 
@@ -361,17 +372,18 @@ func (c chatFlowSelector) Select(hosts []string, opts ...selector.SelectOption) 
 
 	if peer == "" {
 
-		c.Log.Warn(perform,
+		c.Log.Warn("[ CHAT::FLOW ] "+perform,
 			slog.Int64("pid", c.UserID()),      // channel: schema@bot.profile (external)
 			slog.Int64("pdc", c.DomainID()),    // channel: primary domain component id
 			slog.String("chat-id", c.ChatID()), // channel: chat@workflow.schema.bot (internal)
-			slog.String("channel", "chatflow"),
+			// slog.String("channel", "chatflow"),
+			slog.String("conversation_id", c.ChatID()),
 			slog.String("host", c.Host),   // WANTED
-			slog.String("peek", "random"), // SELECT
+			slog.String("next", "random"), // SELECT
 			slog.String("error", "node: not found"),
 		)
 
-		return randomize.Select(hosts, opts...)
+		return lookup.Select(hosts, opts...)
 		// return strategy.PrefferedHost("10.9.8.111")(services)
 	}
 
@@ -380,14 +392,15 @@ func (c chatFlowSelector) Select(hosts []string, opts ...selector.SelectOption) 
 		slog.Int64("pdc", c.DomainID()),    // channel: primary domain component id
 		slog.String("chat-id", c.ChatID()), // channel: chat@workflow.schema.bot (internal)
 		slog.String("channel", "chatflow"),
-		slog.String("peer", c.Host), // WANTED & FOUND
+		slog.String("conversation_id", c.ChatID()), // channel: chat@workflow.schema.bot (internal)
+		slog.String("host", c.Host),                // WANTED & FOUND
 	)
 
 	if perform == "LOCATE" {
-		l.Info(perform)
-	} else {
-		l.Debug(perform)
-	}
+		l.Info("[ CHAT::FLOW ] " + perform)
+	} // else {
+	// 	l.Debug(perform)
+	// }
 
 	return func() string {
 		return peer
@@ -457,9 +470,9 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 		pending, err = c.Store.ReadConfirmation(c.ID)
 
 		if err != nil {
-			c.Log.Error("Failed to get {chat.recvMessage.token} from store",
-				slog.String("chat-id", c.ID), // channel: chat@workflow.schema.bot (internal)
-				slog.Any("error", err),
+			c.Log.Error("Failed to get {flow.recvMessage.token} from store",
+				"chat-id", c.ID, // channel: chat@workflow.schema.bot (internal)
+				"error", err,
 			)
 			return err
 		}
@@ -470,15 +483,18 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 	// Flow.WaitMessage()
 	if pending == "" {
 		// FIXME: NO confirmation found for chat - means that we are not in {waitMessage} block ?
-		c.Log.Warn("CHAT Flow is NOT waiting for message(s); DO NOTHING MORE!",
-			slog.String("chat-id", c.ID), // channel: chat@workflow.schema.bot (internal)
+		c.Log.Debug("[ CHAT::FLOW ] IDLE",
+			"chat-id", c.ID, // channel: chat@workflow.schema.bot (internal)
+			"conversation_id", c.ID,
 		)
 		return nil
 	}
 
-	c.Log.Debug("send confirmed messages",
-		slog.String("conversation_id", c.ID), // channel: chat@workflow.schema.bot (internal)
-		slog.String("confirmation_id", pending),
+	c.Log.Debug("[ CHAT::FLOW ] Delivery",
+		"conversation_id", c.ID, // channel: chat@workflow.schema.bot (internal)
+		"confirmation_id", pending,
+		"msg.type", message.Type,
+		"msg.id", message.Id,
 	)
 
 	// messages := []*bot.Message{
@@ -567,13 +583,13 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 // Start @workflow.Start(!) chat channel routine
 func (c *Channel) Start(message *chat.Message) error {
 
-	c.Log.Debug("START Conversation",
-		slog.String("conversation_id", c.ChatID()),
-		slog.Int64("profile_id", c.UserID()),
-		slog.Int64("domain_id", c.DomainID()),
-		slog.Any("metadata", c.Variables),
-		slog.Any("message", message),
-	)
+	// c.Log.Debug("START Conversation",
+	// 	slog.String("conversation_id", c.ChatID()),
+	// 	slog.Int64("profile_id", c.UserID()),
+	// 	slog.Int64("domain_id", c.DomainID()),
+	// 	slog.Any("metadata", c.Variables),
+	// 	slog.Any("message", message),
+	// )
 
 	// const commandStart = "start"
 	//messageText := commandStart
@@ -594,6 +610,55 @@ func (c *Channel) Start(message *chat.Message) error {
 		message.Variables = metadata
 	}
 	// endregion: TEST PURPOSE ONLY !
+
+	level := slog.LevelDebug
+	debugCtx := []any{
+		"msg", wlog.DeferValue(func() slog.Value {
+			msg := []slog.Attr{
+				slog.Int64("id", message.Id),
+				slog.String("type", message.Type),
+			}
+			// if message.Text != "" || message.Type == "text" {
+			// 	msg = append(msg,
+			// 		slog.String("text", message.Text),
+			// 	)
+			// }
+			// if message.File != nil {
+			// 	msg = append(msg,
+			// 		slog.String("file", wlog.JsonValue(message.File)),
+			// 	)
+			// }
+			return slog.GroupValue(msg...)
+		}),
+		"from", wlog.DeferValue(func() slog.Value {
+			fromChat := &c.Chat
+			fromUser := message.From
+			return slog.GroupValue(
+				slog.String("id", fromChat.ID),
+				slog.String("via", fmt.Sprintf("%d@%s", c.ProfileID, fromChat.ServiceHost.String)),
+				slog.String("user", fromUser.Channel+":"+fromUser.Contact),
+				slog.String("title", fromUser.FirstName),
+			)
+		}),
+		"chat", wlog.DeferValue(func() slog.Value {
+			return slog.GroupValue(
+				slog.String("id", c.ChatID()),
+				slog.Int64("dc", c.DomainID()),
+				slog.String("user", "bot:"+strconv.FormatInt(schemaId, 10)),
+				// slog.String("title", schemaName),
+				slog.String("thread.id", c.ChatID()), // conversation_id
+				slog.String("metadata", wlog.JsonValue(c.Variables)),
+			)
+		}),
+		// copy of [TO] chat.thread.id
+		"conversation_id", c.ChatID(),
+	}
+
+	c.Log.Log(
+		context.TODO(), level,
+		"[ CHAT::FLOW ] Setup",
+		debugCtx...,
+	)
 
 	start := &bot.StartRequest{
 
@@ -650,8 +715,10 @@ func (c *Channel) Start(message *chat.Message) error {
 
 	if err != nil {
 
-		c.Log.Error("Failed to /start chat@bot routine",
-			slog.Any("error", err),
+		c.Log.Log(
+			context.TODO(), slog.LevelError,
+			"[ CHAT::FLOW ] START error",
+			append(debugCtx, "error", err)...,
 		)
 
 		return err
@@ -683,12 +750,10 @@ func (c *Channel) Start(message *chat.Message) error {
 	// 	// )
 	// }
 
-	c.Log.Info(">>>>> START <<<<<",
-		slog.Int64("pdc", c.DomainID()),
-		slog.Int64("pid", c.UserID()),
-		slog.Int64("schema-id", schemaId),
-		slog.String("host", c.Host),
-		slog.String("channel-id", c.ID),
+	c.Log.Log(
+		context.TODO(), level,
+		"[ CHAT::FLOW ] START",
+		append(debugCtx, "chat.host", "workflow@"+c.Host)...,
 	)
 
 	return nil
@@ -852,11 +917,12 @@ func (c *Channel) Close(cause string) error {
 	// 	}
 	// }
 
-	c.Log.Warn("<<<<< STOP >>>>>",
+	c.Log.Warn("[ CHAT::FLOW ] STOP",
 		slog.Int64("pdc", c.DomainID()),
 		slog.Int64("pid", c.UserID()),
 		slog.String("host", c.Host),
 		slog.String("channel-id", c.ChatID()),
+		slog.String("conversation_id", c.ChatID()),
 	)
 
 	// //s.chatCache.DeleteCachedMessages(conversationID)
@@ -913,11 +979,12 @@ func (c *Channel) BreakBridge(cause BreakBridgeCause) error {
 	// 	}
 	// }
 
-	c.Log.Warn("<<<<< BREAK >>>>>",
+	c.Log.Warn("[ CHAT::FLOW ] BREAK",
 		slog.Int64("pdc", c.DomainID()),
 		slog.Int64("pid", c.UserID()),
 		slog.String("host", c.Host),
 		slog.String("channel-id", c.ChatID()),
+		slog.String("conversation_id", c.ChatID()),
 	)
 
 	return nil

@@ -113,12 +113,15 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 	}
 
 	log := srv.Log.With(
-		slog.Int64("pid", add.GetId()),
-		slog.Int64("pdc", add.GetDc().GetId()),
-		slog.Int64("bot", add.GetFlow().GetId()),
-		slog.String("uri", add.GetUri()),
-		slog.String("title", add.GetName()),
-		slog.String("channel", add.GetProvider()),
+		"gate", slog.GroupValue(
+			slog.String("path", add.GetUri()),
+			slog.String("type", add.GetProvider()),
+			slog.String("name", add.GetName()),
+			slog.Int64("dc", add.GetDc().GetId()),
+			slog.Int64("id", add.GetId()),
+			slog.Int64("schema.id", add.GetFlow().GetId()),
+			slog.String("schema.name", add.GetFlow().GetName()),
+		),
 	)
 
 	// Find provider implementation by code name

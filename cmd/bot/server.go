@@ -9,17 +9,19 @@ import (
 	"strings"
 
 	"github.com/micro/micro/v3/service/broker"
-	"github.com/micro/micro/v3/service/logger"
+	"github.com/micro/micro/v3/service/client"
 	"github.com/micro/micro/v3/service/server"
+	microgrpcsrv "github.com/micro/micro/v3/service/server/grpc"
 	"github.com/pkg/errors"
 	audProto "github.com/webitel/chat_manager/api/proto/logger"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	aud "github.com/webitel/chat_manager/logger"
-	slogutil "github.com/webitel/webitel-go-kit/otel/log/bridge/slog"
-	"go.opentelemetry.io/contrib/bridges/otelslog"
+	"github.com/webitel/chat_manager/otel"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	"google.golang.org/grpc"
 
 	micro "github.com/micro/micro/v3/service"
 	"github.com/urfave/cli/v2"
@@ -33,15 +35,7 @@ import (
 	pb "github.com/webitel/chat_manager/api/proto/bot"
 	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/cmd"
-
 	otelsdk "github.com/webitel/webitel-go-kit/otel/sdk"
-	// -------------------- plugin(s) -------------------- //
-	_ "github.com/webitel/webitel-go-kit/otel/sdk/log/otlp"
-	_ "github.com/webitel/webitel-go-kit/otel/sdk/log/stdout"
-	_ "github.com/webitel/webitel-go-kit/otel/sdk/metric/otlp"
-	_ "github.com/webitel/webitel-go-kit/otel/sdk/metric/stdout"
-	_ "github.com/webitel/webitel-go-kit/otel/sdk/trace/otlp"
-	_ "github.com/webitel/webitel-go-kit/otel/sdk/trace/stdout"
 )
 
 const (
@@ -60,9 +54,9 @@ var (
 	Flags = []cli.Flag{
 		&cli.StringFlag{
 			Name:    "log_level",
-			EnvVars: []string{"LOG_LEVEL"},
-			Value:   "debug",
+			EnvVars: []string{"WBTL_LOG_LEVEL"},
 			Usage:   "Log Level",
+			// Value:   "info",
 		},
 		&cli.StringFlag{
 			Name:    "site_url",
@@ -108,28 +102,10 @@ func Run(ctx *cli.Context) error {
 		return nil
 	}
 
-	var slogger *slog.Logger
-	// Retrieve log level from the environment, default to info
-	var verbose slog.LevelVar
-	verbose.Set(slog.LevelInfo)
-
-	// TODO
-	textLvl := os.Getenv("OTEL_LOG_LEVEL")
-	if textLvl == "" {
-		textLvl = os.Getenv("MICRO_LOG_LEVEL")
-	}
-
-	if textLvl != "" {
-		_ = verbose.UnmarshalText([]byte(textLvl))
-	}
-
-	slogger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: verbose.Level()}))
-
-	version := cmd.Version()
+	version := cmd.GitTag
 	if version == "" {
 		version = "dev"
 	}
-
 	resourceAttrs := []attribute.KeyValue{
 		semconv.ServiceName(name),
 		semconv.ServiceVersion(version),
@@ -146,34 +122,40 @@ func Run(ctx *cli.Context) error {
 		}
 	}
 
-	shutdown, err := otelsdk.Configure(ctx.Context,
+	err := otel.Configure(ctx.Context,
 		otelsdk.WithResource(resource.NewSchemaless(
 			resourceAttrs...,
 		)),
-		otelsdk.WithLogBridge(func() {
-			slogger = slog.New(
-				slogutil.WithLevel(
-					&verbose,                    // Filter level for otelslog.Handler
-					otelslog.NewHandler("slog"), // otelslog Handler for OpenTelemetry
-				),
-			)
-			slog.SetDefault(slogger)
-		}),
 	)
 
 	if err != nil {
-		return nil // log(FATAL) & exit(1)
+		// fatal(fmt.Errorf("[O]pen[Tel]emetry configuration failed"))
+		return err // log(FATAL) & exit(1)
 	}
-	defer func() {
-		shutdown(ctx.Context)
-	}()
-	logger.DefaultLogger = log.NewSlogAdapter(slogger)
+
+	defer otel.Shutdown(ctx.Context)
+	stdlog := slog.Default()
+
+	server := server.DefaultServer
+	err = server.Init(microgrpcsrv.Options(
+		grpc.StatsHandler(otelgrpc.NewServerHandler(
+			// ...otelgrpc.Option
+			otelgrpc.WithMessageEvents(
+				otelgrpc.ReceivedEvents,
+				otelgrpc.SentEvents,
+			),
+		)),
+	))
+	if err != nil {
+		// Failed to setup micro/grpc.Server
+		return err
+	}
 
 	service = micro.New(
 		micro.Name(name),             // ("chat.bot"),
 		micro.Version(cmd.Version()), // ("latest"),
-		micro.WrapCall(log.CallWrapper(slogger)),
-		micro.WrapHandler(log.HandlerWrapper(slogger)),
+		micro.WrapCall(log.CallWrapper(stdlog)),
+		micro.WrapHandler(log.HandlerWrapper(stdlog)),
 		micro.BeforeStart(func() error { return srv.Start() }),
 		micro.AfterStop(func() error { return srv.Close() }),
 	)
@@ -200,8 +182,18 @@ func Run(ctx *cli.Context) error {
 		return errors.New("--web_root: directory required")
 	}
 
-	sender := service.Client()                                                          // Micro-From-Service: webitel.chat.bot
-	sender = wrapper.FromService(service.Name(), service.Server().Options().Id, sender) // Micro-From-Id: server.DefaultId
+	// Micro-From-Service: webitel.chat.bot
+	sender := service.Client()
+	// Micro-From-Id: server.DefaultId
+	sender = wrapper.FromService(
+		service.Name(), service.Server().Options().Id, sender,
+	)
+	// Trace-Id
+	err = sender.Init(client.WrapCall(wrapper.OtelMicroCall))
+	if err != nil {
+		// Failed to setup micro/gRPC.Client(webitel.chat.server)
+		return err
+	}
 	agent = pbchat.NewChatService("webitel.chat.server", sender)
 
 	// cfg.CertPath = c.String("cert_path")
@@ -209,7 +201,7 @@ func Run(ctx *cli.Context) error {
 	// cfg.ConversationTimeout = c.Uint64("conversation_timeout")
 
 	// Open persistent [D]ata[S]ource[N]ame ...
-	dbo, err := postgres.OpenDB(slogger, ctx.String("db-dsn"))
+	dbo, err := postgres.OpenDB(stdlog, ctx.String("db-dsn"))
 	if err != nil {
 		return errors.Wrap(err, "Invalid DSN String")
 	}
@@ -224,11 +216,11 @@ func Run(ctx *cli.Context) error {
 	// }
 
 	// configure
-	store := sqlxrepo.NewBotStore(slogger, dbo.DB)
+	store := sqlxrepo.NewBotStore(stdlog, dbo.DB)
 	auditor := aud.NewClient(broker.DefaultBroker, audProto.NewConfigService("logger", sender))
 	fileService := pbstorage.NewFileService("storage", sender)
 	mediaFileService := pbstorage.NewMediaFileService("storage", sender)
-	srv = bot.NewService(store, slogger, agent, auditor, fileService, mediaFileService)
+	srv = bot.NewService(store, stdlog, agent, auditor, fileService, mediaFileService)
 	srv.WebRoot = webRoot // Static assets base folder
 
 	// AUTH: go.webitel.app
@@ -239,11 +231,12 @@ func Run(ctx *cli.Context) error {
 
 	for _, regErr := range []error{
 		pb.RegisterBotsHandler(service.Server(), srv),
+		// register more micro/gRPC service(s) here ...
 	} {
 		if regErr != nil {
-			log.FataLog(slogger, regErr.Error(),
+			log.FataLog(nil, // nil,
+				"failed to register service",
 				slog.Any("error", regErr),
-				slog.Any("app", "failed to register service"),
 			)
 			return regErr
 		}
@@ -256,10 +249,11 @@ func Run(ctx *cli.Context) error {
 
 	// Run the server
 	if err := service.Run(); err != nil {
-		log.FataLog(slogger, err.Error(),
+		log.FataLog(nil, // nil,
+			"failed to run service",
 			slog.Any("error", err),
-			slog.Any("app", "failed to run service"),
 		)
+		return err
 	}
 
 	return nil

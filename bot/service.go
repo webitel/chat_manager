@@ -20,6 +20,7 @@ import (
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/auth"
+	wlog "github.com/webitel/chat_manager/log"
 	audit "github.com/webitel/chat_manager/logger"
 )
 
@@ -40,7 +41,7 @@ type Service struct {
 	Addr    string
 	WebRoot string
 
-	Log    slog.Logger
+	Log    *slog.Logger
 	Auth   *auth.Client
 	Client chat.ChatService
 	exit   chan chan error
@@ -68,9 +69,14 @@ func NewService(
 	fileService pbstorage.FileService,
 	mediaFileService pbstorage.MediaFileService,
 ) *Service {
+
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	return &Service{
 
-		Log:    *(logger),
+		Log:    logger,
 		Client: client, // chat.NewChatService("webitel.chat.server"),
 
 		exit: make(chan chan error),
@@ -207,7 +213,7 @@ func (srv *Service) Start() error {
 	// Normalize address
 	srv.Addr = ln.Addr().String()
 
-	srv.Log.Info("Server [http] Listening on " + srv.Addr)
+	// srv.Log.Info("Server [http] Listening on " + srv.Addr)
 
 	// Normalize Reverse URL
 	var hostURL *url.URL
@@ -229,7 +235,15 @@ func (srv *Service) Start() error {
 		}
 	}
 	srv.URL = hostURL.String()
-	srv.Log.Info("Server [http] Reverse Host " + srv.URL)
+	// srv.Log.Info("Server [http] Reverse Host " + srv.URL)
+	srv.Log.Info("Server [http] Starting up",
+		"http", wlog.DeferValue(func() slog.Value {
+			return slog.GroupValue(
+				slog.String("addr", srv.Addr),
+				slog.String("url", srv.URL), // base reverse URL
+			)
+		}),
+	)
 
 	rmux := http.NewServeMux()
 	rmux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -239,25 +253,34 @@ func (srv *Service) Start() error {
 	rmux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	rmux.Handle("/", srv)
 
-	// handler := srv
-	// handler := dumpMiddleware(srv)
-	handler := dumpMiddleware(rmux)
-	// handler := rmux
+	// // handler := srv
+	// // handler := dumpMiddleware(srv)
+	// handler := dumpMiddleware(rmux)
+	// // handler := rmux
+	handler := traceMiddleware(rmux)
 
 	go func() {
 
-		if err := http.Serve(ln, handler); err != nil {
-			// if err != http.ErrServerClosed {
-			// 	if log := b.log.Error(); log.Enabled() {
-			// 		log.Err(err).Msg("Server [http] Shutted down due to an error")
-			// 	}
-			// 	return
-			// }
+		err := http.Serve(ln, handler)
+		if err == http.ErrServerClosed {
+			err = nil
 		}
 
-		srv.Log.Error("Server [http] Shutted down",
-			slog.Any("error", err),
-			slog.String("addr", ln.Addr().String()),
+		emit := slog.LevelWarn
+		if err != nil {
+			emit = slog.LevelError
+		}
+
+		srv.Log.Log(context.TODO(), emit,
+			"Server [http] Shutted down",
+			"http", wlog.DeferValue(func() slog.Value {
+				args := make([]slog.Attr, 1, 2)
+				args[0] = slog.String("addr", ln.Addr().String())
+				if err != nil {
+					args = append(args, slog.Any("error", err))
+				}
+				return slog.GroupValue(args...)
+			}),
 		)
 
 	}()
@@ -742,18 +765,13 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uri := r.URL.Path
-	if strings.HasSuffix(uri, CaptchaSuffix) { // the CAPTCHA check ! Find the underlying gateway...
-		uri = strings.TrimSuffix(uri, CaptchaSuffix)
-	}
-
-	srv.Log.Debug("<<<<< WEBHOOK <<<<<",
-		slog.String("uri", r.URL.Path),
-		slog.String("method", r.Method),
-	)
+	// if strings.HasSuffix(uri, CaptchaSuffix) { // the CAPTCHA check ! Find the underlying gateway...
+	uri = strings.TrimSuffix(uri, CaptchaSuffix)
+	// }
 
 	//uri := r.URL.Path // strings.TrimLeft(r.URL.Path, "/")
 
-	if "/favicon.ico" == uri {
+	if uri == "/favicon.ico" {
 		http.NotFound(w, r)
 		return
 	}
@@ -772,6 +790,16 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	gate.Log.DebugContext(r.Context(), fmt.Sprintf(
+		"[ GATE::WEBHOOK ] %s %s %s", r.Method, r.URL.RequestURI(), r.Proto,
+	), "http", wlog.DeferValue(func() slog.Value {
+		return slog.GroupValue(
+			slog.String("verb", r.Method),
+			slog.String("url", r.URL.RequestURI()),
+			slog.String("proto", r.Proto),
+		)
+	}))
 
 	// // Inspect known URIs index
 	// srv.indexMx.RLock()   // +R

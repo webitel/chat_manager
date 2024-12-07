@@ -140,10 +140,10 @@ func (c channelLookup) Select(hosts []string, opts ...selector.SelectOption) (se
 	}
 
 	if peer == "" {
-		c.trace.Warn(perform,
+		c.trace.Warn("[ CHAT::GATE ] "+perform,
 			slog.String("error", "host: service unavailable"),
-			slog.String("seed", hostname),     // WANTED
-			slog.String("peer", "roundrobin"), // SERVED
+			slog.String("lost", hostname),     // WANTED
+			slog.String("next", "roundrobin"), // SERVED
 		)
 
 		// return selector.Random(services)
@@ -152,16 +152,16 @@ func (c channelLookup) Select(hosts []string, opts ...selector.SelectOption) (se
 	}
 
 	if perform == "RECOVER" { // TODO is always 'false'
-		c.trace.Info(perform,
-			slog.String("seed", hostname), // WANTED
-			slog.String("peer", peer),     // FOUND
+		c.trace.Info("[ CHAT::GATE ] "+perform,
+			slog.String("host", hostname), // WANTED
+			slog.String("addr", peer),     // FOUND
 		)
-	} else {
-		c.trace.Debug(perform,
-			slog.String("seed", hostname), // WANTED
-			slog.String("peer", peer),     // FOUND
-		)
-	}
+	} // else {
+	// 	c.trace.Debug("[ CHAT::GATE ] "+perform,
+	// 		slog.String("host", hostname), // WANTED
+	// 		slog.String("addr", peer),     // FOUND
+	// 	)
+	// }
 
 	return func() string {
 		return peer

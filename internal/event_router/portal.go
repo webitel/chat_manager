@@ -61,7 +61,7 @@ func (c *eventRouter) pushUpdate(host, addr string, push *chat.Update) error {
 		return err
 	}
 
-	c.log.Info("Update: ACK",
+	c.log.Debug("Update: ACK",
 		slog.String("addr", addr),
 		slog.String("host", host),
 		slog.String("push", push.Message.GetType()),

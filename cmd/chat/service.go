@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	trace "github.com/webitel/chat_manager/log"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	wlog "github.com/webitel/chat_manager/log"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/micro/micro/v3/service/broker"
@@ -129,7 +130,7 @@ func (s *chatService) UpdateChannel(
 		localtime = app.CurrentTime()
 		readUntil = localtime // default: ALL
 	)
-	trace.TraceLog(s.log, "UPDATE Channel",
+	wlog.TraceLog(s.log, "UPDATE Channel",
 		slog.String("channel_id", channelChatID),  // TODO fields diff
 		slog.Int64("auth_user_id", channelFromID), // TODO fields diff
 		slog.Int64("read_until", messageAt),
@@ -238,15 +239,15 @@ func (s *chatService) SendMessage(
 		targetChatID = req.GetConversationId()
 	)
 
-	log := s.log.With(
-		slog.String("channel_id", senderChatID),
-		slog.String("conversation_id", targetChatID),
-		slog.Int64("auth_user_id", senderFromID),
-		slog.String("type", sendMessage.GetType()),
-		slog.String("text", sendMessage.GetText()),
-		slog.Any("file", sendMessage.GetFile()))
+	// log := s.log.With(
+	// 	slog.String("channel_id", senderChatID),
+	// 	slog.String("conversation_id", targetChatID),
+	// 	slog.Int64("auth_user_id", senderFromID),
+	// 	slog.String("type", sendMessage.GetType()),
+	// 	slog.String("text", sendMessage.GetText()),
+	// 	slog.Any("file", sendMessage.GetFile()))
 
-	log.Debug("SEND Message")
+	// log.Debug("SEND Message")
 
 	if senderChatID == "" {
 		senderChatID = targetChatID
@@ -312,9 +313,9 @@ func (s *chatService) SendMessage(
 	_, err = s.sendMessage(ctx, chat, sendMessage)
 
 	if err != nil {
-		log.Error("FAILED Sending Message",
-			slog.Any("error", err),
-		)
+		// log.Error("FAILED Sending Message",
+		// 	slog.Any("error", err),
+		// )
 		return err
 	}
 
@@ -1767,12 +1768,12 @@ func (s *chatService) DeclineInvitation(
 }
 
 func (s *chatService) WaitMessage(ctx context.Context, req *pb.WaitMessageRequest, res *pb.WaitMessageResponse) error {
-	log := s.log.With(
-		slog.String("conversation_id", req.GetConversationId()),
-		slog.String("confirmation_id", req.GetConfirmationId()),
-	)
 
-	log.Debug("accept confirmation")
+	s.log.Debug(
+		"[ CHAT::FLOW ] WAIT message",
+		"conversation_id", req.GetConversationId(),
+		"confirmation_id", req.GetConfirmationId(),
+	)
 	// cachedMessages, err := s.chatCache.ReadCachedMessages(req.GetConversationId())
 	// if err != nil {
 	// 	s.log.Error().Msg(err.Error())
@@ -1799,8 +1800,11 @@ func (s *chatService) WaitMessage(ctx context.Context, req *pb.WaitMessageReques
 	// }
 	err := s.flowClient.WaitMessage(req.GetConversationId(), req.GetConfirmationId())
 	if err != nil {
-		log.Error(err.Error(),
-			slog.Any("error", err),
+		s.log.Error(
+			"[ CHAT::FLOW ] WAIT message error",
+			"conversation_id", req.GetConversationId(),
+			"confirmation_id", req.GetConfirmationId(),
+			"error", err,
 		)
 		return err
 	}
@@ -2862,12 +2866,75 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 	)
 	// Broadcast message to every member in the room,
 	// in front of chaRoom.Channel as a sender !
-	members := make([]*app.Channel, 1+len(chatRoom.Members))
+	var (
+		member  *app.Channel
+		members = make([]*app.Channel, 1+len(chatRoom.Members))
+	)
 
 	members[0] = sender
 	copy(members[1:], chatRoom.Members)
 
-	for _, member := range members { // chatRoom.Members {
+	debugCtx := []any{
+		// event
+		"msg", wlog.DeferValue(func() slog.Value {
+			sentMsg := []slog.Attr{
+				slog.Int64("id", notify.Id),
+				slog.String("type", notify.Type),
+			}
+			// if notify.Text != "" || notify.Type == "text" {
+			// 	sentMsg = append(sentMsg,
+			// 		slog.String("text", notify.Text),
+			// 	)
+			// }
+			// if notify.File != nil {
+			// 	sentMsg = append(sentMsg,
+			// 		slog.String("file", wlog.JsonValue(notify.File)),
+			// 	)
+			// }
+			return slog.GroupValue(sentMsg...)
+		}),
+		// sender
+		"from", wlog.DeferValue(func() slog.Value {
+			return debugLogChatValue(sender)
+		}),
+		// copy of [TO] chat.thread.id
+		"conversation_id", sender.Chat.Invite,
+	}
+	debugText := fmt.Sprintf(
+		"[ CHAT ] thread( %s ).message( %d; %s ).FROM( %s:%s )",
+		sender.Chat.Invite, // conversation_id::chat.thread.id
+		notify.Id, notify.Type,
+		sender.User.Channel, sender.User.Contact,
+	)
+	// Start delivery ...
+	c.log.Debug(
+		debugText,
+		debugCtx...,
+	)
+	deliveryLog := func(level slog.Level, msg string, args ...any) {
+		params := append(
+			// target participant
+			debugCtx, "chat", wlog.DeferValue(func() slog.Value {
+				return slog.GroupValue(debugLogChatGroup(member)...)
+			}),
+		)
+		params = append(
+			// extra arguments
+			params, args...,
+		)
+		c.log.Log(
+			context.TODO(), level,
+			fmt.Sprintf(
+				"%s.TO( %s:%s )%s",
+				debugText,
+				member.User.Channel, member.User.Contact,
+				msg,
+			),
+			params...,
+		)
+	}
+
+	for _, member = range members { // chatRoom.Members {
 
 		if member.IsClosed() {
 			continue // omit send TO channel: closed !
@@ -2946,7 +3013,7 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 					"content_type": "text/json",
 				}
 			}
-
+			deliveryLog(slog.LevelDebug, "")
 			agent := broker.DefaultBroker // service.Options().Broker
 			err = agent.Publish(fmt.Sprintf("event.%s.%d.%d",
 				events.MessageEventType, member.DomainID, member.User.ID,
@@ -2973,7 +3040,7 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 				}
 				data.workflow = &send
 			}
-
+			deliveryLog(slog.LevelDebug, "")
 			err = c.flowClient.SendMessageV1(
 				member, data.workflow,
 			)
@@ -2983,6 +3050,7 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 			if member == sender { // e == 0
 				continue
 			}
+			deliveryLog(slog.LevelDebug, "")
 			err = c.eventRouter.SendMessageToGateway(sender, member, notify)
 			// Merge SENT message external binding (variables)
 			if notify.Id == 0 {
@@ -3024,19 +3092,12 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 
 		(sent)++ // calc active recepients !
 
-		log := c.log.With(
-			slog.String("chat-id", member.Chat.ID),
-			slog.String("channel", member.Chat.Channel),
-			slog.String("TO", member.User.FirstName),
-		)
-
 		if err != nil {
 			// FIXME: just log failed attempt ?
-			log.Error("SENT",
-				slog.Any("error", err),
+			deliveryLog(
+				slog.LevelError, "; error",
+				"error", err,
 			)
-		} else {
-			log.Debug("SENT")
 		}
 
 		if err != nil {
@@ -3054,8 +3115,9 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 
 	if sent == 0 {
 		// ERR: unreachable code
-		c.log.Warn("SEND",
-			slog.Any("error", "no any recepients"),
+		c.log.Error(
+			debugText+"; no delivery",
+			append(debugCtx, "error", "no delivery")...,
 		)
 	}
 
@@ -3179,6 +3241,23 @@ func (c *chatService) notifyAgentJoinToAllMembers(ctx context.Context, chatRoom 
 	return sent, nil // err
 }
 
+func debugLogChatValue(side *app.Channel) slog.Value {
+	return slog.GroupValue(debugLogChatGroup(side)...)
+}
+
+func debugLogChatGroup(side *app.Channel) []slog.Attr {
+	chat := side.Chat
+	user := side.User
+	args := []slog.Attr{
+		slog.String("id", chat.ID),
+		slog.String("via", chat.Contact),
+		slog.String("user", user.Channel+":"+user.Contact),
+		slog.String("title", user.FirstName),
+		// slog.String("thread.id", chat.Invite), // conversation_id
+	}
+	return args
+}
+
 // sendClosed publishes final message to all related members
 // Override: event_router.RouteCloseConversation[FromFlow]()
 func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session, text string) (sent int, err error) {
@@ -3204,12 +3283,59 @@ func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session,
 	)
 	// Broadcast message to every member in the room,
 	// in front of chaRoom.Channel as a sender !
-	members := make([]*app.Channel, 1+len(chatRoom.Members))
+	var (
+		member  *app.Channel // current: in iteration with ...
+		members = make([]*app.Channel, 1+len(chatRoom.Members))
+	)
 
 	members[0] = sender
 	copy(members[1:], chatRoom.Members)
 
-	for _, member := range members { // chatRoom.Members {
+	debugCtx := []any{
+		// sender
+		"from", wlog.DeferValue(func() slog.Value {
+			return debugLogChatValue(sender)
+		}),
+		// event
+		"msg.type", "closed",
+		// "msg.text", text,
+		// copy of [TO] chat.thread.id
+		"conversation_id", sender.Chat.Invite,
+	}
+	debugText := fmt.Sprintf(
+		"[ CHAT ] thread( %s ).message( closed ).FROM( %s:%s )",
+		sender.Chat.Invite, // conversation_id::chat.thread.id
+		sender.User.Channel, sender.User.Contact,
+	)
+	// Start delivery ...
+	c.log.Debug(
+		debugText,
+		debugCtx...,
+	)
+	deliveryLog := func(level slog.Level, msg string, args ...any) {
+		params := append(
+			// target participant
+			debugCtx, "chat", wlog.DeferValue(func() slog.Value {
+				return slog.GroupValue(debugLogChatGroup(member)...)
+			}),
+		)
+		params = append(
+			// extra arguments
+			params, args...,
+		)
+		c.log.Log(
+			context.TODO(), level,
+			fmt.Sprintf(
+				"%s.TO( %s:%s )%s",
+				debugText,
+				member.User.Channel, member.User.Contact,
+				msg,
+			),
+			params...,
+		)
+	}
+
+	for _, member = range members { // chatRoom.Members {
 
 		if member.IsClosed() {
 			continue // omit send TO channel: closed !
@@ -3244,6 +3370,7 @@ func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session,
 				}
 			}
 
+			deliveryLog(slog.LevelDebug, "")
 			agent := broker.DefaultBroker // service.Options().Broker
 			err = agent.Publish(fmt.Sprintf("event.%s.%d.%d",
 				events.CloseConversationEventType, member.DomainID, member.User.ID,
@@ -3258,6 +3385,7 @@ func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session,
 			if member == sender { // e == 0
 				continue
 			}
+			deliveryLog(slog.LevelDebug, "")
 			// Send workflow channel .Break() message to stop chat.flow routine ...
 			// FIXME: - delete: chat.confirmation; - delete: chat.flow.node
 			err = c.flowClient.CloseConversation(member.Chat.ID, "") // .ConversationID
@@ -3286,25 +3414,18 @@ func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session,
 					CreatedAt: app.DateTimestamp(localtime),
 				}
 			}
-
+			deliveryLog(slog.LevelDebug, "")
 			err = c.eventRouter.SendMessageToGateway(sender, member, notice)
 		}
 
 		(sent)++ // calc active recepients !
 
-		log := c.log.With(
-			slog.String("chat-id", member.Chat.ID),
-			slog.String("channel", member.Chat.Channel),
-			slog.String("TO", member.User.FirstName),
-		)
-
 		if err != nil {
 			// FIXME: just log failed attempt ?
-			log.Error("CLOSED",
-				slog.Any("error", err),
+			deliveryLog(
+				slog.LevelError, "; error",
+				"error", err,
 			)
-		} else {
-			log.Debug("CLOSED")
 		}
 	}
 	// // Otherwise, if NO-ONE in the room - route message to the chat-flow !
