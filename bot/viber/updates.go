@@ -12,6 +12,7 @@ import (
 	"github.com/micro/micro/v3/service/errors"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
+	"github.com/webitel/chat_manager/internal/util"
 )
 
 const (
@@ -524,7 +525,7 @@ func (c *Bot) onNewMessage(ctx context.Context, event *Update) error {
 		}
 
 		sendUpdate.Message.Contact.FirstName, sendUpdate.Message.Contact.LastName =
-			bot.FirstLastName(sendUpdate.Message.Contact.FirstName)
+			util.ParseFullName(sendUpdate.Message.Contact.FirstName)
 
 		if message.Text == btnShareContactCode {
 			// NOTE: This MIGHT be contact Phone from current User (via <share-phone> button)

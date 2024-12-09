@@ -406,14 +406,6 @@ func (*WebChatBot) Deregister(ctx context.Context) error {
 	return nil
 }
 
-func contactPeer(peer *chat.Account) *chat.Account {
-	if peer.LastName == "" {
-		peer.FirstName, peer.LastName =
-			bot.FirstLastName(peer.FirstName)
-	}
-	return peer
-}
-
 // SendNotify implements Sender interface.
 // channel := notify.Chat
 // contact := notify.User
@@ -448,8 +440,7 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 	case "file":
 	// updates
 	case "left":
-
-		peer := contactPeer(message.LeftChatMember)
+		peer := message.LeftChatMember
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("left", peer)
 		if err != nil {
@@ -468,8 +459,7 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		message.Text = text
 
 	case "joined":
-
-		peer := contactPeer(message.NewChatMembers[0])
+		peer := message.NewChatMembers[0]
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("join", peer)
 		if err != nil {

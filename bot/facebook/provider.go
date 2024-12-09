@@ -423,14 +423,6 @@ func scanTextPlain(s string, max int) string {
 	return strings.TrimRightFunc(s, unicode.IsSpace)
 }
 
-func contactPeer(peer *chat.Account) *chat.Account {
-	if peer.LastName == "" {
-		peer.FirstName, peer.LastName =
-			bot.FirstLastName(peer.FirstName)
-	}
-	return peer
-}
-
 // channel := notify.Chat
 // contact := notify.User
 func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
@@ -704,8 +696,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 	// case "left": // Someone left the conversation thread !
 
 	case "joined": // ACK: ChatService.JoinConversation()
-
-		peer := contactPeer(message.NewChatMembers[0])
+		peer := message.NewChatMembers[0]
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("join", peer)
 		if err != nil {
@@ -736,8 +727,7 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 		sendMessage.Text = text
 
 	case "left": // ACK: ChatService.LeaveConversation()
-
-		peer := contactPeer(message.LeftChatMember)
+		peer := message.LeftChatMember
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("left", peer)
 		if err != nil {

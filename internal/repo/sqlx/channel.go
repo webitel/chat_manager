@@ -26,10 +26,9 @@ import (
 )
 
 func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Channel, error) {
-
 	search := SearchOptions{
 		// prepare filter(s)
-		Params: map[string]interface{}{
+		Params: map[string]any{
 			"id": id, // MUST
 		},
 		Fields: []string{"id", "*"}, // NOT applicable
@@ -40,7 +39,6 @@ func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Cha
 
 	// PERFORM SELECT ...
 	list, err := GetChannels(repo.db, ctx, &search)
-
 	if err != nil {
 		repo.log.Error("Failed lookup DB chat.channel",
 			"error", err,
@@ -70,32 +68,38 @@ func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Cha
 }
 
 func (repo *sqlxRepository) GetChannelByPeer(ctx context.Context, peerId, fromId string) (*Channel, error) {
-	rows, err := repo.db.QueryContext(ctx,
-		`select
+	query := `
+		SELECT
 			chat.*
-			from chat.client peer
-		join lateral
-		(
-		select m.id,
-		m.conversation_id,
-		m."connection"::int8,
-		m.type,
-			m.props
-		from chat.channel m
-		where not m.internal
-		and m.user_id = peer.id
-		and m.connection = ($1::text) -- :from_id::text
-		order by m.created_at desc -- last
-		limit 1
-		) chat on true
-		where peer.external_id = $2 -- :peer_id)
-		;`, fromId, peerId)
+		FROM
+			chat.client peer
+		JOIN LATERAL (
+			SELECT
+				m.id,
+				m.conversation_id,
+				m."connection"::int8,
+				m.type,
+				m.props
+			FROM
+				chat.channel m
+			WHERE
+				NOT m.internal AND
+				m.user_id = peer.id AND
+				m.connection = ($1::text) -- :from_id::text
+			ORDER BY
+				m.created_at DESC -- last
+			LEMIT 1
+		) chat ON true
+		WHERE
+			peer.external_id = $2 -- :peer_id
+		;`
 
+	rows, err := repo.db.QueryContext(ctx, query, fromId, peerId)
 	if err != nil {
 		return nil, err
 	}
-
 	defer rows.Close()
+
 	// Fetch !
 	list, err := ChannelList(rows, 1)
 	// Error ?
@@ -440,11 +444,16 @@ func (repo *sqlxRepository) CloseChannel(ctx context.Context, id string, cause s
 }*/
 
 func (repo *sqlxRepository) CloseChannels(ctx context.Context, conversationID string) error {
+	query := `
+		UPDATE
+			chat.channel
+		SET
+			closed_at = $2 -- :currentTimeUTC
+		WHERE
+			conversation_id = $1 -- :conversationID
+	`
 
-	_, err := repo.db.ExecContext(ctx,
-		"UPDATE chat.channel SET closed_at=$2 WHERE conversation_id=$1",
-		conversationID, app.CurrentTime().UTC(),
-	)
+	_, err := repo.db.ExecContext(ctx, query, conversationID, app.CurrentTime().UTC())
 
 	return err
 }
@@ -547,10 +556,17 @@ func (repo *sqlxRepository) UpdateChannel(ctx context.Context, chatID string, re
 		readAt = &now // MARK reed ALL messages !
 	}
 
-	_, err := repo.db.ExecContext(ctx,
-		"UPDATE chat.channel SET updated_at=$2 WHERE id=$1 AND coalesce(updated_at,created_at)<$2",
-		chatID, readAt.UTC(),
-	)
+	query := `
+		UPDATE
+			chat.channel
+		SET
+			updated_at = $2 -- :readAtUTC
+		WHERE
+			id = $1 AND -- :chatID
+			COALESCE(updated_at, created_at) < $2 -- :readAtUTC
+	`
+
+	_, err := repo.db.ExecContext(ctx, query, chatID, readAt.UTC())
 
 	if err != nil {
 		return err
@@ -560,11 +576,16 @@ func (repo *sqlxRepository) UpdateChannel(ctx context.Context, chatID string, re
 }
 
 func (repo *sqlxRepository) UpdateChannelHost(ctx context.Context, channelID, host string) error {
+	query := `
+		UPDATE
+			chat.channel
+		SET
+			host = $2 -- :host
+		WHERE
+			id = $1 -- :channelID
+	`
 
-	_, err := repo.db.ExecContext(ctx,
-		"UPDATE chat.channel SET host=$2 WHERE id=$1",
-		channelID, host,
-	)
+	_, err := repo.db.ExecContext(ctx, query, channelID, host)
 
 	return err
 }
