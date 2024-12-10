@@ -133,6 +133,8 @@ type CacheRepository interface {
 	ReadConfirmation(conversationID string) (string, error)
 	WriteConfirmation(conversationID string, confirmationID string) error
 	DeleteConfirmation(conversationID string) error
+
+	Setvar(conversationID string, vars map[string]string) error
 }
 
 type sqlxRepository struct {

@@ -1,8 +1,9 @@
 package sqlxrepo
 
 import (
-	
+	"context"
 	"database/sql"
+
 	"github.com/jackc/pgtype"
 )
 
@@ -81,5 +82,10 @@ func (repo *sqlxRepository) DeleteConfirmation(conversationID string) error {
 		// params ...
 		conversationID,
 	)
+	return err
+}
+
+func (repo *sqlxRepository) Setvar(conversationID string, vars map[string]string) error {
+	_, err := repo.BindChannel(context.Background(), conversationID, vars)
 	return err
 }
