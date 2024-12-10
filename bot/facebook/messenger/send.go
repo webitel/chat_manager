@@ -233,7 +233,7 @@ func (sm *SendMessage) SetFile(mimeType, url string) error {
 	case "image", "audio", "video":
 	default:
 		{
-			mimeType = "document"
+			mimeType = "file"
 		}
 	}
 

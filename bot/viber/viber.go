@@ -579,8 +579,8 @@ func (c *Bot) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRe
 		cast.Text(message.GetText())
 	case "file":
 		cast.Media(
-			req.Message.GetFile(),
-			req.Message.GetText(), // Max 512 characters !
+			message.GetFile(),
+			message.GetText(), // Max 512 characters !
 		)
 	}
 
