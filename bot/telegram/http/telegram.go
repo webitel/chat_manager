@@ -218,14 +218,6 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 			}
 			binding[key] = value
 		}
-
-		contactPeer = func(peer *chat.Account) *chat.Account { // get peer helper
-			if peer.LastName == "" {
-				peer.FirstName, peer.LastName =
-					bot.FirstLastName(peer.FirstName)
-			}
-			return peer
-		}
 	)
 
 	// REGION: recover latest chat channel state
@@ -270,7 +262,7 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		}
 
 	case "joined": // ACK: ChatService.JoinConversation()
-		peer := contactPeer(message.NewChatMembers[0])
+		peer := message.NewChatMembers[0]
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("join", peer)
 		if err != nil {
@@ -311,7 +303,7 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		}
 
 	case "left": // ACK: ChatService.LeaveConversation()
-		peer := contactPeer(message.LeftChatMember)
+		peer := message.LeftChatMember
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("left", peer)
 		if err != nil {

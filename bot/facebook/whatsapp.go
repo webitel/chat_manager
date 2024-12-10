@@ -2567,8 +2567,7 @@ func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) err
 		}
 
 	case "joined": // ACK: ChatService.JoinConversation()
-
-		peer := contactPeer(sentMsg.NewChatMembers[0])
+		peer := sentMsg.NewChatMembers[0]
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("join", peer)
 		if err != nil {
@@ -2602,8 +2601,7 @@ func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) err
 		}
 
 	case "left": // ACK: ChatService.LeaveConversation()
-
-		peer := contactPeer(sentMsg.LeftChatMember)
+		peer := sentMsg.LeftChatMember
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("left", peer)
 		if err != nil {

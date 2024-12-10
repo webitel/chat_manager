@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	vk "github.com/SevereCloud/vksdk/v2/api"
-	"github.com/micro/micro/v3/service/errors"
-	"github.com/webitel/chat_manager/api/proto/chat"
-	"github.com/webitel/chat_manager/bot"
 	"log/slog"
 	"math/rand"
 	"strconv"
 	"strings"
 	"time"
+
+	vk "github.com/SevereCloud/vksdk/v2/api"
+	"github.com/micro/micro/v3/service/errors"
+	"github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/webitel/chat_manager/bot"
 )
 
 type OutgoingMessage struct {
@@ -212,8 +213,9 @@ func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*Outgoing
 			}
 			result.Attachments = append(result.Attachments, attachment)
 		}
+
 	case "joined":
-		peer := contactPeer(message.NewChatMembers[0])
+		peer := message.NewChatMembers[0]
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("join", peer)
 		if err != nil {
@@ -243,7 +245,7 @@ func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*Outgoing
 		//}
 
 	case "left":
-		peer := contactPeer(message.LeftChatMember)
+		peer := message.LeftChatMember
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("left", peer)
 		if err != nil {
@@ -255,6 +257,7 @@ func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*Outgoing
 		//if text != "" {
 		result.Text = text
 		//}
+
 	case "closed":
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("close", nil)
@@ -267,6 +270,7 @@ func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*Outgoing
 		//if text != "" {
 		result.Text = text
 		//}
+
 	default:
 		messageText := strings.TrimSpace(
 			message.GetText(),
