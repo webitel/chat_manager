@@ -1139,7 +1139,7 @@ func (s *chatService) JoinConversation(
 		)
 	}
 
-	user, err := s.repo.GetWebitelUserByID(ctx, from)
+	user, err := s.repo.GetWebitelUserByID(ctx, from, invite.DomainID)
 
 	if err != nil {
 		log.Error("FAILED Lookup Chat User",
@@ -1160,6 +1160,7 @@ func (s *chatService) JoinConversation(
 	}
 
 	timestamp := app.CurrentTime().UTC()
+
 	channel := &pg.Channel{
 		ID:             invite.ID, // FROM: INVITE token !
 		Type:           "webitel",
@@ -1168,6 +1169,7 @@ func (s *chatService) JoinConversation(
 		UserID:         invite.UserID,
 		DomainID:       invite.DomainID,
 		Name:           user.Name,
+		PublicName:     user.ChatName,
 		CreatedAt:      invite.CreatedAt,
 		UpdatedAt:      timestamp,
 		JoinedAt: sql.NullTime{

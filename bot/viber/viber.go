@@ -223,14 +223,6 @@ func (c *Bot) Deregister(ctx context.Context) error {
 	return nil
 }
 
-func contactPeer(peer *chat.Account) *chat.Account {
-	if peer.LastName == "" {
-		peer.FirstName, peer.LastName =
-			bot.FirstLastName(peer.FirstName)
-	}
-	return peer
-}
-
 func (c *Bot) SendNotify(ctx context.Context, notify *bot.Update) error {
 
 	var (
@@ -273,8 +265,7 @@ func (c *Bot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		)
 
 	case "left":
-
-		peer := contactPeer(sentMessage.LeftChatMember)
+		peer := sentMessage.LeftChatMember
 		updates := c.Gateway.Template
 		messageText, err := updates.MessageText("left", peer)
 		if err != nil {
@@ -293,8 +284,7 @@ func (c *Bot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		sendMessage.Text(messageText)
 
 	case "joined":
-
-		peer := contactPeer(sentMessage.NewChatMembers[0])
+		peer := sentMessage.NewChatMembers[0]
 		updates := c.Gateway.Template
 		messageText, err := updates.MessageText("join", peer)
 		if err != nil {

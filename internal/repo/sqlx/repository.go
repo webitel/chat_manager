@@ -18,7 +18,7 @@ type Repository interface {
 	DeleteMessages(ctx context.Context, mid ...int64) (n int64, err error)
 	CacheRepository
 	Store // v1
-	GetWebitelUserByID(ctx context.Context, id int64) (*WebitelUser, error)
+	GetWebitelUserByID(ctx context.Context, id, domainID int64) (*WebitelUser, error)
 	WithTransaction(txFunc func(*sqlx.Tx) error) (err error)
 	CreateConversationTx(ctx context.Context, tx *sqlx.Tx, c *Conversation) error
 	CreateMessageTx(ctx context.Context, tx *sqlx.Tx, m *Message) error
