@@ -2,11 +2,12 @@ package bot
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 	"sync"
 	"time"
 
-	"github.com/rs/zerolog"
+	wlog "github.com/webitel/chat_manager/log"
 
 	"github.com/micro/micro/v3/service/client"
 	"github.com/micro/micro/v3/service/server"
@@ -39,7 +40,7 @@ type Channel struct {
 	// Closed indicates that .this channel was previously closed at timestamp
 	Closed int64
 
-	Log     zerolog.Logger
+	Log     *slog.Logger
 	Gateway *Gateway
 }
 
@@ -93,7 +94,7 @@ func (c *Channel) Close() (err error) {
 				_ = bot.Remove()
 				_ = bot.External.Close()
 			} else if !bot.Enabled {
-				bot.Log.Warn().Msg("DISABLED")
+				c.Log.Warn("[ CHAT::CLOSE ]", "error", "gateway is disabled")
 			}
 		}
 		// if len(bot.external) == 0 {
@@ -131,7 +132,7 @@ func (c *Channel) Close() (err error) {
 
 		if c.Closed != 0 {
 			// NOTE: we are done ! Close confirmed by server sent final .message.text "Conversation closed" !
-			c.Log.Warn().Msg(">>>>> CLOSED <<<<<") // CONFIRMED Chat State !
+			c.Log.Warn("[ CHAT::CLOSED ]") // CONFIRMED Chat State !
 			return nil
 		}
 		cause := chat.CloseConversationCause_client_leave
@@ -139,7 +140,9 @@ func (c *Channel) Close() (err error) {
 		// Mark SENT .CloseConversation(!)
 		c.Closed = time.Now().Unix()
 
-		c.Log.Warn().Str("cause", cause.String()).Msg(">>>>> CLOSING >>>>>")
+		c.Log.Warn("[ CHAT::CLOSE ]", // Start request
+			slog.String("cause", cause.String()),
+		)
 		// PREPARE: request parameters
 		close := chat.CloseConversationRequest{
 			ConversationId:  c.SessionID,
@@ -173,7 +176,7 @@ func (c *Channel) Close() (err error) {
 						_ = bot.Remove()
 						_ = bot.External.Close()
 					} else if !bot.Enabled {
-						bot.Log.Warn().Msg("DISABLED")
+						c.Log.Warn("[ CHAT::CLOSE ]", "error", "gateway is disabled")
 					}
 				}
 				// if len(bot.external) == 0 {
@@ -197,7 +200,10 @@ func (c *Channel) Close() (err error) {
 			bot.Unlock() // -RW
 
 			// TODO: defer c.Send("error: %s", err)
-			c.Log.Error().Err(err).Str("cause", cause.String()).Msg(">>>>> CLOSING >>>>>")
+			c.Log.Error("[ CHAT::CLOSE ]", // Start request
+				slog.String("cause", cause.String()),
+				slog.Any("error", err),
+			)
 		}
 
 		// var event *zerolog.Event
@@ -225,7 +231,9 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 	// }
 
 	if message.UpdatedAt != 0 {
-		c.Log.Warn().Str("error", "ignore: start the conversation by editing the message").Msg("BOT: START")
+		c.Log.Warn("[ CHAT::START ]",
+			slog.Any("error", "ignore: start the conversation by editing the message"),
+		)
 		return nil
 	}
 
@@ -269,11 +277,13 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 	}
 
 	agent := c.Gateway
-	span := agent.Log.With().
-		Str("chat-id", c.ChatID).
-		Str("username", c.Title). // title).
-
-		Logger()
+	span := agent.Log.With(
+		"chat", slog.GroupValue(
+			slog.String("user", c.Account.Channel+":"+c.ChatID),
+			slog.String("title", c.Title),
+			slog.Int64("uid", c.Account.ID),
+		),
+	)
 
 	// PERFORM: /start external chat channel
 	if c.Host == "" {
@@ -283,7 +293,9 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 		StartConversation(ctx, &start, c.callOpts)
 
 	if err != nil {
-		span.Error().Err(err).Msg(">>>>> START <<<<<")
+		span.Error("[ CHAT::START ]",
+			slog.Any("error", err),
+		)
 		return err
 	}
 
@@ -292,12 +304,16 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 	c.ChannelID = chat.ChannelId
 	c.SessionID = chat.ConversationId
 
-	span = span.With().
-		Str("session-id", c.SessionID).
-		Str("channel-id", c.ChannelID).
-		Str("host", c.Host). // webitel.chat.server
-
-		Logger()
+	span = span.With(
+		"chat", slog.GroupValue(
+			slog.String("user", c.Account.Channel+":"+c.ChatID),
+			slog.String("title", c.Title),
+			slog.Int64("uid", c.Account.ID),
+			slog.String("id", c.ChannelID),
+			slog.String("thread.id", c.SessionID),
+			slog.String("host", c.Host), // webitel.chat.server
+		),
+	)
 
 	c.Log = span
 
@@ -320,7 +336,7 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 	c.Gateway.internal[c.Account.ID] = c // [c.ContactID] = c
 	c.Gateway.Unlock()                   // -RW
 
-	c.Log.Info().Msg(">>>>> START <<<<<")
+	c.Log.Info("[ CHAT::START ]")
 
 	return nil
 }
@@ -347,12 +363,14 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 	if c.IsNew() { // || c.Closed != 0 {
 
 		if c.Closed != 0 {
-			c.Log.Warn().Msg("RESTART")
+			c.Log.Warn("RESTART")
 		}
 
 		if close { // command: /close ?
-			c.Log.Warn().Str("command", commandCloseRecvDisposition).
-				Str("notice", "channel: chat not running").Msg("IGNORE")
+			c.Log.Warn("IGNORE",
+				slog.String("command", commandCloseRecvDisposition),
+				slog.String("notice", "channel: chat not running"),
+			)
 			return nil
 		}
 
@@ -381,21 +399,23 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 		c.callOpts,
 	)
 
-	var event *zerolog.Event
+	log := c.Log.With(
+		slog.String("text", messageText),
+	)
 
 	if err == nil {
-		event = c.Log.Debug()
 		// TODO: Remove if clause !
 		// For backwards capability only !
 		if res.Message != nil {
 
 			*(message) = *(res.Message)
 		}
+		log.Debug("<<<<< RECV <<<<<")
 	} else {
-		event = c.Log.Error().Err(err)
+		log.Error("<<<<< RECV <<<<<",
+			slog.Any("error", err),
+		)
 	}
-
-	event.Str("text", messageText).Msg("<<<<< RECV <<<<<")
 
 	return err
 }
@@ -421,20 +441,22 @@ func (c *Channel) DeleteMessage(ctx context.Context, message *chat.Message) erro
 		c.callOpts,
 	)
 
-	var event *zerolog.Event
+	log := c.Log.With(
+		slog.Any("deleted", wlog.SlogObject(msg)),
+	)
 
 	if err == nil {
-		event = c.Log.Debug()
 		// TODO: Remove if clause !
 		// For backwards capability only !
 		if msg != nil {
 			// message.DeletedAt = time.Now()
 		}
+		log.Debug("***** DEL *****")
 	} else {
-		event = c.Log.Error().Err(err)
+		log.Error("***** DEL *****",
+			slog.Any("error", err),
+		)
 	}
-
-	event.Interface("deleted", msg).Msg("***** DEL *****")
 
 	return err
 }
@@ -449,10 +471,12 @@ func (c *Channel) callWrap(next client.CallFunc) client.CallFunc {
 		//
 		if err != nil {
 			if c.Host != "" {
-				c.Log.Warn().
-					Str("seed", c.Host). // WANTED
-					Str("peer", addr).   // REQUESTED
-					Msg("LOST")
+				c.Log.Warn("[ CHAT::LOST ]",
+					"chat", slog.GroupValue(
+						slog.String("lost", c.Host), // WANTED
+						slog.String("host", addr),   // REQUESTED
+					),
+				)
 			}
 			c.Host = ""
 			return err
@@ -462,16 +486,18 @@ func (c *Channel) callWrap(next client.CallFunc) client.CallFunc {
 			// NEW! Hosted!
 			c.Host = addr
 
-			c.Log.Info().
-				Str("peer", c.Host).
-				Msg("HOSTED")
+			c.Log.Info("[ CHAT::HOSTED ]",
+				slog.String("chat.host", c.Host),
+			)
 
 		} else if addr != c.Host {
 			// Hosted! But JUST Served elsewhere ...
-			c.Log.Info().
-				Str("seed", c.Host). // WANTED
-				Str("peer", addr).   // SERVED
-				Msg("RE-HOST")
+			c.Log.Info("[ CHAT::REHOST ]",
+				"chat", slog.GroupValue(
+					slog.String("lost", c.Host), // WANTED
+					slog.String("host", addr),   // SERVED
+				),
+			)
 
 			c.Host = addr
 		}
@@ -530,26 +556,31 @@ func (c channelLookup) Select(hosts []string, opts ...selector.SelectOption) (se
 
 	if peer == "" {
 
-		c.Log.Warn().
-			Str("seed", c.Host).   // WANTED
-			Str("peer", "random"). // SELECT
-			Str("error", "host: service unavailable").
-			Msg(perform)
+		c.Log.Warn("[ HOST::LOOKUP ]",
+			"conn", wlog.DeferValue(func() slog.Value {
+				return slog.GroupValue(
+					slog.String("addr", c.Host),   // WANTED
+					slog.String("next", "random"), // SELECT
+				)
+			}),
+			"error", "host: service unavailable",
+		)
 
 		return lookup(hosts, opts...)
 	}
 
-	var event *zerolog.Event
-	if perform == "RECOVER" {
-		event = c.Log.Info()
-	} else {
-		event = c.Log.Trace()
-	}
+	emit := c.Log.With(
+		"conn", slog.GroupValue(
+			slog.String("last", c.Host), // WANTED
+			slog.String("addr", peer),   // FOUND
+		),
+	)
 
-	event.
-		Str("seed", c.Host). // WANTED
-		Str("peer", peer).   // FOUND
-		Msg(perform)
+	if perform == "RECOVER" { // TODO  is always 'false'
+		emit.Info("[ HOST::RECOVER ]")
+	} else {
+		emit.Debug("[ HOST::LOOKUP ]")
+	}
 
 	return func() string {
 		return peer

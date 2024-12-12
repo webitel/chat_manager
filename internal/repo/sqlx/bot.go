@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"strings"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgtype"
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/rs/zerolog"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/bot"
 
@@ -20,7 +20,7 @@ import (
 )
 
 type pgsqlBotStore struct {
-	log *zerolog.Logger
+	log *slog.Logger
 	dbo []*sql.DB // cluster
 }
 
@@ -46,7 +46,7 @@ func (s *pgsqlBotStore) secondary() *sql.DB {
 var _ bot.Store = (*pgsqlBotStore)(nil)
 
 // NewBotStore returns PostgreSQL chatbots store
-func NewBotStore(log *zerolog.Logger, primary *sql.DB, secondary ...*sql.DB) bot.Store {
+func NewBotStore(log *slog.Logger, primary *sql.DB, secondary ...*sql.DB) bot.Store {
 
 	dbo := make([]*sql.DB, len(secondary)+1)
 

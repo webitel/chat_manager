@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	log2 "github.com/webitel/chat_manager/log"
+	"log/slog"
 	"net/http"
 
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/rs/zerolog"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
+	"github.com/webitel/chat_manager/internal/util"
 )
 
 const (
@@ -299,18 +301,17 @@ func (c *Bot) onNewDialog(ctx context.Context, event *Update) error {
 	// Start new dialog
 	err = c.Gateway.Read(ctx, &sendUpdate)
 
-	var notice func() *zerolog.Event
-	if err == nil {
-		notice = c.Gateway.Log.Info
-	} else {
-		notice = func() *zerolog.Event {
-			return c.Gateway.Log.Err(err)
-		}
-	}
+	log := c.Gateway.Log.With(
+		slog.Any("user", log2.SlogObject(&User{ID: sender.ID, Name: sender.Name})),
+	)
 
-	notice().Interface("user",
-		&User{ID: sender.ID, Name: sender.Name}).
-		Msg("viber/bot.onConversationStarted")
+	if err == nil {
+		log.Info("viber/bot.onConversationStarted")
+	} else {
+		log.Error("viber/bot.onConversationStarted",
+			slog.Any("error", err),
+		)
+	}
 
 	return nil
 }
@@ -374,16 +375,17 @@ func (c *Bot) onJoinMember(ctx context.Context, event *Update) error {
 	}
 	err = c.Gateway.Read(ctx, &sendUpdate)
 
-	var notice func() *zerolog.Event
+	log := c.Gateway.Log.With(
+		slog.Any("user", log2.SlogObject(&User{ID: sender.ID, Name: sender.Name})),
+	)
+
 	if err == nil {
-		notice = c.Gateway.Log.Info
+		log.Info("viber/bot.onSubscribed")
 	} else {
-		notice = func() *zerolog.Event {
-			return c.Gateway.Log.Err(err)
-		}
+		log.Error("viber/bot.onSubscribed",
+			slog.Any("error", err),
+		)
 	}
-	notice().Interface("user", &User{ID: sender.ID, Name: sender.Name}).
-		Msg("viber/bot.onSubscribed")
 
 	return nil
 }
@@ -402,16 +404,16 @@ func (c *Bot) onLeftMember(ctx context.Context, event *Update) error {
 		err = dialog.Close()
 	}
 
-	var notice func() *zerolog.Event
+	log := c.Gateway.Log.With(
+		slog.String("userId", chatId),
+	)
 	if err == nil {
-		notice = c.Gateway.Log.Info
+		log.Info("viber/bot.onUnsubscribed")
 	} else {
-		notice = func() *zerolog.Event {
-			return c.Gateway.Log.Err(err)
-		}
+		log.Error("viber/bot.onUnsubscribed",
+			slog.Any("error", err),
+		)
 	}
-	notice().Str("userId", chatId).
-		Msg("viber/bot.onUnsubscribed")
 
 	return nil
 }
@@ -523,7 +525,7 @@ func (c *Bot) onNewMessage(ctx context.Context, event *Update) error {
 		}
 
 		sendUpdate.Message.Contact.FirstName, sendUpdate.Message.Contact.LastName =
-			bot.FirstLastName(sendUpdate.Message.Contact.FirstName)
+			util.ParseFullName(sendUpdate.Message.Contact.FirstName)
 
 		if message.Text == btnShareContactCode {
 			// NOTE: This MIGHT be contact Phone from current User (via <share-phone> button)
@@ -541,9 +543,9 @@ func (c *Bot) onNewMessage(ctx context.Context, event *Update) error {
 		}
 
 	default:
-		c.Gateway.Log.Error().
-			Str("error", "message: type \""+message.Type+"\" unknown").
-			Msg("viber/onNewMessage")
+		c.Gateway.Log.Error("viber/onNewMessage",
+			slog.String("error", "message: type \""+message.Type+"\" unknown"),
+		)
 
 		return nil // IGNORE
 	}
@@ -551,8 +553,9 @@ func (c *Bot) onNewMessage(ctx context.Context, event *Update) error {
 	err = c.Gateway.Read(ctx, &sendUpdate)
 
 	if err != nil {
-		c.Gateway.Log.Err(err).
-			Msg("viber/onNewMessage")
+		c.Gateway.Log.Error("viber/onNewMessage",
+			slog.Any("error", err),
+		)
 		return err // 502 Bad Gateway
 	}
 

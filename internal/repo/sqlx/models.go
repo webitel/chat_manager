@@ -37,9 +37,18 @@ type Channel struct {
 	// FlowID         int64          `db:"-" json:"flow_id"`
 	FlowBridge  bool           `db:"flow_bridge" json:"flow_bridge"`
 	Name        string         `db:"name" json:"name"`
+	PublicName  sql.NullString `db:"public_name" json:"public_name"`
 	ClosedCause sql.NullString `db:"closed_cause" json:"closed_cause,omitempty"`
 	JoinedAt    sql.NullTime   `db:"joined_at" json:"joined_at,omitempty"`
 	Variables   Metadata       `db:"props" json:"props,omitempty"`
+}
+
+func (m Channel) FullName() string {
+	fullName := m.Name
+	if m.PublicName.Valid && m.PublicName.String != "" {
+		fullName = m.PublicName.String
+	}
+	return fullName
 }
 
 func (m *Channel) Contact() string {
@@ -167,6 +176,9 @@ func (m *Channel) Scan(row *sql.Rows) error {
 
 		case "props":
 			target(&m.Variables)
+
+		case "public_name":
+			target(ScanFunc(nil)) // FIXME
 
 		default:
 
@@ -302,9 +314,10 @@ type Profile struct {
 }
 
 type WebitelUser struct {
-	ID       int64  `db:"id" json:"id"`
-	Name     string `db:"name" json:"name"`
-	DomainID int64  `db:"dc" json:"dc"`
+	ID       int64          `db:"id" json:"id"`
+	Name     string         `db:"name" json:"name"`
+	DomainID int64          `db:"dc" json:"dc"`
+	ChatName sql.NullString `db:"chat_name" json:"chat_name"`
 }
 
 type ConversationNode struct {

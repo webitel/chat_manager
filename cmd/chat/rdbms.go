@@ -1,31 +1,30 @@
 package chat
 
 import (
-	"fmt"
-	"time"
-
 	"context"
+	"fmt"
+	"github.com/jackc/pgconn"
+	"log/slog"
+	"time"
 
 	// "database/sql"
 	"github.com/jmoiron/sqlx"
 
-	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/stdlib"
-
-	log "github.com/micro/micro/v3/service/logger"
-	"github.com/rs/zerolog"
 )
 
 // OpenDB returns valid postgres DSN database connection pool
-func OpenDB(dataSource string) (*sqlx.DB, error) {
+func OpenDB(log *slog.Logger, dataSource string) (*sqlx.DB, error) {
 
 	config, err := pgx.ParseConfig(dataSource)
 	if err != nil {
 		return nil, err
 	}
 
-	config.Logger = pgxLogger(0)
+	config.Logger = &pgxLogger{
+		log: log,
+	}
 	config.LogLevel = pgx.LogLevelTrace
 	// dataSource = stdlib.RegisterConnConfig(config)
 	// db, _ := sql.Open("pgx", dataSource)
@@ -34,7 +33,11 @@ func OpenDB(dataSource string) (*sqlx.DB, error) {
 	dbo := stdlib.OpenDB(*(config),
 		stdlib.OptionBeforeConnect(
 			func(ctx context.Context, dsn *pgx.ConnConfig) error {
-				log.Infof("Database [%s] Connect %s", driverName, dsn.ConnString())
+				log.Info(
+					"connected",
+					"driver", driverName,
+					"host", dsn.Host,
+				)
 				return nil
 			},
 		),
@@ -56,62 +59,57 @@ func OpenDB(dataSource string) (*sqlx.DB, error) {
 	return sqlx.NewDb(dbo, driverName), nil
 }
 
-type pgxLogger int
+type pgxLogger struct {
+	log *slog.Logger
+}
 
-func (pgxLogger) Log(ctx context.Context, rate pgx.LogLevel, text string, data map[string]interface{}) {
+func (p *pgxLogger) Log(ctx context.Context, lvl pgx.LogLevel, text string, data map[string]interface{}) {
 
-	var e *zerolog.Event
+	// todo
+	l := logWithQueryData(p.log, data)
 
-	switch rate {
+	switch lvl {
 	// case pgx.LogLevelTrace:
 	// 	e = logger.Trace()
 	case pgx.LogLevelDebug,
 		pgx.LogLevelInfo:
-		e = logger.Debug()
+		l.Debug(text)
 	case pgx.LogLevelWarn:
-		e = logger.Warn()
+		l.Warn(text)
 	case pgx.LogLevelError:
-		e = logger.Error()
+		l.Error(text)
 	// case pgx.LogLevelNone:
 	// 	panic("log: level none")
 	default:
-		e = logger.Trace()
+		l.Debug(text)
 	}
 
-	if !e.Enabled() {
-		return
-	}
-
-	e.EmbedObject(pgxLogdata(data)).Msg(text)
 }
 
-type pgxLogdata map[string]interface{}
+func logWithQueryData(log *slog.Logger, data map[string]interface{}) *slog.Logger {
 
-func (ctx pgxLogdata) MarshalZerologObject(e *zerolog.Event) {
-
-	for key, v := range ctx {
+	for key, v := range data {
 		switch key {
 		case "pid":
-			e = e.Uint32("pid", v.(uint32))
+			log = log.With(slog.Any("pid", v))
 		case "err":
-			err := v.(error)
-			// switch err := err.(type) {}
-			e = e.Err(err)
+			log = log.With(slog.Any("error", v))
 		case "sql":
 			query, _ := v.(string)
-			e = e.Str("query", query) // "\n\n"+query+"\n\n")
+			log = log.With(slog.String("query", query))
 		case "args":
 			params, _ := v.([]interface{})
-			e = e.Str("params", fmt.Sprintf("%+v", params))
+			log = log.With(slog.String("params", fmt.Sprintf("%+v", params)))
 		case "time":
-			// e = e.Dur("time", v.(time.Duration))
-			e = e.Str("spent", v.(time.Duration).String())
+			log = log.With(slog.Duration("spent", v.(time.Duration)))
 		case "rowCount":
-			e = e.Int("rows", v.(int))
+			log = log.With(slog.Int("rows", v.(int)))
 		case "commandTag":
-			e = e.Int64("rows", v.(pgconn.CommandTag).RowsAffected())
+			log = log.With(slog.Int64("rows", v.(pgconn.CommandTag).RowsAffected()))
 		default:
-			e = e.Interface(key, v)
+			log = log.With(slog.Any(key, v))
 		}
 	}
+
+	return log
 }

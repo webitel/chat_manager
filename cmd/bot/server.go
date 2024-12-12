@@ -1,15 +1,27 @@
 package bot
 
 import (
-	"github.com/micro/micro/v3/service/broker"
-	audProto "github.com/webitel/chat_manager/api/proto/logger"
-	aud "github.com/webitel/chat_manager/logger"
 	"net"
 	"net/url"
 	"os"
 
+	"log/slog"
+	"strings"
+
+	"github.com/micro/micro/v3/service/broker"
+	"github.com/micro/micro/v3/service/client"
+	"github.com/micro/micro/v3/service/server"
+	microgrpcsrv "github.com/micro/micro/v3/service/server/grpc"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
+	audProto "github.com/webitel/chat_manager/api/proto/logger"
+	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
+	aud "github.com/webitel/chat_manager/logger"
+	"github.com/webitel/chat_manager/otel"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/resource"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	"google.golang.org/grpc"
 
 	micro "github.com/micro/micro/v3/service"
 	"github.com/urfave/cli/v2"
@@ -23,6 +35,7 @@ import (
 	pb "github.com/webitel/chat_manager/api/proto/bot"
 	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/cmd"
+	otelsdk "github.com/webitel/webitel-go-kit/otel/sdk"
 )
 
 const (
@@ -32,8 +45,8 @@ const (
 )
 
 var (
-	agent   pbchat.ChatService
-	logger  zerolog.Logger
+	agent pbchat.ChatService
+	//logger  zerolog.Logger
 	service *micro.Service
 	// bot     ChatServer // V0
 	srv *bot.Service // *Service   // V1
@@ -41,9 +54,9 @@ var (
 	Flags = []cli.Flag{
 		&cli.StringFlag{
 			Name:    "log_level",
-			EnvVars: []string{"LOG_LEVEL"},
-			Value:   "debug",
+			EnvVars: []string{"WBTL_LOG_LEVEL"},
 			Usage:   "Log Level",
+			// Value:   "info",
 		},
 		&cli.StringFlag{
 			Name:    "site_url",
@@ -89,28 +102,68 @@ func Run(ctx *cli.Context) error {
 		return nil
 	}
 
+	version := cmd.GitTag
+	if version == "" {
+		version = "dev"
+	}
+	resourceAttrs := []attribute.KeyValue{
+		semconv.ServiceName(name),
+		semconv.ServiceVersion(version),
+		semconv.ServiceInstanceID(server.DefaultId),
+	}
+	for key, value := range map[string]string{
+		"service.version.build": cmd.BuildDate,
+		"service.version.patch": cmd.GitCommit,
+	} {
+		if value = strings.TrimSpace(value); value != "" {
+			resourceAttrs = append(resourceAttrs,
+				attribute.String(key, value),
+			)
+		}
+	}
+
+	err := otel.Configure(ctx.Context,
+		otelsdk.WithResource(resource.NewSchemaless(
+			resourceAttrs...,
+		)),
+	)
+
+	if err != nil {
+		// fatal(fmt.Errorf("[O]pen[Tel]emetry configuration failed"))
+		return err // log(FATAL) & exit(1)
+	}
+
+	defer otel.Shutdown(ctx.Context)
+	stdlog := slog.Default()
+
+	server := server.DefaultServer
+	err = server.Init(microgrpcsrv.Options(
+		grpc.StatsHandler(otelgrpc.NewServerHandler(
+			// ...otelgrpc.Option
+			otelgrpc.WithMessageEvents(
+				otelgrpc.ReceivedEvents,
+				otelgrpc.SentEvents,
+			),
+		)),
+	))
+	if err != nil {
+		// Failed to setup micro/grpc.Server
+		return err
+	}
+
 	service = micro.New(
 		micro.Name(name),             // ("chat.bot"),
 		micro.Version(cmd.Version()), // ("latest"),
-		micro.WrapCall(log.CallWrapper(&logger)),
-		micro.WrapHandler(log.HandlerWrapper(&logger)),
+		micro.WrapCall(log.CallWrapper(stdlog)),
+		micro.WrapHandler(log.HandlerWrapper(stdlog)),
 		micro.BeforeStart(func() error { return srv.Start() }),
 		micro.AfterStop(func() error { return srv.Close() }),
 	)
 
-	logsLvl := ctx.String("log_level")
+	//logsLvl := ctx.String("log_level")
 	baseURL := ctx.String("site_url")
 	webRoot := ctx.String("web_root")
 	srvAddr := ctx.String("address")
-	// LOGs
-	colorize := true
-	stdlog, err := log.Console(logsLvl, colorize) // NewLogger(cfg.LogLevel)
-	if err != nil {
-		return err
-	}
-
-	log.Default = *(stdlog)
-	logger = log.Default // *(stdlog)
 
 	// CHECK: valid [host]:port address specified
 	if _, _, err := net.SplitHostPort(srvAddr); err != nil {
@@ -129,8 +182,18 @@ func Run(ctx *cli.Context) error {
 		return errors.New("--web_root: directory required")
 	}
 
-	sender := service.Client()                                                          // Micro-From-Service: webitel.chat.bot
-	sender = wrapper.FromService(service.Name(), service.Server().Options().Id, sender) // Micro-From-Id: server.DefaultId
+	// Micro-From-Service: webitel.chat.bot
+	sender := service.Client()
+	// Micro-From-Id: server.DefaultId
+	sender = wrapper.FromService(
+		service.Name(), service.Server().Options().Id, sender,
+	)
+	// Trace-Id
+	err = sender.Init(client.WrapCall(wrapper.OtelMicroCall))
+	if err != nil {
+		// Failed to setup micro/gRPC.Client(webitel.chat.server)
+		return err
+	}
 	agent = pbchat.NewChatService("webitel.chat.server", sender)
 
 	// cfg.CertPath = c.String("cert_path")
@@ -138,7 +201,7 @@ func Run(ctx *cli.Context) error {
 	// cfg.ConversationTimeout = c.Uint64("conversation_timeout")
 
 	// Open persistent [D]ata[S]ource[N]ame ...
-	dbo, err := postgres.OpenDB(ctx.String("db-dsn"))
+	dbo, err := postgres.OpenDB(stdlog, ctx.String("db-dsn"))
 	if err != nil {
 		return errors.Wrap(err, "Invalid DSN String")
 	}
@@ -153,9 +216,11 @@ func Run(ctx *cli.Context) error {
 	// }
 
 	// configure
-	store := sqlxrepo.NewBotStore(&logger, dbo.DB)
+	store := sqlxrepo.NewBotStore(stdlog, dbo.DB)
 	auditor := aud.NewClient(broker.DefaultBroker, audProto.NewConfigService("logger", sender))
-	srv = bot.NewService(store, &logger, agent, auditor)
+	fileService := pbstorage.NewFileService("storage", sender)
+	mediaFileService := pbstorage.NewMediaFileService("storage", sender)
+	srv = bot.NewService(store, stdlog, agent, auditor, fileService, mediaFileService)
 	srv.WebRoot = webRoot // Static assets base folder
 
 	// AUTH: go.webitel.app
@@ -166,11 +231,13 @@ func Run(ctx *cli.Context) error {
 
 	for _, regErr := range []error{
 		pb.RegisterBotsHandler(service.Server(), srv),
+		// register more micro/gRPC service(s) here ...
 	} {
 		if regErr != nil {
-			logger.Fatal().
-				Str("app", "failed to register service").
-				Msg(regErr.Error())
+			log.FataLog(nil, // nil,
+				"failed to register service",
+				slog.Any("error", regErr),
+			)
 			return regErr
 		}
 	}
@@ -182,9 +249,11 @@ func Run(ctx *cli.Context) error {
 
 	// Run the server
 	if err := service.Run(); err != nil {
-		logger.Fatal().
-			Str("app", "failed to run service").
-			Msg(err.Error())
+		log.FataLog(nil, // nil,
+			"failed to run service",
+			slog.Any("error", err),
+		)
+		return err
 	}
 
 	return nil

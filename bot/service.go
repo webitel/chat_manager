@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -15,10 +16,11 @@ import (
 	"net/http/pprof"
 
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/rs/zerolog"
 	"github.com/webitel/chat_manager/api/proto/chat"
+	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/auth"
+	wlog "github.com/webitel/chat_manager/log"
 	audit "github.com/webitel/chat_manager/logger"
 )
 
@@ -39,7 +41,7 @@ type Service struct {
 	Addr    string
 	WebRoot string
 
-	Log    zerolog.Logger
+	Log    *slog.Logger
 	Auth   *auth.Client
 	Client chat.ChatService
 	exit   chan chan error
@@ -53,18 +55,28 @@ type Service struct {
 	gateways map[string]int64   // map[URI]profile.id
 	profiles map[int64]*Gateway // map[profile.id]gateway
 	audit    *audit.Client
+
+	fileService      pbstorage.FileService
+	mediaFileService pbstorage.MediaFileService
 }
 
 func NewService(
 	store Store,
-	logger *zerolog.Logger,
+	logger *slog.Logger,
 	client chat.ChatService,
 	auditClient *audit.Client,
 	// router *mux.Router,
+	fileService pbstorage.FileService,
+	mediaFileService pbstorage.MediaFileService,
 ) *Service {
+
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	return &Service{
 
-		Log:    *(logger),
+		Log:    logger,
 		Client: client, // chat.NewChatService("webitel.chat.server"),
 
 		exit: make(chan chan error),
@@ -74,12 +86,15 @@ func NewService(
 		gateways: make(map[string]int64),
 		profiles: make(map[int64]*Gateway),
 		audit:    auditClient,
+
+		fileService:      fileService,
+		mediaFileService: mediaFileService,
 	}
 }
 
 func (srv *Service) onStart() {
 
-	srv.Log.Info().Msg("Server [bots] Connecting recipient subscriptions . . .")
+	srv.Log.Info("Server [bots] Connecting recipient subscriptions . . .")
 
 	ctx := context.TODO()
 	lookup := app.SearchOptions{
@@ -131,7 +146,9 @@ func (srv *Service) onStart() {
 
 	bots, err := srv.store.Search(&lookup)
 	if err != nil {
-		srv.Log.Err(err).Msg("service.onStart")
+		srv.Log.Error("service.onStart",
+			slog.Any("error", err),
+		)
 	}
 
 	for _, profile := range bots {
@@ -145,7 +162,10 @@ func (srv *Service) onStart() {
 		err = gate.Register(ctx, force)
 		if err != nil {
 			// return nil, err
-			srv.Log.Err(err).Int64("pid", pid).Msg("service.onStart.bot.register")
+			srv.Log.Error("service.onStart.bot.register",
+				slog.Any("error", err),
+				slog.Int64("pid", pid),
+			)
 		}
 	}
 }
@@ -192,9 +212,9 @@ func (srv *Service) Start() error {
 	}
 	// Normalize address
 	srv.Addr = ln.Addr().String()
-	if log := srv.Log.Info(); log.Enabled() {
-		log.Msgf("Server [http] Listening on %s", srv.Addr)
-	}
+
+	// srv.Log.Info("Server [http] Listening on " + srv.Addr)
+
 	// Normalize Reverse URL
 	var hostURL *url.URL
 	if srv.URL == "" {
@@ -215,9 +235,15 @@ func (srv *Service) Start() error {
 		}
 	}
 	srv.URL = hostURL.String()
-	if log := srv.Log.Info(); log.Enabled() {
-		log.Msgf("Server [http] Reverse Host %s", srv.URL)
-	}
+	// srv.Log.Info("Server [http] Reverse Host " + srv.URL)
+	srv.Log.Info("Server [http] Starting up",
+		"http", wlog.DeferValue(func() slog.Value {
+			return slog.GroupValue(
+				slog.String("addr", srv.Addr),
+				slog.String("url", srv.URL), // base reverse URL
+			)
+		}),
+	)
 
 	rmux := http.NewServeMux()
 	rmux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -227,28 +253,35 @@ func (srv *Service) Start() error {
 	rmux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	rmux.Handle("/", srv)
 
-	// handler := srv
-	// handler := dumpMiddleware(srv)
-	handler := dumpMiddleware(rmux)
-	// handler := rmux
+	// // handler := srv
+	// // handler := dumpMiddleware(srv)
+	// handler := dumpMiddleware(rmux)
+	// // handler := rmux
+	handler := traceMiddleware(rmux)
 
 	go func() {
 
-		if err := http.Serve(ln, handler); err != nil {
-			// if err != http.ErrServerClosed {
-			// 	if log := b.log.Error(); log.Enabled() {
-			// 		log.Err(err).Msg("Server [http] Shutted down due to an error")
-			// 	}
-			// 	return
-			// }
+		err := http.Serve(ln, handler)
+		if err == http.ErrServerClosed {
+			err = nil
 		}
 
-		if log := srv.Log.Warn(); log.Enabled() {
-
-			log.Err(err).
-				Str("addr", ln.Addr().String()).
-				Msg("Server [http] Shutted down")
+		emit := slog.LevelWarn
+		if err != nil {
+			emit = slog.LevelError
 		}
+
+		srv.Log.Log(context.TODO(), emit,
+			"Server [http] Shutted down",
+			"http", wlog.DeferValue(func() slog.Value {
+				args := make([]slog.Attr, 1, 2)
+				args[0] = slog.String("addr", ln.Addr().String())
+				if err != nil {
+					args = append(args, slog.Any("error", err))
+				}
+				return slog.GroupValue(args...)
+			}),
+		)
 
 	}()
 
@@ -282,7 +315,9 @@ func (srv *Service) Close() error {
 	for _, gate := range srv.profiles {
 		_ = gate.Remove()
 		if re := gate.External.Close(); re != nil {
-			gate.Log.Err(re).Msg("STOP")
+			gate.Log.Error("STOP",
+				slog.Any("error", re),
+			)
 		}
 	}
 
@@ -408,9 +443,10 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 
 	if err != nil {
 
-		srv.Log.Error().Err(err).
-			Int64("pid", pid).
-			Msg("Failed lookup bot.profile")
+		srv.Log.Error("Failed lookup bot.profile",
+			slog.Any("error", err),
+			slog.Int64("pid", pid),
+		)
 
 		return nil, err
 	}
@@ -419,8 +455,10 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 
 	if profile.GetId() == 0 {
 		// NOT FOUND !
-		srv.Log.Warn().Int64("pid", pid).Str("uri", uri).
-			Msg("PROFILE: NOT FOUND")
+		srv.Log.Warn("PROFILE: NOT FOUND",
+			slog.String("uri", uri),
+			slog.Int64("pid", pid),
+		)
 
 		return nil, errors.NotFound(
 			"chat.gateway.profile.not_found",
@@ -431,9 +469,10 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 
 	if pid != 0 && pid != profile.GetId() {
 		// NOT FOUND !
-		srv.Log.Warn().Int64("pid", pid).
-			Str("error", "mismatch profile.id requested").
-			Msg("PROFILE: NOT FOUND")
+		srv.Log.Warn("PROFILE: NOT FOUND",
+			slog.String("error", "mismatch profile.id requested"),
+			slog.Int64("pid", pid),
+		)
 
 		return nil, errors.NotFound(
 			"chat.bot.profile.not_found",
@@ -455,9 +494,10 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 	// }
 	if uri != "" && uri != profile.GetUri() {
 		// NOT FOUND !
-		srv.Log.Warn().Str("uri", uri).
-			Str("error", "mismatch profile.uri requested").
-			Msg("PROFILE: NOT FOUND")
+		srv.Log.Warn("PROFILE: NOT FOUND",
+			slog.String("error", "mismatch profile.uri requested"),
+			slog.String("uri", uri),
+		)
 
 		return nil, errors.NotFound(
 			"chat.bot.profile.not_found",
@@ -725,18 +765,13 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uri := r.URL.Path
-	if strings.HasSuffix(uri, CaptchaSuffix) { // the CAPTCHA check ! Find the underlying gateway...
-		uri = strings.TrimSuffix(uri, CaptchaSuffix)
-	}
-
-	srv.Log.Debug().
-		Str("uri", r.URL.Path).
-		Str("method", r.Method).
-		Msg("<<<<< WEBHOOK <<<<<")
+	// if strings.HasSuffix(uri, CaptchaSuffix) { // the CAPTCHA check ! Find the underlying gateway...
+	uri = strings.TrimSuffix(uri, CaptchaSuffix)
+	// }
 
 	//uri := r.URL.Path // strings.TrimLeft(r.URL.Path, "/")
 
-	if "/favicon.ico" == uri {
+	if uri == "/favicon.ico" {
 		http.NotFound(w, r)
 		return
 	}
@@ -755,6 +790,16 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	gate.Log.DebugContext(r.Context(), fmt.Sprintf(
+		"[ GATE::WEBHOOK ] %s %s %s", r.Method, r.URL.RequestURI(), r.Proto,
+	), "http", wlog.DeferValue(func() slog.Value {
+		return slog.GroupValue(
+			slog.String("verb", r.Method),
+			slog.String("url", r.URL.RequestURI()),
+			slog.String("proto", r.Proto),
+		)
+	}))
 
 	// // Inspect known URIs index
 	// srv.indexMx.RLock()   // +R

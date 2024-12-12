@@ -2,11 +2,10 @@ package event_router
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	"database/sql"
-
-	"github.com/rs/zerolog"
 
 	"github.com/micro/micro/v3/service/client"
 	"github.com/micro/micro/v3/util/selector"
@@ -23,7 +22,7 @@ type channel struct {
 	*store.Channel
 	// // provider
 	// agent *eventRouter
-	trace *zerolog.Logger
+	trace *slog.Logger
 }
 
 // Hostname service node-id that successfully served
@@ -43,10 +42,10 @@ func (c *channel) callWrap(next client.CallFunc) client.CallFunc {
 		//
 		if err != nil {
 			if requestNode != "" {
-				c.trace.Warn().
-					Str("seed", requestNode). // WANTED
-					Str("peer", addr).        // REQUESTED
-					Msg("LOST")
+				c.trace.Warn("LOST",
+					slog.String("seed", requestNode), // WANTED
+					slog.String("peer", addr),        // REQUESTED
+				)
 			}
 			c.Channel.ServiceHost = sql.NullString{}
 			return err
@@ -64,9 +63,10 @@ func (c *channel) callWrap(next client.CallFunc) client.CallFunc {
 					Valid:  true,
 				}
 
-			c.trace.Info().
-				Str("peer", respondNode).
-				Msg("HOSTED")
+			c.trace.Info("HOSTED",
+				slog.String("seed", requestNode),
+				slog.String("peer", addr),
+			)
 
 		} else if respondNode != requestNode {
 			// Hosted! But JUST Served elsewhere ...
@@ -77,11 +77,10 @@ func (c *channel) callWrap(next client.CallFunc) client.CallFunc {
 				}
 
 			// TODO: re-store DB new channel.host
-
-			c.trace.Info().
-				Str("seed", requestNode). // WANTED
-				Str("peer", respondNode). // SERVED
-				Msg("RELOCATE")
+			c.trace.Info("RELOCATE",
+				slog.String("seed", requestNode), // WANTED
+				slog.String("peer", respondNode), // SERVED
+			)
 
 			requestNode = respondNode
 		}
@@ -141,29 +140,28 @@ func (c channelLookup) Select(hosts []string, opts ...selector.SelectOption) (se
 	}
 
 	if peer == "" {
-
-		c.trace.Warn().
-			Str("seed", hostname).     // WANTED
-			Str("peer", "roundrobin"). // SELECT
-			Str("error", "host: service unavailable").
-			Msg(perform)
+		c.trace.Warn("[ CHAT::GATE ] "+perform,
+			slog.String("error", "host: service unavailable"),
+			slog.String("lost", hostname),     // WANTED
+			slog.String("next", "roundrobin"), // SERVED
+		)
 
 		// return selector.Random(services)
 		return strategy.RoundRobin.Select(hosts, opts...)
 		// return strategy.PrefferedHost("127.0.0.1")(hosts, opts...) // webitel.chat.bot
 	}
 
-	var event *zerolog.Event
-	if perform == "RECOVER" {
-		event = c.trace.Info()
-	} else {
-		event = c.trace.Trace()
-	}
-
-	event.
-		Str("seed", hostname). // WANTED
-		Str("peer", peer).     // FOUND
-		Msg(perform)
+	if perform == "RECOVER" { // TODO is always 'false'
+		c.trace.Info("[ CHAT::GATE ] "+perform,
+			slog.String("host", hostname), // WANTED
+			slog.String("addr", peer),     // FOUND
+		)
+	} // else {
+	// 	c.trace.Debug("[ CHAT::GATE ] "+perform,
+	// 		slog.String("host", hostname), // WANTED
+	// 		slog.String("addr", peer),     // FOUND
+	// 	)
+	// }
 
 	return func() string {
 		return peer

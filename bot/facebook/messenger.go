@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"path"
@@ -231,11 +232,11 @@ func (c *Client) getSubscribedFields(token *oauth2.Token, pages []*Page) error {
 
 		if err != nil {
 
-			c.Log.Err(err).
-				Str("id", page.ID).
-				Str("page", page.Name).
-				Int("code", res[i].Code).
-				Msg("SUBSCRIBED: FIELDS")
+			c.Log.Error("SUBSCRIBED: FIELDS",
+				slog.String("id", page.ID),
+				slog.String("page", page.Name),
+				slog.Int("code", res[i].Code),
+			)
 
 			continue
 		}
@@ -246,11 +247,11 @@ func (c *Client) getSubscribedFields(token *oauth2.Token, pages []*Page) error {
 				apps[0].SubscribedFields
 		}
 
-		c.Log.Info().
-			Str("page", page.Name).
-			Str("page.id", page.ID).
-			Strs("fields", page.SubscribedFields).
-			Msg("SUBSCRIBED: FIELDS")
+		c.Log.Info("SUBSCRIBED: FIELDS",
+			slog.String("page", page.Name),
+			slog.String("page.id", page.ID),
+			slog.Any("fields", page.SubscribedFields),
+		)
 	}
 
 	return nil
@@ -565,11 +566,12 @@ func (c *Client) subscribePages(pages []*Page, fields []string) error {
 		}
 
 		if err != nil {
-			c.Log.Err(err).
-				Str("page-id", page.ID).
-				Str("page", page.Name).
-				Int("code", ret[i].Code).
-				Msg("SUBSCRIBE: PAGE")
+			c.Log.Error("SUBSCRIBE: PAGE",
+				slog.Any("error", err),
+				slog.String("page.id", page.ID),
+				slog.String("page", page.Name),
+				slog.Int("code", ret[i].Code),
+			)
 			continue
 		}
 		// SUCCESS !

@@ -14,12 +14,16 @@ import (
 func (repo *sqlxRepository) WithTransaction(txFunc func(*sqlx.Tx) error) (err error) {
 	var tx *sqlx.Tx
 	if tx, err = repo.db.Beginx(); err != nil {
-		repo.log.Error().Msg(err.Error())
+		repo.log.Error(err.Error(),
+			"error", err,
+		)
 		return
 	}
 	defer func() {
 		if p := recover(); p != nil || err != nil {
-			repo.log.Error().Msg(err.Error())
+			repo.log.Error(err.Error(),
+				"error", err,
+			)
 			_ = tx.Rollback()
 		} else {
 			err = tx.Commit()
@@ -72,7 +76,9 @@ func (repo *sqlxRepository) GetChannelByIDTx(ctx context.Context, tx *sqlx.Tx, i
 	result := &Channel{}
 	err := tx.GetContext(ctx, result, "SELECT * FROM chat.channel WHERE id=$1", id)
 	if err != nil {
-		repo.log.Warn().Msg(err.Error())
+		repo.log.Warn(err.Error(),
+			"error", err,
+		)
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
@@ -140,30 +146,30 @@ func (repo *sqlxRepository) CreateChannelTx(ctx context.Context, tx *sqlx.Tx, c 
 	c.UpdatedAt = tmp
 	_, err := tx.NamedExecContext(ctx,
 		`insert into chat.channel (
-			id, 
-			type, 
-			conversation_id, 
-			user_id, 
-			connection, 
-			created_at, 
-			internal, 
-			closed_at, 
-			updated_at, 
-			domain_id, 
+			id,
+			type,
+			conversation_id,
+			user_id,
+			connection,
+			created_at,
+			internal,
+			closed_at,
+			updated_at,
+			domain_id,
 			flow_bridge,
 			name
 		)
 		values (
-			:id, 
-			:type, 
-			:conversation_id, 
-			:user_id, 
-			:connection, 
-			:created_at, 
-			:internal, 
-			:closed_at, 
-			:updated_at, 
-			:domain_id, 
+			:id,
+			:type,
+			:conversation_id,
+			:user_id,
+			:connection,
+			:created_at,
+			:internal,
+			:closed_at,
+			:updated_at,
+			:domain_id,
 			:flow_bridge,
 			:name
 			)`,

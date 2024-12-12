@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -25,7 +26,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/micro/micro/v3/service/client"
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/rs/zerolog"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/bot"
@@ -245,9 +245,9 @@ func (c *Client) whatsAppRestoreAccounts() error {
 	// 	err = c.whatsApp.Restore(data)
 	// }
 	if err != nil {
-		c.Log.Error().
-			Str("error", "restore: invalid data sequence; "+err.Error()).
-			Msg("WHATSAPP: ACCOUNTS")
+		c.Log.Error("WHATSAPP: ACCOUNTS",
+			slog.String("error", "restore: invalid data sequence; "+err.Error()),
+		)
 		return err
 	}
 	// Decode back[ed]up data; WABAID(s) registered
@@ -287,9 +287,9 @@ func (c *Client) whatsAppRestoreAccounts() error {
 	)
 
 	if err != nil {
-		c.Gateway.Log.Error().
-			Str("error", "restore: failed to get registered accounts; "+err.Error()).
-			Msg("WHATSAPP: ACCOUNTS")
+		c.Gateway.Log.Error("WHATSAPP: ACCOUNTS",
+			slog.String("error", "restore: failed to get registered accounts; "+err.Error()),
+		)
 		return err
 	}
 	// Cache fetched accounts
@@ -689,11 +689,12 @@ func (c *Client) unsubscribeWhatsAppBusinessAccounts(ctx context.Context, accoun
 
 		if err != nil {
 
-			c.Gateway.Log.Err(err).
-				Str("WABA:ID", account.ID).
-				Str("WABA:Name", account.Name).
-				Int("code", res[i].Code).
-				Msg("WHATSAPP: UNSUBSCRIBE")
+			c.Gateway.Log.Error("WHATSAPP: UNSUBSCRIBE",
+				slog.Any("error", err),
+				slog.String("WABA:ID", account.ID),
+				slog.String("WABA:Name", account.Name),
+				slog.Int("code", res[i].Code),
+			)
 
 			rpcErr, _ := err.(*graph.Error)
 			if rpcErr == nil {
@@ -836,11 +837,12 @@ func (c *Client) subscribeWhatsAppBusinessAccounts(ctx context.Context, accounts
 
 		if err != nil {
 
-			c.Gateway.Log.Err(err).
-				Str("WABA:ID", account.ID).
-				Str("WABA:Name", account.Name).
-				Int("code", ret[i].Code).
-				Msg("WHATSAPP: SUBSCRIBE")
+			c.Gateway.Log.Error("WHATSAPP: SUBSCRIBE",
+				slog.Any("error", err),
+				slog.String("WABA:ID", account.ID),
+				slog.String("WABA:Name", account.Name),
+				slog.Int("code", ret[i].Code),
+			)
 
 			rpcErr, _ := err.(*graph.Error)
 			if rpcErr == nil {
@@ -1110,15 +1112,17 @@ func (c *Client) whatsAppOnUpdates(ctx context.Context, event *webhooks.Entry) {
 			// update.statuses;
 			// update.pricing;
 		default:
-			c.Gateway.Log.Warn().
-				Str("error", "update: field{"+change.Field+"} not supported").
-				Msg("whatsapp.onUpdate")
+			c.Gateway.Log.Warn("whatsapp.onUpdate",
+				slog.Any("error", "update: field{"+change.Field+"} not supported"),
+			)
 			continue // process event.Changes
 		}
 		update = whatsapp.Update{} // sanitize
 		err := change.GetValue(&update)
 		if err != nil {
-			c.Gateway.Log.Err(err).Msg("whatsapp.onUpdate")
+			c.Gateway.Log.Error("whatsapp.onUpdate",
+				slog.Any("error", err),
+			)
 			continue // process event.Changes
 		}
 		// TODO: Process update event args ...
@@ -1228,7 +1232,6 @@ func (c *Client) whatsAppOnUnknown(
 
 	// TODO: show logs
 	var (
-		notice  *zerolog.Event
 		contact *whatsapp.Sender
 	)
 	for e, err := range update.Errors {
@@ -1239,32 +1242,37 @@ func (c *Client) whatsAppOnUnknown(
 
 		message = nil
 		contact = nil
-		notice = c.Log.Warn().Err(err)
+		log := c.Log.With(
+			slog.Any("error", err),
+		)
 
 		if len(update.Messages) > e {
 			message = update.Messages[e]
 			if message != nil {
-				_ = notice.
-					Str("from-waid", message.From).
-					Str("msg-type", message.Type)
+				log = log.With(
+					slog.String("from-waid", message.From),
+					slog.String("msg-type", message.Type),
+				)
 
 				contact = update.GetContact(message.From)
 				if contact != nil {
-					_ = notice.
-						Str("from-name", contact.GetName())
+					log = log.With(
+						slog.String("from-name", contact.GetName()),
+					)
 				}
 			}
 		}
 
 		if contact == nil && len(update.Contacts) > e {
 			if contact = update.Contacts[e]; contact != nil {
-				_ = notice.
-					Str("from-waid", contact.WAID).
-					Str("from-name", contact.GetName())
+				log = log.With(
+					slog.String("from-waid", contact.WAID),
+					slog.String("from-name", contact.GetName()),
+				)
 			}
 		}
 
-		notice.Msg("WHATSAPP.onError")
+		log.Warn("WHATSAPP.onError")
 	}
 }
 
@@ -1375,13 +1383,13 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 		}
 	}
 	if recipient == nil {
-		c.Gateway.Log.Error().
-			Str("chat", update.Product). // "whatsapp"
-			Str("to:ba", businessId).
-			Str("to:wa", phoneNumberId).
-			Str("to", phoneNumber).
-			Str("error", "recipient: account (wa) business (ba) phone-number (to) not found").
-			Msg("whatsApp.onMessages")
+		c.Gateway.Log.Error("whatsApp.onMessages",
+			slog.String("chat", update.Product), // "whatsapp"
+			slog.String("to:ba", businessId),
+			slog.String("to:wa", phoneNumberId),
+			slog.String("to", phoneNumber),
+			slog.String("error", "recipient: account (wa) business (ba) phone-number (to) not found"),
+		)
 		return // RECIPIENT: Business Account's Phone Number NOT FOUND !
 	}
 	// FIXME: Unknown
@@ -1460,14 +1468,15 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 			}
 			// http.Error(reply, re.Detail, (int)(re.Code))
 			// return nil, re // 503 Bad Gateway
-			c.Gateway.Log.Err(re).
-				Str("to", recipient.PhoneNumber).   // WhatsApp [PhoneNumber] Display
-				Str("to:wa", recipient.ID).         // WhatsApp [PhoneNumber] ID
-				Str("to:ba", recipient.Account.ID). // WhatsApp [BusinessAccount] ID
-				Str("chat", update.Product).
-				Str("from", contact.Contact).
-				Str("user", contact.DisplayName()).
-				Msg("whatsApp.rely")
+			c.Gateway.Log.Error("whatsApp.rely",
+				slog.Any("error", re),
+				slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+				slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+				slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+				slog.String("chat", update.Product),
+				slog.String("from", contact.Contact),
+				slog.String("user", contact.DisplayName()),
+			)
 			continue
 		}
 
@@ -1509,14 +1518,15 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 			)
 
 			if err != nil {
-				c.Log.Err(err).
-					Str("to", recipient.PhoneNumber).   // WhatsApp [PhoneNumber] Display
-					Str("to:wa", recipient.ID).         // WhatsApp [PhoneNumber] ID
-					Str("to:ba", recipient.Account.ID). // WhatsApp [BusinessAccount] ID
-					Str("chat", update.Product).        // "whatsapp"
-					Str("from", contact.Contact).       // PHONE_NUMBER
-					Str("user", contact.DisplayName()).
-					Msg("whatsApp.onMediaMessage")
+				c.Gateway.Log.Error("whatsApp.onMediaMessage",
+					slog.Any("error", err),
+					slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+					slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+					slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+					slog.String("chat", update.Product),        // "whatsapp"
+					slog.String("from", contact.Contact),       // PHONE_NUMBER
+					slog.String("user", contact.DisplayName()),
+				)
 				err = nil
 				continue // next: message(s)
 			}
@@ -1532,14 +1542,16 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 			)
 
 			if err != nil {
-				c.Log.Err(err).
-					Str("to", recipient.PhoneNumber).   // WhatsApp [PhoneNumber] Display
-					Str("to:wa", recipient.ID).         // WhatsApp [PhoneNumber] ID
-					Str("to:ba", recipient.Account.ID). // WhatsApp [BusinessAccount] ID
-					Str("chat", update.Product).        // "whatsapp"
-					Str("from", contact.Contact).       // PHONE_NUMBER
-					Str("user", contact.DisplayName()).
-					Msg("whatsApp.onMediaMessage")
+				c.Gateway.Log.Error("whatsApp.onMediaMessage",
+					slog.Any("error", err),
+					slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+					slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+					slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+					slog.String("chat", update.Product),        // "whatsapp"
+					slog.String("from", contact.Contact),       // PHONE_NUMBER
+					slog.String("user", contact.DisplayName()),
+				)
+
 				err = nil
 				continue // next: message(s)
 			}
@@ -1555,14 +1567,16 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 			)
 
 			if err != nil {
-				c.Log.Err(err).
-					Str("to", recipient.PhoneNumber).   // WhatsApp [PhoneNumber] Display
-					Str("to:wa", recipient.ID).         // WhatsApp [PhoneNumber] ID
-					Str("to:ba", recipient.Account.ID). // WhatsApp [BusinessAccount] ID
-					Str("chat", update.Product).        // "whatsapp"
-					Str("from", contact.Contact).       // PHONE_NUMBER
-					Str("user", contact.DisplayName()).
-					Msg("whatsApp.onMediaMessage")
+				c.Gateway.Log.Error("whatsApp.onMediaMessage",
+					slog.Any("error", err),
+					slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+					slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+					slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+					slog.String("chat", update.Product),        // "whatsapp"
+					slog.String("from", contact.Contact),       // PHONE_NUMBER
+					slog.String("user", contact.DisplayName()),
+				)
+
 				err = nil
 				continue // next: message(s)
 			}
@@ -1578,14 +1592,15 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 			)
 
 			if err != nil {
-				c.Log.Err(err).
-					Str("to", recipient.PhoneNumber).   // WhatsApp [PhoneNumber] Display
-					Str("to:wa", recipient.ID).         // WhatsApp [PhoneNumber] ID
-					Str("to:ba", recipient.Account.ID). // WhatsApp [BusinessAccount] ID
-					Str("chat", update.Product).        // "whatsapp"
-					Str("from", contact.Contact).       // PHONE_NUMBER
-					Str("user", contact.DisplayName()).
-					Msg("whatsApp.onMediaMessage")
+				c.Gateway.Log.Error("whatsApp.onMediaMessage",
+					slog.Any("error", err),
+					slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+					slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+					slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+					slog.String("chat", update.Product),        // "whatsapp"
+					slog.String("from", contact.Contact),       // PHONE_NUMBER
+					slog.String("user", contact.DisplayName()),
+				)
 				err = nil
 				continue // next: message(s)
 			}
@@ -1601,14 +1616,15 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 			)
 
 			if err != nil {
-				c.Log.Err(err).
-					Str("to", recipient.PhoneNumber).   // WhatsApp [PhoneNumber] Display
-					Str("to:wa", recipient.ID).         // WhatsApp [PhoneNumber] ID
-					Str("to:ba", recipient.Account.ID). // WhatsApp [BusinessAccount] ID
-					Str("chat", update.Product).        // "whatsapp"
-					Str("from", contact.Contact).       // PHONE_NUMBER
-					Str("user", contact.DisplayName()).
-					Msg("whatsApp.onMediaMessage")
+				c.Gateway.Log.Error("whatsApp.onMediaMessage",
+					slog.Any("error", err),
+					slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+					slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+					slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+					slog.String("chat", update.Product),        // "whatsapp"
+					slog.String("from", contact.Contact),       // PHONE_NUMBER
+					slog.String("user", contact.DisplayName()),
+				)
 				err = nil
 				continue // next: message(s)
 			}
@@ -1626,17 +1642,18 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 		case "reaction":
 
 			reaction := message.Reaction
-			c.Gateway.Log.Warn().
-				Str("wamid", reaction.WAMID).
-				Str("reaction", reaction.Emoji).
-				Str("error", "reaction: not supported").
-				Str("to", recipient.PhoneNumber).   // WhatsApp [PhoneNumber] Display
-				Str("to:wa", recipient.ID).         // WhatsApp [PhoneNumber] ID
-				Str("to:ba", recipient.Account.ID). // WhatsApp [BusinessAccount] ID
-				Str("chat", update.Product).
-				Str("from", contact.Contact).
-				Str("user", contact.DisplayName()).
-				Msg("whatsApp.onMessage")
+
+			c.Gateway.Log.Warn("whatsApp.onMessage",
+				slog.String("error", "reaction: not supported"),
+				slog.String("wamid", reaction.WAMID),
+				slog.String("reaction", reaction.Emoji),
+				slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+				slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+				slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+				slog.String("chat", update.Product),        // "whatsapp"
+				slog.String("from", contact.Contact),       // PHONE_NUMBER
+				slog.String("user", contact.DisplayName()),
+			)
 			continue // next: message(s)
 
 		case "interactive":
@@ -1700,16 +1717,16 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 
 			default:
 
-				c.Gateway.Log.Warn().
-					Str("interactive", interactive.Type).
-					Str("error", "interactive: type not supported").
-					Str("to", recipient.PhoneNumber).   // WhatsApp [PhoneNumber] Display
-					Str("to:wa", recipient.ID).         // WhatsApp [PhoneNumber] ID
-					Str("to:ba", recipient.Account.ID). // WhatsApp [BusinessAccount] ID
-					Str("chat", update.Product).
-					Str("from", contact.Contact).
-					Str("user", contact.DisplayName()).
-					Msg("whatsApp.onMessageReply")
+				c.Gateway.Log.Warn("whatsApp.onMessageReply",
+					slog.String("interactive", interactive.Type),
+					slog.String("error", "interactive: type not supported"),
+					slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+					slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+					slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+					slog.String("chat", update.Product),        // "whatsapp"
+					slog.String("from", contact.Contact),       // PHONE_NUMBER
+					slog.String("user", contact.DisplayName()),
+				)
 				continue // next: message(s)
 
 			}
@@ -1771,30 +1788,30 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 
 			} else {
 
-				c.Log.Warn().
-					Str("error", "message: content type not supported; ignore").
-					Str("to", recipient.PhoneNumber).   // WhatsApp [PhoneNumber] Display
-					Str("to:wa", recipient.ID).         // WhatsApp [PhoneNumber] ID
-					Str("to:ba", recipient.Account.ID). // WhatsApp [BusinessAccount] ID
-					Str("chat", update.Product).        // "whatsapp"
-					Str("from", contact.Contact).       // PHONE_NUMBER
-					Str("user", contact.DisplayName()).
-					Msg("whatsApp.onNewMessage")
+				c.Log.Warn("whatsApp.onNewMessage",
+					slog.String("error", "message: content type not supported; ignore"),
+					slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+					slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+					slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+					slog.String("chat", update.Product),        // "whatsapp"
+					slog.String("from", contact.Contact),       // PHONE_NUMBER
+					slog.String("user", contact.DisplayName()),
+				)
 				continue // next: message(s)
 			}
 		}
 		// CAN Forward ?
 		if sendMsg.Type == "" {
 			// NO reaction for message content type or is malformed
-			c.Log.Warn().
-				Str("error", "NO reaction for the message content received -or- is malformed").
-				Str("to", recipient.PhoneNumber).   // WhatsApp [PhoneNumber] Display
-				Str("to:wa", recipient.ID).         // WhatsApp [PhoneNumber] ID
-				Str("to:ba", recipient.Account.ID). // WhatsApp [BusinessAccount] ID
-				Str("chat", update.Product).        // "whatsapp"
-				Str("from", contact.Contact).       // PHONE_NUMBER
-				Str("user", contact.DisplayName()).
-				Msg("whatsApp.onNewMessage")
+			c.Log.Warn("whatsApp.onNewMessage",
+				slog.String("error", "NO reaction for the message content received -or- is malformed"),
+				slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+				slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+				slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+				slog.String("chat", update.Product),        // "whatsapp"
+				slog.String("from", contact.Contact),       // PHONE_NUMBER
+				slog.String("user", contact.DisplayName()),
+			)
 			err = nil
 			continue // IGNORE
 		}
@@ -1823,25 +1840,27 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 			channel.Properties = bound
 		}
 		if err != nil {
-			c.Log.Err(err).
-				Str("to", recipient.PhoneNumber).   // WhatsApp [PhoneNumber] Display
-				Str("to:wa", recipient.ID).         // WhatsApp [PhoneNumber] ID
-				Str("to:ba", recipient.Account.ID). // WhatsApp [BusinessAccount] ID
-				Str("chat", update.Product).        // "whatsapp"
-				Str("from", contact.Contact).       // PHONE_NUMBER
-				Str("user", contact.DisplayName()).
-				Msg("whatsApp.onNewMessage")
+			c.Log.Error("whatsApp.onNewMessage",
+				slog.Any("error", err),
+				slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+				slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+				slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+				slog.String("chat", update.Product),        // "whatsapp"
+				slog.String("from", contact.Contact),       // PHONE_NUMBER
+				slog.String("user", contact.DisplayName()),
+			)
 			err = nil
 			continue
 		}
-		c.Log.Info().
-			Str("to", recipient.PhoneNumber).   // WhatsApp [PhoneNumber] Display
-			Str("to:wa", recipient.ID).         // WhatsApp [PhoneNumber] ID
-			Str("to:ba", recipient.Account.ID). // WhatsApp [BusinessAccount] ID
-			Str("chat", update.Product).        // "whatsapp"
-			Str("from", contact.Contact).       // PHONE_NUMBER
-			Str("user", contact.DisplayName()).
-			Msg("whatsApp.onNewMessage")
+
+		c.Log.Info("whatsApp.onNewMessage",
+			slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+			slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+			slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+			slog.String("chat", update.Product),        // "whatsapp"
+			slog.String("from", contact.Contact),       // PHONE_NUMBER
+			slog.String("user", contact.DisplayName()),
+		)
 	}
 }
 
@@ -2548,14 +2567,14 @@ func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) err
 		}
 
 	case "joined": // ACK: ChatService.JoinConversation()
-
-		peer := contactPeer(sentMsg.NewChatMembers[0])
+		peer := sentMsg.NewChatMembers[0]
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("join", peer)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", sentMsg.Type).
-				Msg("whatsApp.updateChatMember")
+			c.Gateway.Log.Error("whatsApp.updateChatMember",
+				slog.Any("error", err),
+				slog.String("update", sentMsg.Type),
+			)
 		}
 		// Template for update specified ?
 		if text == "" {
@@ -2582,14 +2601,14 @@ func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) err
 		}
 
 	case "left": // ACK: ChatService.LeaveConversation()
-
-		peer := contactPeer(sentMsg.LeftChatMember)
+		peer := sentMsg.LeftChatMember
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("left", peer)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", sentMsg.Type).
-				Msg("whatsApp.updateLeftMember")
+			c.Gateway.Log.Error("whatsApp.updateLeftMember",
+				slog.Any("error", err),
+				slog.String("update", sentMsg.Type),
+			)
 		}
 		// Template for update specified ?
 		if text == "" {
@@ -2611,9 +2630,10 @@ func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) err
 		updates := c.Gateway.Template
 		text, err := updates.MessageText("close", nil)
 		if err != nil {
-			c.Gateway.Log.Err(err).
-				Str("update", sentMsg.Type).
-				Msg("whatsApp.updateChatClose")
+			c.Gateway.Log.Error("whatsApp.updateChatClose",
+				slog.Any("error", err),
+				slog.String("update", sentMsg.Type),
+			)
 		}
 		// Template for update specified ?
 		if text == "" {
@@ -2627,9 +2647,9 @@ func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) err
 		}
 
 	default:
-		c.Log.Warn().
-			Str("error", "send: message type="+sentMsg.Type+" not supported").
-			Msg("whatsApp.sendMessage")
+		c.Log.Warn("whatsApp.sendMessage",
+			slog.String("error", "send: message type="+sentMsg.Type+" not supported"),
+		)
 		return nil
 	}
 

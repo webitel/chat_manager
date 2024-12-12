@@ -2,10 +2,10 @@ package sqlxrepo
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/rs/zerolog"
 )
 
 type Repository interface {
@@ -18,7 +18,7 @@ type Repository interface {
 	DeleteMessages(ctx context.Context, mid ...int64) (n int64, err error)
 	CacheRepository
 	Store // v1
-	GetWebitelUserByID(ctx context.Context, id int64) (*WebitelUser, error)
+	GetWebitelUserByID(ctx context.Context, id, domainID int64) (*WebitelUser, error)
 	WithTransaction(txFunc func(*sqlx.Tx) error) (err error)
 	CreateConversationTx(ctx context.Context, tx *sqlx.Tx, c *Conversation) error
 	CreateMessageTx(ctx context.Context, tx *sqlx.Tx, m *Message) error
@@ -133,14 +133,16 @@ type CacheRepository interface {
 	ReadConfirmation(conversationID string) (string, error)
 	WriteConfirmation(conversationID string, confirmationID string) error
 	DeleteConfirmation(conversationID string) error
+
+	Setvar(conversationID string, vars map[string]string) error
 }
 
 type sqlxRepository struct {
 	db  *sqlx.DB
-	log *zerolog.Logger
+	log *slog.Logger
 }
 
-func NewRepository(db *sqlx.DB, log *zerolog.Logger) Repository {
+func NewRepository(db *sqlx.DB, log *slog.Logger) Repository {
 	return &sqlxRepository{
 		db,
 		log,

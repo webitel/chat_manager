@@ -173,8 +173,9 @@ func (repo *sqlxRepository) GetInviteByID(ctx context.Context, id string) (*Invi
 	)
 	// Check errors
 	if err = schemaInviteError(err); err != nil {
-		repo.log.Error().Err(err).Str("id", id).
-			Msg("FAILED Lookup DB chat.invite")
+		repo.log.Error("FAILED Lookup DB chat.invite",
+			"id", id,
+		)
 		return nil, err
 	}
 
@@ -183,8 +184,9 @@ func (repo *sqlxRepository) GetInviteByID(ctx context.Context, id string) (*Invi
 	list, err := InviteList(rows, 1)
 
 	if err != nil {
-		repo.log.Error().Err(err).Str("id", id).
-			Msg("FAILED Fetch DB chat.invite")
+		repo.log.Error("FAILED Fetch DB chat.invite",
+			"id", id,
+		)
 		return nil, err
 	}
 

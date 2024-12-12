@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -135,11 +136,13 @@ func NewInfobipWABot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 
 	scenarioKey, _ := profile["scenario_key"]
 	if !ok {
-		log.Debug().Msg("creating scenario")
+		agent.Log.Debug("creating scenario")
 		var err error
 		scenarioKey, err = createWAScenario(apiKey, number, url)
 		if err != nil {
-			log.Error().Msg(err.Error())
+			agent.Log.Error(err.Error(),
+				slog.Any("error", err),
+			)
 			return nil, err
 		}
 
@@ -162,7 +165,9 @@ func NewInfobipWABot(agent *bot.Gateway, _ bot.Provider) (bot.Provider, error) {
 		)
 
 		if err != nil {
-			log.Error().Msg(err.Error())
+			agent.Log.Error(err.Error(),
+				slog.Any("error", err),
+			)
 			return nil, err
 		}
 	}

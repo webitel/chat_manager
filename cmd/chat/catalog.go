@@ -3,12 +3,12 @@ package chat
 import (
 	"context"
 	"encoding/hex"
+	"log/slog"
 	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/micro/micro/v3/service/context/metadata"
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/rs/zerolog"
 	oauth "github.com/webitel/chat_manager/api/proto/auth"
 	pb "github.com/webitel/chat_manager/api/proto/chat/messages"
 	"github.com/webitel/chat_manager/app"
@@ -17,14 +17,14 @@ import (
 )
 
 type Catalog struct {
-	logs  *zerolog.Logger
+	logs  *slog.Logger
 	authN *auth.Client
 	store store.CatalogStore
 }
 
 type CatalogOption func(srv *Catalog) error
 
-func CatalogLogs(logs *zerolog.Logger) CatalogOption {
+func CatalogLogs(logs *slog.Logger) CatalogOption {
 	return func(srv *Catalog) error {
 		srv.logs = logs
 		return nil

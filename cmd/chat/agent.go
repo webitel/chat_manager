@@ -2,13 +2,13 @@ package chat
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/micro/micro/v3/service/context/metadata"
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/rs/zerolog"
 	oauth "github.com/webitel/chat_manager/api/proto/auth"
 	pb "github.com/webitel/chat_manager/api/proto/chat/messages"
 	"github.com/webitel/chat_manager/app"
@@ -17,14 +17,14 @@ import (
 )
 
 type AgentChatsService struct {
-	logs  *zerolog.Logger
+	logs  *slog.Logger
 	authN *auth.Client
 	store store.AgentChatStore
 }
 
 type AgentChatServiceOption func(srv *AgentChatsService) error
 
-func AgentChatServiceLogs(logs *zerolog.Logger) AgentChatServiceOption {
+func AgentChatServiceLogs(logs *slog.Logger) AgentChatServiceOption {
 	return func(srv *AgentChatsService) error {
 		srv.logs = logs
 		return nil
