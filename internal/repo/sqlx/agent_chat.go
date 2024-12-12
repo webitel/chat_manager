@@ -58,9 +58,10 @@ func (c *sqlxRepository) GetAgentChats(req *app.SearchOptions, res *messages.Get
 }
 
 type agentChatArgs struct {
-	AgentId   int64
-	Timerange *pb.Timerange
-	Closed    *bool
+	AgentId     int64
+	Timerange   *pb.Timerange
+	Closed      *bool
+	Unprocessed *bool
 }
 
 func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch[*messages.AgentChat], err error) {
@@ -405,6 +406,13 @@ func selectAgentChatThread(args *agentChatArgs, params params) (cte sq.SelectBui
 			cte = cte.Where("ch.closed_at ISNULL")
 		}
 	}
+	if args.Unprocessed != nil {
+		if *args.Unprocessed {
+			cte = cte.Where(fmt.Sprintf("(ch.props -> '%s' NOTNULL OR (ch.props -> '%[1]s')::::bool)", ChatNeedsProcessingVariable))
+		} else {
+			cte = cte.Where(fmt.Sprintf("(ch.props -> '%s' ISNULL OR NOT (ch.props -> '%[1]s')::::bool)", ChatNeedsProcessingVariable))
+		}
+	}
 	return // cte, nil
 }
 
@@ -450,13 +458,25 @@ func newAgentChatQueryArgs(req *app.SearchOptions) (*agentChatArgs, error) {
 			switch raw := v.(type) {
 			case *bool:
 				if raw == nil {
-					return nil, errors.BadRequest("sqlxrepo.agent_chat.construct_agent_chat_args.closed.bool.nil", "invalid argument for date filter")
+					return nil, errors.BadRequest("sqlxrepo.agent_chat.construct_agent_chat_args.closed.bool.nil", "invalid argument for close filter")
 				}
 				args.Closed = raw
 			case bool:
 				args.Closed = &raw
 			default:
-				return nil, errors.BadRequest("sqlxrepo.agent_chat.construct_agent_chat_args.date.type.unknown", "invalid argument for date filter")
+				return nil, errors.BadRequest("sqlxrepo.agent_chat.construct_agent_chat_args.date.type.unknown", "invalid argument for close filter")
+			}
+		case "unprocessed":
+			switch raw := v.(type) {
+			case *bool:
+				if raw == nil {
+					return nil, errors.BadRequest("sqlxrepo.agent_chat.construct_agent_chat_args.unprocessed.bool.nil", "invalid argument for unprocessed filter")
+				}
+				args.Unprocessed = raw
+			case bool:
+				args.Unprocessed = &raw
+			default:
+				return nil, errors.BadRequest("sqlxrepo.agent_chat.construct_agent_chat_args.unprocessed.type.unknown", "invalid argument for unprocessed filter")
 			}
 
 		}

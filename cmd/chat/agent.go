@@ -152,6 +152,8 @@ func (srv *AgentChatsService) GetAgentChats(ctx context.Context, req *pb.GetAgen
 	// Only closed
 	onlyClosed := req.GetOnlyClosed()
 	search.FilterAND("closed", &onlyClosed)
+	onlyUnprocessed := req.GetOnlyUnprocessed()
+	search.FilterAND("unprocessed", &onlyUnprocessed)
 	// Only for current day
 	currentTime := app.CurrentTime()
 	year, month, day := currentTime.Date()

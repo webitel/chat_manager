@@ -31,6 +31,7 @@ message GetAgentChatsRequest {
   string sort = 5;
   // filter
   bool only_closed = 6;
+  bool only_unprocessed = 7;
 }
 
 message GetAgentChatsResponse {
