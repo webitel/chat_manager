@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/webitel/chat_manager/internal/util"
 )
 
 // SendMessage request options.
@@ -251,7 +252,7 @@ func (req *sendOptions) Media(media *chat.File, caption string) *sendOptions {
 			// Description of the photo
 			// Can be an empty string if irrelevant
 			// Max 512 characters
-			msg.Text = strings.TrimSpace(caption) // Max 512 characters
+			msg.Text = strings.TrimSpace(caption)
 		}
 
 	// video
@@ -285,6 +286,10 @@ func (req *sendOptions) Media(media *chat.File, caption string) *sendOptions {
 			// Recommended: 400x400.
 			// Only JPEG format is supported
 			msg.Thumbnail = ""
+			// Description of the video
+			// Can be an empty string if irrelevant
+			// Max 512 characters
+			msg.Text = strings.TrimSpace(caption)
 		}
 	}
 	// default:
@@ -311,4 +316,43 @@ func (req *sendOptions) Media(media *chat.File, caption string) *sendOptions {
 
 	// chaining
 	return req
+}
+
+// sendText creates and sends a text message to a list of peers via Viber.
+// It initializes a single BroadcastMessage, sets the sender, peer IDs,
+// and the text content, and returns the message.
+func sendText(sender *User, peerId []string, text string) BroadcastMessage {
+	var message BroadcastMessage
+
+	message.Sender = sender
+	message.PeerId = peerId
+	message.Text(text)
+
+	return message
+}
+
+// sendFile creates and sends a file (e.g., image, video) message with an caption to a list of peers via Viber.
+// If the file's media type (image/video) and size exceed the predefined limits,
+// the caption is sent as a separate text message.
+func sendFile(sender *User, peerId []string, file *chat.File, caption string) (messageWithFile BroadcastMessage, messageWithCaption *BroadcastMessage) {
+	messageWithFile.Sender = sender
+	messageWithFile.PeerId = peerId
+	messageWithFile.Media(file, caption)
+
+	size := file.GetSize()
+	caption = strings.TrimSpace(caption)
+	mediaType := util.ParseMediaType(file.GetMime())
+	isSentCaption :=
+		(mediaType == "image" && size <= ImageMaxSize) ||
+			(mediaType == "video" && size <= VideoMaxSize)
+
+	if !isSentCaption && caption != "" {
+		messageWithCaption = new(BroadcastMessage)
+
+		messageWithCaption.Sender = sender
+		messageWithCaption.PeerId = peerId
+		messageWithCaption.Text(caption)
+	}
+
+	return messageWithFile, messageWithCaption
 }
