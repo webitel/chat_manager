@@ -408,9 +408,9 @@ func selectAgentChatThread(args *agentChatArgs, params params) (cte sq.SelectBui
 	}
 	if args.Unprocessed != nil {
 		if *args.Unprocessed {
-			cte = cte.Where(fmt.Sprintf("(ch.props -> '%s' NOTNULL OR (ch.props -> '%[1]s')::::bool)", ChatNeedsProcessingVariable))
+			cte = cte.Where(fmt.Sprintf("(ch.props -> '%s' NOTNULL OR (ch.props ->> '%[1]s')::::bool)", ChatNeedsProcessingVariable))
 		} else {
-			cte = cte.Where(fmt.Sprintf("(ch.props -> '%s' ISNULL OR NOT (ch.props -> '%[1]s')::::bool)", ChatNeedsProcessingVariable))
+			cte = cte.Where(fmt.Sprintf("(ch.props -> '%s' ISNULL OR NOT (ch.props ->> '%[1]s')::::bool)", ChatNeedsProcessingVariable))
 		}
 	}
 	return // cte, nil
