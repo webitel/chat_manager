@@ -1,9 +1,8 @@
 package messenger
 
 import (
-	"strings"
-
 	graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
+	"github.com/webitel/chat_manager/internal/util"
 )
 
 // https://developers.facebook.com/docs/messenger-platform/reference/send-api/#response
@@ -228,32 +227,21 @@ func (sm *SendMessage) SetText(text string) error {
 
 // SetFile is used to send a file of type: image, audio, video, document
 func (sm *SendMessage) SetFile(mimeType, url string) error {
-	mimeType = getMediaType(mimeType)
-	switch mimeType {
+	mediaType := util.ParseMediaType(mimeType)
+	switch mediaType {
 	case "image", "audio", "video":
 	default:
 		{
-			mimeType = "document"
+			mediaType = "file"
 		}
 	}
 
 	sm.Attachment = &SendAttachment{
-		Type: mimeType,
+		Type: mediaType,
 		Payload: &FileAttachment{
 			URL: url,
 		},
 	}
 
 	return nil
-}
-
-// getMediaType parse mimetype and return file type, like: image, audio and video
-func getMediaType(mtyp string) string {
-	mtyp = strings.TrimSpace(mtyp)
-	mtyp = strings.ToLower(mtyp)
-	subt := strings.IndexByte(mtyp, '/')
-	if subt > 0 {
-		return mtyp[:subt]
-	}
-	return mtyp
 }

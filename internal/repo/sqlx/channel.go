@@ -88,7 +88,7 @@ func (repo *sqlxRepository) GetChannelByPeer(ctx context.Context, peerId, fromId
 				m.connection = ($1::text) -- :from_id::text
 			ORDER BY
 				m.created_at DESC -- last
-			LEMIT 1
+			LIMIT 1
 		) chat ON true
 		WHERE
 			peer.external_id = $2 -- :peer_id

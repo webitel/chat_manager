@@ -1,6 +1,8 @@
 package whatsapp
 
-import "strings"
+import (
+	"github.com/webitel/chat_manager/internal/util"
+)
 
 // SendMessage request
 // https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages
@@ -151,7 +153,7 @@ func (sm *SendMessage) SetText(text string) error {
 
 // SetFile is used to send a file of type: image, audio, video, document
 func (sm *SendMessage) SetFile(fileName, mimeType, url, caption string) error {
-	switch getMediaType(mimeType) {
+	switch util.ParseMediaType(mimeType) {
 	case "image":
 		sm.Type = "image"
 		sm.Image = &Media{
@@ -182,15 +184,4 @@ func (sm *SendMessage) SetFile(fileName, mimeType, url, caption string) error {
 	}
 
 	return nil
-}
-
-// getMediaType parse mimetype and return file type, like: image, audio and video
-func getMediaType(mtyp string) string {
-	mtyp = strings.TrimSpace(mtyp)
-	mtyp = strings.ToLower(mtyp)
-	subt := strings.IndexByte(mtyp, '/')
-	if subt > 0 {
-		return mtyp[:subt]
-	}
-	return mtyp
 }

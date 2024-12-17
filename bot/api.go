@@ -1453,6 +1453,13 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbchat.BroadcastM
 				)
 			}
 
+			if message.File != nil {
+				return errors.BadRequest(
+					"chat.broadcast.message.file.invalid",
+					"broadcast: type 'text' does not accept files",
+				)
+			}
+
 			// if utf8.RuneCountInString(text) > maxTextChars {
 			// 	return errors.BadRequest(
 			// 		"chat.broadcast.message.text.invalid",
@@ -1475,6 +1482,13 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbchat.BroadcastM
 				return errors.BadRequest(
 					"chat.broadcast.message.file.required",
 					"broadcast: message.file required but missing",
+				)
+			}
+
+			if file.Id > 0 && file.Url != "" {
+				return errors.BadRequest(
+					"chat.broadcast.message.file.invalid",
+					"broadcast: message.file( ? ); require: id -or- url",
 				)
 			}
 
