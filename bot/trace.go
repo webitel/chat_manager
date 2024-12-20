@@ -1,8 +1,10 @@
 package bot
 
 import (
+	"bufio"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -79,8 +81,12 @@ func traceHandler(next http.Handler) http.Handler {
 				recorder.Body.WriteTo(response)
 
 			}()
-			// substitute
-			w = recorder
+			// substitute responseWrapper ...
+			// src: https://stackoverflow.com/questions/29319783/go-logging-responses-to-incoming-http-requests-inside-http-handlefunc
+			w = &responseWrapper{
+				ResponseRecorder: recorder,
+				ResponseWriter:   w,
+			}
 		}
 
 		if spanCtx.IsValid() {
@@ -132,4 +138,31 @@ func traceMiddleware(next http.Handler) http.Handler {
 		// otelhttp.WithSpanOptions(opts ...trace.SpanStartOption),
 		// otelhttp.WithTracerProvider(provider trace.TracerProvider),
 	)
+}
+
+type responseWrapper struct {
+	http.ResponseWriter
+	*httptest.ResponseRecorder
+}
+
+func (w *responseWrapper) Header() http.Header {
+	return w.ResponseRecorder.Header()
+}
+
+func (w *responseWrapper) WriteHeader(code int) {
+	w.ResponseRecorder.WriteHeader(code)
+}
+
+func (w *responseWrapper) Write(b []byte) (int, error) {
+	return w.ResponseRecorder.Write(b)
+}
+
+func (w *responseWrapper) Hijack() (c net.Conn, rw *bufio.ReadWriter, err error) {
+	hw, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		http.Error(w, "webserver doesn't support hijacking", http.StatusInternalServerError)
+		return
+	}
+	c, rw, err = hw.Hijack()
+	return
 }
