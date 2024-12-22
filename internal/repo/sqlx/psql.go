@@ -426,3 +426,21 @@ func CompactSQL(s string) string {
 
 	return w.String()
 }
+
+func WithUnion(builder sq.SelectBuilder, unionQuery sq.SelectBuilder) (sq.SelectBuilder, error) {
+	query, params, err := unionQuery.ToSql()
+	if err != nil {
+		return builder, fmt.Errorf("error: Failed to build union query: %w", err)
+	}
+
+	return builder.Suffix(fmt.Sprintf("UNION %s", query), params...), nil
+}
+
+func WithUnionAll(builder sq.SelectBuilder, unionQuery sq.SelectBuilder) (sq.SelectBuilder, error) {
+	query, params, err := unionQuery.ToSql()
+	if err != nil {
+		return builder, fmt.Errorf("error: Failed to build union all query: %w", err)
+	}
+
+	return builder.Suffix(fmt.Sprintf("UNION ALL %s", query), params...), nil
+}
