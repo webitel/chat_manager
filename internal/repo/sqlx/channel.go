@@ -7,10 +7,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	proto "github.com/webitel/chat_manager/api/proto/chat"
 	"strconv"
 	"strings"
 	"time"
+
+	proto "github.com/webitel/chat_manager/api/proto/chat"
 
 	"github.com/google/uuid"
 	errs "github.com/micro/micro/v3/service/errors"
@@ -947,7 +948,7 @@ func ChannelList(rows *sql.Rows, limit int) ([]*Channel, error) {
 			row = new(Channel)
 		}
 
-		err := row.Scan(rows) // , plan)
+		err = row.Scan(rows) // , plan)
 
 		if err != nil {
 			break

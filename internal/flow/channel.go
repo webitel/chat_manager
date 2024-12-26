@@ -850,6 +850,10 @@ func (c *Channel) Close(cause string) error {
 	// 	}
 	// }
 
+	// Clear schema.(recvMessage).token of stopped channel !
+	c.delPending("*")
+	_ = c.Store.DeleteConfirmation(c.ChatID())
+
 	c.Log.Warn().
 		Int64("pdc", c.DomainID()).
 		Int64("pid", c.UserID()).
@@ -983,6 +987,19 @@ func (c *Channel) TransferToUser(originator *app.Channel, userToID int64) error 
 		return err
 	}
 
+	// Save/Update chat.(conversation).variables changes ...
+	if e := c.Store.Setvar(c.ID, map[string]string{
+		"xfer": c.Variables["xfer"],
+	}); e != nil {
+		// [WARN] Failed to persist chat.(conversation).variables
+		c.Log.Warn().
+			Str("var.xfer", xferFull).
+			Str("chat.id", c.ID).         // NEW name
+			Str("conversation_id", c.ID). // OLD name
+			AnErr("error", e).
+			Msg("transfer: failed to set channel variables")
+	}
+
 	// _, err := c.Agent.TransferChatPlan(
 	// 	// cancellation context
 	// 	context.TODO(),
@@ -1059,7 +1076,8 @@ func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) er
 	}
 	c.Variables["xfer"] = xferFull
 	schemaThisID := c.Variables["flow"]
-	c.Variables["flow"] = strconv.FormatInt(schemaToID, 10)
+	schemaNextID := strconv.FormatInt(schemaToID, 10)
+	c.Variables["flow"] = schemaNextID
 	// Start NEW workflow schema routine within this c channel.
 	user := originator.User
 	err = c.Start(&chat.Message{
@@ -1067,7 +1085,7 @@ func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) er
 		Type: "xfer",
 		Text: "transfer",
 		Variables: map[string]string{
-			"flow": strconv.FormatInt(schemaToID, 10),
+			"flow": schemaNextID,
 			"xfer": xferNext,
 		},
 		CreatedAt: date,
@@ -1087,6 +1105,21 @@ func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) er
 		c.Variables["xfer"] = xferThis
 		c.Variables["flow"] = schemaThisID
 		return err
+	}
+
+	// Save/Update chat.(conversation).variables changes ...
+	if e := c.Store.Setvar(c.ID, map[string]string{
+		"flow": schemaNextID,
+		"xfer": xferFull,
+	}); e != nil {
+		// [WARN] Failed to persist chat.(conversation).variables
+		c.Log.Warn().
+			Int64("var.flow", schemaToID).
+			Str("var.xfer", xferFull).
+			Str("chat.id", c.ID).         // NEW name
+			Str("conversation_id", c.ID). // OLD name
+			AnErr("error", e).
+			Msg("transfer: failed to set channel variables")
 	}
 
 	// _, err := c.Agent.TransferChatPlan(
