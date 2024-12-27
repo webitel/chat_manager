@@ -917,6 +917,10 @@ func (c *Channel) Close(cause string) error {
 	// 	}
 	// }
 
+	// Clear schema.(recvMessage).token of stopped channel !
+	c.delPending("*")
+	_ = c.Store.DeleteConfirmation(c.ChatID())
+
 	c.Log.Warn("[ CHAT::FLOW ] STOP",
 		slog.Int64("pdc", c.DomainID()),
 		slog.Int64("pid", c.UserID()),
