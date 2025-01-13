@@ -30,6 +30,7 @@ message UploadFileUrlResponse {
     string mime = 4;
     int64 size = 5;
     UploadStatusCode code = 6;
+    string server = 9;
 }
 
 message UploadFileRequest {

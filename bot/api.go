@@ -4,10 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"mime"
 	"net/http"
-	"net/url"
-	"path"
 	"strconv"
 	"strings"
 
@@ -20,7 +17,6 @@ import (
 
 	pbbot "github.com/webitel/chat_manager/api/proto/bot"
 	pbchat "github.com/webitel/chat_manager/api/proto/chat"
-	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/auth"
 )
@@ -1370,14 +1366,6 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMe
 
 	*/
 
-	// Сonstraints
-	// const maxTextChars int = 2000             // Max text length (in message)
-	// const maxCaptionChars int = 768           // Max caption length (text under the file)
-	// const maxFileSize int64 = 1 * 1024 * 1024 // Max file size, 1МБ in bytes
-	// var allowedFileExtensions []string = []string{
-	// 	".png", ".jpg", ".jpeg", ".pdf", ".doc", ".docx",
-	// } // Allowed file extensions list
-
 	// Get message params from request
 	message := req.GetMessage()
 	if message == nil {
@@ -1388,24 +1376,18 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMe
 	}
 
 	// Data normalization
-	message.Type = strings.ToLower(
-		message.Type,
-	)
+	message.Type = strings.ToLower(strings.TrimSpace(message.Type))
 	if message.Type == "" {
-		if message.GetFile() == nil {
-			message.Type = "text"
-		} else {
+		message.Type = "text"
+
+		if message.File != nil {
 			message.Type = "file"
 		}
 	}
-	message.Text = strings.TrimSpace(
-		message.Text,
-	)
 
 	// Lookup bot profile by from.id !
 	fromId := req.From
 	from, err := srv.Gateway(ctx, fromId, "")
-
 	if err != nil {
 		return err
 	}
@@ -1442,175 +1424,61 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMe
 
 	switch message.Type {
 	case "text":
-		{
-			text := message.Text
-			if text == "" {
-				return errors.BadRequest(
-					"chat.broadcast.message.text.required",
-					"broadcast: message.text required but missing",
-				)
-			}
-
-			if message.File != nil {
-				return errors.BadRequest(
-					"chat.broadcast.message.file.invalid",
-					"broadcast: type 'text' does not accept files",
-				)
-			}
-
-			// if utf8.RuneCountInString(text) > maxTextChars {
-			// 	return errors.BadRequest(
-			// 		"chat.broadcast.message.text.invalid",
-			// 		fmt.Sprintf("broadcast: message.text too many characters, the max number of characters is %d", maxTextChars),
-			// 	)
-			// }
-		}
-	case "file":
-		{
-			// text := message.Text
-
-			// if utf8.RuneCountInString(text) > maxCaptionChars {
-			// 	return errors.BadRequest(
-			// 		"chat.broadcast.message.text.invalid",
-			// 		"broadcast: message.text too many characters",
-			// 	)
-			// }
-
-			file := message.File
-
-			if file == nil {
-				return errors.BadRequest(
-					"chat.broadcast.message.file.required",
-					"broadcast: message.file required but missing",
-				)
-			}
-
-			if file.Id > 0 && file.Url != "" {
-				return errors.BadRequest(
-					"chat.broadcast.message.file.invalid",
-					"broadcast: message.file( ? ); require: id -or- url",
-				)
-			}
-
-			// Set file source media by default
-			if file.Id > 0 && file.Source == "" {
-				file.Source = "media"
-			}
-
-			// Transform file source to lower case
-			file.Source = strings.ToLower(file.GetSource())
-			if file.Source != "" && file.Source != "media" && file.Source != "file" {
-				return errors.BadRequest(
-					"chat.broadcast.message.file.source.invalid",
-					"broadcast: message.file.source; values: media -or- file",
-				)
-			}
-
-			// Data normalization
-			file.Url = strings.TrimSpace(file.Url)
-
-			// When we want to send file by ID
-			isValidCaseByID := (file.Id > 0)
-
-			// When we want to send file by URL
-			isValidCaseByURL := (file.Url != "")
-
-			domainId := from.DomainID()
-
-			switch {
-			case isValidCaseByID:
-				{
-					fileLink, err := srv.fileService.GenerateFileLink(
-						ctx, &pbstorage.GenerateFileLinkRequest{
-							DomainId: domainId,
-							FileId:   file.Id,
-							Source:   file.Source,
-							Action:   "download",
-							Metadata: true,
-						},
-					)
-					if err != nil {
-						return errors.BadRequest(
-							"chat.broadcast.message.file.invalid",
-							fmt.Sprintf("broadcast: message.file( id: %d ); not found", file.Id),
-						)
-					}
-
-					fileMetadata := fileLink.GetMetadata()
-
-					// extension := strings.ToLower(
-					// 	path.Ext(fileMetadata.Name),
-					// )
-					// if !slices.Contains(allowedFileExtensions, extension) {
-					// 	return errors.BadRequest(
-					// 		"chat.broadcast.message.file.invalid",
-					// 		fmt.Sprintf("broadcast: message.file( ext: %s ); allowed: [ %s ]", strings.Join(allowedFileExtensions, " | ")),
-					// 	)
-					// }
-
-					// if fileMetadata.Size > maxFileSize {
-					// 	return errors.BadRequest(
-					// 		"chat.broadcast.message.file.invalid",
-					// 		fmt.Sprintf("broadcast: message.file( size: %s ); max: %s", util.FormatBytes(fileMetadata.Size), util.FormatBytes(maxFileSize)),
-					// 	)
-					// }
-
-					file.Size = fileMetadata.GetSize()
-					file.Mime = fileMetadata.GetMimeType()
-					file.Name = fileMetadata.GetName()
-					file.Url = fileLink.GetBaseUrl() + fileLink.GetUrl()
-				}
-			case isValidCaseByURL:
-				{
-					fileName, mimeType, extension, size, err := fetchFileByURL(file.Url)
-					if err != nil {
-						return errors.BadRequest(
-							"chat.broadcast.message.file.url.invalid",
-							"broadcast: unable to retrieve file information by this url",
-						)
-					}
-
-					if fileName == "" || mimeType == "" || extension == "" {
-						return errors.BadRequest(
-							"chat.broadcast.message.file.invalid",
-							"broadcast: incorrect file type",
-						)
-					}
-
-					// if !slices.Contains(allowedFileExtensions, extension) {
-					// 	return errors.BadRequest(
-					// 		"chat.broadcast.message.file.invalid",
-					// 		fmt.Sprintf("broadcast: message.file( ext: %s ); allowed: [ %s ]", strings.Join(allowedFileExtensions, " | ")),
-					// 	)
-					// }
-
-					// if size > maxFileSize {
-					// 	return errors.BadRequest(
-					// 		"chat.broadcast.message.file.invalid",
-					// 		fmt.Sprintf("broadcast: message.file size is too large, max size is %s", util.FormatBytes(maxFileSize)),
-					// 	)
-					// }
-
-					file.Name = fileName
-					file.Mime = mimeType
-					file.Size = size
-				}
-			default:
-				{
-					return errors.BadRequest(
-						"chat.broadcast.message.file.invalid",
-						"broadcast: message.file( ? ); require: id -or- url",
-					)
-				}
-			}
-		}
-	default:
-		{
+		text := message.Text
+		if text == "" {
 			return errors.BadRequest(
-				"chat.broadcast.message.type.invalid",
-				"broadcast: message( type: %s ); not supported", message.Type,
+				"chat.broadcast.message.text.required",
+				"broadcast: message.text required but missing",
 			)
 		}
+
+		if message.File != nil {
+			return errors.BadRequest(
+				"chat.broadcast.message.file.invalid",
+				"broadcast: type 'text' does not accept files",
+			)
+		}
+
+	case "file":
+		file := message.File
+
+		if file == nil {
+			return errors.BadRequest(
+				"chat.broadcast.message.file.required",
+				"broadcast: message.file required but missing",
+			)
+		}
+
+		file.Url = strings.TrimSpace(file.Url)
+		if file.GetUrl() == "" {
+			return errors.BadRequest(
+				"chat.broadcast.message.file.url.required",
+				"broadcast: message.file.url required but missing",
+			)
+		}
+
+		file.Name = strings.TrimSpace(file.Name)
+		if file.Name == "" {
+			return errors.BadRequest(
+				"chat.broadcast.message.file.name.required",
+				"broadcast: message.file.name required but missing",
+			)
+		}
+
+		file.Mime = strings.TrimSpace(file.Mime)
+		if file.Mime == "" {
+			return errors.BadRequest(
+				"chat.broadcast.message.file.mime.required",
+				"broadcast: message.file.mime required but missing",
+			)
+		}
+
+	default:
+		return errors.BadRequest(
+			"chat.broadcast.message.type.invalid",
+			"broadcast: message( type: %s ); not supported",
+			message.Type,
+		)
 	}
 
 	return sender.BroadcastMessage(ctx, req, rsp)
@@ -1631,46 +1499,4 @@ func getClientIp(ctx context.Context) string {
 	}
 
 	return ip
-}
-
-// fetchFileByURL get file data by url and returns: fileName, mimeType, extension, size, error
-func fetchFileByURL(link string) (string, string, string, int64, error) {
-
-	// Get file name
-	parsedURL, err := url.Parse(link)
-	if err != nil {
-		return "", "", "", 0, err
-	}
-
-	fileName := path.Base(parsedURL.Path)
-
-	// Get file extension
-	extension := strings.ToLower(path.Ext(fileName))
-
-	// Get file mime type
-	mimeType := mime.TypeByExtension(extension)
-
-	// Get file size
-	resp, err := http.Head(link)
-	if err != nil {
-		return "", "", "", 0, err
-	}
-	defer resp.Body.Close()
-
-	contentLength := resp.Header.Get("Content-Length")
-	if contentLength == "" {
-		return "", "", "", 0, err
-	}
-
-	size, err := strconv.ParseInt(contentLength, 10, 64)
-	if err != nil {
-		return "", "", "", 0, err
-	}
-
-	// If mime type is unknown set file mime type from headers
-	if mimeType == "" {
-		mimeType = resp.Header.Get("Content-Type")
-	}
-
-	return fileName, mimeType, extension, size, nil
 }

@@ -28,3 +28,27 @@ func TestFormatBytes(t *testing.T) {
 		})
 	}
 }
+
+func TestJoinURL(t *testing.T) {
+	tests := []struct {
+		base     string
+		paths    []string
+		expected string
+	}{
+		{"https://example.com/api/", []string{"v1", "users", "123"}, "https://example.com/api/v1/users/123"},
+		{"https://example.com/api", []string{"v1", "users", "123"}, "https://example.com/api/v1/users/123"},
+		{"https://example.com/", []string{"/v1/", "/users/", "123/"}, "https://example.com/v1/users/123"},
+		{"https://example.com", []string{"/v1/", "users", "123"}, "https://example.com/v1/users/123"},
+		{"https://example.com", []string{"some/?domain=11111"}, "https://example.com/some?domain=11111"},
+	}
+
+	for _, tt := range tests {
+		result, err := JoinURL(tt.base, tt.paths...)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if result != tt.expected {
+			t.Errorf("For base %q with paths %v, expected %q but got %q", tt.base, tt.paths, tt.expected, result)
+		}
+	}
+}
