@@ -217,6 +217,7 @@ enum CloseConversationCause {
   flow_end = 1;
   client_leave = 2;
   flow_err = 3;
+  broadcast_end = 4;
 }
 
 message CloseConversationResponse {

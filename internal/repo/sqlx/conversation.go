@@ -325,7 +325,14 @@ func NewSession(dcx sqlx.ExtContext, ctx context.Context, session *Conversation)
 	if session.UpdatedAt.Before(session.CreatedAt) {
 		session.UpdatedAt = session.CreatedAt
 	}
-	session.ClosedAt.Valid = false
+
+	var closedAt *time.Time
+	if session.ClosedAt.Valid {
+		closedAtUTC := session.ClosedAt.Time.UTC()
+		closedAt = &closedAtUTC
+	} else {
+		// session.ClosedAt.Time = session.ClosedAt.Time.UTC()
+	}
 
 	// FIXME:
 	session.Title.Valid = true // NOTNULL
@@ -346,7 +353,7 @@ func NewSession(dcx sqlx.ExtContext, ctx context.Context, session *Conversation)
 
 		session.CreatedAt.UTC(),
 		session.UpdatedAt.UTC(),
-		nil, // session.ClosedAt,
+		closedAt,
 
 		NullMetadata(session.Variables),
 	)

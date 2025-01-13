@@ -320,6 +320,14 @@ type WebitelUser struct {
 	ChatName sql.NullString `db:"chat_name" json:"chat_name"`
 }
 
+func (u WebitelUser) PublicName() string {
+	name := u.Name
+	if u.ChatName.Valid && u.ChatName.String != "" {
+		name = u.ChatName.String
+	}
+	return name
+}
+
 type ConversationNode struct {
 	ConversationID string `db:"conversation_id" json:"conversation_id"`
 	NodeID         string `db:"node_id" json:"node_id"`
@@ -328,4 +336,11 @@ type ConversationNode struct {
 type ConversationConfirmation struct {
 	ConversationID string `db:"conversation_id" json:"conversation_id"`
 	ConfirmationID string `db:"confirmation_id" json:"confirmation_id"`
+}
+
+type AppUser struct {
+	ID        string `db:"id" json:"id"`
+	DomainID  int64  `db:"domain_id" json:"domain_id"`
+	AppID     string `db:"app_id" json:"app_id"`
+	ServiceID string `db:"service_id" json:"service_id"`
 }
