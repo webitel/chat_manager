@@ -46,6 +46,7 @@ type Service interface {
 	SendMessage(ctx context.Context, req *pb.SendMessageRequest, res *pb.SendMessageResponse) error
 	// [WTEL-4695]: duct tape, please make me normal when chats will be rewrited (agent join message knows only webitel.chat.bot)
 	SaveAgentJoinMessage(context.Context, *pb.SaveAgentJoinMessageRequest, *pb.SaveAgentJoinMessageResponse) error
+	SaveMessage(ctx context.Context, req *pb.SaveMessageRequest, res *pb.SaveMessageResponse) error
 	DeleteMessage(ctx context.Context, req *pb.DeleteMessageRequest, res *pb.HistoryMessage) error
 	StartConversation(ctx context.Context, req *pb.StartConversationRequest, res *pb.StartConversationResponse) error
 	CloseConversation(ctx context.Context, req *pb.CloseConversationRequest, res *pb.CloseConversationResponse) error
@@ -409,6 +410,64 @@ func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pb.SaveAgen
 		)
 		return err
 	}
+
+	return nil
+}
+
+func (s *chatService) SaveMessage(
+	ctx context.Context,
+	req *pb.SaveMessageRequest,
+	res *pb.SaveMessageResponse,
+) error {
+	var (
+		sendMessage  = req.GetMessage()
+		senderChatID = req.GetChannelId()
+		targetChatID = req.GetConversationId()
+	)
+
+	if senderChatID == "" {
+		senderChatID = targetChatID
+		if senderChatID == "" {
+			return errors.BadRequest(
+				"chat.send.channel.from.required",
+				"send: message sender chat ID required",
+			)
+		}
+	}
+
+	// region: lookup target chat session by unique sender chat channel id
+	chat, err := s.repo.GetSession(ctx, senderChatID)
+	if err != nil {
+		return err
+	}
+
+	// sender channel ID not found
+	if chat == nil || chat.ID != senderChatID {
+		return errors.BadRequest(
+			"chat.send.channel.from.not_found",
+			"send: FROM channel ID=%s sender not found or been closed",
+			senderChatID,
+		)
+	}
+
+	// sender channel is already closed !
+	if chat.IsClosed() {
+		return errors.BadRequest(
+			"chat.send.channel.from.closed",
+			"send: FROM chat channel ID=%s is closed",
+			senderChatID,
+		)
+	}
+
+	// Validate and normalize message to send
+	// Mostly also stores non-service-level message to persistent DB
+	sender := chat.Channel
+	savedMessage, err := s.saveMessage(ctx, nil, sender, sendMessage)
+	if err != nil {
+		return err
+	}
+
+	res.Id = savedMessage.ID
 
 	return nil
 }
