@@ -56,6 +56,8 @@ type ChatService interface {
 	InviteToConversation(ctx context.Context, in *InviteToConversationRequest, opts ...client.CallOption) (*InviteToConversationResponse, error)
 	// DeclineInvitation declines chat invitation FROM user
 	DeclineInvitation(ctx context.Context, in *DeclineInvitationRequest, opts ...client.CallOption) (*DeclineInvitationResponse, error)
+	// SaveMessage persists a message to the conversation with optional metadata or bindings
+	SaveMessage(ctx context.Context, in *SaveMessageRequest, opts ...client.CallOption) (*SaveMessageResponse, error)
 	// DeleteMessage by unique `id` or `variables` as external binding(s)
 	DeleteMessage(ctx context.Context, in *DeleteMessageRequest, opts ...client.CallOption) (*HistoryMessage, error)
 	// CheckSession returns internal chat channel for external chat user
@@ -148,6 +150,16 @@ func (c *chatService) InviteToConversation(ctx context.Context, in *InviteToConv
 func (c *chatService) DeclineInvitation(ctx context.Context, in *DeclineInvitationRequest, opts ...client.CallOption) (*DeclineInvitationResponse, error) {
 	req := c.c.NewRequest(c.name, "ChatService.DeclineInvitation", in)
 	out := new(DeclineInvitationResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *chatService) SaveMessage(ctx context.Context, in *SaveMessageRequest, opts ...client.CallOption) (*SaveMessageResponse, error) {
+	req := c.c.NewRequest(c.name, "ChatService.SaveMessage", in)
+	out := new(SaveMessageResponse)
 	err := c.c.Call(ctx, req, out, opts...)
 	if err != nil {
 		return nil, err
@@ -282,6 +294,8 @@ type ChatServiceHandler interface {
 	InviteToConversation(context.Context, *InviteToConversationRequest, *InviteToConversationResponse) error
 	// DeclineInvitation declines chat invitation FROM user
 	DeclineInvitation(context.Context, *DeclineInvitationRequest, *DeclineInvitationResponse) error
+	// SaveMessage persists a message to the conversation with optional metadata or bindings
+	SaveMessage(context.Context, *SaveMessageRequest, *SaveMessageResponse) error
 	// DeleteMessage by unique `id` or `variables` as external binding(s)
 	DeleteMessage(context.Context, *DeleteMessageRequest, *HistoryMessage) error
 	// CheckSession returns internal chat channel for external chat user
@@ -308,6 +322,7 @@ func RegisterChatServiceHandler(s server.Server, hdlr ChatServiceHandler, opts .
 		LeaveConversation(ctx context.Context, in *LeaveConversationRequest, out *LeaveConversationResponse) error
 		InviteToConversation(ctx context.Context, in *InviteToConversationRequest, out *InviteToConversationResponse) error
 		DeclineInvitation(ctx context.Context, in *DeclineInvitationRequest, out *DeclineInvitationResponse) error
+		SaveMessage(ctx context.Context, in *SaveMessageRequest, out *SaveMessageResponse) error
 		DeleteMessage(ctx context.Context, in *DeleteMessageRequest, out *HistoryMessage) error
 		CheckSession(ctx context.Context, in *CheckSessionRequest, out *CheckSessionResponse) error
 		WaitMessage(ctx context.Context, in *WaitMessageRequest, out *WaitMessageResponse) error
@@ -357,6 +372,10 @@ func (h *chatServiceHandler) InviteToConversation(ctx context.Context, in *Invit
 
 func (h *chatServiceHandler) DeclineInvitation(ctx context.Context, in *DeclineInvitationRequest, out *DeclineInvitationResponse) error {
 	return h.ChatServiceHandler.DeclineInvitation(ctx, in, out)
+}
+
+func (h *chatServiceHandler) SaveMessage(ctx context.Context, in *SaveMessageRequest, out *SaveMessageResponse) error {
+	return h.ChatServiceHandler.SaveMessage(ctx, in, out)
 }
 
 func (h *chatServiceHandler) DeleteMessage(ctx context.Context, in *DeleteMessageRequest, out *HistoryMessage) error {

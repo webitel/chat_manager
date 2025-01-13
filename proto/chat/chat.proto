@@ -21,6 +21,8 @@ service ChatService {
   rpc InviteToConversation(InviteToConversationRequest) returns (InviteToConversationResponse) {}
   // DeclineInvitation declines chat invitation FROM user
   rpc DeclineInvitation(DeclineInvitationRequest) returns (DeclineInvitationResponse) {}
+  // SaveMessage persists a message to the conversation with optional metadata or bindings
+  rpc SaveMessage(SaveMessageRequest) returns (SaveMessageResponse) {}
   // DeleteMessage by unique `id` or `variables` as external binding(s)
   rpc DeleteMessage(DeleteMessageRequest) returns (HistoryMessage) {} // (DeleteMessageResponse) {}
   // CheckSession returns internal chat channel for external chat user
@@ -280,6 +282,16 @@ message DeclineInvitationRequest {
 }
 
 message DeclineInvitationResponse {
+}
+
+message SaveMessageRequest {
+  Message message = 1;
+  string channel_id = 2; 
+  string conversation_id = 3;
+}
+
+message SaveMessageResponse {
+  int64 id = 1;
 }
 
 message DeleteMessageRequest {

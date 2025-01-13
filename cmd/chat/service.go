@@ -47,6 +47,7 @@ type Service interface {
 	SendMessage(ctx context.Context, req *pbchat.SendMessageRequest, res *pbchat.SendMessageResponse) error
 	// [WTEL-4695]: duct tape, please make me normal when chats will be rewrited (agent join message knows only webitel.chat.bot)
 	SaveAgentJoinMessage(context.Context, *pbchat.SaveAgentJoinMessageRequest, *pbchat.SaveAgentJoinMessageResponse) error
+	SaveMessage(ctx context.Context, req *pbchat.SaveMessageRequest, res *pbchat.SaveMessageResponse) error
 	DeleteMessage(ctx context.Context, req *pbchat.DeleteMessageRequest, res *pbchat.HistoryMessage) error
 	StartConversation(ctx context.Context, req *pbchat.StartConversationRequest, res *pbchat.StartConversationResponse) error
 	CloseConversation(ctx context.Context, req *pbchat.CloseConversationRequest, res *pbchat.CloseConversationResponse) error
@@ -413,6 +414,64 @@ func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pbchat.Save
 		)
 		return err
 	}
+
+	return nil
+}
+
+func (s *chatService) SaveMessage(
+	ctx context.Context,
+	req *pbchat.SaveMessageRequest,
+	res *pbchat.SaveMessageResponse,
+) error {
+	var (
+		sendMessage  = req.GetMessage()
+		senderChatID = req.GetChannelId()
+		targetChatID = req.GetConversationId()
+	)
+
+	if senderChatID == "" {
+		senderChatID = targetChatID
+		if senderChatID == "" {
+			return errors.BadRequest(
+				"chat.send.channel.from.required",
+				"send: message sender chat ID required",
+			)
+		}
+	}
+
+	// region: lookup target chat session by unique sender chat channel id
+	chat, err := s.repo.GetSession(ctx, senderChatID)
+	if err != nil {
+		return err
+	}
+
+	// sender channel ID not found
+	if chat == nil || chat.ID != senderChatID {
+		return errors.BadRequest(
+			"chat.send.channel.from.not_found",
+			"send: FROM channel ID=%s sender not found or been closed",
+			senderChatID,
+		)
+	}
+
+	// sender channel is already closed !
+	if chat.IsClosed() {
+		return errors.BadRequest(
+			"chat.send.channel.from.closed",
+			"send: FROM chat channel ID=%s is closed",
+			senderChatID,
+		)
+	}
+
+	// Validate and normalize message to send
+	// Mostly also stores non-service-level message to persistent DB
+	sender := chat.Channel
+	savedMessage, err := s.saveMessage(ctx, nil, sender, sendMessage)
+	if err != nil {
+		return err
+	}
+
+	res.Id = savedMessage.ID
 
 	return nil
 }
@@ -3779,6 +3838,85 @@ func (c *chatService) BroadcastMessage(ctx context.Context, req *pbmessages.Broa
 
 	chatServiceErrors := c.executeChatMessagesService(toChatMessagesService)
 	resp.Failure = append(resp.Failure, chatServiceErrors...)
+
+	// // Save message
+	// var (
+	// 	sendMessage = req.GetMessage()
+	// 	//senderFromID = req.GetAuthUserId()
+	// 	senderChatID = req.GetChannelId()
+	// 	targetChatID = req.GetConversationId()
+	// 	// ConversationId: dialog.Dialog.Id,
+	// 	// ChannelId:      dialog.Chat.Id,
+	// 	// Message:        chatMessage,
+	// )
+
+	// if senderChatID == "" {
+	// 	senderChatID = targetChatID
+	// 	if senderChatID == "" {
+	// 		return errors.BadRequest(
+	// 			"chat.send.channel.from.required",
+	// 			"send: message sender chat ID required",
+	// 		)
+	// 	}
+	// }
+
+	// // region: lookup target chat session by unique sender chat channel id
+	// chat, err := c.repo.GetSession(ctx, senderChatID)
+
+	// if err != nil {
+	// 	// lookup operation error
+	// 	return err
+	// }
+
+	// if chat == nil || chat.ID != senderChatID {
+	// 	// sender channel ID not found
+	// 	return errors.BadRequest(
+	// 		"chat.send.channel.from.not_found",
+	// 		"send: FROM channel ID=%s sender not found or been closed",
+	// 		senderChatID,
+	// 	)
+	// }
+
+	// if senderFromID != 0 && chat.User.ID != senderFromID {
+	// 	// mismatch sender contact ID
+	// 	return errors.BadRequest(
+	// 		"chat.send.channel.user.mismatch",
+	// 		"send: FROM channel ID=%s user ID=%d mismatch",
+	// 		senderChatID, senderFromID,
+	// 	)
+	// }
+
+	// if chat.IsClosed() {
+	// 	// sender channel is already closed !
+	// 	return errors.BadRequest(
+	// 		"chat.send.channel.from.closed",
+	// 		"send: FROM chat channel ID=%s is closed",
+	// 		senderChatID,
+	// 	)
+	// }
+
+	// sender := chat.Channel
+
+	// // Validate and normalize message to send
+	// // Mostly also stores non-service-level message to persistent DB
+	// _, err = c.saveMessage(ctx, nil, sender, &pbchat.Message{})
+	// if err != nil {
+	// 	return err
+	// }
+
+	// PERFORM message publish|broadcast
+	// _, err = c.sendMessage(ctx, chat, sendMessage)
+
+	// if err != nil {
+	// 	// log.Error("FAILED Sending Message",
+	// 	// 	slog.Any("error", err),
+	// 	// )
+	// 	return err
+	// }
+
+	// NOTE: normalized during .saveMessage() function
+	// sentMessage := sendMessage
+	// res.Message = sentMessage
 
 	return nil
 }
