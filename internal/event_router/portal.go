@@ -34,11 +34,12 @@ func contactServiceHost(contact string) (name, host string) {
 }
 
 func (c *eventRouter) pushUpdate(host, addr string, push *chat.Update) error {
-	// // PUSH Notification Update Message
-	// const defaultServiceName = "go.webitel.portal"
-	// if host == "" {
-	// 	host = defaultServiceName
-	// }
+	// PUSH Notification Update Message
+	const defaultServiceName = "go.webitel.portal"
+	if host == "" {
+		host = defaultServiceName
+	}
+
 	sp := chat.NewUpdatesService(
 		host, client.DefaultClient,
 	)
