@@ -20,6 +20,7 @@ require (
 	github.com/jackc/pgtype v1.11.0
 	github.com/jackc/pgx/v4 v4.16.1
 	github.com/jmoiron/sqlx v1.3.5
+	github.com/lib/pq v1.10.2
 	github.com/lmittmann/tint v1.0.5
 	github.com/micro/micro/v3 v3.10.1
 	github.com/mitchellh/hashstructure v1.1.0

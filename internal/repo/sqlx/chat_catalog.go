@@ -23,7 +23,6 @@ var _ CatalogStore = (*sqlxRepository)(nil)
 // Query of external chat customers
 func (c *sqlxRepository) GetCustomers(req *app.SearchOptions, res *api.ChatCustomers) error {
 
-	ctx := req.Context.Context
 	cte, err := getContactsQuery(req)
 	if err != nil {
 		return err
@@ -34,15 +33,13 @@ func (c *sqlxRepository) GetCustomers(req *app.SearchOptions, res *api.ChatCusto
 		return err
 	}
 
-	rows, err := c.db.QueryContext(
-		ctx, query, args...,
-	)
+	ctx := req.Context.Context
+	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
-	// err = cte.scanRows(rows, res)
 	err = cte.fetch(rows, res)
 	if err != nil {
 		return err
