@@ -5,7 +5,6 @@ package webitel.chat;
 option go_package = "github.com/webitel/chat_manager/api/proto/chat/messages";
 
 import "google/api/annotations.proto";
-import "google/protobuf/wrappers.proto";
 
 // API used to connect the external user to our internal contact
 service ContactLinkingService {

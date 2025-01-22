@@ -7,6 +7,7 @@ import (
 	fmt "fmt"
 	proto "github.com/golang/protobuf/proto"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
+	_ "google.golang.org/genproto/googleapis/rpc/status"
 	math "math"
 )
 
@@ -58,7 +59,7 @@ type BotsService interface {
 	// Sends user action event to a conversation partner.
 	SendUserAction(ctx context.Context, in *SendUserActionRequest, opts ...client.CallOption) (*chat.SendUserActionResponse, error)
 	// Broadcast message `from` given bot profile to `peer` recipient(s)
-	BroadcastMessage(ctx context.Context, in *chat.BroadcastMessageRequest, opts ...client.CallOption) (*chat.BroadcastMessageResponse, error)
+	BroadcastMessage(ctx context.Context, in *BroadcastMessageRequest, opts ...client.CallOption) (*BroadcastMessageResponse, error)
 }
 
 type botsService struct {
@@ -143,9 +144,9 @@ func (c *botsService) SendUserAction(ctx context.Context, in *SendUserActionRequ
 	return out, nil
 }
 
-func (c *botsService) BroadcastMessage(ctx context.Context, in *chat.BroadcastMessageRequest, opts ...client.CallOption) (*chat.BroadcastMessageResponse, error) {
+func (c *botsService) BroadcastMessage(ctx context.Context, in *BroadcastMessageRequest, opts ...client.CallOption) (*BroadcastMessageResponse, error) {
 	req := c.c.NewRequest(c.name, "Bots.BroadcastMessage", in)
-	out := new(chat.BroadcastMessageResponse)
+	out := new(BroadcastMessageResponse)
 	err := c.c.Call(ctx, req, out, opts...)
 	if err != nil {
 		return nil, err
@@ -171,7 +172,7 @@ type BotsHandler interface {
 	// Sends user action event to a conversation partner.
 	SendUserAction(context.Context, *SendUserActionRequest, *chat.SendUserActionResponse) error
 	// Broadcast message `from` given bot profile to `peer` recipient(s)
-	BroadcastMessage(context.Context, *chat.BroadcastMessageRequest, *chat.BroadcastMessageResponse) error
+	BroadcastMessage(context.Context, *BroadcastMessageRequest, *BroadcastMessageResponse) error
 }
 
 func RegisterBotsHandler(s server.Server, hdlr BotsHandler, opts ...server.HandlerOption) error {
@@ -183,7 +184,7 @@ func RegisterBotsHandler(s server.Server, hdlr BotsHandler, opts ...server.Handl
 		DeleteBot(ctx context.Context, in *SearchBotRequest, out *SearchBotResponse) error
 		SearchBot(ctx context.Context, in *SearchBotRequest, out *SearchBotResponse) error
 		SendUserAction(ctx context.Context, in *SendUserActionRequest, out *chat.SendUserActionResponse) error
-		BroadcastMessage(ctx context.Context, in *chat.BroadcastMessageRequest, out *chat.BroadcastMessageResponse) error
+		BroadcastMessage(ctx context.Context, in *BroadcastMessageRequest, out *BroadcastMessageResponse) error
 	}
 	type Bots struct {
 		bots
@@ -224,6 +225,6 @@ func (h *botsHandler) SendUserAction(ctx context.Context, in *SendUserActionRequ
 	return h.BotsHandler.SendUserAction(ctx, in, out)
 }
 
-func (h *botsHandler) BroadcastMessage(ctx context.Context, in *chat.BroadcastMessageRequest, out *chat.BroadcastMessageResponse) error {
+func (h *botsHandler) BroadcastMessage(ctx context.Context, in *BroadcastMessageRequest, out *BroadcastMessageResponse) error {
 	return h.BotsHandler.BroadcastMessage(ctx, in, out)
 }
