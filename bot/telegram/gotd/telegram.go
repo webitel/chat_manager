@@ -23,7 +23,8 @@ import (
 	"github.com/gotd/td/tg"
 	"github.com/gotd/td/tgerr"
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/webitel/chat_manager/api/proto/chat"
+	pbbot "github.com/webitel/chat_manager/api/proto/bot"
+	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
 	"github.com/webitel/chat_manager/bot/telegram/internal/markdown"
 	"google.golang.org/grpc/codes"
@@ -404,14 +405,14 @@ func (c *app) SendNotify(ctx context.Context, notify *bot.Update) error {
 			return nil
 		}
 		// format new message to the engine for saving it in the DB as operator message [WTEL-4695]
-		messageToSave := &chat.Message{
+		messageToSave := &pbchat.Message{
 			Type:      "text",
 			Text:      messageText,
 			CreatedAt: time.Now().UnixMilli(),
 			From:      peer,
 		}
 		if peerChannel != nil && peerChannel.ChannelID != "" {
-			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave, Receiver: peerChannel.ChannelID})
+			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &pbchat.SaveAgentJoinMessageRequest{Message: messageToSave, Receiver: peerChannel.ChannelID})
 			if err != nil {
 				return err
 			}
@@ -700,7 +701,7 @@ func (c *app) WebHook(rsp http.ResponseWriter, req *http.Request) {
 }
 
 // Broadcast given `req.Message` message [to] provided `req.Peer(s)`
-func (c *app) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
+func (c *app) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMessageRequest, rsp *pbbot.BroadcastMessageResponse) error {
 
 	if authZ := c.session.login.User(); authZ == nil {
 		return errors.BadGateway(
@@ -742,7 +743,7 @@ func (c *app) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRe
 
 			res := rsp.GetFailure()
 			if res == nil {
-				res = make([]*chat.BroadcastPeer, 0, n)
+				res = make([]*pbbot.BroadcastPeer, 0, n)
 			}
 
 			var re *status.Status
@@ -755,7 +756,7 @@ func (c *app) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRe
 				re = status.New(codes.Unknown, err.Error())
 			}
 
-			res = append(res, &chat.BroadcastPeer{
+			res = append(res, &pbbot.BroadcastPeer{
 				Peer:  req.Peer[peerId],
 				Error: re.Proto(),
 			})

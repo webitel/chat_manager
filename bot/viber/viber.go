@@ -16,7 +16,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	chat "github.com/webitel/chat_manager/api/proto/chat"
+	pbbot "github.com/webitel/chat_manager/api/proto/bot"
+	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
 )
 
@@ -301,14 +302,14 @@ func (c *Bot) SendNotify(ctx context.Context, notify *bot.Update) error {
 			return nil
 		}
 		// format new message to the engine for saving it in the DB as operator message [WTEL-4695]
-		messageToSave := &chat.Message{
+		messageToSave := &pbchat.Message{
 			Type:      "text",
 			Text:      messageText,
 			CreatedAt: time.Now().UnixMilli(),
 			From:      peer,
 		}
 		if peerChannel != nil && peerChannel.ChannelID != "" {
-			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave, Receiver: peerChannel.ChannelID})
+			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &pbchat.SaveAgentJoinMessageRequest{Message: messageToSave, Receiver: peerChannel.ChannelID})
 			if err != nil {
 				return err
 			}
@@ -515,13 +516,13 @@ func (c *Bot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 }
 
 // Broadcast given `req.Message` message [to] provided `req.Peer(s)`
-func (c *Bot) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
+func (c *Bot) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMessageRequest, rsp *pbbot.BroadcastMessageResponse) error {
 
 	var (
 		setError = func(peerId string, err error) {
 			res := rsp.GetFailure()
 			if res == nil {
-				res = make([]*chat.BroadcastPeer, 0, len(req.GetPeer()))
+				res = make([]*pbbot.BroadcastPeer, 0, len(req.GetPeer()))
 			}
 
 			var re *status.Status
@@ -540,7 +541,7 @@ func (c *Bot) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRe
 				re = status.New(codes.Unknown, err.Error())
 			}
 
-			res = append(res, &chat.BroadcastPeer{
+			res = append(res, &pbbot.BroadcastPeer{
 				Peer:  peerId,
 				Error: re.Proto(),
 			})

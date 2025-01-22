@@ -15,7 +15,8 @@ import (
 	vk "github.com/SevereCloud/vksdk/v2/api"
 	"github.com/SevereCloud/vksdk/v2/object"
 	"github.com/micro/micro/v3/service/errors"
-	chat "github.com/webitel/chat_manager/api/proto/chat"
+	pbbot "github.com/webitel/chat_manager/api/proto/bot"
+	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
 )
 
@@ -309,7 +310,7 @@ func (c *VKBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 			Title: channel.Title,
 			User:  &channel.Account,
 
-			Message: new(chat.Message),
+			Message: new(pbchat.Message),
 		}
 		// endregion
 
@@ -333,7 +334,7 @@ func (c *VKBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 					Title: channel.Title,
 					User:  &channel.Account,
 
-					Message: new(chat.Message),
+					Message: new(pbchat.Message),
 				}
 				attachmentMessage := attachmentUpdate.Message
 				if attachmentType, ok := attachment["type"]; ok {
@@ -363,7 +364,7 @@ func (c *VKBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 
 							// Prepare internal message content
 							attachmentMessage.Type = "file"
-							attachmentMessage.File = &chat.File{
+							attachmentMessage.File = &pbchat.File{
 								Url:  chosenPhoto.Url, // source URL to download from ...
 								Mime: "",              // autodetect on chat's service .SendMessage()
 								// mime.TypeByExtension(path.Ext(image.FileName()))
@@ -387,7 +388,7 @@ func (c *VKBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 							}
 							if video.Url != "" {
 								attachmentMessage.Type = "file"
-								attachmentMessage.File = &chat.File{
+								attachmentMessage.File = &pbchat.File{
 									Url:  video.Url, // source to download
 									Mime: "",
 									Name: video.Title,
@@ -410,7 +411,7 @@ func (c *VKBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 							}
 							// Prepare internal message content
 							attachmentMessage.Type = "file"
-							attachmentMessage.File = &chat.File{
+							attachmentMessage.File = &pbchat.File{
 								Url:  audio.Url, // source URL to download from ...
 								Size: 0,
 								Mime: "",
@@ -430,7 +431,7 @@ func (c *VKBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 							}
 							// Prepare internal message content
 							attachmentMessage.Type = "file"
-							attachmentMessage.File = &chat.File{
+							attachmentMessage.File = &pbchat.File{
 								Url:  coalesce(audio.LinkMP3, audio.LinkOGG), // source URL to download from ...
 								Size: 0,
 								Mime: "",
@@ -450,7 +451,7 @@ func (c *VKBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 							}
 							// Prepare internal message content
 							attachmentMessage.Type = "file"
-							attachmentMessage.File = &chat.File{
+							attachmentMessage.File = &pbchat.File{
 								Url:  doc.Url, // source to download
 								Mime: doc.Extension,
 								Name: doc.Title,
@@ -483,7 +484,7 @@ func (c *VKBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 							chosenPhoto := sticker.Images[i]
 							// Prepare internal message content
 							attachmentMessage.Type = "file"
-							attachmentMessage.File = &chat.File{
+							attachmentMessage.File = &pbchat.File{
 								Url:  chosenPhoto.Url, // source to download
 								Mime: "",
 								Name: t,
@@ -764,7 +765,7 @@ func unmarshalTo(src any, dst any) error {
 }
 
 // Broadcast given `req.Message` message [to] provided `req.Peer(s)`
-func (c *VKBot) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
+func (c *VKBot) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMessageRequest, rsp *pbbot.BroadcastMessageResponse) error {
 
 	var (
 		message OutgoingMessage
