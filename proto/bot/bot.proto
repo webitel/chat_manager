@@ -4,15 +4,44 @@ package webitel.chat.bot;
 
 option go_package = "github.com/webitel/chat_manager/api/proto/bot";
 
+import "google/rpc/status.proto";
+
 import "message.proto";
 import "messages.proto";
 
+// Bots service API
+service Bots {
+  // SendMessage [FROM] bot's profile [TO] external client communication
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {}
+
+  // Create new bot profile
+  rpc CreateBot(Bot) returns (Bot) {}
+
+  // Select returns a single bot profile by unique identifier
+  rpc SelectBot(SelectBotRequest) returns (Bot) {}
+
+  // Update single bot
+  rpc UpdateBot(UpdateBotRequest) returns (Bot) {}
+
+  // Delete bot(s) selection
+  rpc DeleteBot(SearchBotRequest) returns (SearchBotResponse) {}
+
+  // Search returns list of bots, posibly filtered out with search conditions
+  rpc SearchBot(SearchBotRequest) returns (SearchBotResponse) {}
+
+  // Sends user action event to a conversation partner.
+  rpc SendUserAction(SendUserActionRequest) returns (webitel.chat.server.SendUserActionResponse) {}
+
+  // Broadcast message `from` given bot profile to `peer` recipient(s)
+  rpc BroadcastMessage(BroadcastMessageRequest) returns (BroadcastMessageResponse) {}
+}
+
 // Reference
 message Refer {
-    // Readonly. Object Unique IDentifier.
-    int64 id = 1;
-    // Readonly. Human-readable display name.
-    string name = 2;
+  // Readonly. Object Unique IDentifier.
+  int64 id = 1;
+  // Readonly. Human-readable display name.
+  string name = 2;
 }
 
 // ChatUpdates defines optional text/template(s)
@@ -35,7 +64,6 @@ message ChatUpdates {
 
 // webitel.chat.server.Profile
 message Bot {
-
   // Readonly. Object Unique IDentifier.
   int64 id = 1;
   // Readonly. Domain that owns this bot
@@ -70,29 +98,6 @@ message Bot {
   // int32 joined = 20;
   // // Readonly. Members currently active
   // int32 active = 21;
-}
-
-// Bots service API
-service Bots {
-
-  // SendMessage [FROM] bot's profile [TO] external client communication
-  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {}
-
-  // Create new bot profile
-  rpc CreateBot(Bot) returns (Bot) {}
-  // Select returns a single bot profile by unique identifier
-  rpc SelectBot(SelectBotRequest) returns (Bot) {}
-  // Update single bot
-  rpc UpdateBot(UpdateBotRequest) returns (Bot) {}
-  // Delete bot(s) selection
-  rpc DeleteBot(SearchBotRequest) returns (SearchBotResponse) {}
-  // Search returns list of bots, posibly filtered out with search conditions
-  rpc SearchBot(SearchBotRequest) returns (SearchBotResponse) {}
-
-  // Sends user action event to a conversation partner.
-  rpc SendUserAction(SendUserActionRequest) returns (webitel.chat.server.SendUserActionResponse) {}
-  // Broadcast message `from` given bot profile to `peer` recipient(s)
-  rpc BroadcastMessage(webitel.chat.server.BroadcastMessageRequest) returns (webitel.chat.server.BroadcastMessageResponse) {}
 }
 
 message SendUserActionRequest {
@@ -168,4 +173,33 @@ message SendMessageResponse {
   // // webitel.chat.server.Error error = 1;
   // webitel.chat.server.Message message = 1;
   map<string,string> bindings = 1; // SENT message binding variables
+}
+
+message BroadcastMessageRequest {
+  // REQUIRED. Message content (accept: text) to broadcast
+  webitel.chat.server.Message message = 1;
+  // REQUIRED. From sender bot unique profile.id
+  int64 from = 2;
+  // REQUIRED. List of recipients; `from` provider-specific, e.g.:
+  // telegram - user.id (int64) which contacted the `from` bot.
+  // gotd - phone numbers according to the E.164 standard
+  repeated string peer = 3;
+  // NOT REQUIRED. Timeout of waiting for the response from the client side about success or fail of the processing.
+  int64 timeout = 4;
+}
+
+// Broadcast recepient status
+message BroadcastPeer {
+  // Peer identification
+  string peer = 1;
+  // Broadcast peer status
+  google.rpc.Status error = 2;
+}
+
+message BroadcastMessageResponse {
+  repeated BroadcastPeer failure = 1;
+  // NOT REQUIRED. Variables to set in the flow JS environment.
+  //
+  // Key-Value format
+  map<string, string> variables = 2;
 }

@@ -5,8 +5,8 @@ package messages
 
 import (
 	fmt "fmt"
+	proto "github.com/golang/protobuf/proto"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
-	proto "google.golang.org/protobuf/proto"
 	math "math"
 )
 
@@ -22,6 +22,12 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the proto package it is being compiled against.
+// A compilation error at this line likely means your copy of the
+// proto package needs to be updated.
+const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
+
 // Reference imports to suppress errors if they are not otherwise used.
 var _ api.Endpoint
 var _ context.Context
@@ -32,16 +38,17 @@ var _ server.Option
 
 func NewAgentChatServiceEndpoints() []*api.Endpoint {
 	return []*api.Endpoint{
-		{
+		&api.Endpoint{
 			Name:    "AgentChatService.GetAgentChats",
 			Path:    []string{"/agent/chats"},
 			Method:  []string{"GET"},
 			Handler: "rpc",
 		},
-		{
+		&api.Endpoint{
 			Name:    "AgentChatService.MarkChatProcessed",
 			Path:    []string{"/agent/chats/{chat_id}"},
 			Method:  []string{"PATCH"},
+			Body:    "",
 			Handler: "rpc",
 		},
 	}
@@ -112,6 +119,7 @@ func RegisterAgentChatServiceHandler(s server.Server, hdlr AgentChatServiceHandl
 		Name:    "AgentChatService.MarkChatProcessed",
 		Path:    []string{"/agent/chats/{chat_id}"},
 		Method:  []string{"PATCH"},
+		Body:    "",
 		Handler: "rpc",
 	}))
 	return s.Handle(s.NewHandler(&AgentChatService{h}, opts...))

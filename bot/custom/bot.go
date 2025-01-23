@@ -19,7 +19,8 @@ import (
 
 	"github.com/beevik/guid"
 	"github.com/micro/micro/v3/service/errors"
-	"github.com/webitel/chat_manager/api/proto/chat"
+	pbbot "github.com/webitel/chat_manager/api/proto/bot"
+	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
 	"google.golang.org/genproto/googleapis/rpc/status"
 )
@@ -269,7 +270,7 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 			return nil
 		}
 		// format new message to the engine for saving it in the DB as operator message [WTEL-4695]
-		messageToSave := &chat.Message{
+		messageToSave := &pbchat.Message{
 			Id:        message.Id,
 			Type:      "text",
 			Text:      text,
@@ -277,7 +278,7 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 			From:      peer,
 		}
 		if channel != nil && channel.ChannelID != "" {
-			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave, Receiver: channel.ChannelID})
+			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &pbchat.SaveAgentJoinMessageRequest{Message: messageToSave, Receiver: channel.ChannelID})
 			if err != nil {
 				return err
 			}
@@ -471,7 +472,7 @@ func (c *CustomGateway) handleMessage(ctx context.Context, msg *Message) error {
 		Chat:    channel,
 		Title:   channel.Title,
 		User:    &channel.Account,
-		Message: new(chat.Message),
+		Message: new(pbchat.Message),
 	}
 	internalMessage := update.Message
 	if internalMessage.Variables == nil {
@@ -490,7 +491,7 @@ func (c *CustomGateway) handleMessage(ctx context.Context, msg *Message) error {
 	if file := msg.File; file != nil {
 		internalMessage.Type = bot.FileType
 		internalMessage.Text = msg.Text
-		internalMessage.File = &chat.File{
+		internalMessage.File = &pbchat.File{
 			Id:   0,
 			Url:  file.Url,
 			Mime: file.Mime,
@@ -558,7 +559,7 @@ func (c *CustomGateway) handleBroadcast(ctx context.Context, broadcast *ReceiveB
 	return nil
 }
 
-func (c *CustomGateway) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
+func (c *CustomGateway) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMessageRequest, rsp *pbbot.BroadcastMessageResponse) error {
 	var (
 		eventId   = guid.New().String()
 		broadcast = &SendBroadcast{EventId: eventId, Recipients: make([]*Lookup, 0)}
@@ -677,9 +678,9 @@ func (c *CustomGateway) BroadcastMessage(ctx context.Context, req *chat.Broadcas
 			)
 			// if non-empty then broadcast fully or partially failed
 			if len(bcResponse.FailedReceivers) != 0 {
-				rsp.Failure = make([]*chat.BroadcastPeer, 0)
+				rsp.Failure = make([]*pbbot.BroadcastPeer, 0)
 				for _, receiver := range bcResponse.FailedReceivers {
-					rsp.Failure = append(rsp.Failure, &chat.BroadcastPeer{
+					rsp.Failure = append(rsp.Failure, &pbbot.BroadcastPeer{
 						Peer:  FormatSenderId(receiver.Id, receiver.Type),
 						Error: &status.Status{Message: receiver.Error},
 					})

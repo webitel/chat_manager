@@ -14,6 +14,7 @@ import (
 	pbbot "github.com/webitel/chat_manager/api/proto/bot"
 	pb "github.com/webitel/chat_manager/api/proto/chat"
 	pb2 "github.com/webitel/chat_manager/api/proto/chat/messages"
+	pbportal "github.com/webitel/chat_manager/api/proto/portal"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	pbmanager "github.com/webitel/chat_manager/api/proto/workflow"
 	"github.com/webitel/chat_manager/cmd"
@@ -49,6 +50,7 @@ var (
 	//redisTable    string
 	flowClient    pbmanager.FlowChatServerService
 	botClient     pbbot.BotsService // pbbot.BotService
+	portalClient  pbportal.ChatMessagesService
 	authClient    pbauth.AuthService
 	storageClient pbstorage.FileService
 	timeout       uint64
@@ -184,7 +186,7 @@ func Run(ctx *cli.Context) error {
 	)
 	// REdirect server requests !
 	botClient = pbbot.NewBotsService("webitel.chat.bot", sender)
-	// botClient = pbbot.NewBotsService("chat.bot", sender)
+	portalClient = pbportal.NewChatMessagesService("go.webitel.portal", sender)
 	authClient = pbauth.NewAuthService(webitelGo, sender)
 	storageClient = pbstorage.NewFileService("storage", sender)
 	flowClient = pbmanager.NewFlowChatServerService("workflow", sender) // wrapper.FromService(service.Name(), service.Server().Options().Id, service.Client()),
@@ -195,12 +197,12 @@ func Run(ctx *cli.Context) error {
 	flow := flow.NewClient(stdlog, store, flowClient)
 	auth := auth.NewClient(stdlog, authClient)
 	eventRouter := event.NewRouter(botClient /*flow,*/, broker.DefaultBroker, store, stdlog)
-	// serv := NewChatService(pgstore, repo, &logger, flow, auth, botClient, storageClient, eventRouter)
-	serv := NewChatService(store, stdlog, flow, auth, botClient, storageClient, eventRouter)
+
+	serv := NewChatService(store, stdlog, flow, auth, botClient, portalClient, storageClient, eventRouter)
 
 	for _, regErr := range []error{
 		pb.RegisterChatServiceHandler(service.Server(), serv),
-		pb.RegisterMessagesHandler(service.Server(), serv),
+		pb.RegisterMessagesServiceHandler(service.Server(), serv),
 		// register more micro/gRPC service(s) here ...
 	} {
 		if regErr != nil {
