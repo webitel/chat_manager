@@ -313,7 +313,7 @@ func (v *broadcastValidator) getErrors() []*pbmessages.BroadcastError {
 }
 
 func (v *broadcastValidator) validatePeers() []*pbmessages.InputPeer {
-	allowedPeerTypes := []string{"portal", "viber", "telegram", "facebook", "instagram", "messenger", "whatsapp", "vk"}
+	allowedPeerTypes := []string{"portal", "gotd", "viber", "telegram", "facebook", "instagram", "messenger", "whatsapp", "vk"}
 	validPeers := []*pbmessages.InputPeer{}
 
 	for _, peer := range v.request.GetPeers() {
@@ -405,7 +405,7 @@ func (t *broadcastTransformer) transformToBotsService() []*pbbot.BroadcastMessag
 	reqsByFrom := make(map[int64]*pbbot.BroadcastMessageRequest)
 	for _, peer := range t.request.GetPeers() {
 		switch peer.GetType() {
-		case "telegram", "viber", "facebook", "messenger", "instagram", "whatsapp", "vk":
+		case "gotd", "telegram", "viber", "facebook", "messenger", "instagram", "whatsapp", "vk":
 			parsedVia, err := strconv.ParseInt(peer.GetVia(), 10, 64)
 			if err != nil || parsedVia == 0 {
 				t.errors = append(t.errors, buildBroadcastError(peer.Id, http.StatusBadRequest, "peer.via is invalid"))
