@@ -19,7 +19,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	telegram "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	chat "github.com/webitel/chat_manager/api/proto/chat"
+	pbbot "github.com/webitel/chat_manager/api/proto/bot"
+	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot/telegram/internal/builder"
 	"github.com/webitel/chat_manager/bot/telegram/internal/helper"
 	"github.com/webitel/chat_manager/bot/telegram/internal/markdown"
@@ -1098,13 +1099,13 @@ func (c *TelegramBot) WebHook(reply http.ResponseWriter, notice *http.Request) {
 }
 
 // Broadcast given `req.Message` message [to] provided `req.Peer(s)`
-func (c *TelegramBot) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
+func (c *TelegramBot) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMessageRequest, rsp *pbbot.BroadcastMessageResponse) error {
 
 	var (
 		setError = func(peerId int, err error) { // set error to response
 			res := rsp.GetFailure()
 			if res == nil {
-				res = make([]*chat.BroadcastPeer, 0, len(req.GetPeer()))
+				res = make([]*pbbot.BroadcastPeer, 0, len(req.GetPeer()))
 			}
 
 			var re *status.Status
@@ -1117,7 +1118,7 @@ func (c *TelegramBot) BroadcastMessage(ctx context.Context, req *chat.BroadcastM
 				re = status.New(codes.Unknown, err.Error())
 			}
 
-			res = append(res, &chat.BroadcastPeer{
+			res = append(res, &pbbot.BroadcastPeer{
 				Peer:  req.Peer[peerId],
 				Error: re.Proto(),
 			})
