@@ -417,6 +417,7 @@ func (t *broadcastTransformer) transformToBotsService() []*pbbot.BroadcastMessag
 				req = &pbbot.BroadcastMessageRequest{
 					From:    parsedVia,
 					Message: chatMessage,
+					Timeout: t.request.GetTimeout(),
 				}
 			}
 
