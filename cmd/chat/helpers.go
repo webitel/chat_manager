@@ -345,17 +345,18 @@ func (t *broadcastTransformer) getErrors() []*pbmessages.BroadcastError {
 }
 
 func (t *broadcastTransformer) transformToChatMessagesService() *pbmessages.BroadcastMessageRequest {
-	outbound := &pbmessages.BroadcastMessageRequest{
+	req := &pbmessages.BroadcastMessageRequest{
 		Message: t.request.GetMessage(),
+		Timeout: t.request.GetTimeout(),
 	}
 
 	for _, peer := range t.request.GetPeers() {
 		if peer.GetType() == "portal" {
-			outbound.Peers = append(outbound.Peers, peer)
+			req.Peers = append(req.Peers, peer)
 		}
 	}
 
-	return outbound
+	return req
 }
 
 func (t *broadcastTransformer) transformToBotsService() []*pbbot.BroadcastMessageRequest {
