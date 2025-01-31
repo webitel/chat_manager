@@ -13,6 +13,7 @@ message BroadcastMessageRequest {
   repeated InputPeer peers = 1;
   InputMessage message = 2;
   int64 timeout = 3;
+  map<string, string> variables = 4;
 }
 
 message BroadcastMessageResponse {

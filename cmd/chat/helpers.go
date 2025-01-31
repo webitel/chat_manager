@@ -346,8 +346,9 @@ func (t *broadcastTransformer) getErrors() []*pbmessages.BroadcastError {
 
 func (t *broadcastTransformer) transformToChatMessagesService() *pbmessages.BroadcastMessageRequest {
 	req := &pbmessages.BroadcastMessageRequest{
-		Message: t.request.GetMessage(),
-		Timeout: t.request.GetTimeout(),
+		Message:   t.request.GetMessage(),
+		Timeout:   t.request.GetTimeout(),
+		Variables: t.request.GetVariables(),
 	}
 
 	for _, peer := range t.request.GetPeers() {
@@ -367,7 +368,8 @@ func (t *broadcastTransformer) transformToBotsService() []*pbbot.BroadcastMessag
 
 	// NOTE: Set chat message DTO
 	chatMessage := &pbchat.Message{
-		Text: message.GetText(),
+		Text:      message.GetText(),
+		Variables: t.request.GetVariables(),
 	}
 
 	// NOTE: Set chat file DTO
