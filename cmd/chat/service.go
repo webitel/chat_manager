@@ -64,6 +64,7 @@ type Service interface {
 
 	SendUserAction(ctx context.Context, in *pbchat.SendUserActionRequest, out *pbchat.SendUserActionResponse) error
 	BroadcastMessage(ctx context.Context, in *pbmessages.BroadcastMessageRequest, out *pbmessages.BroadcastMessageResponse) error
+	BroadcastMessageNA(ctx context.Context, in *pbmessages.BroadcastMessageRequest, out *pbmessages.BroadcastMessageResponse) error
 }
 
 type chatService struct {
@@ -3754,10 +3755,18 @@ func (c *chatService) BroadcastMessage(ctx context.Context, req *pbmessages.Broa
 		return err
 	}
 
+	return c.broadcastMessage(ctx, req, resp)
+}
+
+func (c *chatService) BroadcastMessageNA(ctx context.Context, req *pbmessages.BroadcastMessageRequest, resp *pbmessages.BroadcastMessageResponse) error {
+	return c.broadcastMessage(ctx, req, resp)
+}
+
+func (c *chatService) broadcastMessage(ctx context.Context, req *pbmessages.BroadcastMessageRequest, resp *pbmessages.BroadcastMessageResponse) error {
 	// Validate input
 	validator := newBroadcastValidator(req)
 
-	err = validator.validateMessage()
+	err := validator.validateMessage()
 	if err != nil {
 		return err
 	}
