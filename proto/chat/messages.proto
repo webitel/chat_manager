@@ -25,6 +25,9 @@ service MessagesService {
       body: "*"
     };
   }
+
+  // Broadcast message send message from via to peer recipients (for internal services).
+  rpc BroadcastMessageNA(webitel.chat.BroadcastMessageRequest) returns (webitel.chat.BroadcastMessageResponse) {}
 }
 
 // User actions. Use this to provide users with detailed info

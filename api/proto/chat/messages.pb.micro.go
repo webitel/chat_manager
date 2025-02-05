@@ -57,6 +57,8 @@ type MessagesService interface {
 	SendUserAction(ctx context.Context, in *SendUserActionRequest, opts ...client.CallOption) (*SendUserActionResponse, error)
 	// Broadcast message send message from via to peer recipients.
 	BroadcastMessage(ctx context.Context, in *messages.BroadcastMessageRequest, opts ...client.CallOption) (*messages.BroadcastMessageResponse, error)
+	// Broadcast message send message from via to peer recipients (for internal services).
+	BroadcastMessageNA(ctx context.Context, in *messages.BroadcastMessageRequest, opts ...client.CallOption) (*messages.BroadcastMessageResponse, error)
 }
 
 type messagesService struct {
@@ -91,6 +93,16 @@ func (c *messagesService) BroadcastMessage(ctx context.Context, in *messages.Bro
 	return out, nil
 }
 
+func (c *messagesService) BroadcastMessageNA(ctx context.Context, in *messages.BroadcastMessageRequest, opts ...client.CallOption) (*messages.BroadcastMessageResponse, error) {
+	req := c.c.NewRequest(c.name, "MessagesService.BroadcastMessageNA", in)
+	out := new(messages.BroadcastMessageResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for MessagesService service
 
 type MessagesServiceHandler interface {
@@ -98,12 +110,15 @@ type MessagesServiceHandler interface {
 	SendUserAction(context.Context, *SendUserActionRequest, *SendUserActionResponse) error
 	// Broadcast message send message from via to peer recipients.
 	BroadcastMessage(context.Context, *messages.BroadcastMessageRequest, *messages.BroadcastMessageResponse) error
+	// Broadcast message send message from via to peer recipients (for internal services).
+	BroadcastMessageNA(context.Context, *messages.BroadcastMessageRequest, *messages.BroadcastMessageResponse) error
 }
 
 func RegisterMessagesServiceHandler(s server.Server, hdlr MessagesServiceHandler, opts ...server.HandlerOption) error {
 	type messagesService interface {
 		SendUserAction(ctx context.Context, in *SendUserActionRequest, out *SendUserActionResponse) error
 		BroadcastMessage(ctx context.Context, in *messages.BroadcastMessageRequest, out *messages.BroadcastMessageResponse) error
+		BroadcastMessageNA(ctx context.Context, in *messages.BroadcastMessageRequest, out *messages.BroadcastMessageResponse) error
 	}
 	type MessagesService struct {
 		messagesService
@@ -129,4 +144,8 @@ func (h *messagesServiceHandler) SendUserAction(ctx context.Context, in *SendUse
 
 func (h *messagesServiceHandler) BroadcastMessage(ctx context.Context, in *messages.BroadcastMessageRequest, out *messages.BroadcastMessageResponse) error {
 	return h.MessagesServiceHandler.BroadcastMessage(ctx, in, out)
+}
+
+func (h *messagesServiceHandler) BroadcastMessageNA(ctx context.Context, in *messages.BroadcastMessageRequest, out *messages.BroadcastMessageResponse) error {
+	return h.MessagesServiceHandler.BroadcastMessageNA(ctx, in, out)
 }
