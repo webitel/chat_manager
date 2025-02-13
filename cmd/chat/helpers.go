@@ -379,6 +379,7 @@ func (t *broadcastTransformer) transformToBotsService() []*pbbot.BroadcastMessag
 			parsedFileId, err := strconv.ParseInt(file.GetId(), 10, 64)
 			if err == nil && parsedFileId > 0 {
 				chatFile.Id = parsedFileId
+				chatFile.Source = file.GetSource()
 			}
 		} else if file.GetUrl() != "" {
 			chatFile.Url = file.GetUrl()

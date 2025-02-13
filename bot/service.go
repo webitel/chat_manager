@@ -56,8 +56,7 @@ type Service struct {
 	profiles map[int64]*Gateway // map[profile.id]gateway
 	audit    *audit.Client
 
-	fileService      pbstorage.FileService
-	mediaFileService pbstorage.MediaFileService
+	fileService pbstorage.FileService
 }
 
 func NewService(
@@ -67,7 +66,6 @@ func NewService(
 	auditClient *audit.Client,
 	// router *mux.Router,
 	fileService pbstorage.FileService,
-	mediaFileService pbstorage.MediaFileService,
 ) *Service {
 
 	if logger == nil {
@@ -87,8 +85,7 @@ func NewService(
 		profiles: make(map[int64]*Gateway),
 		audit:    auditClient,
 
-		fileService:      fileService,
-		mediaFileService: mediaFileService,
+		fileService: fileService,
 	}
 }
 
