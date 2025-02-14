@@ -17,7 +17,6 @@ import (
 	"unicode"
 
 	wlog "github.com/webitel/chat_manager/log"
-	"google.golang.org/genproto/googleapis/rpc/status"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/micro/micro/v3/service/broker"
@@ -30,7 +29,6 @@ import (
 	pbbot "github.com/webitel/chat_manager/api/proto/bot"
 	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 	pbmessages "github.com/webitel/chat_manager/api/proto/chat/messages"
-	pbportal "github.com/webitel/chat_manager/api/proto/portal"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/internal/auth"
 	event "github.com/webitel/chat_manager/internal/event_router"
@@ -47,6 +45,7 @@ type Service interface {
 	SendMessage(ctx context.Context, req *pbchat.SendMessageRequest, res *pbchat.SendMessageResponse) error
 	// [WTEL-4695]: duct tape, please make me normal when chats will be rewrited (agent join message knows only webitel.chat.bot)
 	SaveAgentJoinMessage(context.Context, *pbchat.SaveAgentJoinMessageRequest, *pbchat.SaveAgentJoinMessageResponse) error
+	SaveMessage(ctx context.Context, req *pbchat.SaveMessageRequest, res *pbchat.SaveMessageResponse) error
 	DeleteMessage(ctx context.Context, req *pbchat.DeleteMessageRequest, res *pbchat.HistoryMessage) error
 	StartConversation(ctx context.Context, req *pbchat.StartConversationRequest, res *pbchat.StartConversationResponse) error
 	CloseConversation(ctx context.Context, req *pbchat.CloseConversationRequest, res *pbchat.CloseConversationResponse) error
@@ -73,7 +72,6 @@ type chatService struct {
 	flowClient    flow.Client
 	authClient    auth.Client
 	botClient     pbbot.BotsService
-	portalClient  pbportal.ChatMessagesService
 	storageClient pbstorage.FileService
 	eventRouter   event.Router
 }
@@ -86,7 +84,6 @@ func NewChatService(
 	flowClient flow.Client,
 	authClient auth.Client,
 	botClient pbbot.BotsService,
-	portalClient pbportal.ChatMessagesService,
 	storageClient pbstorage.FileService,
 	eventRouter event.Router,
 ) Service {
@@ -96,7 +93,6 @@ func NewChatService(
 		flowClient,
 		authClient,
 		botClient,
-		portalClient,
 		storageClient,
 		eventRouter,
 	}
@@ -212,7 +208,6 @@ func (s *chatService) UpdateChannel(
 
 	return nil
 }
-
 func (s *chatService) SendMessage(
 	ctx context.Context,
 	req *pbchat.SendMessageRequest,
@@ -418,6 +413,64 @@ func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pbchat.Save
 	return nil
 }
 
+func (s *chatService) SaveMessage(
+	ctx context.Context,
+	req *pbchat.SaveMessageRequest,
+	res *pbchat.SaveMessageResponse,
+) error {
+	var (
+		sendMessage  = req.GetMessage()
+		senderChatID = req.GetChannelId()
+		targetChatID = req.GetConversationId()
+	)
+
+	if senderChatID == "" {
+		senderChatID = targetChatID
+		if senderChatID == "" {
+			return errors.BadRequest(
+				"chat.send.channel.from.required",
+				"send: message sender chat ID required",
+			)
+		}
+	}
+
+	// region: lookup target chat session by unique sender chat channel id
+	chat, err := s.repo.GetSession(ctx, senderChatID) // fmt.wrapError {msg: "sql: Scan error on column index 7, name \"user_contact\": converting NULL to string is unsupported", err: error(*errors.errorString) *{s: "converting NULL to string is unsupported"}}
+	if err != nil {
+		return err
+	}
+
+	// sender channel ID not found
+	if chat == nil || chat.ID != senderChatID {
+		return errors.BadRequest(
+			"chat.send.channel.from.not_found",
+			"send: FROM channel ID=%s sender not found or been closed",
+			senderChatID,
+		)
+	}
+
+	// sender channel is already closed !
+	if chat.IsClosed() {
+		return errors.BadRequest(
+			"chat.send.channel.from.closed",
+			"send: FROM chat channel ID=%s is closed",
+			senderChatID,
+		)
+	}
+
+	// Validate and normalize message to send
+	// Mostly also stores non-service-level message to persistent DB
+	sender := chat.Channel
+	savedMessage, err := s.saveMessage(ctx, nil, sender, sendMessage)
+	if err != nil {
+		return err
+	}
+
+	res.Id = savedMessage.ID
+
+	return nil
+}
+
 func (s *chatService) DeleteMessage(
 	ctx context.Context,
 	req *pbchat.DeleteMessageRequest,
@@ -618,6 +671,7 @@ func (s *chatService) StartConversation(
 		// NOTE: for now this endpoint if called by
 		Variables: metadata, // req.GetMessage().GetVariables(), // req.GetProperties(),
 	}
+
 	// NOTE: sender CHAT channel represents A leg, so must be created earlier
 	// than, target CHAT channel represents B leg, the first recepient, chat@bot channel
 	startDate := localtime.Add(time.Millisecond)
@@ -634,6 +688,7 @@ func (s *chatService) StartConversation(
 		// Metadata chaining ...
 		Variables: metadata,
 	}
+
 	// CHAT start message
 	startMessage := req.GetMessage()
 	if startMessage == nil {
@@ -704,9 +759,11 @@ func (s *chatService) StartConversation(
 		}
 		// Create sender CHAT channel ...
 		channel.ConversationID = conversation.ID
+
 		if err := s.repo.CreateChannelTx(ctx, tx, &channel); err != nil {
 			return err
 		}
+
 		// Transform channel OLD model to NEW one !
 		sender := app.Channel{
 			Chat: &app.Chat{
@@ -737,10 +794,12 @@ func (s *chatService) StartConversation(
 			// Closed:   0,
 			Variables: channel.Variables,
 		}
+
 		// Save historical START conversation message ...
 		if _, err := s.saveMessage(ctx, tx, &sender, startMessage); err != nil {
 			return err
 		}
+
 		res.ConversationId = conversation.ID
 		res.ChannelId = channel.ID
 		// sentMessage := startMessage
@@ -3749,21 +3808,28 @@ func (c *chatService) SendUserAction(ctx context.Context, req *pbchat.SendUserAc
 }
 
 func (c *chatService) BroadcastMessage(ctx context.Context, req *pbmessages.BroadcastMessageRequest, resp *pbmessages.BroadcastMessageResponse) error {
-	// Note: Authentication
-	_, err := c.authClient.MicroAuthentication(&ctx)
+	// NOTE: Authentication
+	authUser, err := c.authClient.MicroAuthentication(&ctx)
 	if err != nil {
 		return err
 	}
 
-	return c.broadcastMessage(ctx, req, resp)
+	// NOTE: Validate input
+	validator := newBroadcastValidator(req)
+
+	err = validator.validateMessage()
+	if err != nil {
+		return err
+	}
+
+	req.Peers = validator.validatePeers() // ignore invalid peers
+	resp.Failure = append(resp.Failure, validator.getErrors()...)
+
+	return c.executeBroadcast(ctx, authUser, req, resp)
 }
 
 func (c *chatService) BroadcastMessageNA(ctx context.Context, req *pbmessages.BroadcastMessageRequest, resp *pbmessages.BroadcastMessageResponse) error {
-	return c.broadcastMessage(ctx, req, resp)
-}
-
-func (c *chatService) broadcastMessage(ctx context.Context, req *pbmessages.BroadcastMessageRequest, resp *pbmessages.BroadcastMessageResponse) error {
-	// Validate input
+	// NOTE: Validate input
 	validator := newBroadcastValidator(req)
 
 	err := validator.validateMessage()
@@ -3774,84 +3840,5 @@ func (c *chatService) broadcastMessage(ctx context.Context, req *pbmessages.Broa
 	req.Peers = validator.validatePeers() // ignore invalid peers
 	resp.Failure = append(resp.Failure, validator.getErrors()...)
 
-	// Transform requests
-	transformer := newBroadcastTransformer(req)
-
-	toBotsService := transformer.transformToBotsService()
-	toChatMessagesService := transformer.transformToChatMessagesService()
-	resp.Failure = append(resp.Failure, transformer.getErrors()...)
-
-	// Execute requests
-	botServiceErrors, botServiceVariables := c.executeBotsService(toBotsService)
-	resp.Failure = append(resp.Failure, botServiceErrors...)
-	resp.Variables = botServiceVariables
-
-	chatServiceErrors := c.executeChatMessagesService(toChatMessagesService)
-	resp.Failure = append(resp.Failure, chatServiceErrors...)
-
-	return nil
-}
-
-func (c *chatService) executeBotsService(reqs []*pbbot.BroadcastMessageRequest) ([]*pbmessages.BroadcastError, map[string]string) {
-	errors := []*pbmessages.BroadcastError{}
-	variables := map[string]string{}
-
-	for _, req := range reqs {
-		// If no peers then skip
-		if len(req.GetPeer()) == 0 {
-			continue
-		}
-
-		resp, err := c.botClient.BroadcastMessage(context.Background(), req)
-		if err != nil {
-			for _, peerId := range req.GetPeer() {
-				errors = append(errors, &pbmessages.BroadcastError{
-					PeerId: peerId,
-					Error: &status.Status{
-						Code:    http.StatusInternalServerError,
-						Message: "internal server error",
-					},
-				})
-			}
-		} else {
-			for _, fail := range resp.GetFailure() {
-				errors = append(errors, &pbmessages.BroadcastError{
-					PeerId: fail.Peer,
-					Error:  fail.Error,
-				})
-			}
-
-			for k, v := range resp.GetVariables() {
-				variables[k] = v
-			}
-		}
-	}
-
-	return errors, variables
-}
-
-func (c *chatService) executeChatMessagesService(req *pbmessages.BroadcastMessageRequest) []*pbmessages.BroadcastError {
-	errors := []*pbmessages.BroadcastError{}
-
-	// If no peers then skip
-	if len(req.GetPeers()) == 0 {
-		return errors
-	}
-
-	resp, err := c.portalClient.BroadcastMessage(context.Background(), req)
-	if err != nil {
-		for _, peer := range req.GetPeers() {
-			errors = append(errors, &pbmessages.BroadcastError{
-				PeerId: peer.GetId(),
-				Error: &status.Status{
-					Code:    http.StatusInternalServerError,
-					Message: "internal server error",
-				},
-			})
-		}
-	} else {
-		errors = resp.GetFailure()
-	}
-
-	return errors
+	return c.executeBroadcast(ctx, nil, req, resp)
 }

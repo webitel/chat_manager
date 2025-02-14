@@ -1609,6 +1609,35 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMe
 		}
 	}
 
+	// client, err := srv.Client.GetClientByID(ctx, &pbchat.GetClientByIDRequest{
+	// 	Id: req.GetPeer()[0],
+	// })
+
+	// for _, peer, := sender.BroadcastMessage(ctx, req, rsp) {
+	resp, err := srv.Client.StartConversation(ctx, &pbchat.StartConversationRequest{
+		DomainId: from.DomainID(),
+		User: &pbchat.User{
+			UserId:     2465,
+			Type:       "telegram",
+			Connection: strconv.FormatInt(req.GetFrom(), 10),
+			Internal:   false,
+		},
+		Username: "sssssss",
+		Message: &pbchat.Message{
+			Type: "text",
+			Text: req.GetMessage().GetText(),
+		},
+		Properties:       map[string]string{},
+		CloseImmediately: true,
+		SkipFlow:         true,
+	})
+	if err != nil {
+		return err
+	}
+	// }
+
+	message.Id = resp.GetMessage().GetId()
+
 	return sender.BroadcastMessage(ctx, req, rsp)
 }
 

@@ -36,6 +36,7 @@ type Repository interface {
 	CloseChannelsTx(ctx context.Context, tx *sqlx.Tx, conversationID string) error
 	CloseInviteTx(ctx context.Context, tx *sqlx.Tx, inviteID string) (bool, error)
 	CloseConversationTx(ctx context.Context, tx *sqlx.Tx, conversationID string) error
+	GetAppUser(ctx context.Context, portalUserId, serviceAppId string) (*AppUser, error)
 }
 
 // type ProfileRepository interface {

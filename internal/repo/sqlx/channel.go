@@ -1070,10 +1070,18 @@ func NewChannel(dcx sqlx.ExtContext, ctx context.Context, channel *Channel) erro
 	if channel.CreatedAt.IsZero() {
 		channel.CreatedAt = localtime
 	}
+
 	if channel.UpdatedAt.Before(channel.CreatedAt) {
 		channel.UpdatedAt = channel.CreatedAt
 	}
-	channel.ClosedAt.Valid = false
+
+	if channel.ClosedAt.Time.IsZero() {
+		channel.ClosedAt.Valid = false
+	} else if channel.ClosedAt.Time.Before(channel.CreatedAt) {
+		channel.ClosedAt.Time = channel.UpdatedAt.UTC()
+	} else {
+		channel.ClosedAt.Time = channel.ClosedAt.Time.UTC()
+	}
 
 	// normalizing ...
 	if channel.ServiceHost.String != "" {
@@ -1117,8 +1125,8 @@ func NewChannel(dcx sqlx.ExtContext, ctx context.Context, channel *Channel) erro
 		channel.CreatedAt.UTC(),
 		channel.UpdatedAt.UTC(),
 		channel.JoinedAt,
+		channel.ClosedAt,
 
-		nil, // channel.ClosedAt,
 		channel.FlowBridge,
 	)
 

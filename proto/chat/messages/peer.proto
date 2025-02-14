@@ -80,4 +80,5 @@ message InputPeer {
   string id = 1;
   string type = 2;
   string via = 3;
+  string name = 4;
 }
