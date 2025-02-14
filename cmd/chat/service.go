@@ -3793,7 +3793,7 @@ func (c *chatService) broadcastMessage(ctx context.Context, req *pbmessages.Broa
 }
 
 func (c *chatService) executeBotsService(reqs []*pbbot.BroadcastMessageRequest) ([]*pbmessages.BroadcastError, map[string]string) {
-	errors := []*pbmessages.BroadcastError{}
+	broadcastErrors := []*pbmessages.BroadcastError{}
 	variables := map[string]string{}
 
 	for _, req := range reqs {
@@ -3804,18 +3804,28 @@ func (c *chatService) executeBotsService(reqs []*pbbot.BroadcastMessageRequest) 
 
 		resp, err := c.botClient.BroadcastMessage(context.Background(), req)
 		if err != nil {
+			fail := status.Status{
+				Code:    http.StatusInternalServerError,
+				Message: "internal server error",
+			}
+
+			switch v := err.(type) {
+			case *errors.Error:
+				fail = status.Status{
+					Code:    v.Code,
+					Message: v.Detail,
+				}
+			}
+
 			for _, peerId := range req.GetPeer() {
-				errors = append(errors, &pbmessages.BroadcastError{
+				broadcastErrors = append(broadcastErrors, &pbmessages.BroadcastError{
 					PeerId: peerId,
-					Error: &status.Status{
-						Code:    http.StatusInternalServerError,
-						Message: "internal server error",
-					},
+					Error:  &fail,
 				})
 			}
 		} else {
 			for _, fail := range resp.GetFailure() {
-				errors = append(errors, &pbmessages.BroadcastError{
+				broadcastErrors = append(broadcastErrors, &pbmessages.BroadcastError{
 					PeerId: fail.Peer,
 					Error:  fail.Error,
 				})
@@ -3827,7 +3837,7 @@ func (c *chatService) executeBotsService(reqs []*pbbot.BroadcastMessageRequest) 
 		}
 	}
 
-	return errors, variables
+	return broadcastErrors, variables
 }
 
 func (c *chatService) executeChatMessagesService(req *pbmessages.BroadcastMessageRequest) []*pbmessages.BroadcastError {

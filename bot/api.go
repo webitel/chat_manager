@@ -1468,6 +1468,7 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMe
 	case "file":
 		{
 			// text := message.Text
+
 			// if utf8.RuneCountInString(text) > maxCaptionChars {
 			// 	return errors.BadRequest(
 			// 		"chat.broadcast.message.text.invalid",
@@ -1476,6 +1477,7 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMe
 			// }
 
 			file := message.File
+
 			if file == nil {
 				return errors.BadRequest(
 					"chat.broadcast.message.file.required",
@@ -1487,6 +1489,20 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMe
 				return errors.BadRequest(
 					"chat.broadcast.message.file.invalid",
 					"broadcast: message.file( ? ); require: id -or- url",
+				)
+			}
+
+			// Set file source media by default
+			if file.Id > 0 && file.Source == "" {
+				file.Source = "media"
+			}
+
+			// Transform file source to lower case
+			file.Source = strings.ToLower(file.GetSource())
+			if file.Source != "" && file.Source != "media" && file.Source != "file" {
+				return errors.BadRequest(
+					"chat.broadcast.message.file.source.invalid",
+					"broadcast: message.file.source; values: media -or- file",
 				)
 			}
 
@@ -1504,25 +1520,26 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMe
 			switch {
 			case isValidCaseByID:
 				{
-					mediaFile, err := srv.mediaFileService.
-						ReadMediaFileNA(ctx, &pbstorage.ReadMediaFileRequest{
-							Id:       file.Id,
+					fileLink, err := srv.fileService.GenerateFileLink(
+						ctx, &pbstorage.GenerateFileLinkRequest{
 							DomainId: domainId,
-						})
-
+							FileId:   file.Id,
+							Source:   file.Source,
+							Action:   "download",
+							Metadata: true,
+						},
+					)
 					if err != nil {
-						return err
-					}
-
-					if mediaFile == nil || mediaFile.Id != file.Id {
 						return errors.BadRequest(
 							"chat.broadcast.message.file.invalid",
 							fmt.Sprintf("broadcast: message.file( id: %d ); not found", file.Id),
 						)
 					}
 
+					fileMetadata := fileLink.GetMetadata()
+
 					// extension := strings.ToLower(
-					// 	path.Ext(mediaFile.Name),
+					// 	path.Ext(fileMetadata.Name),
 					// )
 					// if !slices.Contains(allowedFileExtensions, extension) {
 					// 	return errors.BadRequest(
@@ -1531,30 +1548,17 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMe
 					// 	)
 					// }
 
-					// if mediaFile.Size > maxFileSize {
+					// if fileMetadata.Size > maxFileSize {
 					// 	return errors.BadRequest(
 					// 		"chat.broadcast.message.file.invalid",
-					// 		fmt.Sprintf("broadcast: message.file( size: %s ); max: %s", util.FormatBytes(mediaFile.Size), util.FormatBytes(maxFileSize)),
+					// 		fmt.Sprintf("broadcast: message.file( size: %s ); max: %s", util.FormatBytes(fileMetadata.Size), util.FormatBytes(maxFileSize)),
 					// 	)
 					// }
 
-					link, err := srv.fileService.GenerateFileLink(
-						ctx, &pbstorage.GenerateFileLinkRequest{
-							DomainId: domainId,
-							FileId:   file.Id,
-							Source:   "media",
-							Action:   "download",
-						},
-					)
-
-					if err != nil {
-						return err
-					}
-
-					file.Size = mediaFile.Size
-					file.Mime = mediaFile.MimeType
-					file.Name = mediaFile.Name
-					file.Url = link.GetBaseUrl() + link.GetUrl()
+					file.Size = fileMetadata.GetSize()
+					file.Mime = fileMetadata.GetMimeType()
+					file.Name = fileMetadata.GetName()
+					file.Url = fileLink.GetBaseUrl() + fileLink.GetUrl()
 				}
 			case isValidCaseByURL:
 				{

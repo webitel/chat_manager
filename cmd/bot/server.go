@@ -219,8 +219,7 @@ func Run(ctx *cli.Context) error {
 	store := sqlxrepo.NewBotStore(stdlog, dbo.DB)
 	auditor := aud.NewClient(broker.DefaultBroker, audProto.NewConfigService("logger", sender))
 	fileService := pbstorage.NewFileService("storage", sender)
-	mediaFileService := pbstorage.NewMediaFileService("storage", sender)
-	srv = bot.NewService(store, stdlog, agent, auditor, fileService, mediaFileService)
+	srv = bot.NewService(store, stdlog, agent, auditor, fileService)
 	srv.WebRoot = webRoot // Static assets base folder
 
 	// AUTH: go.webitel.app

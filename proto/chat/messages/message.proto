@@ -154,6 +154,8 @@ message InputFile {
     string id = 1;
     string url = 2;
   };
+
+  string source = 3;
 }
 
 message InputKeyboard {
