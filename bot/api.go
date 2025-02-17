@@ -2,14 +2,12 @@ package bot
 
 import (
 	"context"
-	"crypto/md5"
 	"fmt"
 	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
 	"path"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -20,7 +18,7 @@ import (
 	"github.com/micro/micro/v3/service/errors"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/webitel/chat_manager/api/proto/bot"
+	pbbot "github.com/webitel/chat_manager/api/proto/bot"
 	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/app"
@@ -28,12 +26,12 @@ import (
 )
 
 // implements ...
-var _ bot.BotsHandler = (*Service)(nil)
+var _ pbbot.BotsHandler = (*Service)(nil)
 
 const objclassBots = "chat_bots"
 
 // Search returns list of bots, posibly filtered out with search conditions
-func (srv *Service) SearchBot(ctx context.Context, req *bot.SearchBotRequest, rsp *bot.SearchBotResponse) error {
+func (srv *Service) SearchBot(ctx context.Context, req *pbbot.SearchBotRequest, rsp *pbbot.SearchBotResponse) error {
 
 	authN, err := app.GetContext(ctx,
 		app.AuthorizationRequire(srv.Auth.GetAuthorization),
@@ -145,7 +143,7 @@ func (srv *Service) SearchBot(ctx context.Context, req *bot.SearchBotRequest, rs
 }
 
 // Select returns a single bot profile by unique identifier
-func (srv *Service) SelectBot(ctx context.Context, req *bot.SelectBotRequest, rsp *bot.Bot) error {
+func (srv *Service) SelectBot(ctx context.Context, req *pbbot.SelectBotRequest, rsp *pbbot.Bot) error {
 
 	// Quick Validation(!)
 	var (
@@ -257,7 +255,7 @@ func (srv *Service) SelectBot(ctx context.Context, req *bot.SelectBotRequest, rs
 }
 
 // Create new bot profile
-func (srv *Service) CreateBot(ctx context.Context, add *bot.Bot, obj *bot.Bot) error {
+func (srv *Service) CreateBot(ctx context.Context, add *pbbot.Bot, obj *pbbot.Bot) error {
 
 	// // region: Validation
 	// err := Validate(add)
@@ -506,7 +504,7 @@ func (srv *Service) constraintChatBotsLimit(req *app.Context, delta int) error {
 }
 
 // Update single bot
-func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rsp *bot.Bot) error {
+func (srv *Service) UpdateBot(ctx context.Context, req *pbbot.UpdateBotRequest, rsp *pbbot.Bot) error {
 
 	var (
 		dst = req.GetBot() // NEW Source
@@ -602,7 +600,7 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 
 	// Fetch source !
 	var (
-		src    *bot.Bot // OLD Source
+		src    *pbbot.Bot // OLD Source
 		lookup = app.SearchOptions{
 
 			Context: *(authN),
@@ -630,7 +628,7 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 	}
 
 	// Prepare RESULT object !
-	res := proto.Clone(src).(*bot.Bot) // NEW Target !
+	res := proto.Clone(src).(*pbbot.Bot) // NEW Target !
 	// DO: Merge changes ...
 	app.MergeProto(res, dst, fields...)
 
@@ -659,7 +657,7 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 	}
 	// Track operation details
 	res.UpdatedAt = authN.Timestamp()
-	res.UpdatedBy = &bot.Refer{
+	res.UpdatedBy = &pbbot.Refer{
 		Id:   authN.Creds.GetUserId(),
 		Name: authN.Creds.GetName(),
 	}
@@ -857,7 +855,7 @@ func (srv *Service) UpdateBot(ctx context.Context, req *bot.UpdateBotRequest, rs
 }
 
 // Delete bot(s) selection
-func (srv *Service) DeleteBot(ctx context.Context, req *bot.SearchBotRequest, rsp *bot.SearchBotResponse) error {
+func (srv *Service) DeleteBot(ctx context.Context, req *pbbot.SearchBotRequest, rsp *pbbot.SearchBotResponse) error {
 
 	var (
 		ids = req.GetId()
@@ -992,7 +990,7 @@ next:
 }
 
 // SendMessage to external chat end-user (contact) side
-func (srv *Service) SendMessage(ctx context.Context, req *bot.SendMessageRequest, rsp *bot.SendMessageResponse) error {
+func (srv *Service) SendMessage(ctx context.Context, req *pbbot.SendMessageRequest, rsp *pbbot.SendMessageResponse) error {
 
 	pid := req.GetProfileId()
 	if pid == 0 {
@@ -1267,32 +1265,32 @@ func (srv *Service) DeleteProfile(ctx context.Context, req *bot.DeleteProfileReq
 
 // func (srv *Service) deregister() error {}
 
-func metadataHash(md map[string]string) []byte {
+// func metadataHash(md map[string]string) []byte {
 
-	n := len(md)
-	if n == 0 {
-		return nil
-	}
+// 	n := len(md)
+// 	if n == 0 {
+// 		return nil
+// 	}
 
-	keys := make([]string, 0, n)
-	for key, _ := range md {
-		keys = append(keys, key)
-	}
+// 	keys := make([]string, 0, n)
+// 	for key, _ := range md {
+// 		keys = append(keys, key)
+// 	}
 
-	sort.Strings(keys)
+// 	sort.Strings(keys)
 
-	hash := md5.New()
-	for _, key := range keys {
-		hash.Write([]byte(key))
-		hash.Write([]byte{':'})
-		hash.Write([]byte(md[key]))
-		hash.Write([]byte{';'})
-	}
+// 	hash := md5.New()
+// 	for _, key := range keys {
+// 		hash.Write([]byte(key))
+// 		hash.Write([]byte{':'})
+// 		hash.Write([]byte(md[key]))
+// 		hash.Write([]byte{';'})
+// 	}
 
-	return hash.Sum(nil)
-}
+// 	return hash.Sum(nil)
+// }
 
-func (srv *Service) SendUserAction(ctx context.Context, req *bot.SendUserActionRequest, rsp *pbchat.SendUserActionResponse) error {
+func (srv *Service) SendUserAction(ctx context.Context, req *pbbot.SendUserActionRequest, rsp *pbchat.SendUserActionResponse) error {
 
 	// Lookup running profile by id !
 	pid := req.GetProfileId()
@@ -1336,7 +1334,7 @@ func (srv *Service) SendUserAction(ctx context.Context, req *bot.SendUserActionR
 }
 
 // Broadcast message [from] bot profile [to] multiple recipients
-func (srv *Service) BroadcastMessage(ctx context.Context, req *pbchat.BroadcastMessageRequest, rsp *pbchat.BroadcastMessageResponse) error {
+func (srv *Service) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMessageRequest, rsp *pbbot.BroadcastMessageResponse) error {
 
 	/*
 
@@ -1372,7 +1370,7 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbchat.BroadcastM
 
 	*/
 
-	// // Сonstraints
+	// Сonstraints
 	// const maxTextChars int = 2000             // Max text length (in message)
 	// const maxCaptionChars int = 768           // Max caption length (text under the file)
 	// const maxFileSize int64 = 1 * 1024 * 1024 // Max file size, 1МБ in bytes
@@ -1431,7 +1429,7 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbchat.BroadcastM
 	// Does provider support .Broadcast interface ?
 	provider := from.External
 	sender, is := provider.(interface {
-		BroadcastMessage(ctx context.Context, req *pbchat.BroadcastMessageRequest, res *pbchat.BroadcastMessageResponse) error
+		BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMessageRequest, res *pbbot.BroadcastMessageResponse) error
 	})
 
 	if !is {
@@ -1470,6 +1468,7 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbchat.BroadcastM
 	case "file":
 		{
 			// text := message.Text
+
 			// if utf8.RuneCountInString(text) > maxCaptionChars {
 			// 	return errors.BadRequest(
 			// 		"chat.broadcast.message.text.invalid",
@@ -1478,6 +1477,7 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbchat.BroadcastM
 			// }
 
 			file := message.File
+
 			if file == nil {
 				return errors.BadRequest(
 					"chat.broadcast.message.file.required",
@@ -1489,6 +1489,20 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbchat.BroadcastM
 				return errors.BadRequest(
 					"chat.broadcast.message.file.invalid",
 					"broadcast: message.file( ? ); require: id -or- url",
+				)
+			}
+
+			// Set file source media by default
+			if file.Id > 0 && file.Source == "" {
+				file.Source = "media"
+			}
+
+			// Transform file source to lower case
+			file.Source = strings.ToLower(file.GetSource())
+			if file.Source != "" && file.Source != "media" && file.Source != "file" {
+				return errors.BadRequest(
+					"chat.broadcast.message.file.source.invalid",
+					"broadcast: message.file.source; values: media -or- file",
 				)
 			}
 
@@ -1506,25 +1520,26 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbchat.BroadcastM
 			switch {
 			case isValidCaseByID:
 				{
-					mediaFile, err := srv.mediaFileService.
-						ReadMediaFileNA(ctx, &pbstorage.ReadMediaFileRequest{
-							Id:       file.Id,
+					fileLink, err := srv.fileService.GenerateFileLink(
+						ctx, &pbstorage.GenerateFileLinkRequest{
 							DomainId: domainId,
-						})
-
+							FileId:   file.Id,
+							Source:   file.Source,
+							Action:   "download",
+							Metadata: true,
+						},
+					)
 					if err != nil {
-						return err
-					}
-
-					if mediaFile == nil || mediaFile.Id != file.Id {
 						return errors.BadRequest(
 							"chat.broadcast.message.file.invalid",
 							fmt.Sprintf("broadcast: message.file( id: %d ); not found", file.Id),
 						)
 					}
 
+					fileMetadata := fileLink.GetMetadata()
+
 					// extension := strings.ToLower(
-					// 	path.Ext(mediaFile.Name),
+					// 	path.Ext(fileMetadata.Name),
 					// )
 					// if !slices.Contains(allowedFileExtensions, extension) {
 					// 	return errors.BadRequest(
@@ -1533,30 +1548,17 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbchat.BroadcastM
 					// 	)
 					// }
 
-					// if mediaFile.Size > maxFileSize {
+					// if fileMetadata.Size > maxFileSize {
 					// 	return errors.BadRequest(
 					// 		"chat.broadcast.message.file.invalid",
-					// 		fmt.Sprintf("broadcast: message.file( size: %s ); max: %s", formatBytes(mediaFile.Size), formatBytes(maxFileSize)),
+					// 		fmt.Sprintf("broadcast: message.file( size: %s ); max: %s", util.FormatBytes(fileMetadata.Size), util.FormatBytes(maxFileSize)),
 					// 	)
 					// }
 
-					link, err := srv.fileService.GenerateFileLink(
-						ctx, &pbstorage.GenerateFileLinkRequest{
-							DomainId: domainId,
-							FileId:   file.Id,
-							Source:   "media",
-							Action:   "download",
-						},
-					)
-
-					if err != nil {
-						return err
-					}
-
-					file.Size = mediaFile.Size
-					file.Mime = mediaFile.MimeType
-					file.Name = mediaFile.Name
-					file.Url = link.GetBaseUrl() + link.GetUrl()
+					file.Size = fileMetadata.GetSize()
+					file.Mime = fileMetadata.GetMimeType()
+					file.Name = fileMetadata.GetName()
+					file.Url = fileLink.GetBaseUrl() + fileLink.GetUrl()
 				}
 			case isValidCaseByURL:
 				{
@@ -1585,7 +1587,7 @@ func (srv *Service) BroadcastMessage(ctx context.Context, req *pbchat.BroadcastM
 					// if size > maxFileSize {
 					// 	return errors.BadRequest(
 					// 		"chat.broadcast.message.file.invalid",
-					// 		fmt.Sprintf("broadcast: message.file size is too large, max size is %s", formatBytes(maxFileSize)),
+					// 		fmt.Sprintf("broadcast: message.file size is too large, max size is %s", util.FormatBytes(maxFileSize)),
 					// 	)
 					// }
 
@@ -1671,27 +1673,4 @@ func fetchFileByURL(link string) (string, string, string, int64, error) {
 	}
 
 	return fileName, mimeType, extension, size, nil
-}
-
-// Converts the size in bytes to a readable format
-func formatBytes(bytes int64) string {
-	const (
-		KB = 1024
-		MB = KB * 1024
-		GB = MB * 1024
-		TB = GB * 1024
-	)
-
-	switch {
-	case bytes >= TB:
-		return fmt.Sprintf("%.2f TB", float64(bytes)/float64(TB))
-	case bytes >= GB:
-		return fmt.Sprintf("%.2f GB", float64(bytes)/float64(GB))
-	case bytes >= MB:
-		return fmt.Sprintf("%.2f MB", float64(bytes)/float64(MB))
-	case bytes >= KB:
-		return fmt.Sprintf("%.2f KB", float64(bytes)/float64(KB))
-	default:
-		return fmt.Sprintf("%d B", bytes)
-	}
 }

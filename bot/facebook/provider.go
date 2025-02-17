@@ -22,7 +22,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/micro/micro/v3/service/errors"
-	chat "github.com/webitel/chat_manager/api/proto/chat"
+	pbbot "github.com/webitel/chat_manager/api/proto/bot"
+	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
 	graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
 	"github.com/webitel/chat_manager/bot/facebook/messenger"
@@ -128,7 +129,7 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 			RedirectURL: agent.CallbackURL(),
 			Scopes:      []string{"public_profile"},
 		},
-		peerCache: *expirable.NewLRU[string, *chat.Channel](1000, nil, time.Hour*1),
+		peerCache: *expirable.NewLRU[string, *pbchat.Channel](1000, nil, time.Hour*1),
 
 		webhook: webhooks.WebHook{
 			URL:   agent.CallbackURL(), // "https://dev.webitel.com" + path.Join("/chat/ws8/messenger"),
@@ -711,14 +712,14 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 			return nil
 		}
 		// format new message to the engine for saving it in the DB as operator message [WTEL-4695]
-		messageToSave := &chat.Message{
+		messageToSave := &pbchat.Message{
 			Type:      "text",
 			Text:      text,
 			CreatedAt: time.Now().UnixMilli(),
 			From:      peer,
 		}
 		if channel != nil && channel.ChannelID != "" {
-			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave, Receiver: channel.ChannelID})
+			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &pbchat.SaveAgentJoinMessageRequest{Message: messageToSave, Receiver: channel.ChannelID})
 			if err != nil {
 				return err
 			}
@@ -1216,7 +1217,7 @@ func (c *Client) SubscribeObjects(ctx context.Context, uri string) error {
 	return nil
 }
 
-func (c *Client) getChannelWithParsedProps(ctx context.Context, peerID string, fromID int64) (*chat.Channel, map[string]string, error) {
+func (c *Client) getChannelWithParsedProps(ctx context.Context, peerID string, fromID int64) (*pbchat.Channel, map[string]string, error) {
 	props := make(map[string]string)
 	channel, ok := c.peerCache.Get(peerID)
 	if ok {
@@ -1225,7 +1226,7 @@ func (c *Client) getChannelWithParsedProps(ctx context.Context, peerID string, f
 	}
 
 	channel, err := c.Gateway.Internal.Client.
-		GetChannelByPeer(ctx, &chat.GetChannelByPeerRequest{
+		GetChannelByPeer(ctx, &pbchat.GetChannelByPeerRequest{
 			PeerId: peerID,
 			FromId: fromID,
 		})
@@ -1241,7 +1242,7 @@ func (c *Client) getChannelWithParsedProps(ctx context.Context, peerID string, f
 	return channel, props, err
 }
 
-func (c *Client) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessageRequest, rsp *chat.BroadcastMessageResponse) error {
+func (c *Client) BroadcastMessage(ctx context.Context, req *pbbot.BroadcastMessageRequest, rsp *pbbot.BroadcastMessageResponse) error {
 	from := req.GetFrom()
 	peers := req.GetPeer()
 	message := req.GetMessage()
@@ -1250,7 +1251,7 @@ func (c *Client) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessag
 		setError = func(peerId int, err error) { // set error to response
 			res := rsp.GetFailure()
 			if res == nil {
-				res = make([]*chat.BroadcastPeer, 0, len(req.GetPeer()))
+				res = make([]*pbbot.BroadcastPeer, 0, len(req.GetPeer()))
 			}
 
 			var re *status.Status
@@ -1261,7 +1262,7 @@ func (c *Client) BroadcastMessage(ctx context.Context, req *chat.BroadcastMessag
 				re, _ = status.FromError(err)
 			}
 
-			res = append(res, &chat.BroadcastPeer{
+			res = append(res, &pbbot.BroadcastPeer{
 				Peer:  req.Peer[peerId],
 				Error: re.Proto(),
 			})

@@ -17,10 +17,10 @@ import (
 	"unicode"
 
 	wlog "github.com/webitel/chat_manager/log"
+	"google.golang.org/genproto/googleapis/rpc/status"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/micro/micro/v3/service/broker"
-	"github.com/micro/micro/v3/service/client"
 	"github.com/micro/micro/v3/service/context/metadata"
 	"github.com/micro/micro/v3/service/errors"
 
@@ -28,8 +28,9 @@ import (
 	"github.com/webitel/chat_manager/pkg/events"
 
 	pbbot "github.com/webitel/chat_manager/api/proto/bot"
-	pb "github.com/webitel/chat_manager/api/proto/chat"
-	v2 "github.com/webitel/chat_manager/api/proto/chat/messages"
+	pbchat "github.com/webitel/chat_manager/api/proto/chat"
+	pbmessages "github.com/webitel/chat_manager/api/proto/chat/messages"
+	pbportal "github.com/webitel/chat_manager/api/proto/portal"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/internal/auth"
 	event "github.com/webitel/chat_manager/internal/event_router"
@@ -39,30 +40,31 @@ import (
 )
 
 type Service interface {
-	GetConversations(ctx context.Context, req *pb.GetConversationsRequest, res *pb.GetConversationsResponse) error
-	GetConversationByID(ctx context.Context, req *pb.GetConversationByIDRequest, res *pb.GetConversationByIDResponse) error
-	GetHistoryMessages(ctx context.Context, req *pb.GetHistoryMessagesRequest, res *pb.GetHistoryMessagesResponse) error
+	GetConversations(ctx context.Context, req *pbchat.GetConversationsRequest, res *pbchat.GetConversationsResponse) error
+	GetConversationByID(ctx context.Context, req *pbchat.GetConversationByIDRequest, res *pbchat.GetConversationByIDResponse) error
+	GetHistoryMessages(ctx context.Context, req *pbchat.GetHistoryMessagesRequest, res *pbchat.GetHistoryMessagesResponse) error
 
-	SendMessage(ctx context.Context, req *pb.SendMessageRequest, res *pb.SendMessageResponse) error
+	SendMessage(ctx context.Context, req *pbchat.SendMessageRequest, res *pbchat.SendMessageResponse) error
 	// [WTEL-4695]: duct tape, please make me normal when chats will be rewrited (agent join message knows only webitel.chat.bot)
-	SaveAgentJoinMessage(context.Context, *pb.SaveAgentJoinMessageRequest, *pb.SaveAgentJoinMessageResponse) error
-	DeleteMessage(ctx context.Context, req *pb.DeleteMessageRequest, res *pb.HistoryMessage) error
-	StartConversation(ctx context.Context, req *pb.StartConversationRequest, res *pb.StartConversationResponse) error
-	CloseConversation(ctx context.Context, req *pb.CloseConversationRequest, res *pb.CloseConversationResponse) error
-	JoinConversation(ctx context.Context, req *pb.JoinConversationRequest, res *pb.JoinConversationResponse) error
-	LeaveConversation(ctx context.Context, req *pb.LeaveConversationRequest, res *pb.LeaveConversationResponse) error
-	InviteToConversation(ctx context.Context, req *pb.InviteToConversationRequest, res *pb.InviteToConversationResponse) error
-	DeclineInvitation(ctx context.Context, req *pb.DeclineInvitationRequest, res *pb.DeclineInvitationResponse) error
-	WaitMessage(ctx context.Context, req *pb.WaitMessageRequest, res *pb.WaitMessageResponse) error
-	CheckSession(ctx context.Context, req *pb.CheckSessionRequest, res *pb.CheckSessionResponse) error
-	UpdateChannel(ctx context.Context, req *pb.UpdateChannelRequest, res *pb.UpdateChannelResponse) error
-	GetChannelByPeer(ctx context.Context, request *pb.GetChannelByPeerRequest, res *pb.Channel) error
+	SaveAgentJoinMessage(context.Context, *pbchat.SaveAgentJoinMessageRequest, *pbchat.SaveAgentJoinMessageResponse) error
+	DeleteMessage(ctx context.Context, req *pbchat.DeleteMessageRequest, res *pbchat.HistoryMessage) error
+	StartConversation(ctx context.Context, req *pbchat.StartConversationRequest, res *pbchat.StartConversationResponse) error
+	CloseConversation(ctx context.Context, req *pbchat.CloseConversationRequest, res *pbchat.CloseConversationResponse) error
+	JoinConversation(ctx context.Context, req *pbchat.JoinConversationRequest, res *pbchat.JoinConversationResponse) error
+	LeaveConversation(ctx context.Context, req *pbchat.LeaveConversationRequest, res *pbchat.LeaveConversationResponse) error
+	InviteToConversation(ctx context.Context, req *pbchat.InviteToConversationRequest, res *pbchat.InviteToConversationResponse) error
+	DeclineInvitation(ctx context.Context, req *pbchat.DeclineInvitationRequest, res *pbchat.DeclineInvitationResponse) error
+	WaitMessage(ctx context.Context, req *pbchat.WaitMessageRequest, res *pbchat.WaitMessageResponse) error
+	CheckSession(ctx context.Context, req *pbchat.CheckSessionRequest, res *pbchat.CheckSessionResponse) error
+	UpdateChannel(ctx context.Context, req *pbchat.UpdateChannelRequest, res *pbchat.UpdateChannelResponse) error
+	GetChannelByPeer(ctx context.Context, request *pbchat.GetChannelByPeerRequest, res *pbchat.Channel) error
 
-	SetVariables(ctx context.Context, in *pb.SetVariablesRequest, out *pb.ChatVariablesResponse) error
-	BlindTransfer(ctx context.Context, in *pb.ChatTransferRequest, out *pb.ChatTransferResponse) error
+	SetVariables(ctx context.Context, in *pbchat.SetVariablesRequest, out *pbchat.ChatVariablesResponse) error
+	BlindTransfer(ctx context.Context, in *pbchat.ChatTransferRequest, out *pbchat.ChatTransferResponse) error
 
-	SendUserAction(ctx context.Context, in *pb.SendUserActionRequest, out *pb.SendUserActionResponse) error
-	BroadcastMessage(ctx context.Context, in *pb.BroadcastMessageRequest, out *pb.BroadcastMessageResponse) error
+	SendUserAction(ctx context.Context, in *pbchat.SendUserActionRequest, out *pbchat.SendUserActionResponse) error
+	BroadcastMessage(ctx context.Context, in *pbmessages.BroadcastMessageRequest, out *pbmessages.BroadcastMessageResponse) error
+	BroadcastMessageNA(ctx context.Context, in *pbmessages.BroadcastMessageRequest, out *pbmessages.BroadcastMessageResponse) error
 }
 
 type chatService struct {
@@ -71,11 +73,12 @@ type chatService struct {
 	flowClient    flow.Client
 	authClient    auth.Client
 	botClient     pbbot.BotsService
+	portalClient  pbportal.ChatMessagesService
 	storageClient pbstorage.FileService
 	eventRouter   event.Router
 }
 
-var _ pb.ChatServiceHandler = (*chatService)(nil)
+var _ pbchat.ChatServiceHandler = (*chatService)(nil)
 
 func NewChatService(
 	repo pg.Repository,
@@ -83,6 +86,7 @@ func NewChatService(
 	flowClient flow.Client,
 	authClient auth.Client,
 	botClient pbbot.BotsService,
+	portalClient pbportal.ChatMessagesService,
 	storageClient pbstorage.FileService,
 	eventRouter event.Router,
 ) Service {
@@ -92,12 +96,13 @@ func NewChatService(
 		flowClient,
 		authClient,
 		botClient,
+		portalClient,
 		storageClient,
 		eventRouter,
 	}
 }
 
-func (s *chatService) GetChannelByPeer(ctx context.Context, req *pb.GetChannelByPeerRequest, res *pb.Channel) error {
+func (s *chatService) GetChannelByPeer(ctx context.Context, req *pbchat.GetChannelByPeerRequest, res *pbchat.Channel) error {
 	fromId := strconv.FormatInt(req.GetFromId(), 10)
 	channel, err := s.repo.GetChannelByPeer(ctx, req.GetPeerId(), fromId)
 	if err != nil {
@@ -118,8 +123,8 @@ func (s *chatService) GetChannelByPeer(ctx context.Context, req *pb.GetChannelBy
 
 func (s *chatService) UpdateChannel(
 	ctx context.Context,
-	req *pb.UpdateChannelRequest,
-	res *pb.UpdateChannelResponse,
+	req *pbchat.UpdateChannelRequest,
+	res *pbchat.UpdateChannelResponse,
 ) error {
 
 	var (
@@ -210,8 +215,8 @@ func (s *chatService) UpdateChannel(
 
 func (s *chatService) SendMessage(
 	ctx context.Context,
-	req *pb.SendMessageRequest,
-	res *pb.SendMessageResponse,
+	req *pbchat.SendMessageRequest,
+	res *pbchat.SendMessageResponse,
 ) error {
 
 	// const (
@@ -326,10 +331,10 @@ func (s *chatService) SendMessage(
 	return nil
 }
 
-func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pb.SaveAgentJoinMessageRequest, rsp *pb.SaveAgentJoinMessageResponse) error {
+func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pbchat.SaveAgentJoinMessageRequest, rsp *pbchat.SaveAgentJoinMessageResponse) error {
 
 	var (
-		sendMessage   *pb.Message
+		sendMessage   *pbchat.Message
 		webitelUserID int64
 	)
 	if req.GetMessage() == nil {
@@ -415,8 +420,8 @@ func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pb.SaveAgen
 
 func (s *chatService) DeleteMessage(
 	ctx context.Context,
-	req *pb.DeleteMessageRequest,
-	res *pb.HistoryMessage,
+	req *pbchat.DeleteMessageRequest,
+	res *pbchat.HistoryMessage,
 ) error {
 
 	var (
@@ -542,8 +547,8 @@ func (s *chatService) DeleteMessage(
 // ON other side there will be flow_manager.schema (chat@bot) channel to communicate with
 func (s *chatService) StartConversation(
 	ctx context.Context,
-	req *pb.StartConversationRequest,
-	res *pb.StartConversationResponse,
+	req *pbchat.StartConversationRequest,
+	res *pbchat.StartConversationResponse,
 ) error {
 
 	var (
@@ -633,7 +638,7 @@ func (s *chatService) StartConversation(
 	startMessage := req.GetMessage()
 	if startMessage == nil {
 		// FIXME: imit service /start command message
-		startMessage = &pb.Message{
+		startMessage = &pbchat.Message{
 			Type: "text",
 			Text: "/start",
 		}
@@ -871,8 +876,8 @@ func (s *chatService) StartConversation(
 // CloseConversation used by the flow or the client to entirely close whole conversation
 func (s *chatService) CloseConversation(
 	ctx context.Context,
-	req *pb.CloseConversationRequest,
-	res *pb.CloseConversationResponse,
+	req *pbchat.CloseConversationRequest,
+	res *pbchat.CloseConversationResponse,
 ) error {
 	cause := req.GetCause().String()
 	log := s.log.With(
@@ -990,8 +995,8 @@ func (s *chatService) CloseConversation(
 
 /*func (s *chatService) CloseConversation(
 	ctx context.Context,
-	req *pb.CloseConversationRequest,
-	res *pb.CloseConversationResponse,
+	req *pbchat.CloseConversationRequest,
+	res *pbchat.CloseConversationResponse,
 ) error {
 	s.log.Trace().
 		Str("conversation_id", req.GetConversationId()).
@@ -1088,8 +1093,8 @@ func (s *chatService) CloseConversation(
 
 func (s *chatService) JoinConversation(
 	ctx context.Context,
-	req *pb.JoinConversationRequest,
-	res *pb.JoinConversationResponse,
+	req *pbchat.JoinConversationRequest,
+	res *pbchat.JoinConversationResponse,
 ) error {
 
 	from := req.GetAuthUserId() // FROM
@@ -1218,7 +1223,7 @@ func (s *chatService) JoinConversation(
 	return nil
 }
 
-func (s *chatService) leaveChat(ctx context.Context, req *pb.LeaveConversationRequest, breakBridge flow.BreakBridgeCause) error {
+func (s *chatService) leaveChat(ctx context.Context, req *pbchat.LeaveConversationRequest, breakBridge flow.BreakBridgeCause) error {
 
 	var (
 		channelChatID  = req.GetChannelId()
@@ -1362,8 +1367,8 @@ func (s *chatService) leaveChat(ctx context.Context, req *pb.LeaveConversationRe
 // LeaveConversation means the agent leaved conversation and the initiator channel must be closed (cause reason agent_leave)
 func (s *chatService) LeaveConversation(
 	ctx context.Context,
-	req *pb.LeaveConversationRequest,
-	res *pb.LeaveConversationResponse,
+	req *pbchat.LeaveConversationRequest,
+	res *pbchat.LeaveConversationResponse,
 ) error {
 	// use the incoming kick reason (from engine or call_center) in database
 	return s.leaveChat(ctx, req, flow.LeaveConversationCause)
@@ -1371,8 +1376,8 @@ func (s *chatService) LeaveConversation(
 
 func (s *chatService) InviteToConversation(
 	ctx context.Context,
-	req *pb.InviteToConversationRequest,
-	res *pb.InviteToConversationResponse,
+	req *pbchat.InviteToConversationRequest,
+	res *pbchat.InviteToConversationResponse,
 ) error {
 	// _, err := s.repo.GetChannelByID(ctx, req.InviterChannelId)
 	// if err != nil {
@@ -1596,8 +1601,8 @@ func (s *chatService) InviteToConversation(
 
 func (s *chatService) DeclineInvitation(
 	ctx context.Context,
-	req *pb.DeclineInvitationRequest,
-	res *pb.DeclineInvitationResponse,
+	req *pbchat.DeclineInvitationRequest,
+	res *pbchat.DeclineInvitationResponse,
 ) error {
 
 	userID := req.GetAuthUserId()
@@ -1769,7 +1774,7 @@ func (s *chatService) DeclineInvitation(
 	return nil*/
 }
 
-func (s *chatService) WaitMessage(ctx context.Context, req *pb.WaitMessageRequest, res *pb.WaitMessageResponse) error {
+func (s *chatService) WaitMessage(ctx context.Context, req *pbchat.WaitMessageRequest, res *pbchat.WaitMessageResponse) error {
 
 	s.log.Debug(
 		"[ CHAT::FLOW ] WAIT message",
@@ -1782,8 +1787,8 @@ func (s *chatService) WaitMessage(ctx context.Context, req *pb.WaitMessageReques
 	// 	return err
 	// }
 	// if cachedMessages != nil {
-	// 	messages := make([]*pb.Message, 0, len(cachedMessages))
-	// 	var tmp *pb.Message
+	// 	messages := make([]*pbchat.Message, 0, len(cachedMessages))
+	// 	var tmp *pbchat.Message
 	// 	var err error
 	// 	s.log.Info().Msg("send cached messages")
 	// 	for _, m := range cachedMessages {
@@ -1823,7 +1828,7 @@ func (s *chatService) WaitMessage(ctx context.Context, req *pb.WaitMessageReques
 //   - Locate OR Create client contact
 //   - Identify whether exists channel for
 //     requested chat-bot gateway profile.id
-func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequest, res *pb.CheckSessionResponse) error {
+func (s *chatService) CheckSession(ctx context.Context, req *pbchat.CheckSessionRequest, res *pbchat.CheckSessionResponse) error {
 
 	log := s.log.With(
 		slog.String("external_id", req.GetExternalId()),
@@ -1848,7 +1853,7 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 			return err
 		}
 		res.ClientId = contact.ID
-		res.Account = &pb.Account{}
+		res.Account = &pbchat.Account{}
 		res.Exists = false
 		return nil
 	}
@@ -1879,7 +1884,7 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 	if len(channels) != 0 {
 		channel := channels[0]
 		res.ClientId = contact.ID
-		res.Account = &pb.Account{
+		res.Account = &pbchat.Account{
 			Id:        contact.ID,
 			Channel:   channel.Type,
 			Contact:   contact.ExternalID.String,
@@ -1892,7 +1897,7 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 		res.Properties = channel.Variables
 	} else {
 		res.ClientId = contact.ID
-		res.Account = &pb.Account{
+		res.Account = &pbchat.Account{
 			Id:        contact.ID,
 			Channel:   "", // unknown
 			Contact:   contact.ExternalID.String,
@@ -1906,7 +1911,7 @@ func (s *chatService) CheckSession(ctx context.Context, req *pb.CheckSessionRequ
 	return nil
 }
 
-func (s *chatService) GetConversations(ctx context.Context, req *pb.GetConversationsRequest, res *pb.GetConversationsResponse) error {
+func (s *chatService) GetConversations(ctx context.Context, req *pbchat.GetConversationsRequest, res *pbchat.GetConversationsResponse) error {
 
 	log := s.log.With(
 		slog.String("conversation_id", req.GetId()),
@@ -1942,7 +1947,7 @@ func (s *chatService) GetConversations(ctx context.Context, req *pb.GetConversat
 	return nil
 }
 
-func (s *chatService) GetConversationByID(ctx context.Context, req *pb.GetConversationByIDRequest, res *pb.GetConversationByIDResponse) error {
+func (s *chatService) GetConversationByID(ctx context.Context, req *pbchat.GetConversationByIDRequest, res *pbchat.GetConversationByIDResponse) error {
 	log := s.log.With(
 		slog.String("conversation_id", req.GetId()),
 	)
@@ -1970,7 +1975,7 @@ func (s *chatService) GetConversationByID(ctx context.Context, req *pb.GetConver
 	return nil
 }
 
-func (s *chatService) GetHistoryMessages(ctx context.Context, req *pb.GetHistoryMessagesRequest, res *pb.GetHistoryMessagesResponse) error {
+func (s *chatService) GetHistoryMessages(ctx context.Context, req *pbchat.GetHistoryMessagesRequest, res *pbchat.GetHistoryMessagesResponse) error {
 	log := s.log.With(
 		slog.String("conversation_id", req.GetConversationId()),
 	)
@@ -2004,7 +2009,7 @@ func (s *chatService) GetHistoryMessages(ctx context.Context, req *pb.GetHistory
 }
 
 // func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, senderChatID string, targetChatID string, notify *pb.Message) (saved *pg.Message, err error) {
-func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, sender *app.Channel, notify *pb.Message) (saved *pg.Message, err error) {
+func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, sender *app.Channel, notify *pbchat.Message) (saved *pg.Message, err error) {
 
 	var (
 		sendMessage = notify
@@ -2198,7 +2203,7 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		}
 		postback := notify.Postback
 		if postback.GetCode() != "" {
-			saveMessage.Postback = &v2.Postback{
+			saveMessage.Postback = &pbmessages.Postback{
 				Mid:  postback.Mid,
 				Code: postback.Code,
 				Text: postback.Text,
@@ -2306,7 +2311,7 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			sendMessage.Type = forwardMessage.Type
 			sendMessage.Text = forwardMessage.Text
 			if doc := forwardMessage.File; doc != nil {
-				sendMessage.File = &pb.File{
+				sendMessage.File = &pbchat.File{
 					Id:   doc.ID,
 					Url:  "",
 					Size: doc.Size,
@@ -2484,7 +2489,7 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		saveMessage.Text = text
 		// Button click[ed] ?
 		if postback.GetCode() != "" {
-			saveMessage.Postback = &v2.Postback{
+			saveMessage.Postback = &pbmessages.Postback{
 				Mid:  postback.Mid,
 				Code: postback.Code,
 				Text: postback.Text,
@@ -2830,7 +2835,7 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 	sendMessage.UpdatedAt = app.DateTimestamp(saveMessage.UpdatedAt)
 	// }
 	from := sender.User
-	sendMessage.From = &pb.Account{
+	sendMessage.From = &pbchat.Account{
 		Id:        from.ID,
 		Channel:   from.Channel,
 		Contact:   from.Contact,
@@ -2845,7 +2850,7 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 
 // SendMessage publishes given message to all related recepients
 // Override: event_router.RouteMessage()
-func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, notify *pb.Message) (sent int, err error) {
+func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, notify *pbchat.Message) (sent int, err error) {
 	// FROM
 	sender := chatRoom.Channel
 	// TO
@@ -2857,9 +2862,9 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 	var (
 		// data   []byte // TO: websocket
 		data = struct {
-			textgate *pb.Message // messages-bot (text:gateway)
-			workflow *pb.Message // flow_manager (bot:schema)
-			wesocket []byte      // engine (agent:user)
+			textgate *pbchat.Message // messages-bot (text:gateway)
+			workflow *pbchat.Message // flow_manager (bot:schema)
+			wesocket []byte          // engine (agent:user)
 		}{}
 		header map[string]string
 
@@ -3031,7 +3036,7 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 			}
 
 			if data.workflow == nil {
-				// proto.Clone(notify).(*pb.Message)
+				// proto.Clone(notify).(*pbchat.Message)
 				send := *(notify) // shallowcopy
 				// Postback. Button click[ed].
 				// Webitel Bot (Schema) side.
@@ -3126,7 +3131,7 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 	return sent, nil // err
 }
 
-func (c *chatService) notifyAgentJoinToAllMembers(ctx context.Context, chatRoom *app.Session, notify *pb.Message) (sent int, err error) {
+func (c *chatService) notifyAgentJoinToAllMembers(ctx context.Context, chatRoom *app.Session, notify *pbchat.Message) (sent int, err error) {
 	// FROM
 	sender := chatRoom.Channel
 	// TO
@@ -3138,9 +3143,9 @@ func (c *chatService) notifyAgentJoinToAllMembers(ctx context.Context, chatRoom 
 	var (
 		// data   []byte // TO: websocket
 		data = struct {
-			textgate *pb.Message // messages-bot (text:gateway)
-			workflow *pb.Message // flow_manager (bot:schema)
-			wesocket []byte      // engine (agent:user)
+			textgate *pbchat.Message // messages-bot (text:gateway)
+			workflow *pbchat.Message // flow_manager (bot:schema)
+			wesocket []byte          // engine (agent:user)
 		}{}
 		header map[string]string
 	)
@@ -3281,7 +3286,7 @@ func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session,
 		data   []byte
 		header map[string]string
 
-		notice *pb.Message
+		notice *pbchat.Message
 	)
 	// Broadcast message to every member in the room,
 	// in front of chaRoom.Channel as a sender !
@@ -3406,7 +3411,7 @@ func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session,
 			// }
 
 			if notice == nil {
-				notice = &pb.Message{
+				notice = &pbchat.Message{
 
 					Id: 0, // SERVICE MESSAGE !
 
@@ -3447,7 +3452,7 @@ func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session,
 	return sent, nil // err
 }
 
-func (c *chatService) SetVariables(ctx context.Context, req *pb.SetVariablesRequest, res *pb.ChatVariablesResponse) error {
+func (c *chatService) SetVariables(ctx context.Context, req *pbchat.SetVariablesRequest, res *pbchat.ChatVariablesResponse) error {
 
 	channelId := req.GetChannelId()
 	if channelId == "" {
@@ -3500,7 +3505,7 @@ func (c *chatService) SetVariables(ctx context.Context, req *pb.SetVariablesRequ
 	return nil
 }
 
-func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferRequest, res *pb.ChatTransferResponse) error {
+func (c *chatService) BlindTransfer(ctx context.Context, req *pbchat.ChatTransferRequest, res *pbchat.ChatTransferResponse) error {
 
 	var (
 		userToID   = req.GetUserId()
@@ -3587,10 +3592,10 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 
 	/*var userToID int64 = 72
 	if userToID != 0 {
-		var res pb.InviteToConversationResponse
+		var res pbchat.InviteToConversationResponse
 		err = c.InviteToConversation(ctx,
-			&pb.InviteToConversationRequest{
-				User: &pb.User{
+			&pbchat.InviteToConversationRequest{
+				User: &pbchat.User{
 					UserId:     userToID,
 					Type:       "",
 					Connection: "",
@@ -3627,24 +3632,24 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 		// 	// DeclineInvitation()
 		// }
 		// In case of NON-Accepted Invite Request !
-		var decline pb.DeclineInvitationResponse
+		var decline pbchat.DeclineInvitationResponse
 		// NOTE: Ignore errors; Calling this just to be sure that originator's channel is kicked !
 		_ = c.DeclineInvitation(ctx,
-			&pb.DeclineInvitationRequest{
+			&pbchat.DeclineInvitationRequest{
 				ConversationId: chatFlowID,
 				InviteId:       chatFromID,
 				AuthUserId:     originator.User.ID,
 			}, &decline,
 		)
 		// In case of Agent (Originator) Bridge Application running !
-		// var leave pb.LeaveConversationResponse
+		// var leave pbchat.LeaveConversationResponse
 		// NOTE: Ignore errors; Calling this just to be sure that originator's channel is kicked !
 		// Cause of the originator kick is clearly defined here
-		_ = c.leaveChat(ctx, &pb.LeaveConversationRequest{
+		_ = c.leaveChat(ctx, &pbchat.LeaveConversationRequest{
 			ConversationId: chatFlowID,
 			AuthUserId:     originator.User.ID,
 			ChannelId:      chatFromID,
-			Cause:          pb.LeaveConversationCause_transfer,
+			Cause:          pbchat.LeaveConversationCause_transfer,
 		}, flow.TransferCause)
 
 	case "chatflow":
@@ -3672,14 +3677,7 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pb.ChatTransferReq
 	return nil
 }
 
-func (c *chatService) BroadcastMessage(ctx context.Context, req *pb.BroadcastMessageRequest, res *pb.BroadcastMessageResponse) error {
-	// Proxy: "webitel.chat.bot" service
-	gRPClient := client.DefaultClient
-	fwdRequest := gRPClient.NewRequest("webitel.chat.bot", "Bots.BroadcastMessage", req)
-	return gRPClient.Call(ctx, fwdRequest, res) // , opts...)
-}
-
-func (c *chatService) SendUserAction(ctx context.Context, req *pb.SendUserActionRequest, res *pb.SendUserActionResponse) error {
+func (c *chatService) SendUserAction(ctx context.Context, req *pbchat.SendUserActionRequest, res *pbchat.SendUserActionResponse) error {
 
 	senderChatID := req.GetChannelId()
 	if senderChatID == "" {
@@ -3748,4 +3746,122 @@ func (c *chatService) SendUserAction(ctx context.Context, req *pb.SendUserAction
 	}
 
 	return nil
+}
+
+func (c *chatService) BroadcastMessage(ctx context.Context, req *pbmessages.BroadcastMessageRequest, resp *pbmessages.BroadcastMessageResponse) error {
+	// Note: Authentication
+	_, err := c.authClient.MicroAuthentication(&ctx)
+	if err != nil {
+		return err
+	}
+
+	return c.broadcastMessage(ctx, req, resp)
+}
+
+func (c *chatService) BroadcastMessageNA(ctx context.Context, req *pbmessages.BroadcastMessageRequest, resp *pbmessages.BroadcastMessageResponse) error {
+	return c.broadcastMessage(ctx, req, resp)
+}
+
+func (c *chatService) broadcastMessage(ctx context.Context, req *pbmessages.BroadcastMessageRequest, resp *pbmessages.BroadcastMessageResponse) error {
+	// Validate input
+	validator := newBroadcastValidator(req)
+
+	err := validator.validateMessage()
+	if err != nil {
+		return err
+	}
+
+	req.Peers = validator.validatePeers() // ignore invalid peers
+	resp.Failure = append(resp.Failure, validator.getErrors()...)
+
+	// Transform requests
+	transformer := newBroadcastTransformer(req)
+
+	toBotsService := transformer.transformToBotsService()
+	toChatMessagesService := transformer.transformToChatMessagesService()
+	resp.Failure = append(resp.Failure, transformer.getErrors()...)
+
+	// Execute requests
+	botServiceErrors, botServiceVariables := c.executeBotsService(toBotsService)
+	resp.Failure = append(resp.Failure, botServiceErrors...)
+	resp.Variables = botServiceVariables
+
+	chatServiceErrors := c.executeChatMessagesService(toChatMessagesService)
+	resp.Failure = append(resp.Failure, chatServiceErrors...)
+
+	return nil
+}
+
+func (c *chatService) executeBotsService(reqs []*pbbot.BroadcastMessageRequest) ([]*pbmessages.BroadcastError, map[string]string) {
+	broadcastErrors := []*pbmessages.BroadcastError{}
+	variables := map[string]string{}
+
+	for _, req := range reqs {
+		// If no peers then skip
+		if len(req.GetPeer()) == 0 {
+			continue
+		}
+
+		resp, err := c.botClient.BroadcastMessage(context.Background(), req)
+		if err != nil {
+			fail := status.Status{
+				Code:    http.StatusInternalServerError,
+				Message: "internal server error",
+			}
+
+			switch v := err.(type) {
+			case *errors.Error:
+				fail = status.Status{
+					Code:    v.Code,
+					Message: v.Detail,
+				}
+			}
+
+			for _, peerId := range req.GetPeer() {
+				broadcastErrors = append(broadcastErrors, &pbmessages.BroadcastError{
+					PeerId: peerId,
+					Error:  &fail,
+				})
+			}
+		} else {
+			for _, fail := range resp.GetFailure() {
+				broadcastErrors = append(broadcastErrors, &pbmessages.BroadcastError{
+					PeerId: fail.Peer,
+					Error:  fail.Error,
+				})
+			}
+
+			for k, v := range resp.GetVariables() {
+				variables[k] = v
+			}
+		}
+	}
+
+	return broadcastErrors, variables
+}
+
+func (c *chatService) executeChatMessagesService(req *pbmessages.BroadcastMessageRequest) []*pbmessages.BroadcastError {
+	errors := []*pbmessages.BroadcastError{}
+
+	// If no peers then skip
+	if len(req.GetPeers()) == 0 {
+		return errors
+	}
+
+	resp, err := c.portalClient.BroadcastMessage(context.Background(), req)
+	if err != nil {
+		for _, peer := range req.GetPeers() {
+			errors = append(errors, &pbmessages.BroadcastError{
+				PeerId: peer.GetId(),
+				Error: &status.Status{
+					Code:    http.StatusInternalServerError,
+					Message: "internal server error",
+				},
+			})
+		}
+	} else {
+		errors = resp.GetFailure()
+	}
+
+	return errors
 }

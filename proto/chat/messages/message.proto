@@ -142,3 +142,34 @@ message Postback {
   // Button's display caption.
   string text = 3;
 }
+
+message InputMessage {
+  string text = 1;
+  InputFile file = 2;
+  InputKeyboard keyboard = 3;
+}
+
+message InputFile {
+  oneof file_source {
+    string id = 1;
+    string url = 2;
+  };
+
+  string source = 3;
+}
+
+message InputKeyboard {
+  repeated InputButtonRow rows = 1;
+}
+
+message InputButtonRow {
+  repeated InputButton buttons = 1;
+}
+
+message InputButton {
+  string caption  = 1;
+  string text = 2;
+  string type = 3;
+  string url = 4;
+  string code = 5;
+}

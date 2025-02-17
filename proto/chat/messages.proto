@@ -4,14 +4,30 @@ package webitel.chat.server;
 
 option go_package = "github.com/webitel/chat_manager/api/proto/chat";
 
-import "message.proto";
-import "google/rpc/status.proto";
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
 
-service Messages {
+import "chat/messages/broadcast.proto";
+
+service MessagesService {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_tag) = {
+    description: "**Messages** Service"
+    name: "Messages"
+  };
+
   // Sends a current user action event to a conversation partners.
   rpc SendUserAction(SendUserActionRequest) returns (SendUserActionResponse) {}
-  // Broadcast message `from` given bot profile to `peer` recipient(s)
-  rpc BroadcastMessage(BroadcastMessageRequest) returns (BroadcastMessageResponse) {}
+
+  // Broadcast message send message from via to peer recipients.
+  rpc BroadcastMessage(webitel.chat.BroadcastMessageRequest) returns (webitel.chat.BroadcastMessageResponse) {
+    option (google.api.http) = {
+      post: "/chat/broadcast"
+      body: "*"
+    };
+  }
+
+  // Broadcast message send message from via to peer recipients (for internal services).
+  rpc BroadcastMessageNA(webitel.chat.BroadcastMessageRequest) returns (webitel.chat.BroadcastMessageResponse) {}
 }
 
 // User actions. Use this to provide users with detailed info
@@ -72,30 +88,4 @@ message SendUserActionRequest {
 message SendUserActionResponse {
   // Affected ?
   bool ok = 1;
-}
-
-message BroadcastMessageRequest {
-  // REQUIRED. Message content (accept: text) to broadcast
-  webitel.chat.server.Message message = 1;
-  // REQUIRED. From sender bot unique profile.id
-  int64 from = 2;
-  // REQUIRED. List of recipients; `from` provider-specific, e.g.:
-  // telegram - user.id (int64) which contacted the `from` bot.
-  // gotd - phone numbers according to the E.164 standard
-  repeated string peer = 3;
-  //
-  int64 timeout = 4;
-}
-
-// Broadcast recepient status
-message BroadcastPeer {
-  // Peer identification
-  string peer = 1;
-  // Broadcast peer status
-  google.rpc.Status error = 2;
-}
-
-message BroadcastMessageResponse {
-  repeated BroadcastPeer failure = 1;
-  map<string, string> variables = 2;
 }

@@ -7,11 +7,20 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log/slog"
+	"net/http"
+	"slices"
+	"strconv"
 	"time"
 
-	pb "github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/micro/micro/v3/service/errors"
+	pbbot "github.com/webitel/chat_manager/api/proto/bot"
+	pbchat "github.com/webitel/chat_manager/api/proto/chat"
+	pbmessages "github.com/webitel/chat_manager/api/proto/chat/messages"
+	"google.golang.org/genproto/googleapis/rpc/status"
+
 	"github.com/webitel/chat_manager/app"
 	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
+	"github.com/webitel/chat_manager/internal/util"
 	// "github.com/jmoiron/sqlx"
 )
 
@@ -43,14 +52,14 @@ func (s *chatService) closeConversation(ctx context.Context, conversationID *str
 	return nil
 }*/
 
-func transformProfileFromRepoModel(profile *pg.Profile) (*pb.Profile, error) {
+func transformProfileFromRepoModel(profile *pg.Profile) (*pbchat.Profile, error) {
 	variableBytes, err := profile.Variables.MarshalJSON()
 	variables := make(map[string]string)
 	err = json.Unmarshal(variableBytes, &variables)
 	if err != nil {
 		return nil, err
 	}
-	result := &pb.Profile{
+	result := &pbchat.Profile{
 		Id:        profile.ID,
 		Name:      profile.Name,
 		Type:      profile.Type,
@@ -62,7 +71,7 @@ func transformProfileFromRepoModel(profile *pg.Profile) (*pb.Profile, error) {
 	return result, nil
 }
 
-func transformProfileToRepoModel(profile *pb.Profile) (*pg.Profile, error) {
+func transformProfileToRepoModel(profile *pbchat.Profile) (*pg.Profile, error) {
 	result := &pg.Profile{
 		ID:       profile.Id,
 		Name:     profile.Name,
@@ -101,9 +110,9 @@ func transformProfileToRepoModel(profile *pb.Profile) (*pg.Profile, error) {
 	return result, nil
 }
 
-func transformProfilesFromRepoModel(profiles []*pg.Profile) ([]*pb.Profile, error) {
-	result := make([]*pb.Profile, 0, len(profiles))
-	var tmp *pb.Profile
+func transformProfilesFromRepoModel(profiles []*pg.Profile) ([]*pbchat.Profile, error) {
+	result := make([]*pbchat.Profile, 0, len(profiles))
+	var tmp *pbchat.Profile
 	var err error
 	for _, item := range profiles {
 		tmp, err = transformProfileFromRepoModel(item)
@@ -115,7 +124,7 @@ func transformProfilesFromRepoModel(profiles []*pg.Profile) ([]*pb.Profile, erro
 	return result, nil
 }
 
-func (s *chatService) createClient(ctx context.Context, req *pb.CheckSessionRequest) (client *pg.Client, err error) {
+func (s *chatService) createClient(ctx context.Context, req *pbchat.CheckSessionRequest) (client *pg.Client, err error) {
 	client = &pg.Client{
 		ExternalID: sql.NullString{
 			req.ExternalId,
@@ -130,13 +139,13 @@ func (s *chatService) createClient(ctx context.Context, req *pb.CheckSessionRequ
 	return
 }
 
-func transformConversationFromRepoModel(c *pg.Conversation) *pb.Conversation {
+func transformConversationFromRepoModel(c *pg.Conversation) *pbchat.Conversation {
 
 	// const (
 	// 	precision = (int64)(time.Millisecond)
 	// )
 
-	result := &pb.Conversation{
+	result := &pbchat.Conversation{
 
 		Id:       c.ID,
 		Title:    c.Title.String,
@@ -152,8 +161,8 @@ func transformConversationFromRepoModel(c *pg.Conversation) *pb.Conversation {
 
 	if size := len(c.Members); size != 0 {
 
-		page := make([]pb.Member, size)
-		list := make([]*pb.Member, size)
+		page := make([]pbchat.Member, size)
+		list := make([]*pbchat.Member, size)
 
 		for e, src := range c.Members {
 
@@ -174,8 +183,8 @@ func transformConversationFromRepoModel(c *pg.Conversation) *pb.Conversation {
 
 	if size := len(c.Messages); size != 0 {
 
-		page := make([]pb.HistoryMessage, size)
-		list := make([]*pb.HistoryMessage, size)
+		page := make([]pbchat.HistoryMessage, size)
+		list := make([]*pbchat.HistoryMessage, size)
 
 		for e, src := range c.Messages {
 
@@ -193,7 +202,7 @@ func transformConversationFromRepoModel(c *pg.Conversation) *pb.Conversation {
 			dst.Text = src.Text // .String
 			// File ?
 			if doc := src.File; doc != nil {
-				dst.File = &pb.File{
+				dst.File = &pbchat.File{
 					Id:   doc.ID,
 					Url:  doc.URL,
 					Size: doc.Size,
@@ -219,9 +228,9 @@ func transformConversationFromRepoModel(c *pg.Conversation) *pb.Conversation {
 	return result
 }
 
-func transformConversationsFromRepoModel(conversations []*pg.Conversation) []*pb.Conversation {
-	result := make([]*pb.Conversation, 0, len(conversations))
-	var tmp *pb.Conversation
+func transformConversationsFromRepoModel(conversations []*pg.Conversation) []*pbchat.Conversation {
+	result := make([]*pbchat.Conversation, 0, len(conversations))
+	var tmp *pbchat.Conversation
 	for _, item := range conversations {
 		tmp = transformConversationFromRepoModel(item)
 		result = append(result, tmp)
@@ -238,8 +247,8 @@ func timestamp(date time.Time) int64 {
 	return date.UnixMilli()
 }
 
-func transformMessageFromRepoModel(message *pg.Message) *pb.HistoryMessage {
-	result := &pb.HistoryMessage{
+func transformMessageFromRepoModel(message *pg.Message) *pbchat.HistoryMessage {
+	result := &pbchat.HistoryMessage{
 		Id:        message.ID,
 		ChannelId: message.ChannelID, //.String,
 		// ConversationId: message.ConversationID,
@@ -253,12 +262,189 @@ func transformMessageFromRepoModel(message *pg.Message) *pb.HistoryMessage {
 	return result
 }
 
-func transformMessagesFromRepoModel(messages []*pg.Message) []*pb.HistoryMessage {
-	result := make([]*pb.HistoryMessage, 0, len(messages))
-	var tmp *pb.HistoryMessage
+func transformMessagesFromRepoModel(messages []*pg.Message) []*pbchat.HistoryMessage {
+	result := make([]*pbchat.HistoryMessage, 0, len(messages))
+	var tmp *pbchat.HistoryMessage
 	for _, item := range messages {
 		tmp = transformMessageFromRepoModel(item)
 		result = append(result, tmp)
 	}
 	return result
+}
+
+// Broadcast Helpers
+type broadcastValidator struct {
+	request *pbmessages.BroadcastMessageRequest
+	errors  []*pbmessages.BroadcastError
+}
+
+func newBroadcastValidator(req *pbmessages.BroadcastMessageRequest) *broadcastValidator {
+	return &broadcastValidator{request: req, errors: []*pbmessages.BroadcastError{}}
+}
+
+func (v broadcastValidator) validateMessage() error {
+	if len(v.request.GetPeers()) == 0 {
+		return errors.BadRequest(
+			"peers.invalid",
+			"peers: cannot be empty",
+		)
+	}
+
+	if v.request.GetMessage().GetText() == "" {
+		return errors.BadRequest(
+			"message.invalid",
+			"message: message text is required",
+		)
+	}
+
+	fileId := v.request.GetMessage().GetFile().GetId()
+	if fileId != "" && !util.IsInteger(fileId) {
+		return errors.BadRequest(
+			"message.file.id.invalid",
+			"file.id: must be integer string",
+		)
+	}
+
+	return nil
+}
+
+func (v *broadcastValidator) getErrors() []*pbmessages.BroadcastError {
+	return v.errors
+}
+
+func (v *broadcastValidator) validatePeers() []*pbmessages.InputPeer {
+	allowedPeerTypes := []string{"portal", "gotd", "viber", "telegram", "facebook", "instagram", "messenger", "whatsapp", "vk"}
+	validPeers := []*pbmessages.InputPeer{}
+
+	for _, peer := range v.request.GetPeers() {
+		if peer.Id == "" {
+			v.errors = append(v.errors, buildBroadcastError(peer.Id, http.StatusBadRequest, "peer.id is invalid"))
+		} else if peer.Type == "" || !slices.Contains(allowedPeerTypes, peer.Type) {
+			v.errors = append(v.errors, buildBroadcastError(peer.Id, http.StatusBadRequest, "peer.type is invalid"))
+		} else if peer.Via == "" {
+			v.errors = append(v.errors, buildBroadcastError(peer.Id, http.StatusBadRequest, "peer.via is invalid"))
+		}
+
+		validPeers = append(validPeers, peer)
+	}
+
+	return validPeers
+}
+
+type broadcastTransformer struct {
+	request *pbmessages.BroadcastMessageRequest
+	errors  []*pbmessages.BroadcastError
+}
+
+func newBroadcastTransformer(req *pbmessages.BroadcastMessageRequest) *broadcastTransformer {
+	return &broadcastTransformer{request: req, errors: []*pbmessages.BroadcastError{}}
+}
+
+func (t *broadcastTransformer) getErrors() []*pbmessages.BroadcastError {
+	return t.errors
+}
+
+func (t *broadcastTransformer) transformToChatMessagesService() *pbmessages.BroadcastMessageRequest {
+	req := &pbmessages.BroadcastMessageRequest{
+		Message:   t.request.GetMessage(),
+		Timeout:   t.request.GetTimeout(),
+		Variables: t.request.GetVariables(),
+	}
+
+	for _, peer := range t.request.GetPeers() {
+		if peer.GetType() == "portal" {
+			req.Peers = append(req.Peers, peer)
+		}
+	}
+
+	return req
+}
+
+func (t *broadcastTransformer) transformToBotsService() []*pbbot.BroadcastMessageRequest {
+	// NOTE: Get message, file and keyboard from inbound
+	message := t.request.GetMessage()
+	file := message.GetFile()
+	keyboard := message.GetKeyboard()
+
+	// NOTE: Set chat message DTO
+	chatMessage := &pbchat.Message{
+		Text:      message.GetText(),
+		Variables: t.request.GetVariables(),
+	}
+
+	// NOTE: Set chat file DTO
+	if file != nil {
+		chatFile := &pbchat.File{}
+		if file.GetId() != "" {
+			parsedFileId, err := strconv.ParseInt(file.GetId(), 10, 64)
+			if err == nil && parsedFileId > 0 {
+				chatFile.Id = parsedFileId
+				chatFile.Source = file.GetSource()
+			}
+		} else if file.GetUrl() != "" {
+			chatFile.Url = file.GetUrl()
+		}
+		chatMessage.File = chatFile
+	}
+
+	// NOTE: Set chat keyboard DTO
+	if keyboard != nil {
+		for _, row := range keyboard.GetRows() {
+			chatButtons := &pbchat.Buttons{}
+			for _, button := range row.GetButtons() {
+				chatButtons.Button = append(chatButtons.Button, &pbchat.Button{
+					Caption: button.Caption,
+					Text:    button.Text,
+					Type:    button.Type,
+					Url:     button.Url,
+					Code:    button.Code,
+				})
+			}
+
+			chatMessage.Buttons = append(chatMessage.Buttons, chatButtons)
+		}
+	}
+
+	// NOTE: Set all peers with valid type
+	reqsByFrom := make(map[int64]*pbbot.BroadcastMessageRequest)
+	for _, peer := range t.request.GetPeers() {
+		switch peer.GetType() {
+		case "gotd", "telegram", "viber", "facebook", "messenger", "instagram", "whatsapp", "vk":
+			parsedVia, err := strconv.ParseInt(peer.GetVia(), 10, 64)
+			if err != nil || parsedVia == 0 {
+				t.errors = append(t.errors, buildBroadcastError(peer.Id, http.StatusBadRequest, "peer.via is invalid"))
+				break
+			}
+
+			req, ok := reqsByFrom[parsedVia]
+			if !ok {
+				req = &pbbot.BroadcastMessageRequest{
+					From:    parsedVia,
+					Message: chatMessage,
+					Timeout: t.request.GetTimeout(),
+				}
+			}
+
+			req.Peer = append(req.Peer, peer.GetId())
+			reqsByFrom[parsedVia] = req
+		}
+	}
+
+	// NOTE: Init reqsByFromSlice array with DTOs
+	reqsByFromSlice := make([]*pbbot.BroadcastMessageRequest, 0, len(reqsByFrom))
+	for _, req := range reqsByFrom {
+		reqsByFromSlice = append(reqsByFromSlice, req)
+	}
+
+	return reqsByFromSlice
+}
+
+func buildBroadcastError(peerId string, code int32, message string) *pbmessages.BroadcastError {
+	return &pbmessages.BroadcastError{
+		PeerId: peerId,
+		Error: &status.Status{
+			Code:    code,
+			Message: message,
+		},
+	}
 }

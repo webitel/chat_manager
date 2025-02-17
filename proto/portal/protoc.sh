@@ -1,7 +1,7 @@
 #!/bin/sh
 
-src=proto/storage
-dst=api/proto/storage
+src=proto/portal
+dst=api/proto/portal
 
 # ensure target dir exists
 mkdir -p $dst

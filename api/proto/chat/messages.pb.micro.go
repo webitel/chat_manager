@@ -6,7 +6,9 @@ package chat
 import (
 	fmt "fmt"
 	proto "github.com/golang/protobuf/proto"
-	_ "google.golang.org/genproto/googleapis/rpc/status"
+	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options"
+	messages "github.com/webitel/chat_manager/api/proto/chat/messages"
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	math "math"
 )
 
@@ -34,19 +36,29 @@ var _ context.Context
 var _ client.Option
 var _ server.Option
 
-// Api Endpoints for Messages service
+// Api Endpoints for MessagesService service
 
-func NewMessagesEndpoints() []*api.Endpoint {
-	return []*api.Endpoint{}
+func NewMessagesServiceEndpoints() []*api.Endpoint {
+	return []*api.Endpoint{
+		&api.Endpoint{
+			Name:    "MessagesService.BroadcastMessage",
+			Path:    []string{"/chat/broadcast"},
+			Method:  []string{"POST"},
+			Body:    "*",
+			Handler: "rpc",
+		},
+	}
 }
 
-// Client API for Messages service
+// Client API for MessagesService service
 
 type MessagesService interface {
 	// Sends a current user action event to a conversation partners.
 	SendUserAction(ctx context.Context, in *SendUserActionRequest, opts ...client.CallOption) (*SendUserActionResponse, error)
-	// Broadcast message `from` given bot profile to `peer` recipient(s)
-	BroadcastMessage(ctx context.Context, in *BroadcastMessageRequest, opts ...client.CallOption) (*BroadcastMessageResponse, error)
+	// Broadcast message send message from via to peer recipients.
+	BroadcastMessage(ctx context.Context, in *messages.BroadcastMessageRequest, opts ...client.CallOption) (*messages.BroadcastMessageResponse, error)
+	// Broadcast message send message from via to peer recipients (for internal services).
+	BroadcastMessageNA(ctx context.Context, in *messages.BroadcastMessageRequest, opts ...client.CallOption) (*messages.BroadcastMessageResponse, error)
 }
 
 type messagesService struct {
@@ -62,7 +74,7 @@ func NewMessagesService(name string, c client.Client) MessagesService {
 }
 
 func (c *messagesService) SendUserAction(ctx context.Context, in *SendUserActionRequest, opts ...client.CallOption) (*SendUserActionResponse, error) {
-	req := c.c.NewRequest(c.name, "Messages.SendUserAction", in)
+	req := c.c.NewRequest(c.name, "MessagesService.SendUserAction", in)
 	out := new(SendUserActionResponse)
 	err := c.c.Call(ctx, req, out, opts...)
 	if err != nil {
@@ -71,9 +83,9 @@ func (c *messagesService) SendUserAction(ctx context.Context, in *SendUserAction
 	return out, nil
 }
 
-func (c *messagesService) BroadcastMessage(ctx context.Context, in *BroadcastMessageRequest, opts ...client.CallOption) (*BroadcastMessageResponse, error) {
-	req := c.c.NewRequest(c.name, "Messages.BroadcastMessage", in)
-	out := new(BroadcastMessageResponse)
+func (c *messagesService) BroadcastMessage(ctx context.Context, in *messages.BroadcastMessageRequest, opts ...client.CallOption) (*messages.BroadcastMessageResponse, error) {
+	req := c.c.NewRequest(c.name, "MessagesService.BroadcastMessage", in)
+	out := new(messages.BroadcastMessageResponse)
 	err := c.c.Call(ctx, req, out, opts...)
 	if err != nil {
 		return nil, err
@@ -81,35 +93,59 @@ func (c *messagesService) BroadcastMessage(ctx context.Context, in *BroadcastMes
 	return out, nil
 }
 
-// Server API for Messages service
+func (c *messagesService) BroadcastMessageNA(ctx context.Context, in *messages.BroadcastMessageRequest, opts ...client.CallOption) (*messages.BroadcastMessageResponse, error) {
+	req := c.c.NewRequest(c.name, "MessagesService.BroadcastMessageNA", in)
+	out := new(messages.BroadcastMessageResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
-type MessagesHandler interface {
+// Server API for MessagesService service
+
+type MessagesServiceHandler interface {
 	// Sends a current user action event to a conversation partners.
 	SendUserAction(context.Context, *SendUserActionRequest, *SendUserActionResponse) error
-	// Broadcast message `from` given bot profile to `peer` recipient(s)
-	BroadcastMessage(context.Context, *BroadcastMessageRequest, *BroadcastMessageResponse) error
+	// Broadcast message send message from via to peer recipients.
+	BroadcastMessage(context.Context, *messages.BroadcastMessageRequest, *messages.BroadcastMessageResponse) error
+	// Broadcast message send message from via to peer recipients (for internal services).
+	BroadcastMessageNA(context.Context, *messages.BroadcastMessageRequest, *messages.BroadcastMessageResponse) error
 }
 
-func RegisterMessagesHandler(s server.Server, hdlr MessagesHandler, opts ...server.HandlerOption) error {
-	type messages interface {
+func RegisterMessagesServiceHandler(s server.Server, hdlr MessagesServiceHandler, opts ...server.HandlerOption) error {
+	type messagesService interface {
 		SendUserAction(ctx context.Context, in *SendUserActionRequest, out *SendUserActionResponse) error
-		BroadcastMessage(ctx context.Context, in *BroadcastMessageRequest, out *BroadcastMessageResponse) error
+		BroadcastMessage(ctx context.Context, in *messages.BroadcastMessageRequest, out *messages.BroadcastMessageResponse) error
+		BroadcastMessageNA(ctx context.Context, in *messages.BroadcastMessageRequest, out *messages.BroadcastMessageResponse) error
 	}
-	type Messages struct {
-		messages
+	type MessagesService struct {
+		messagesService
 	}
-	h := &messagesHandler{hdlr}
-	return s.Handle(s.NewHandler(&Messages{h}, opts...))
+	h := &messagesServiceHandler{hdlr}
+	opts = append(opts, api.WithEndpoint(&api.Endpoint{
+		Name:    "MessagesService.BroadcastMessage",
+		Path:    []string{"/chat/broadcast"},
+		Method:  []string{"POST"},
+		Body:    "*",
+		Handler: "rpc",
+	}))
+	return s.Handle(s.NewHandler(&MessagesService{h}, opts...))
 }
 
-type messagesHandler struct {
-	MessagesHandler
+type messagesServiceHandler struct {
+	MessagesServiceHandler
 }
 
-func (h *messagesHandler) SendUserAction(ctx context.Context, in *SendUserActionRequest, out *SendUserActionResponse) error {
-	return h.MessagesHandler.SendUserAction(ctx, in, out)
+func (h *messagesServiceHandler) SendUserAction(ctx context.Context, in *SendUserActionRequest, out *SendUserActionResponse) error {
+	return h.MessagesServiceHandler.SendUserAction(ctx, in, out)
 }
 
-func (h *messagesHandler) BroadcastMessage(ctx context.Context, in *BroadcastMessageRequest, out *BroadcastMessageResponse) error {
-	return h.MessagesHandler.BroadcastMessage(ctx, in, out)
+func (h *messagesServiceHandler) BroadcastMessage(ctx context.Context, in *messages.BroadcastMessageRequest, out *messages.BroadcastMessageResponse) error {
+	return h.MessagesServiceHandler.BroadcastMessage(ctx, in, out)
+}
+
+func (h *messagesServiceHandler) BroadcastMessageNA(ctx context.Context, in *messages.BroadcastMessageRequest, out *messages.BroadcastMessageResponse) error {
+	return h.MessagesServiceHandler.BroadcastMessageNA(ctx, in, out)
 }

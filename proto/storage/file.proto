@@ -61,9 +61,19 @@ message GenerateFileLinkRequest {
     string source = 3;
     string action = 4;
     map<string, string> query = 5;
+    bool metadata = 6;
 }
 
 message GenerateFileLinkResponse {
+    message Metadata {
+        int64 id = 1;
+        string name = 2;
+        string mime_type = 3;
+        string uuid = 4;
+        int64 size = 5;
+    }
+
     string url = 1;
     string base_url = 2;
+    Metadata metadata = 3;
 }
