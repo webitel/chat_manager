@@ -292,6 +292,25 @@ func Run(ctx *cli.Context) error {
 		return err
 	}
 
+	caseChatHistory := NewCaseChatHistoryService(
+		CaseChatHistoryServiceLogs(stdlog),
+		CaseChatHistoryServiceAuthN(authN.NewClient(
+			authN.ClientService(service),
+			authN.ClientCache(authN.NewLru(4096)),
+		)),
+		CaseChatHistoryServiceStore(store),
+	)
+
+	if err := pb2.RegisterCasesChatCatalogHandler(
+		service.Server(), caseChatHistory,
+	); err != nil {
+		log.FataLog(stdlog,
+			"failed to register service",
+			slog.Any("error", err),
+		)
+		return err
+	}
+
 	///debug/events
 	///debug/requests
 	httpsrv := http.Server{

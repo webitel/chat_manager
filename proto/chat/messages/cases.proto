@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package webitel.chat;
+
+option go_package = "github.com/webitel/chat_manager/api/proto/chat/messages";
+
+import "google/api/annotations.proto";
+import "chat/messages/history.proto";
+
+
+service CasesChatCatalog {
+  rpc GetCaseChatHistory(GetCaseChatHistoryRequest) returns (ChatMessages) {
+    option (google.api.http) = {
+      get: "/cases/{case_id}/chat/{chat_id}/messages"
+      additional_bindings: {
+        get: "/cases/{case_id}/chat/messages"
+      };
+    };
+  }
+}
+
+
+message GetCaseChatHistoryRequest {
+  // Offset options
+  message Offset {
+    // Messages ONLY starting from the specified message ID
+    int64 id = 1;
+    // Messages ONLY been sent before the specified epochtime(milli).
+    int64 date = 2;
+  }
+  // Offset messages.
+  Offset offset = 1;
+  // Number of messages to return.
+  int32 size = 2;
+
+  int32 page = 4;
+  // Search term: message.text
+  string q = 5;
+  // Fields to return into result.
+  repeated string fields = 3;
+  // Unique chat dialog
+  string chat_id = 6;
+  // Contact identificator
+  string case_id = 7;
+
+  // Includes the history of ONLY those dialogs
+  // whose member channel(s) contain
+  // a specified set of variables.
+  map<string,string> group = 8;
+}

@@ -54,6 +54,10 @@ type chatMessagesArgs struct {
 	}
 	// Limit count of messages to return.
 	Limit int
+	// Make sure that chat connected with case
+	CaseId int64
+	// Make sure that chat connected with contact
+	ContactId int64
 }
 
 type contactChatMessagesArgs struct {
@@ -273,6 +277,23 @@ func getMessagesInput(req *app.SearchOptions) (args chatMessagesArgs, err error)
 				if err != nil {
 					return // args, err
 				}
+			}
+		case "case.id":
+			{
+				var caseId int64
+				switch data := input.(type) {
+				case int64:
+					caseId = data
+				case int:
+					caseId = int64(data)
+				default:
+					err = errors.BadRequest(
+						"messages.query.chat.input",
+						"messages( case: id ); input: convert %T into ID",
+						input,
+					)
+				}
+				args.CaseId = caseId
 			}
 		case "offset":
 			{
@@ -693,15 +714,27 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 	switch ctx.Input.Peer.Type {
 	case "chat":
 		{
-			var chatId pgtype.UUID
-			err = chatId.Set(ctx.Input.Peer.Id)
-			if err != nil {
-				panic("messages.chat.id: " + err.Error())
+			if caseId := ctx.Input.CaseId; caseId != 0 { // required connection between case and chat
+				ctx.Params.set("case.id", &caseId)
+				properStringUuid, err := uuid.Parse(ctx.Input.Peer.Id)
+				if err != nil {
+					return ctx, err
+				}
+				ctx.Params.set("chat.id", properStringUuid.String())
+				ctx.Query = ctx.Query.Where(ident(left, "id") + " = ANY (SELECT communication_id::::uuid FROM cases.case_communication WHERE communication_id = :chat.id AND case_id = :case.id )")
+			} else if contactId := ctx.Input.ContactId; contactId != 0 { // required connection between contact and chat
+				// TODO
+			} else {
+				var chatId pgtype.UUID
+				err = chatId.Set(ctx.Input.Peer.Id)
+				if err != nil {
+					panic("messages.chat.id: " + err.Error())
+				}
+				ctx.Params.set("chat.id", &chatId)
+				ctx.Query = ctx.Query.Where(
+					ident(left, "id") + " = :chat.id",
+				)
 			}
-			ctx.Params.set("chat.id", &chatId)
-			ctx.Query = ctx.Query.Where(
-				ident(left, "id") + " = :chat.id",
-			)
 		}
 	case "user":
 		{
