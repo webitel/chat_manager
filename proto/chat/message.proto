@@ -83,8 +83,6 @@ message File {
 
     string name = 4;
     int64 size = 5;
-
-    string source = 6;
 }
 
 message Buttons {

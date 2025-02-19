@@ -1085,3 +1085,34 @@ func ScanRefer(dst **bot.Refer) dbl.ScanFunc {
 		return nil
 	}
 }
+
+func (repo *sqlxRepository) GetChatBotByID(ctx context.Context, botId int64) (*ChatBot, error) {
+	result := &ChatBot{}
+
+	query := `
+		SELECT
+			b.id,
+			b.dc,
+			b.name,
+			b.flow_id,
+			b.enabled,
+			b.provider,
+			b.created_at,
+			b.updated_at
+		FROM
+			chat.bot b
+		WHERE
+			b.id = $1 -- :bot_id;
+	`
+
+	err := repo.db.GetContext(ctx, result, query, botId)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return result, nil
+}

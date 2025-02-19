@@ -329,3 +329,21 @@ type ConversationConfirmation struct {
 	ConversationID string `db:"conversation_id" json:"conversation_id"`
 	ConfirmationID string `db:"confirmation_id" json:"confirmation_id"`
 }
+
+type AppUser struct {
+	ID        string `db:"id" json:"id"`
+	DomainID  int64  `db:"domain_id" json:"domain_id"`
+	AppID     string `db:"app_id" json:"app_id"`
+	ServiceID string `db:"service_id" json:"service_id"`
+}
+
+type ChatBot struct {
+	ID        int64     `db:"id" json:"id"`
+	DomainID  int64     `db:"dc" json:"dc"`
+	Name      string    `db:"name" json:"name"`
+	FlowID    int64     `db:"flow_id" json:"flow_id"`
+	Enabled   bool      `db:"enabled" json:"enabled"`
+	Provider  string    `db:"provider" json:"provider"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
+}
