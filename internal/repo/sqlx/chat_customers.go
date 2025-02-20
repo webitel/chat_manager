@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jackc/pgtype"
@@ -677,8 +678,9 @@ func (ctx *chatContactsQuery) scanContactsRowsWithVia(rows *sql.Rows, into *pb.C
 
 	// NOTE: Set vias to response
 	for _, v := range vias {
+		id := strings.ReplaceAll(v.ID, "-", "")
 		into.Vias = append(into.Vias, &pb.Peer{
-			Id:   v.ID,
+			Id:   id,
 			Name: v.Name,
 			Type: v.Type,
 		})

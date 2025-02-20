@@ -79,8 +79,8 @@ var (
 			via: regexp.MustCompile(`^\d+(\.\d+)?$`),
 		},
 		"portal": {
-			id:  regexp.MustCompile(`^[a-z0-9]+$`),
-			via: regexp.MustCompile(`^[a-z0-9]+$`),
+			id:  regexp.MustCompile(`^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{12}$`),
+			via: regexp.MustCompile(`^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{12}$`),
 		},
 	}
 )
@@ -406,6 +406,10 @@ func (c *chatService) executeBroadcastSocials(ctx context.Context, authUser *aut
 }
 
 func (c *chatService) executeBroadcastPortal(ctx context.Context, authUser *auth.User, peer *pbmessages.InputPeer, message *pbchat.Message) *pbmessages.BroadcastError {
+
+	// Data normalization
+	peer.Id = strings.ReplaceAll(peer.Id, "-", "")
+	peer.Via = strings.ReplaceAll(peer.Via, "-", "")
 
 	client, err := c.repo.GetClientByExternalID(ctx, peer.GetId())
 	if err != nil {
