@@ -286,6 +286,14 @@ func getMessagesInput(req *app.SearchOptions) (args chatMessagesArgs, err error)
 					caseId = data
 				case int:
 					caseId = int64(data)
+				case string:
+					caseId, err = strconv.ParseInt(data, 10, 64)
+					if err != nil {
+						err = errors.InternalServerError(
+							"messages.query.chat.input",
+							err.Error(),
+						)
+					}
 				default:
 					err = errors.BadRequest(
 						"messages.query.chat.input",

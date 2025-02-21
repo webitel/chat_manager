@@ -144,8 +144,7 @@ func (srv *CaseChatHistoryService) GetCaseChatHistory(ctx context.Context, req *
 		},
 		Access: auth.READ,
 		Fields: req.Fields,
-		Size:   int(req.GetSize()),
-		Page:   int(req.GetPage()),
+		Size:   -1,
 	}
 
 	if chatId := req.GetChatId(); chatId != "" {
