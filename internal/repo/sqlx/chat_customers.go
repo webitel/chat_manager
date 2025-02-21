@@ -659,6 +659,7 @@ func (ctx *chatContactsQuery) scanContactsRows(rows *sql.Rows, into *pb.ChatCust
 	into.Page = int32(ctx.input.Page)
 	if limit > 0 && size > limit {
 		into.Next = true
+		into.Peers = into.Peers[:limit]
 	}
 
 	return nil
@@ -715,6 +716,7 @@ func (ctx *chatContactsQuery) scanContactsRowsWithVia(rows *sql.Rows, into *pb.C
 	into.Page = int32(ctx.input.Page)
 	if limit > 0 && size > limit {
 		into.Next = true
+		into.Peers = into.Peers[:limit]
 	}
 
 	return nil
