@@ -1130,6 +1130,7 @@ func NewChannel(dcx sqlx.ExtContext, ctx context.Context, channel *Channel) erro
 		channel.FlowBridge,
 
 		channel.ClosedCause,
+		channel.PublicName,
 	)
 
 	if err != nil {
@@ -1173,11 +1174,12 @@ const psqlChannelNewQ = `WITH created AS (
  INSERT INTO chat.channel (
    id, type, name, user_id, domain_id,
    conversation_id, internal, connection, host, props,
-   created_at, updated_at, joined_at, closed_at, flow_bridge, closed_cause
+   created_at, updated_at, joined_at, closed_at, flow_bridge, closed_cause, public_name
  ) VALUES (
    $1, $2, $3, $4, $5,
    $6, $7, $8, $9, $10,
-   $11, $12, $13, $14, $15, $16
+   $11, $12, $13, $14, $15,
+   $16, $17
  )
  RETURNING conversation_id
 )

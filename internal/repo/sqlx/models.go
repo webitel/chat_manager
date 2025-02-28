@@ -178,7 +178,7 @@ func (m *Channel) Scan(row *sql.Rows) error {
 			target(&m.Variables)
 
 		case "public_name":
-			target(ScanFunc(nil)) // FIXME
+			target(&m.PublicName)
 
 		default:
 
