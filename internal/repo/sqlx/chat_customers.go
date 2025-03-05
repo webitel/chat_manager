@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/jackc/pgtype"
+
 	"github.com/lib/pq"
 	"github.com/micro/micro/v3/service/errors"
 	pb "github.com/webitel/chat_manager/api/proto/chat/messages"
@@ -17,10 +17,18 @@ import (
 	"github.com/webitel/chat_manager/store/postgres"
 )
 
+const (
+	ASC  = " ASC"
+	DESC = " DESC"
+)
+
 type chatCustomersArgs struct {
 	// Paging
 	Page int
 	Size int
+
+	// Sorting
+	Sort []string
 
 	// Output
 	Fields []string
@@ -32,20 +40,18 @@ type chatCustomersArgs struct {
 	// Arguments
 	Q    string
 	ID   []string
-	Via  *pb.Peer
 	Type string
+	Via  *pb.Peer
 }
 
 func getCustomersInput(req *app.SearchOptions) (args chatCustomersArgs, err error) {
 
-	// NOTE: Set Q and if Q == '*' ignore that
-	args.Q = req.Term
-	if app.IsPresent(args.Q) {
-		args.Q = ""
-	}
+	// NOTE: Set default arguments.
 	args.PDC = req.Context.Creds.Dc
-	args.Page = req.GetPage()
-	args.Size = req.GetSize()
+	args.Q = ""
+	args.Sort = []string{"name"}
+	args.Page = 1
+	args.Size = 5
 	args.Fields = app.FieldsFunc(
 		req.Fields,
 		app.SelectFields(
@@ -61,6 +67,64 @@ func getCustomersInput(req *app.SearchOptions) (args chatCustomersArgs, err erro
 			},
 		),
 	)
+
+	// NOTE: Set the search term (Q) if it's provided. If Q is '*' (wildcard), ignore it.
+	if !app.IsPresent(req.Term) {
+		args.Q = req.Term
+	}
+
+	// NOTE: Set the page number if it is greater than 0, else default to 1.
+	if req.Page > 0 {
+		args.Page = req.Page
+	}
+
+	// NOTE: Set the size of the page (number of results per page) if it's greater than 0, else default to 5.
+	if req.Size > 0 {
+		args.Size = req.Size
+	}
+
+	// NOTE: Check if there are sorting fields provided. If so, validate them and adjust the sort order.
+	if len(req.Order) > 0 {
+		args.Sort = app.FieldsFunc(req.Order, app.InlineFields)
+
+		specialChars := []byte{'+', '-', '!', ' '}
+		for _, spec := range args.Sort {
+			if slices.Contains(specialChars, spec[0]) {
+				spec = spec[1:]
+			}
+
+			switch spec {
+			case "id", "type", "name":
+				// Pass
+
+			default:
+				err = errors.BadRequest(
+					"customers.query.sort.input",
+					"customers( sort: [%s] ); input: no field support",
+					spec,
+				)
+				return
+			}
+		}
+	}
+
+	// NOTE: Sort the fields for the request and remove any duplicates.
+	slices.Sort(args.Fields)
+	args.Fields = slices.Compact(args.Fields)
+	for _, field := range args.Fields {
+		switch field {
+		case "id", "type", "name", "via":
+			// Pass
+
+		default:
+			err = errors.BadRequest(
+				"customers.query.fields.input",
+				"customers{ %s }; input: no such field",
+				field,
+			)
+			return
+		}
+	}
 
 	var (
 		inputId = func(input any) error {
@@ -126,6 +190,7 @@ func getCustomersInput(req *app.SearchOptions) (args chatCustomersArgs, err erro
 		}
 	)
 
+	// NOTE: Loop through the filter parameters in the request and handle each one based on the field.
 	for param, input := range req.Filter {
 		switch param {
 		case "id":
@@ -174,400 +239,232 @@ type chatContactsQuery struct {
 
 func getContactsQuery(req *app.SearchOptions) (ctx chatContactsQuery, err error) {
 
+	// NOTE: Get input from the request and handle any error if occurs.
 	ctx.input, err = getCustomersInput(req)
 	if err != nil {
 		return
 	}
 
+	// NOTE: Set parameters for the query, including "pdc" from the input.
 	ctx.Params = params{
 		"pdc": ctx.input.PDC,
 	}
 
-	// NOTE: Create a LEFT JOIN with the 'chat.bot' table using alias "a"
-	// and the condition where the 'id' of the chat.bot table matches
-	// the 'connection::::int8' field, and the 'dc' equals the specified :pdc parameter.
-	left := "c"
-	gateAlias := "a"
-	gate := &JOIN{
-		Kind:  "LEFT JOIN",
-		Table: sq.Expr("chat.bot"),
-		Alias: gateAlias,
-		Pred: sq.And{
-			sq.Expr(ident(gateAlias, "id") + " = " + ident(left, "connection::::int8")),
-			sq.Expr(ident(gateAlias, "dc") + " = :pdc"),
-		},
-	}
-
-	// NOTE: Build the initial query to select 'type' and 'user_id' from
-	// 'chat.channel' and join the 'chat.bot' table using the 'gate' alias.
-	// Also, create an aggregated list 'chat_via' of distinct 'id' from 'chat.bot'.
-	ctx.Query = postgres.PGSQL.
+	// NOTE: Construct the base query for retrieving peers data from the database.
+	peerQuery := postgres.PGSQL.
 		Select(
-			ident(left, "type"),
-			ident(left, "user_id"),
-			fmt.Sprintf(
-				"array_agg(DISTINCT %s) chat_via",
-				ident(gate.Alias, "id"),
-			),
+			`DISTINCT ON (x.external_id, c.type, x.name) x.external_id AS id`,
+			`c.type`,
+			`x.name`,
+			`COALESCE(
+				array_agg(DISTINCT b.id::::text) FILTER (WHERE b.id IS NOT NULL), ARRAY[]::::text[]
+			) ||
+        	COALESCE(
+				array_agg(DISTINCT sa.id::::text) FILTER (WHERE sa.id IS NOT NULL), ARRAY[]::::text[]
+			) AS via_ids`,
 		).
-		From(
-			"chat.channel "+left,
-		).
-		JoinClause(
-			gate,
-		).
-		Where(
-			ident(left, "domain_id")+" = :pdc",
-		).
-		Where(
-			"NOT "+ident(left, "internal"),
-		).
-		GroupBy(
-			ident(left, "user_id"),
-			ident(left, "type"),
-		)
-
-	// NOTE: Handle filtering by 'type' input parameter if provided.
-	if typeOf := ctx.input.Type; typeOf != "" {
-		ctx.Params.set("peer.type", app.Substring(typeOf))
-		ctx.Query = ctx.Query.Where(
-			ident(left, "type") + " ILIKE :peer.type",
-		)
-	}
-
-	// NOTE: Handle filtering by 'via' object if provided, including by 'id', 'type', or 'name'.
-	if via := ctx.input.Via; via != nil {
-		if via.Id != "" {
-			oid, re := strconv.ParseInt(via.Id, 10, 64)
-			if re != nil || oid < 1 {
-				err = errors.BadRequest(
-					"customers.query.via.id.input",
-					"customers( via.id: int ); input: invalid id",
-				)
-				return
-			}
-
-			ctx.Params.set("via.id", via.Id)
-			ctx.Query = ctx.Query.Where(
-				ident(left, "connection") + " = :via.id",
+		From(`chat.client x`).
+		Join(`
+			chat.channel c 
+			ON x.id = c.user_id 
+			AND c.domain_id = :pdc
+		`).
+		LeftJoin(`
+			chat.bot b 
+			ON c.connection::::int8 > 0 
+			AND b.id = c.connection::::int8 
+			AND b.dc = :pdc
+		`).
+		LeftJoin(`
+			portal.user_account ua
+			ON c.connection::::int8 = 0
+			AND (
+				CASE 
+					WHEN c.type = 'portal' 
+					THEN x.external_id::::uuid = ua.id 
+					ELSE false 
+				END
 			)
-		}
+		`).
+		LeftJoin(`
+			portal.user_service us 
+			ON us.account_id = ua.id
+		`).
+		LeftJoin(`
+			portal.service_app sa 
+			ON sa.service_id = us.service_id
+		`).
+		Where(`NOT c.internal`).
+		GroupBy(`x.external_id, c.type, x.name`)
 
-		if via.Type != "" {
-			ctx.Params.set("via.type", app.Substring(via.Type))
-			ctx.Query = ctx.Query.Where(
-				ident(gate.Alias, "provider") + " ILIKE :via.type",
-			)
-		}
-
-		if via.Name != "" {
-			ctx.Params.set("via.name", app.Substring(via.Name))
-			gate.Pred = append(gate.Pred.(sq.And),
-				sq.Expr(ident(gate.Alias, "name")+" ILIKE :via.name COLLATE \"default\""),
-			)
-		}
+	// NOTE: If there is a search query (`Q`), add a condition to the query for filtering by `x.name`.
+	if ctx.input.Q != "" {
+		ctx.Params.set("q", app.Substring(ctx.input.Q))
+		peerQuery = peerQuery.Where("x.name ILIKE :q COLLATE \"default\"")
 	}
 
-	peerQ := ctx.Query
-
-	// NOTE: Build the second query to select 'external_id' as 'id' and 'type'
-	// from 'chat.client' and join it with the previously built query ('peerQ')
-	// based on the 'user_id' match.
-	ctx.Query = postgres.PGSQL.
-		Select(
-			"x.external_id AS id",
-			"c.type",
-		).
-		From(
-			"chat.client x",
-		).
-		JoinClause(&JOIN{
-			Kind:  "JOIN",
-			Table: peerQ.Prefix("(").Suffix(")"),
-			Alias: "c",
-			Pred: sq.Expr(
-				"c.user_id = x.id",
-			),
-		})
-
-	// NOTE: Handle filtering by 'q' (search string) if provided.
-	if q := ctx.input.Q; q != "" && !app.IsPresent(q) {
-		ctx.Params.set("q", app.Substring(q))
-		ctx.Query = ctx.Query.Where(
-			ident("x", "name") + " ILIKE :q COLLATE \"default\"",
-		)
+	// NOTE: If there are IDs provided in the input, filter results by `external_id` using the `ANY` operator.
+	if len(ctx.input.ID) > 0 {
+		ctx.Params.set("id", ctx.input.ID)
+		peerQuery = peerQuery.Where(sq.Expr("x.external_id = ANY(:id)"))
 	}
 
-	// NOTE: Handle filtering by 'id' array if provided.
-	if n := len(ctx.input.ID); n > 0 {
-		var id pgtype.TextArray
-		err = id.Set(ctx.input.ID)
-		if err != nil {
-			return
-		}
-
-		eq, vs := " = ANY(:id)", any(&id)
-		if n == 1 {
-			eq, vs = " = :id", &id.Elements[0]
-		}
-
-		ctx.Params.set("id", vs)
-		ctx.Query = ctx.Query.Where(
-			ident("x", "external_id") + eq,
-		)
+	// NOTE: If a `type` is provided, filter results by `c.type`.
+	if ctx.input.Type != "" {
+		ctx.Params.set("type", ctx.input.Type)
+		peerQuery = peerQuery.Where("c.type = :type")
 	}
 
-	const (
-		ASC  = " ASC"
-		DESC = " DESC"
-	)
-
-	var (
-		order = ASC              // NOTE: Set default order is ASC
-		sort  = []string{"name"} // NOTE: Set default sort by name
-	)
-
-	// NOTE: Check if the 'Order' field is present in the request and process the sorting specifications.
-	if len(req.Order) > 0 {
-		sort = app.FieldsFunc(req.Order, app.InlineFields)
+	// NOTE: If pagination is specified, apply offset and limit to the query.
+	if ctx.input.Size > 0 {
+		if ctx.input.Page > 1 {
+			peerQuery = peerQuery.Offset(uint64((ctx.input.Page - 1) * ctx.input.Size))
+		}
+		peerQuery = peerQuery.Limit(uint64(ctx.input.Size + 1))
 	}
 
 	// NOTE: Iterate through the sort specifications and process each one for ordering the query.
-	for _, spec := range sort {
-		switch spec[0] {
-		// NOT URL-encoded PLUS '+' char
-		// we will get as SPACE ' ' char
-		case '+', ' ': // be loyal; URL(+) == ' '
-			spec = spec[1:]
+	if len(ctx.input.Sort) > 0 {
+		for _, spec := range ctx.input.Sort {
+			order := ASC
 
-		case '-', '!':
-			spec = spec[1:]
-			order = DESC
+			// NOTE: Process the sorting symbols to determine the order (ascending or descending).
+			switch spec[0] {
+			case '+', ' ':
+				spec = spec[1:]
+
+			case '-', '!':
+				spec = spec[1:]
+				order = DESC
+			}
+
+			// NOTE: Translate sorting field names to database column identifiers.
+			switch spec {
+			case "id":
+				spec = "x.external_id"
+
+			case "type":
+				spec = "c.type"
+
+			case "name":
+				spec = "x.name"
+			}
+
+			// NOTE: Apply the sorting to the query using the processed field and order.
+			peerQuery = peerQuery.OrderBy(spec + order)
 		}
-
-		// NOTE: Translate sorting field names to database column identifiers.
-		switch spec {
-		case "id":
-			spec = ident("x", "external_id")
-
-		case "type":
-			spec = ident("c", "type")
-
-		case "name":
-			spec = ident("x", "name")
-
-		// case "via":
-		// 	{
-		// 		// TODO !!!!
-		// 		spec = ident(left, spec)
-		// 		// SELECT * FROM unnest('{f,t,NULL}'::bool[]) ORDER BY 1 ASC;
-		// 		// ASC  [false, true, NULL]
-		// 		// DESC [NULL, true, false]
-		// 		switch order {
-		// 		case ASC:
-		// 			order = " DESC NULLS LAST"
-		// 		default: // DESC
-		// 			order = " ASC NULLS FIRST"
-		// 		}
-		// 	}
-
-		default:
-			// NOTE: If an unsupported sorting field is provided, return an error.
-			err = errors.BadRequest(
-				"customers.query.sort.input",
-				"customers( sort: [%s] ); input: no field support",
-				spec,
-			)
-			return
-		}
-
-		// NOTE: Apply the sorting to the query using the processed field and order.
-		ctx.Query = ctx.Query.OrderBy(spec + order)
 	}
 
-	// NOTE: [OFFSET|LIMIT]: paging
-	if size := req.GetSize(); size > 0 {
-		// OFFSET (page-1)*size -- omit same-sized previous page(s) from result
-		if page := req.GetPage(); page > 1 {
-			ctx.Query = ctx.Query.Offset(uint64((page - 1) * size))
+	// NOTE: Check if `via` input is provided and process filtering conditions by via's id|type|name.
+	if via := ctx.input.Via; via != nil {
+		if via.Id != "" {
+			ctx.Params.set("via_id", via.Id)
+			peerQuery = peerQuery.Where("b.id::::text = :via_id OR sa.id::::text = :via_id")
 		}
 
-		// LIMIT (size+1) -- to indicate whether there are more result entries
-		ctx.Query = ctx.Query.Limit(uint64(size + 1))
+		if via.Type != "" {
+			if via.Type == "portal" {
+				peerQuery = peerQuery.Where("c.connection::::int8 = 0")
+			} else {
+				ctx.Params.set("via_type", via.Type)
+				peerQuery = peerQuery.Where("b.provider = :via_type")
+			}
+		}
+
+		if via.Name != "" {
+			ctx.Params.set("via_name", via.Name)
+			peerQuery = peerQuery.Where("b.name = :via_name OR sa.app = :via_name")
+		}
 	}
 
-	// NOTE: Process the selected fields and add them to the query.
+	// NOTE: Iterate through the `ctx.input.Fields` to decide which fields to select and whether to include the `via` field.
 	var withVia bool
-	slices.Sort(ctx.input.Fields)
-	fields := slices.Compact(ctx.input.Fields)
-	for _, field := range fields {
+	var peerSelectFields []string
+	for _, field := range ctx.input.Fields {
 		switch field {
 		case "id":
-			// NOTE: Nothing
+			peerSelectFields = append(peerSelectFields, "p.id")
 
 		case "type":
-			// NOTE: Nothing
+			peerSelectFields = append(peerSelectFields, "p.type")
 
 		case "name":
-			ctx.Query = ctx.Query.Column(ident("x", "name"))
+			peerSelectFields = append(peerSelectFields, "p.name")
 
 		case "via":
-			ctx.Query = ctx.Query.Column(ident("c", "chat_via"))
 			withVia = true
-
-		default:
-			err = errors.BadRequest(
-				"customers.query.fields.input",
-				"customers{ %s }; input: no such field",
-				field,
-			)
-			return
 		}
 	}
 
-	// NOTE: Create a Common Table Expression (CTE) for the peer query.
+	// NOTE: Create a CTE named "peer" with the previously constructed query `peerQuery` as its expression.
 	ctx.With(CTE{
 		Name: "peer",
-		Expr: ctx.Query,
+		Expr: peerQuery,
 	})
 
-	// NOTE: If 'via' is not included in the query, proceed with scanning the contact rows.
+	// NOTE: Check if the "via" field is not selected; if not, execute a basic query on the "peer" CTE.
 	if !withVia {
+		ctx.Query = postgres.PGSQL.
+			Select(peerSelectFields...).
+			From(`peer p`)
+
 		ctx.fetch = ctx.scanContactsRows
+
 		return
 	}
 
-	// NOTE: Create a CTE for the 'via_chat' query if 'via' field is included.
-	ctx.With(CTE{
-		Name: "via_chat",
-		Expr: postgres.PGSQL.
-			Select(
-				"b.id",
-				"b.provider AS \"type\"",
-				"b.name",
-				"c.peer_ids",
-			).
-			From(
-				"chat.bot b",
-			).
-			JoinClause(CompactSQL(
-				`JOIN (
-					SELECT
-						UNNEST(p.chat_via) AS id,
-						array_agg(DISTINCT p.id) AS peer_ids
-					FROM
-						peer p
-					GROUP BY
-						UNNEST(p.chat_via)
-				)
-				AS c
-				USING (id)`,
-			)),
-	})
-
-	// NOTE: Define a Common Table Expression (CTE) for the 'via_portal' query.
-	// This CTE selects data related to portal user accounts and services.
-	ctx.With(CTE{
-		Name: "via_portal",
-		Expr: postgres.PGSQL.
-			Select(
-				"sa.id",
-				"sa.app AS name",
-				"'portal' AS \"type\"",
-				"array_agg(DISTINCT p.id) AS peer_ids",
-			).
-			From(
-				"peer p",
-			).
-			JoinClause(CompactSQL(
-				`JOIN
-					portal.user_account ua
-				ON
-					p.id::::uuid = ua.id AND
-					p.type = 'portal'
-				JOIN
-					portal.user_service us
-				ON
-					us.account_id = ua.id
-				JOIN
-					portal.service_app sa
-				ON
-					sa.service_id = us.service_id
-				GROUP BY
-					sa.id,
-					sa.app`,
-			)),
-	})
-
-	// NOTE: Create a union of two CTEs 'via_chat' and 'via_portal' using UNION ALL.
-	// This combines data from both CTEs into a unified result.
-	viaExpr, err := WithUnionAll(
-		sq.Select(
-			"vc.id::::text AS id",
-			"vc.name",
-			"vc.type",
-			"vc.peer_ids",
-		).From("via_chat vc"),
-		sq.Select(
-			"vp.id::::text AS id",
-			"vp.name",
-			"vp.type",
-			"vp.peer_ids",
-		).From("via_portal vp"),
-	)
-	if err != nil {
-		return
-	}
-
-	// NOTE: Define a CTE for the unified 'via' data, combining results from 'via_chat' and 'via_portal'.
+	// NOTE: Define a Common Table Expression (CTE) named "via" with the SQL query to fetch related via information.
 	ctx.With(CTE{
 		Name: "via",
-		Expr: viaExpr,
+		Expr: postgres.PGSQL.
+			Select(
+				`DISTINCT COALESCE(b.id::::text, sa.id::::text) AS id`,
+				`COALESCE(b.provider, 'portal') AS type`,
+				`COALESCE(b.name, sa.app) AS name`,
+			).
+			FromSelect(
+				postgres.PGSQL.
+					Select(`*`).
+					From(`peer`).
+					Limit(uint64(ctx.input.Size)),
+				`p`,
+			).
+			LeftJoin(`
+				chat.bot b 
+				ON b.id::::text = ANY(p.via_ids)
+			`).
+			LeftJoin(`
+				portal.service_app sa 
+				ON sa.id::::text = ANY(p.via_ids)
+			`),
 	})
 
-	// NOTE: Define a CTE for 'peer_with_via' which retrieves peer information along with their associated 'via' data.
-	// The 'via' data is aggregated using COALESCE to ensure that even if no 'via' is associated, an empty array is returned.
-	ctx.With(CTE{
-		Name: "peer_with_via",
-		Expr: sq.Select(
-			"p.id",
-			"p.type",
-			"p.name",
-			`COALESCE(
-				(SELECT array_agg(DISTINCT v.id) FROM via v WHERE p.id = ANY(v.peer_ids)),
-				ARRAY[]::::text[]
-			) AS via`,
-		).From("peer p"),
-	})
+	// NOTE: Prepare the select fields for the final query by including the "via_ids" and peer fields.
+	selectFields := []string{"'via_ids', p.via_ids"}
+	for _, field := range peerSelectFields {
+		selectFields = append(selectFields, fmt.Sprintf("'%s', %s", field[2:], field))
+	}
 
-	// NOTE: Final query to select the 'via' and 'peer' information, formatting them as JSON objects.
-	// The 'via' data is selected from the 'via' CTE, and the 'peer' data is selected from the 'peer_with_via' CTE.
+	// NOTE: Construct the final query with selected fields and join the "peer" and "via" CTEs for the final data fetch.
 	ctx.Query = postgres.PGSQL.
 		Select(
+			fmt.Sprintf(`
+				ARRAY(
+					SELECT json_build_object(%s)
+					FROM peer p
+				) AS peer`, strings.Join(selectFields, ",")),
 			`ARRAY(
-				SELECT
-					json_build_object(
-						'id', v.id,
-						'type', v.type,
-						'name', v.name
-					)
-				FROM
-					via v
-			) via`,
-			`ARRAY(
-				SELECT
-					json_build_object(
-						'id', p.id,
-						'type', p.type,
-						'name', p.name,
-						'via', p.via
-					)
-				FROM
-					peer_with_via p
-			) peer`,
-		)
+				SELECT json_build_object(
+					'id', v.id, 
+					'type', v.type, 
+					'name', v.name
+				) 
+				FROM via v
+			) AS via`).
+		From(`peer p`).
+		From(`via v`)
 
-	// NOTE: Set rows scanner
+	// NOTE: Set the function to scan the results, including both peer and via data.
 	ctx.fetch = ctx.scanContactsRowsWithVia
 
 	return
@@ -595,10 +492,10 @@ func (v *sqlVia) Scan(value any) error {
 }
 
 type sqlPeer struct {
-	ID   string   `json:"id"`
-	Type string   `json:"type"`
-	Name string   `json:"name"`
-	Via  []string `json:"via"`
+	ID     string   `json:"id"`
+	Type   string   `json:"type"`
+	Name   string   `json:"name"`
+	ViaIDs []string `json:"via_ids"`
 }
 
 func (p *sqlPeer) Scan(value any) error {
@@ -671,7 +568,7 @@ func (ctx *chatContactsQuery) scanContactsRowsWithVia(rows *sql.Rows, into *pb.C
 
 	// NOTE: scan only first row
 	if rows.Next() {
-		err := rows.Scan(pq.Array(&vias), pq.Array(&peers))
+		err := rows.Scan(pq.Array(&peers), pq.Array(&vias))
 		if err != nil {
 			return fmt.Errorf("error: reading the result: %v", err)
 		}
@@ -679,9 +576,8 @@ func (ctx *chatContactsQuery) scanContactsRowsWithVia(rows *sql.Rows, into *pb.C
 
 	// NOTE: Set vias to response
 	for _, v := range vias {
-		id := strings.ReplaceAll(v.ID, "-", "")
 		into.Vias = append(into.Vias, &pb.Peer{
-			Id:   id,
+			Id:   strings.ReplaceAll(v.ID, "-", ""),
 			Name: v.Name,
 			Type: v.Type,
 		})
@@ -693,10 +589,10 @@ func (ctx *chatContactsQuery) scanContactsRowsWithVia(rows *sql.Rows, into *pb.C
 			Id:   p.ID,
 			Name: p.Name,
 			Type: p.Type,
-			Via:  make([]*pb.Peer, 0, len(p.Via)),
+			Via:  make([]*pb.Peer, 0, len(p.ViaIDs)),
 		}
 
-		for _, viaID := range p.Via {
+		for _, viaID := range p.ViaIDs {
 			index := slices.IndexFunc(vias, func(v sqlVia) bool {
 				return v.ID == viaID
 			})
