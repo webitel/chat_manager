@@ -1175,10 +1175,14 @@ func (s *chatService) JoinConversation(
 		ConversationID: invite.ConversationID,
 		UserID:         invite.UserID,
 		DomainID:       invite.DomainID,
-		Name:           user.Name,
-		PublicName:     user.ChatName,
-		CreatedAt:      invite.CreatedAt,
-		UpdatedAt:      timestamp,
+		// Name:           user.Name,
+		Name: user.ChatName,
+		PublicName: sql.NullString{
+			String: user.ChatName,
+			Valid:  user.ChatName != "",
+		},
+		CreatedAt: invite.CreatedAt,
+		UpdatedAt: timestamp,
 		JoinedAt: sql.NullTime{
 			Time:  timestamp,
 			Valid: true,
