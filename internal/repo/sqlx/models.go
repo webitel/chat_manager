@@ -314,10 +314,10 @@ type Profile struct {
 }
 
 type WebitelUser struct {
-	ID       int64          `db:"id" json:"id"`
-	Name     string         `db:"name" json:"name"`
-	DomainID int64          `db:"dc" json:"dc"`
-	ChatName sql.NullString `db:"chat_name" json:"chat_name"`
+	ID       int64  `db:"id" json:"id"`
+	Name     string `db:"name" json:"name"`
+	DomainID int64  `db:"dc" json:"dc"`
+	ChatName string `db:"chat_name" json:"chat_name"`
 }
 
 type ConversationNode struct {

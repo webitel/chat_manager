@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 	"github.com/webitel/chat_manager/app" // as model
 )
 
@@ -276,7 +277,7 @@ var psqlChatSessionQ = CompactSQL(
 		channel.user_id,
 		coalesce(nullif(channel.type, 'webitel'), 'user')         as user_channel,
 		coalesce(contact.external_id, account.username)           as user_contact,
-		coalesce(contact.name, account.name, account.username)    as user_name,
+		coalesce(contact.name, account.chat_name, account.name, account.username)    as user_name,
 		-- channel.name                                              as chat_title,
 		channel.props,
 
@@ -305,7 +306,7 @@ var psqlChatSessionQ = CompactSQL(
 		invite.user_id                           as user_id,
 		'user'                                   as user_channel,
 		account.username                         as user_contact,
-		coalesce(account.name, account.username) as user_name,
+		coalesce(account.chat_name, account.name, account.username) as user_name,
 		-- invite.title                             as chat_title,
 		invite.props,
 

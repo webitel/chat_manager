@@ -1205,7 +1205,7 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 						"c.id chat_id",
 						"(case when not c.internal then c.type else 'user' end) \"type\"",
 						"(case when c.internal then c.user_id::::text else x.external_id end) id", // NULL -if- deleted
-						"coalesce(x.name, u.name, u.auth::::text, '[deleted]') \"name\"",
+						"coalesce(x.name, u.chat_name, u.name, u.username::::text, c.name, '[deleted]') \"name\"",
 					).
 					From(
 						"chat.channel c",
@@ -1220,7 +1220,7 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 					)).
 					JoinClause(fmt.Sprintf( // internal
 						"LEFT JOIN %[2]s %[3]s ON %[1]s.internal AND %[3]s.id = %[1]s.user_id",
-						"c", "directory.wbt_auth", "u",
+						"c", "directory.wbt_user", "u",
 					)),
 				),
 			left,

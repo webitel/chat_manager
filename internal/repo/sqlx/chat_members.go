@@ -273,7 +273,7 @@ func selectChatQuery(ctx *SELECT, req *app.SearchOptions) (plan dataFetch[*api.C
 				return as, false // already done
 			}
 			expr := fmt.Sprintf(
-				"LEFT JOIN directory.wbt_auth %[1]s ON %[2]s.type = 'user' AND %[1]s.id = %[2]s.user_id",
+				"LEFT JOIN directory.wbt_user %[1]s ON %[2]s.type = 'user' AND %[1]s.id = %[2]s.user_id",
 				as, left,
 			)
 			ctx.Query = ctx.Query.JoinClause(expr)
@@ -345,8 +345,9 @@ func selectChatQuery(ctx *SELECT, req *app.SearchOptions) (plan dataFetch[*api.C
 		--- flow:scheme ---
 			%[2]s.name::::text
 		--- user:agent ---
+		, %[3]s.chat_name
 		, %[3]s.name
-		, %[3]s.auth::::text
+		, %[3]s.username::::text
 		--- contact:ext ---
 		, %[4]s.name
 		--- unknown ---

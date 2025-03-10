@@ -247,7 +247,7 @@ func (c *chatService) executeBroadcastSocials(ctx context.Context, authUser *aut
 		userType = userTypeWebitel
 		userDomainID = wbtUser.DomainID
 		userName = wbtUser.Name
-		userChatName = wbtUser.ChatName.String
+		userChatName = wbtUser.ChatName
 	}
 
 	createdAt := time.Now()
@@ -481,7 +481,7 @@ func (c *chatService) executeBroadcastPortal(ctx context.Context, authUser *auth
 		userType = userTypeWebitel
 		userDomainID = wbtUser.DomainID
 		userName = wbtUser.Name
-		userChatName = wbtUser.ChatName.String
+		userChatName = wbtUser.ChatName
 	}
 
 	createdAt := time.Now()
