@@ -19,6 +19,7 @@ import (
 	"github.com/webitel/chat_manager/bot"
 	"github.com/webitel/chat_manager/bot/facebook/messenger"
 	"github.com/webitel/chat_manager/bot/facebook/webhooks"
+	"github.com/webitel/chat_manager/internal/util"
 )
 
 // RandomBase64String of given n characters length
@@ -743,6 +744,7 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 				// FIXME: This is the Sticker ?
 				continue
 			}
+
 			// Download: doc.URL
 			url, err := url.Parse(data.URL)
 			if err != nil {
@@ -753,15 +755,49 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 				continue // NEXT !
 			}
 
-			mimetype := doc.Type
-			filename := path.Base(url.Path)
-			switch filename {
-			case "/", ".":
+			var filename string
+			var mimetype string
+			var extension string
+			var size int64
+
+			// If the URL contains a filename in the path
+			filename = path.Base(url.Path)
+			if filename == "/" || filename == "." || !strings.Contains(filename, ".") {
 				filename = ""
 			}
 
-			if ext := path.Ext(filename); ext != "" {
-				mimetype = path.Join(mimetype, ext[1:]) // crop leading dot(.)
+			// If filename is empty, handle the case where there's no file name in the URL
+			if filename == "" {
+				filename, mimetype, extension, size, err = util.FetchFileDetails(data.URL)
+				if err != nil {
+					c.Log.Error("ATTACHMENT: INVALID; CANNOT FETCH FILE DETAILS",
+						slog.Any("error", err),
+					)
+				}
+
+				if extension != "" && !strings.Contains(filename, ".") {
+					if filename == "" {
+						filename = "file"
+					}
+					filename = fmt.Sprintf("%s.%s", filename, extension)
+				}
+
+			} else {
+				// If there's a filename, determine MIME type based on the extension
+				ext := path.Ext(filename)
+				if ext != "" {
+					mimetype = mime.TypeByExtension(ext)
+				}
+			}
+
+			// If filename is still empty, use the default name 'file'
+			if filename == "" {
+				filename = "file"
+			}
+
+			// If mimetype is still empty, use the document's type as fallback
+			if mimetype == "" {
+				mimetype = doc.Type
 			}
 
 			if sendMsg.File != nil {
@@ -782,7 +818,7 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 				Url:  data.URL,
 				Mime: mimetype,
 				Name: filename,
-				Size: 0, // Unknown !
+				Size: size,
 			}
 
 		case "location":
