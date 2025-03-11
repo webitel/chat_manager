@@ -47,36 +47,40 @@ var (
 		id, via *regexp.Regexp
 	}{
 		"telegram": {
-			id:  regexp.MustCompile(`^\d+(\.\d+)?$`),
-			via: regexp.MustCompile(`^\d+(\.\d+)?$`),
+			id:  regexp.MustCompile(`^\d+$`),
+			via: regexp.MustCompile(`^\d+$`),
 		},
 		"gotd": {
-			id:  regexp.MustCompile(`^\d+(\.\d+)?$`),
-			via: regexp.MustCompile(`^\d+(\.\d+)?$`),
+			id:  regexp.MustCompile(`^\+?[1-9]\d{1,14}$`),
+			via: regexp.MustCompile(`^\d+$`),
 		},
 		"viber": {
-			id:  regexp.MustCompile(`^\d+(\.\d+)?$`),
-			via: regexp.MustCompile(`^\d+(\.\d+)?$`),
+			id:  regexp.MustCompile(`^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$`),
+			via: regexp.MustCompile(`^\d+$`),
 		},
 		"facebook": {
-			id:  regexp.MustCompile(`^\d+(\.\d+)?$`),
-			via: regexp.MustCompile(`^\d+(\.\d+)?$`),
+			id:  regexp.MustCompile(`^\d+$`),
+			via: regexp.MustCompile(`^\d+$`),
 		},
 		"instagram": {
-			id:  regexp.MustCompile(`^\d+(\.\d+)?$`),
-			via: regexp.MustCompile(`^\d+(\.\d+)?$`),
+			id:  regexp.MustCompile(`^\d+$`),
+			via: regexp.MustCompile(`^\d+$`),
 		},
 		"messenger": {
-			id:  regexp.MustCompile(`^\d+(\.\d+)?$`),
-			via: regexp.MustCompile(`^\d+(\.\d+)?$`),
+			id:  regexp.MustCompile(`^\d+$`),
+			via: regexp.MustCompile(`^\d+$`),
 		},
 		"whatsapp": {
-			id:  regexp.MustCompile(`^\d+(\.\d+)?$`),
-			via: regexp.MustCompile(`^\d+(\.\d+)?$`),
+			id:  regexp.MustCompile(`^\d+$`),
+			via: regexp.MustCompile(`^\d+$`),
 		},
 		"vk": {
-			id:  regexp.MustCompile(`^\d+(\.\d+)?$`),
-			via: regexp.MustCompile(`^\d+(\.\d+)?$`),
+			id:  regexp.MustCompile(`^[a-zA-Z0-9\-_.,:;]+$`),
+			via: regexp.MustCompile(`^\d+$`),
+		},
+		"custom": {
+			id:  regexp.MustCompile(`^[a-zA-Z0-9!@#$%^&*()_+=\-\[\]{}|:;"'<>,.?]+$`),
+			via: regexp.MustCompile(`^\d+$`),
 		},
 		"portal": {
 			id:  regexp.MustCompile(`^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{12}$`),
@@ -102,7 +106,7 @@ func (c *chatService) executeBroadcast(ctx context.Context, authUser *auth.User,
 
 			resp.Variables = util.MargeMaps(resp.Variables, vars)
 
-		case "telegram", "viber", "facebook", "messenger", "instagram", "whatsapp", "vk":
+		case "telegram", "viber", "facebook", "messenger", "instagram", "whatsapp", "vk", "custom":
 			vars, fail := c.executeBroadcastSocials(ctx, authUser, peer, message)
 			if fail != nil {
 				resp.Failure = append(resp.Failure, fail)
