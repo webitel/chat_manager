@@ -32,29 +32,16 @@ func (e *Account) IsUser() bool {
 
 func (e *Account) DisplayName() string {
 
-	e.FirstName = strings.TrimSpace(e.FirstName)
-	e.LastName = strings.TrimSpace(e.LastName)
-	e.Username = strings.TrimSpace(e.Username)
-
-	displayName := e.FirstName
-
-	for _, lastName := range []string{e.LastName, e.Username} {
-		if lastName != "" && lastName != displayName {
-
-			if displayName == "" {
-
-				displayName = lastName
-				continue
-
-			} else {
-
-				displayName += " " + lastName
-				break
-			}
-
+	names := []string{e.FirstName, e.LastName, e.Username}
+	validNames := make([]string, 0, 3)
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			validNames = append(validNames, name)
 		}
 	}
 
+	displayName := strings.Join(validNames, " ")
 	if displayName == "" {
 		displayName = "noname"
 	}

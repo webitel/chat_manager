@@ -12,23 +12,39 @@ import (
 
 func (c *TelegramBot) getChannel(ctx context.Context, chat telegram.Chat) (*bot.Channel, error) {
 
+	shouldUpdate := false
 	contact := c.contacts[chat.ID]
 	chatId := strconv.FormatInt(chat.ID, 10)
 
 	if contact == nil {
 		contact = &bot.Account{
-
-			ID: 0, // LOOKUP
-
+			ID:      0, // LOOKUP
 			Channel: "telegram",
 			Contact: chatId,
-
-			FirstName: chat.FirstName,
-			LastName:  chat.LastName,
-
-			Username: chat.UserName,
 		}
-		// processed
+		shouldUpdate = true
+	}
+
+	// Update contact first name
+	if contact.FirstName != chat.FirstName {
+		contact.FirstName = chat.FirstName
+		shouldUpdate = true
+	}
+
+	// Update contact last name
+	if contact.LastName != chat.LastName {
+		contact.LastName = chat.LastName
+		shouldUpdate = true
+	}
+
+	// If the user has hidden the username, then leave the old one, if he changed it, update it
+	if chat.UserName != "" && contact.Username != chat.UserName {
+		contact.Username = chat.UserName
+		shouldUpdate = true
+	}
+
+	// If necessary, update the contact in the map
+	if shouldUpdate {
 		c.contacts[chat.ID] = contact
 	}
 
