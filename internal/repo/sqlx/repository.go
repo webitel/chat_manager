@@ -105,6 +105,7 @@ type ClientRepository interface {
 	// GetClients(limit, offset int) ([]*Client, error)
 	UpdateClientChatID(ctx context.Context, id int64, externalId string) error
 	UpdateClientNumber(ctx context.Context, id int64, phoneNumber string) error
+	UpdateClientName(ctx context.Context, id int64, name string) error
 }
 
 type InviteRepository interface {
