@@ -26,6 +26,31 @@ func (repo *sqlxRepository) UpdateClientNumber(ctx context.Context, id int64, nu
 	return err
 }
 
+func (repo *sqlxRepository) UpdateClientName(ctx context.Context, id int64, name string) error {
+	if id < 1 {
+		return fmt.Errorf("UpdateClient: invalid client ID: %d. It must be a positive integer", id)
+	}
+
+	query := `
+		UPDATE
+			chat.client AS c
+		SET
+			name = $2
+		WHERE
+			c.id = $1
+	`
+
+	err := repo.db.GetContext(ctx, nil, query, id, name)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			err = fmt.Errorf("UPDATE: no result")
+		}
+		repo.log.Error("UpdateClient", "error", err)
+	}
+
+	return nil
+}
+
 func (repo *sqlxRepository) GetClientByID(ctx context.Context, id int64) (*Client, error) {
 	result := &Client{}
 	err := repo.db.GetContext(ctx, result, "SELECT * FROM chat.client WHERE id=$1", id)

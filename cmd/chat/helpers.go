@@ -131,6 +131,10 @@ func (s *chatService) createClient(ctx context.Context, req *pbchat.CheckSession
 	return
 }
 
+func (s *chatService) updateClient(ctx context.Context, client *pg.Client) error {
+	return s.repo.UpdateClientName(ctx, client.ID, client.Name.String)
+}
+
 func transformConversationFromRepoModel(c *pg.Conversation) *pbchat.Conversation {
 
 	// const (

@@ -1864,6 +1864,22 @@ func (s *chatService) CheckSession(ctx context.Context, req *pbchat.CheckSession
 		return nil
 	}
 
+	// Update contact fields: name
+	if contact.Name.String != req.Username {
+		contact.Name = sql.NullString{
+			String: req.Username,
+			Valid:  req.Username != "",
+		}
+
+		err := s.updateClient(ctx, contact)
+		if err != nil {
+			log.Error(err.Error(),
+				slog.Any("error", err),
+			)
+			return err
+		}
+	}
+
 	// profileStr := strconv.Itoa(int(req.GetProfileId()))
 	var profileOf *string
 	if oid := req.GetProfileId(); oid > 0 {
