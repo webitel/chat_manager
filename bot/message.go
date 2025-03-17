@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"slices"
 	"strings"
 
 	chat "github.com/webitel/chat_manager/api/proto/chat"
@@ -32,21 +33,35 @@ func (e *Account) IsUser() bool {
 
 func (e *Account) DisplayName() string {
 
-	names := []string{e.FirstName, e.LastName, e.Username}
-	validNames := make([]string, 0, 3)
-	for _, name := range names {
-		name = strings.TrimSpace(name)
-		if name != "" {
-			validNames = append(validNames, name)
+	parts := []string{
+		e.FirstName, e.LastName, e.Username,
+	}
+
+	for r, n := 0, len(parts); r < n; r++ {
+		parts[r] = strings.TrimSpace(parts[r])
+		if parts[r] == "" {
+			parts = slices.Delete(parts, r, r+1)
+			r--
+			n--
+			continue
+		}
+		for w := 0; w < r; w++ {
+			if strings.EqualFold(parts[r], parts[w]) {
+				// duplicate parts name !
+				parts = slices.Delete(parts, r, r+1)
+				r--
+				n--
+				break
+			}
 		}
 	}
 
-	displayName := strings.Join(validNames, " ")
-	if displayName == "" {
-		displayName = "noname"
+	commonName := strings.Join(parts, " ")
+	if commonName == "" {
+		commonName = "noname"
 	}
 
-	return displayName
+	return commonName
 }
 
 // Update represents unified message eventArgs

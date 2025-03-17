@@ -1865,7 +1865,7 @@ func (s *chatService) CheckSession(ctx context.Context, req *pbchat.CheckSession
 	}
 
 	// Update contact fields: name
-	if contact.Name.String != req.Username {
+	if req.Username != "" && req.Username != contact.Name.String {
 		contact.Name = sql.NullString{
 			String: req.Username,
 			Valid:  req.Username != "",
@@ -1873,7 +1873,8 @@ func (s *chatService) CheckSession(ctx context.Context, req *pbchat.CheckSession
 
 		err := s.updateClient(ctx, contact)
 		if err != nil {
-			log.Error(err.Error(),
+			log.Error("Failed to update client.name changes",
+				slog.String("name", req.Username),
 				slog.Any("error", err),
 			)
 			return err
