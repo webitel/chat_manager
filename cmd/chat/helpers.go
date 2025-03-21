@@ -126,6 +126,10 @@ func (s *chatService) createClient(ctx context.Context, req *pbchat.CheckSession
 			req.Username,
 			true,
 		},
+		Type: sql.NullString{
+			req.Type,
+			true,
+		},
 	}
 	err = s.repo.CreateClient(ctx, client)
 	return

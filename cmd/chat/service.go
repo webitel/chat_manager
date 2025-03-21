@@ -368,7 +368,7 @@ func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pbchat.Save
 		// sender channel ID not found
 		return errors.BadRequest(
 			"chat.save_agent_join_message.channel.from.not_found",
-			"send: FROM user ID=%s sender not found or been closed",
+			"send: FROM user ID=%d sender not found or been closed",
 			webitelUserID,
 		)
 	}

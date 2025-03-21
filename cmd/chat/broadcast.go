@@ -19,6 +19,7 @@ import (
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/internal/auth"
 	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
+	sqlxrepo "github.com/webitel/chat_manager/internal/repo/sqlx"
 	"github.com/webitel/chat_manager/internal/util"
 	"google.golang.org/genproto/googleapis/rpc/status"
 )
@@ -126,7 +127,7 @@ func (c *chatService) executeBroadcast(ctx context.Context, authUser *auth.User,
 }
 
 func (c *chatService) preparationMessage(inputMessage *pbmessages.InputMessage) (*pbchat.Message, error) {
-	message := util.MapInputMessageToMessage(inputMessage)
+	message := mapInputMessageToMessage(inputMessage)
 
 	file := message.GetFile()
 	if file.GetId() > 0 {
@@ -231,7 +232,7 @@ func (c *chatService) executeBroadcastSocials(ctx context.Context, authUser *aut
 
 	var (
 		userID       int64  = chatBot.FlowID
-		userType     string = userTypeBot
+		userType     string = client.Type.String
 		userDomainID int64  = chatBot.DomainID
 		userName     string = chatBot.Name
 		userChatName string = chatBot.Name
@@ -353,7 +354,7 @@ func (c *chatService) executeBroadcastSocials(ctx context.Context, authUser *aut
 			return err
 		}
 
-		fromApp := util.MapChannelToAppChannel(&from)
+		fromApp := mapChannelToAppChannel(&from)
 		if _, err := c.saveMessage(ctx, tx, fromApp, message); err != nil {
 			return err
 		}
@@ -474,6 +475,13 @@ func (c *chatService) executeBroadcastPortal(ctx context.Context, authUser *auth
 	if authUser != nil {
 		wbtUser, err := c.repo.GetWebitelUserByID(ctx, authUser.ID, authUser.DomainID)
 		if err != nil {
+			c.log.Error(
+				"CALL Repository.GetWebitelUserByID IS FAILED",
+				slog.Int64("user.id", authUser.ID),
+				slog.Int64("user.dc", authUser.DomainID),
+				slog.Any("error", err),
+			)
+
 			return buildBroadcastInternalServerError(peer.GetId())
 		}
 
@@ -591,7 +599,7 @@ func (c *chatService) executeBroadcastPortal(ctx context.Context, authUser *auth
 			return err
 		}
 
-		fromApp := util.MapChannelToAppChannel(&from)
+		fromApp := mapChannelToAppChannel(&from)
 		if _, err := c.saveMessage(ctx, tx, fromApp, message); err != nil {
 			return err
 		}
@@ -771,4 +779,86 @@ func buildBroadcastBadRequestError(peerId, message string) *pbmessages.Broadcast
 
 func buildBroadcastInternalServerError(peerId string) *pbmessages.BroadcastError {
 	return buildBroadcastError(peerId, http.StatusInternalServerError, "internal server error")
+}
+
+// mapChannelToAppChannel transform sqlxrepo.Channel struct to app.Channel struct
+func mapChannelToAppChannel(channel *sqlxrepo.Channel) *app.Channel {
+	firstName, lastName := util.ParseFullName(channel.FullName())
+
+	appChannel := app.Channel{
+		DomainID: channel.DomainID,
+		User: &app.User{
+			ID:        channel.UserID,
+			Channel:   channel.Type,
+			FirstName: firstName,
+			LastName:  lastName,
+		},
+		Chat: &app.Chat{
+			ID:        channel.ID,
+			Channel:   channel.Type,
+			FirstName: firstName,
+			LastName:  lastName,
+			Invite:    channel.ConversationID,
+		},
+		Variables: channel.Variables,
+		Created:   channel.CreatedAt.Unix(),
+		Updated:   channel.UpdatedAt.Unix(),
+		Closed:    0,
+	}
+
+	if channel.ClosedAt.Valid {
+		appChannel.Closed = channel.ClosedAt.Time.Unix()
+	}
+
+	return &appChannel
+}
+
+// mapInputMessageToMessage transform pbmessages.InputMessage struct to pbchat.Message struct
+func mapInputMessageToMessage(inputMessage *pbmessages.InputMessage) *pbchat.Message {
+
+	// NOTE: Get file and keyboard from input message
+	file := inputMessage.GetFile()
+	keyboard := inputMessage.GetKeyboard()
+
+	// NOTE: Set chat message text
+	chatMessage := &pbchat.Message{
+		Text: inputMessage.GetText(),
+	}
+
+	// NOTE: Set chat message file
+	if file != nil {
+		chatFile := &pbchat.File{}
+		if file.GetId() != "" {
+			parsedFileId, err := strconv.ParseInt(file.GetId(), 10, 64)
+			if err == nil && parsedFileId > 0 {
+				chatFile.Id = parsedFileId
+			}
+			chatFile.Mime = mime.FormatMediaType("unknown/unknown", map[string]string{
+				"source": file.GetSource(),
+			})
+		} else if file.GetUrl() != "" {
+			chatFile.Url = file.GetUrl()
+		}
+		chatMessage.File = chatFile
+	}
+
+	// NOTE: Set chat keyboard DTO
+	if keyboard != nil {
+		for _, row := range keyboard.GetRows() {
+			chatButtons := &pbchat.Buttons{}
+			for _, button := range row.GetButtons() {
+				chatButtons.Button = append(chatButtons.Button, &pbchat.Button{
+					Caption: button.Caption,
+					Text:    button.Text,
+					Type:    button.Type,
+					Url:     button.Url,
+					Code:    button.Code,
+				})
+			}
+
+			chatMessage.Buttons = append(chatMessage.Buttons, chatButtons)
+		}
+	}
+
+	return chatMessage
 }
