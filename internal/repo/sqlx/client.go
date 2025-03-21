@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/webitel/chat_manager/internal/util"
 )
 
 func (repo *sqlxRepository) UpdateClientChatID(ctx context.Context, id int64, externalId string) error {
@@ -52,8 +54,24 @@ func (repo *sqlxRepository) UpdateClientName(ctx context.Context, id int64, name
 }
 
 func (repo *sqlxRepository) GetClientByID(ctx context.Context, id int64) (*Client, error) {
+	query := `
+		SELECT
+			c.id,
+			c.type,
+			c.name,
+			c.first_name,
+			c.last_name,
+			c.number,
+			c.external_id,
+			c.created_at
+		FROM
+			chat.client c
+		WHERE
+			c.id=$1
+	`
+
 	result := &Client{}
-	err := repo.db.GetContext(ctx, result, "SELECT * FROM chat.client WHERE id=$1", id)
+	err := repo.db.GetContext(ctx, result, query, id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -67,8 +85,24 @@ func (repo *sqlxRepository) GetClientByID(ctx context.Context, id int64) (*Clien
 }
 
 func (repo *sqlxRepository) GetClientByExternalID(ctx context.Context, externalID string) (*Client, error) {
+	query := `
+		SELECT
+			c.id,
+			c.type,
+			c.name,
+			c.first_name,
+			c.last_name,
+			c.number,
+			c.external_id,
+			c.created_at
+		FROM
+			chat.client c
+		WHERE
+			c.external_id=$1
+	`
+
 	result := &Client{}
-	err := repo.db.GetContext(ctx, result, "SELECT * FROM chat.client WHERE external_id=$1", externalID)
+	err := repo.db.GetContext(ctx, result, query, externalID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -90,27 +124,47 @@ func (repo *sqlxRepository) CreateClient(ctx context.Context, c *Client) error {
 	}
 	c.CreatedAt = c.CreatedAt.UTC()
 
-	for _, text := range []*sql.NullString{
+	util.ValidateNullStrings(
+		&c.Type,
 		&c.Name,
+		&c.FirstName,
+		&c.LastName,
 		&c.Number,
 		&c.ExternalID,
-		&c.FirstName, &c.LastName,
-	} {
-		text.Valid = text.String != ""
-	}
+	)
+
+	query := `
+		INSERT INTO chat.client (
+			type,
+			name,
+			first_name,
+			last_name,
+			number,
+			external_id,
+			created_at			
+		)
+		VALUES (
+			$1,
+			$2,
+			$3,
+			$4,
+			$5,
+			$6,
+			$7
+		)
+		RETURNING
+			id
+	`
 
 	// PERFORM
-	err := repo.db.GetContext(ctx, &c.ID,
-		"INSERT INTO chat.client (name, number, created_at, external_id, first_name, last_name) "+
-			"VALUES ($1, $2, $3, $4, $5, $6) "+
-			"RETURNING id",
-
+	err := repo.db.GetContext(ctx, &c.ID, query,
+		c.Type,
 		c.Name,
-		c.Number,
-		c.CreatedAt,
-		c.ExternalID,
 		c.FirstName,
 		c.LastName,
+		c.Number,
+		c.ExternalID,
+		c.CreatedAt,
 	)
 
 	if err != nil {
@@ -125,6 +179,7 @@ func (repo *sqlxRepository) CreateClient(ctx context.Context, c *Client) error {
 
 	repo.log.Info("CONTACT",
 		"oid", c.ID,
+		"type", c.Type.String,
 		"name", c.Name.String,
 		"phone", c.Number.String,
 		"contact", c.ExternalID.String,

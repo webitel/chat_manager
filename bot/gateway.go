@@ -412,6 +412,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 			// external client contact
 			ExternalId: contact.Contact,
 			Username:   title,
+			Type:       c.Provider,
 		}
 		// passthru request cancellation context
 		chat, err := c.Internal.Client.CheckSession(ctx, &lookup)

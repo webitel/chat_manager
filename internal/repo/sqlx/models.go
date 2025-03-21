@@ -196,6 +196,7 @@ func (m *Channel) Scan(row *sql.Rows) error {
 
 type Client struct {
 	ID         int64          `db:"id" json:"id"`
+	Type       sql.NullString `db:"type" json:"type,omitempty"`
 	Name       sql.NullString `db:"name" json:"name,omitempty"`
 	Number     sql.NullString `db:"number" json:"number,omitempty"`
 	CreatedAt  time.Time      `db:"created_at" json:"created_at,omitempty"`
