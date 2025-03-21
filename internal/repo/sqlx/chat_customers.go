@@ -384,9 +384,9 @@ func getContactsQuery(req *app.SearchOptions) (ctx chatContactsQuery, err error)
 				ctx.Params.set("via.name", vs)
 				if !viaPortal {
 					// FROM [chat.bot] ONLY !
-					gateQ = gateQ.Where(
+					gateQ = gateQ.Where(fmt.Sprintf(
 						"e.name %s :via.name COLLATE \"default\"", eq,
-					)
+					))
 				} else if !viaGateway {
 					// FROM [portal.service_app] ONLY !
 					portQ = portQ.Where(fmt.Sprintf(
@@ -394,9 +394,9 @@ func getContactsQuery(req *app.SearchOptions) (ctx chatContactsQuery, err error)
 					))
 				} else {
 					// .. UNION ALL ..
-					viaQ = viaQ.Where(
+					viaQ = viaQ.Where(fmt.Sprintf(
 						"e.name %s :via.name COLLATE \"default\"", eq,
-					)
+					))
 				}
 				ok = true // applied !
 			}
