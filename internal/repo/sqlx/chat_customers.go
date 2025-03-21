@@ -1,59 +1,65 @@
 package sqlxrepo
 
 import (
+	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	sq "github.com/Masterminds/squirrel"
-
-	"github.com/lib/pq"
+	"github.com/google/uuid"
+	"github.com/jackc/pgtype"
+	"github.com/jmoiron/sqlx"
 	"github.com/micro/micro/v3/service/errors"
 	pb "github.com/webitel/chat_manager/api/proto/chat/messages"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/store/postgres"
 )
 
-const (
-	ASC  = " ASC"
-	DESC = " DESC"
-)
-
 type chatCustomersArgs struct {
+	// indicates whether 'portal' users are supported
+	ViaPortal bool
 	// Paging
 	Page int
 	Size int
-
-	// Sorting
-	Sort []string
-
 	// Output
 	Fields []string
-
 	// Authorization
 	PDC  int64
 	Self int64
-
 	// Arguments
 	Q    string
 	ID   []string
-	Type string
 	Via  *pb.Peer
+	Type string
+}
+
+func (e *chatCustomersArgs) indexField(name string) int {
+	var i, n = 0, len(e.Fields)
+	for ; i < n && e.Fields[i] != name; i++ {
+		// match: by <name>
+	}
+	if i < n {
+		return i
+	}
+	return -1
 }
 
 func getCustomersInput(req *app.SearchOptions) (args chatCustomersArgs, err error) {
 
-	// NOTE: Set default arguments.
+	args.ViaPortal = portal.ok
+
+	args.Q = req.Term
+	if app.IsPresent(args.Q) {
+		args.Q = "" // clear; ignore
+	}
 	args.PDC = req.Context.Creds.Dc
-	args.Q = ""
-	args.Sort = []string{"name"}
-	args.Page = 1
-	args.Size = 5
+	args.Page = req.GetPage()
+	args.Size = req.GetSize()
 	args.Fields = app.FieldsFunc(
-		req.Fields,
+		req.Fields, // app.InlineFields,
 		app.SelectFields(
 			// default
 			[]string{
@@ -68,77 +74,18 @@ func getCustomersInput(req *app.SearchOptions) (args chatCustomersArgs, err erro
 		),
 	)
 
-	// NOTE: Set the search term (Q) if it's provided. If Q is '*' (wildcard), ignore it.
-	if !app.IsPresent(req.Term) {
-		args.Q = req.Term
-	}
-
-	// NOTE: Set the page number if it is greater than 0, else default to 1.
-	if req.Page > 0 {
-		args.Page = req.Page
-	}
-
-	// NOTE: Set the size of the page (number of results per page) if it's greater than 0, else default to 5.
-	if req.Size > 0 {
-		args.Size = req.Size
-	}
-
-	// NOTE: Check if there are sorting fields provided. If so, validate them and adjust the sort order.
-	if len(req.Order) > 0 {
-		args.Sort = app.FieldsFunc(req.Order, app.InlineFields)
-
-		specialChars := []byte{'+', '-', '!', ' '}
-		for _, spec := range args.Sort {
-			if slices.Contains(specialChars, spec[0]) {
-				spec = spec[1:]
-			}
-
-			switch spec {
-			case "id", "type", "name":
-				// Pass
-
-			default:
-				err = errors.BadRequest(
-					"customers.query.sort.input",
-					"customers( sort: [%s] ); input: no field support",
-					spec,
-				)
-				return
-			}
-		}
-	}
-
-	// NOTE: Sort the fields for the request and remove any duplicates.
-	slices.Sort(args.Fields)
-	args.Fields = slices.Compact(args.Fields)
-	for _, field := range args.Fields {
-		switch field {
-		case "id", "type", "name", "via":
-			// Pass
-
-		default:
-			err = errors.BadRequest(
-				"customers.query.fields.input",
-				"customers{ %s }; input: no such field",
-				field,
-			)
-			return
-		}
-	}
-
 	var (
 		inputId = func(input any) error {
 			switch data := input.(type) {
 			case []string:
-				if len(data) > 0 {
-					args.ID = data
-				}
-
+				args.ID = data
 			case string:
-				if data != "" {
-					args.ID = []string{data}
+				if data == "" {
+					break // omitted
 				}
-
+				args.ID = []string{
+					data,
+				}
 			default:
 				return errors.BadRequest(
 					"customers.query.id.input",
@@ -146,27 +93,28 @@ func getCustomersInput(req *app.SearchOptions) (args chatCustomersArgs, err erro
 					input,
 				)
 			}
+			// for _, id := range args.ID {
 
-			return nil
+			// }
+			return nil // OK
 		}
-
 		inputVia = func(input any) error {
 			switch data := input.(type) {
 			case int64:
-				if data > 0 {
+				if 1 < data {
 					return errors.BadRequest(
 						"customers.query.via.id.input",
 						"customers( via.id: int! ); input: negative id",
 					)
 				}
-
+				// if args.Via != nil {
+				// 	// ERR: ambiguous
+				// }
 				args.Via = &pb.Peer{
 					Id: strconv.FormatInt(data, 10),
 				}
-
 			case *pb.Peer:
 				args.Via = data
-
 			default:
 				return errors.BadRequest(
 					"customers.query.via.input",
@@ -174,446 +122,969 @@ func getCustomersInput(req *app.SearchOptions) (args chatCustomersArgs, err erro
 					input,
 				)
 			}
-
 			// Validate
 			if via := args.Via; via != nil {
 				vs := via.GetId() != ""
 				vs = vs || via.GetType() != ""
 				vs = vs || via.GetName() != ""
-
 				if !vs { // NO value ! skip
 					args.Via = nil
 				}
 			}
-
-			return nil
+			return nil // OK
 		}
 	)
 
-	// NOTE: Loop through the filter parameters in the request and handle each one based on the field.
 	for param, input := range req.Filter {
 		switch param {
 		case "id":
-			err = inputId(input)
-
-		case "via":
-			err = inputVia(input)
-
-		case "type":
-			switch data := input.(type) {
-			case string:
-				if data != "" {
-					args.Type = data
-				}
-
-			default:
-				err = errors.BadRequest(
-					"customers.query.type.input",
-					"customers( type: string ); input: convert %T",
-					input,
-				)
+			{
+				err = inputId(input)
 			}
-
+		case "via":
+			{
+				err = inputVia(input)
+			}
+		case "type":
+			{
+				switch data := input.(type) {
+				case string:
+					if data == "" {
+						break // omitted
+					}
+					args.Type = data
+				default:
+					err = errors.BadRequest(
+						"customers.query.type.input",
+						"customers( type: string ); input: convert %T",
+						input,
+					)
+				}
+			}
 		case "self":
 			args.Self = req.Creds.UserId
-
 		default:
 			err = errors.BadRequest(
 				"customers.query.args.error",
 				"customers( %s: ? ); input: no such argument",
 				param,
 			)
-			return
+			return // args, err
 		}
 	}
 
-	return
+	return // args, nil
+}
+
+// [TODO]: refactor !
+// GLOBAL[ONCE]: schema 'portal' support ?
+var portal = struct {
+	once sync.Once // guards [withSchemaPortal]
+	ok   bool      // WITH 'portal' schema support
+}{}
+
+// CHECK postgres has 'portal' service schema installed
+func withSchemaPortal(ctx context.Context, dc *sqlx.DB) func() {
+	return func() {
+		var ok pgtype.Bool
+		err := dc.QueryRowContext(ctx,
+			"SELECT true FROM pg_catalog.pg_tables e "+
+				"WHERE e.schemaname = 'portal' AND e.tablename = 'service_app'",
+		).Scan(&ok)
+		// resolved as:
+		portal.ok = (err == nil && ok.Bool)
+	}
 }
 
 type chatContactsQuery struct {
-	SELECT
-
 	input chatCustomersArgs
+	SELECT
+	peers dataFetch[*pb.Customer]
+	// vias  dataFetch[*pb.Peer]
 	fetch func(*sql.Rows, *pb.ChatCustomers) error
+}
+
+func (c *chatContactsQuery) ToSql() (query string, args []any, err error) {
+	query, args, err = c.SELECT.ToSql()
+	// used to passthru '?' mark as postgres operator
+	// and prevent Sqlizer.ToSql() multi [un]escaping
+	query = strings.ReplaceAll(query, "_QM_", "?")
+	return
 }
 
 func getContactsQuery(req *app.SearchOptions) (ctx chatContactsQuery, err error) {
 
-	// NOTE: Get input from the request and handle any error if occurs.
 	ctx.input, err = getCustomersInput(req)
 	if err != nil {
-		return
+		return // ctx, err
 	}
 
-	// NOTE: Set parameters for the query, including "pdc" from the input.
 	ctx.Params = params{
 		"pdc": ctx.input.PDC,
 	}
 
-	// NOTE: Construct the base query for retrieving peers data from the database.
-	peerQuery := postgres.PGSQL.
-		Select(
-			`DISTINCT ON (x.external_id, c.type, x.name) x.external_id AS id`,
-			`c.type`,
-			`x.name`,
-			`COALESCE(
-				array_agg(DISTINCT b.id::::text) FILTER (WHERE b.id IS NOT NULL), ARRAY[]::::text[]
-			) ||
-        	COALESCE(
-				array_agg(DISTINCT sa.id::::text) FILTER (WHERE sa.id IS NOT NULL), ARRAY[]::::text[]
-			) AS via_ids`,
-		).
-		From(`chat.client x`).
-		Join(`
-			chat.channel c 
-			ON x.id = c.user_id 
-			AND c.domain_id = :pdc
-		`).
-		LeftJoin(`
-			chat.bot b 
-			ON c.connection::::int8 > 0 
-			AND b.id = c.connection::::int8 
-			AND b.dc = :pdc
-		`).
-		LeftJoin(`
-			portal.user_account ua
-			ON c.connection::::int8 = 0
-			AND (
-				CASE 
-					WHEN c.type = 'portal' 
-					THEN x.external_id::::uuid = ua.id 
-					ELSE false 
-				END
-			)
-		`).
-		LeftJoin(`
-			portal.user_service us 
-			ON us.account_id = ua.id
-		`).
-		LeftJoin(`
-			portal.service_app sa 
-			ON sa.service_id = us.service_id
-		`).
-		Where(`NOT c.internal`).
-		GroupBy(`x.external_id, c.type, x.name`)
+	// region: ----- resolve: type, via -----
+	const (
+		left = "c" // [FROM] alias
+	)
 
-	// NOTE: If there is a search query (`Q`), add a condition to the query for filtering by `x.name`.
-	if ctx.input.Q != "" {
-		ctx.Params.set("q", app.Substring(ctx.input.Q))
-		peerQuery = peerQuery.Where("x.name ILIKE :q COLLATE \"default\"")
-	}
-
-	// NOTE: If there are IDs provided in the input, filter results by `external_id` using the `ANY` operator.
-	if len(ctx.input.ID) > 0 {
-		ctx.Params.set("id", ctx.input.ID)
-		peerQuery = peerQuery.Where(sq.Expr("x.external_id = ANY(:id)"))
-	}
-
-	// NOTE: If a `type` is provided, filter results by `c.type`.
-	if ctx.input.Type != "" {
-		ctx.Params.set("type", ctx.input.Type)
-		peerQuery = peerQuery.Where("c.type = :type")
-	}
-
-	// NOTE: If pagination is specified, apply offset and limit to the query.
-	if ctx.input.Size > 0 {
-		if ctx.input.Page > 1 {
-			peerQuery = peerQuery.Offset(uint64((ctx.input.Page - 1) * ctx.input.Size))
-		}
-		peerQuery = peerQuery.Limit(uint64(ctx.input.Size + 1))
-	}
-
-	// NOTE: Iterate through the sort specifications and process each one for ordering the query.
-	if len(ctx.input.Sort) > 0 {
-		for _, spec := range ctx.input.Sort {
-			order := ASC
-
-			// NOTE: Process the sorting symbols to determine the order (ascending or descending).
-			switch spec[0] {
-			case '+', ' ':
-				spec = spec[1:]
-
-			case '-', '!':
-				spec = spec[1:]
-				order = DESC
-			}
-
-			// NOTE: Translate sorting field names to database column identifiers.
-			switch spec {
-			case "id":
-				spec = "x.external_id"
-
-			case "type":
-				spec = "c.type"
-
-			case "name":
-				spec = "x.name"
-			}
-
-			// NOTE: Apply the sorting to the query using the processed field and order.
-			peerQuery = peerQuery.OrderBy(spec + order)
-		}
-	}
-
-	// NOTE: Check if `via` input is provided and process filtering conditions by via's id|type|name.
-	if via := ctx.input.Via; via != nil {
-		if via.Id != "" {
-			ctx.Params.set("via_id", via.Id)
-			peerQuery = peerQuery.Where("b.id::::text = :via_id OR sa.id::::text = :via_id")
-		}
-
-		if via.Type != "" {
-			if via.Type == "portal" {
-				peerQuery = peerQuery.Where("c.connection::::int8 = 0")
-			} else {
-				ctx.Params.set("via_type", via.Type)
-				peerQuery = peerQuery.Where("b.provider = :via_type")
-			}
-		}
-
-		if via.Name != "" {
-			ctx.Params.set("via_name", via.Name)
-			peerQuery = peerQuery.Where("b.name = :via_name OR sa.app = :via_name")
-		}
-	}
-
-	// NOTE: Iterate through the `ctx.input.Fields` to decide which fields to select and whether to include the `via` field.
-	var withVia bool
-	var peerSelectFields []string
-	for _, field := range ctx.input.Fields {
-		switch field {
-		case "id":
-			peerSelectFields = append(peerSelectFields, "p.id")
-
-		case "type":
-			peerSelectFields = append(peerSelectFields, "p.type")
-
-		case "name":
-			peerSelectFields = append(peerSelectFields, "p.name")
-
-		case "via":
-			withVia = true
-		}
-	}
-
-	// NOTE: Create a CTE named "peer" with the previously constructed query `peerQuery` as its expression.
-	ctx.With(CTE{
-		Name: "peer",
-		Expr: peerQuery,
-	})
-
-	// NOTE: Check if the "via" field is not selected; if not, execute a basic query on the "peer" CTE.
-	if !withVia {
-		ctx.Query = postgres.PGSQL.
-			Select(peerSelectFields...).
-			From(`peer p`)
-
-		ctx.fetch = ctx.scanContactsRows
-
-		return
-	}
-
-	// NOTE: Define a Common Table Expression (CTE) named "via" with the SQL query to fetch related via information.
-	ctx.With(CTE{
-		Name: "via",
-		Expr: postgres.PGSQL.
-			Select(
-				`DISTINCT COALESCE(b.id::::text, sa.id::::text) AS id`,
-				`COALESCE(b.provider, 'portal') AS type`,
-				`COALESCE(b.name, sa.app) AS name`,
-			).
-			FromSelect(
-				postgres.PGSQL.
-					Select(`*`).
-					From(`peer`).
-					Limit(uint64(ctx.input.Size)),
-				`p`,
-			).
-			LeftJoin(`
-				chat.bot b 
-				ON b.id::::text = ANY(p.via_ids)
-			`).
-			LeftJoin(`
-				portal.service_app sa 
-				ON sa.id::::text = ANY(p.via_ids)
-			`),
-	})
-
-	// NOTE: Prepare the select fields for the final query by including the "via_ids" and peer fields.
-	selectFields := []string{"'via_ids', p.via_ids"}
-	for _, field := range peerSelectFields {
-		selectFields = append(selectFields, fmt.Sprintf("'%s', %s", field[2:], field))
-	}
-
-	// NOTE: Construct the final query with selected fields and join the "peer" and "via" CTEs for the final data fetch.
 	ctx.Query = postgres.PGSQL.
 		Select(
-			fmt.Sprintf(`
-				ARRAY(
-					SELECT json_build_object(%s)
-					FROM peer p
-				) AS peer`, strings.Join(selectFields, ",")),
-			`ARRAY(
-				SELECT json_build_object(
-					'id', v.id, 
-					'type', v.type, 
-					'name', v.name
-				) 
-				FROM via v
-			) AS via`).
-		From(`peer p`).
-		From(`via v`)
+			ident(left, "type"),
+			ident(left, "user_id"),
+			"array_agg(distinct via.id)filter(where via.id notnull)via",
+		).
+		From(
+			"chat.channel "+left,
+		).
+		Where(
+			ident(left, "domain_id")+" = :pdc",
+		).
+		Where(
+			"NOT "+ident(left, "internal"), // REFERENCE chat.client
+		).
+		GroupBy(
+			ident(left, "user_id"),
+			ident(left, "type"),
+		)
+	// peers( type: string )
+	switch typeOf := ctx.input.Type; typeOf {
+	case "", "*":
+		// ANY ; disable !
+		ctx.input.Type = ""
+	default:
+		{
+			eq, vs := "=", any(typeOf)
+			if strings.ContainsAny(typeOf, "*?") {
+				eq, vs = "ILIKE", app.Substring(typeOf)
+			}
+			ctx.Params.set("peer.type", vs)
+			ctx.Query = ctx.Query.Where(fmt.Sprintf(
+				"%s %s :peer.type COLLATE \"C\"",
+				ident(left, "type"), eq,
+			))
+		}
+	}
+	// context via.* filter(s) ..
+	var (
+		cteVia     string                // optional: [via] gateways selection
+		viaPortal  = ctx.input.ViaPortal // support: schema [portal] installed ?
+		viaGateway = true                // support: default !
+	)
+	// peers( via: peer )
+	if via := ctx.input.Via; via != nil {
+		// PREPARE Filter [VIA] Query
+		var (
+			ok                 bool             // ANY of via.* filter(s) applied ?
+			gateQ, portQ, viaQ sq.SelectBuilder // query part(s) FROM
+		)
 
-	// NOTE: Set the function to scan the results, including both peer and via data.
-	ctx.fetch = ctx.scanContactsRowsWithVia
+		// [viaGateway:true]
+		gateQ = psql.Select().
+			Columns(
+				"e.id::::text", // int8
+				"e.provider \"type\"",
+				"e.name",
+			).
+			From("chat.bot e").
+			Where("e.dc = :pdc")
 
-	return
-}
+		viaQ = psql.Select()
 
-type sqlVia struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Type string `json:"type"`
-}
-
-func (v *sqlVia) Scan(value any) error {
-	switch data := value.(type) {
-	case []byte:
-		err := json.Unmarshal(data, v)
-		if err != nil {
-			return fmt.Errorf("error: parsing JSON: %v", err)
+		if viaPortal {
+			portQ = psql.Select().
+				Columns(
+					"e.id::::text",      // uuid
+					"'portal' \"type\"", // "type"
+					"e.app \"name\"",    // "name"
+				).
+				From("portal.service_app e").
+				Where("e.dc = :pdc")
+		}
+		switch via.Id {
+		case "", "*":
+			// ANY ; disable !
+			via.Id = ""
+		default:
+			{
+				// Valid INT ?
+				if oid, _ := strconv.ParseInt(via.Id, 10, 64); oid > 0 {
+					ok = true                     // applied !
+					viaPortal = false             // exclude !
+					ctx.Params.set("via.id", oid) // int8
+					gateQ = gateQ.Where(
+						"e.id = :via.id",
+					)
+				} else if ctx.input.ViaPortal {
+					// Valid UUID ?
+					if pid, not := uuid.Parse(via.Id); not == nil {
+						ok = true                     // applied !
+						viaGateway = false            // exclude !
+						ctx.Params.set("via.id", pid) // uuid
+						portQ = portQ.Where(
+							":via.id = ANY(ARRAY[e.id,e.service_id])",
+						)
+					}
+				}
+				// applied ?
+				if !ok {
+					return ctx, errors.BadRequest(
+						"customers.query.via.id.input",
+						"customers( via.id: string ); input: invalid id",
+					)
+				}
+			}
+		}
+		switch via.Type {
+		case "", "*":
+			// ANY ; disable !
+			via.Type = ""
+		default:
+			{
+				// optimize simple case
+				if strings.ToLower(via.Type) == "portal" {
+					if viaPortal { // oneof !
+						viaGateway = false // disable !
+					}
+				}
+				eq, vs := "=", any(strings.ToLower(via.Type))
+				if strings.ContainsAny(via.Type, "*?") {
+					eq, vs = "ILIKE", app.Substring(via.Type)
+				}
+				ctx.Params.set("via.type", vs)
+				if !viaPortal {
+					// FROM [chat.bot] ONLY !
+					gateQ = gateQ.Where(fmt.Sprintf(
+						"e.provider %s :via.type COLLATE \"C\"", eq,
+					))
+				} else if !viaGateway {
+					// FROM [portal.service_app] ONLY !
+					portQ = portQ.Where(fmt.Sprintf(
+						"'portal' %s :via.type COLLATE \"C\"", eq,
+					))
+				} else {
+					// .. UNION ALL ..
+					viaQ = viaQ.Where(fmt.Sprintf(
+						"e.type %s :via.type COLLATE \"C\"", eq,
+					))
+				}
+				ok = true // applied !
+			}
+		}
+		switch via.Name {
+		case "", "*":
+			// ANY ; disable !
+			via.Name = ""
+		default:
+			{
+				eq, vs := "ILIKE", any(via.Name) // case:ignore MATCH
+				if strings.ContainsAny(via.Name, "*?") {
+					vs = app.Substring(via.Name)
+				}
+				ctx.Params.set("via.name", vs)
+				if !viaPortal {
+					// FROM [chat.bot] ONLY !
+					gateQ = gateQ.Where(
+						"e.name %s :via.name COLLATE \"default\"", eq,
+					)
+				} else if !viaGateway {
+					// FROM [portal.service_app] ONLY !
+					portQ = portQ.Where(fmt.Sprintf(
+						"e.app %s :via.name COLLATE \"default\"", eq,
+					))
+				} else {
+					// .. UNION ALL ..
+					viaQ = viaQ.Where(
+						"e.name %s :via.name COLLATE \"default\"", eq,
+					)
+				}
+				ok = true // applied !
+			}
 		}
 
-	default:
-		return fmt.Errorf("error: invalid value type")
-	}
+		// applied ?
+		if ok {
+			// BUILD
+			if !viaPortal {
+				// FROM [chat.bot] ONLY !
+				viaQ = gateQ
+			} else if !viaGateway {
+				// FROM [portal.service_app] ONLY !
+				viaQ = portQ
+			} else {
+				// SELECT id, type, name .. UNION ALL ..
+				// preserve [viaQ] prepared filter(s) applied !
+				viaQ = viaQ.Columns("*").FromSelect(
+					gateQ.SuffixExpr(portQ.Prefix("UNION ALL")),
+					"e", // alias
+				)
+			}
+			if via.Id != "" {
+				// [finally]: select [:via.id] as [deleted] gateway
+				// to be still able to query historical records
+				viaQ = psql.Select(
+					"DISTINCT ON (id) *", // id, "type", "name"
+				).FromSelect(
+					// UNION order matters !
+					// first [found] than [deleted] !
+					viaQ.Suffix("UNION ALL "+
+						"SELECT (:via.id)::::text, NULL, '[deleted]'",
+					), "e",
+				)
+			}
 
-	return nil
-}
+			// filter [via] gateway(s) requested, FIRST !
+			cteVia = "q" // selected !
+			ctx.With(
+				CTE{Name: cteVia, Expr: viaQ},
+			)
 
-type sqlPeer struct {
-	ID     string   `json:"id"`
-	Type   string   `json:"type"`
-	Name   string   `json:"name"`
-	ViaIDs []string `json:"via_ids"`
-}
-
-func (p *sqlPeer) Scan(value any) error {
-	switch data := value.(type) {
-	case []byte:
-		err := json.Unmarshal(data, p)
-		if err != nil {
-			return fmt.Errorf("error: parsing JSON: %v", err)
+			// normalized by filter(s) set ..
+			ctx.input.ViaPortal = viaPortal
 		}
-
-	default:
-		return fmt.Errorf("error: invalid value type")
 	}
 
-	return nil
+	// PROJECT: [chat.channel] gateway.id, a.k.a "via", relation ..
+	// [NOTE]: "_QM_" stands for [Q]uestion[M]ark, as an alias !
+	// '?' is used by [squirrel] as a default SQL parameter placeholder
+	// so its hard to pass thru as a part of SQL (operator, in our case)
+	//
+	// here we inject "_QM_" as a placeholder, which will be replaced on [chatContactsQuery.ToSql] method
+	var chatViaQ string // [chat.channel] column text
+	if !viaPortal {
+		// FROM [chat.bot] ONLY !
+		chatViaQ = "SELECT %[1]s.connection WHERE %[1]s.connection::::int8 > 0"
+	} else if !viaGateway {
+		// FROM [portal.service_app] ONLY !
+		// ::uuid::text ; normalize UUID for GROUP BY clause
+		chatViaQ = "SELECT (%[1]s.props->>'portal.client.id')::::uuid::::text" +
+			" WHERE %[1]s.type = 'portal' AND %[1]s.props _QM_ 'portal.client.id'"
+	} else {
+		// .. UNION ALL ..
+		chatViaQ = `SELECT
+		(
+			CASE
+			WHEN %[1]s.type = 'portal' AND %[1]s.props _QM_ 'portal.client.id'
+			THEN (%[1]s.props->>'portal.client.id')::::uuid::::text
+			WHEN %[1]s.connection::::int8 > 0
+			THEN %[1]s.connection -- chat.bot::text
+			END
+		)`
+	}
+	ctx.Query = ctx.Query.JoinClause(CompactSQL(fmt.Sprintf(
+		"LEFT JOIN LATERAL ("+chatViaQ+") via(id) ON true", left,
+	)))
+	if cteVia != "" {
+		// select [chat.channel] for requested gateway(s) ONLY !
+		ctx.Query = ctx.Query.
+			JoinClause("JOIN q ON via.id = q.id") // INNER
+	}
+
+	peerQ := ctx.Query
+
+	ctx.Query = postgres.PGSQL.
+		Select(
+			ident("x", "external_id")+" id", // text
+			ident("c", "type"),              // text
+		).
+		From(
+			"chat.client x",
+		).
+		JoinClause(&JOIN{
+			Kind:  "JOIN", // INNER; type, via ...
+			Table: peerQ.Prefix("(").Suffix(")"),
+			Alias: "c",
+			Pred:  sq.Expr("c.user_id = x.id"),
+		})
+
+	// peers( q: string )
+	if q := ctx.input.Q; q != "" && !app.IsPresent(q) {
+		eq, vs := "=", any(q)
+		if strings.ContainsAny(q, "*?") {
+			eq, vs = "ILIKE", app.Substring(q)
+		}
+		ctx.Params.set("q", vs)
+		ctx.Query = ctx.Query.Where(fmt.Sprintf(
+			"%s %s :q COLLATE \"default\"",
+			ident("x", "name"), eq,
+		))
+	}
+	// peers( id: [string!] )
+	if n := len(ctx.input.ID); n > 0 {
+		var id pgtype.TextArray
+		err = id.Set(ctx.input.ID)
+		if err != nil {
+			return // nil, err
+		}
+		eq, vs := " = ANY(:id)", any(&id)
+		if n == 1 {
+			eq, vs = " = :id", &id.Elements[0]
+		}
+		ctx.Params.set("id", vs)
+		ctx.Query = ctx.Query.Where(
+			ident("x", "external_id") + eq,
+		)
+	}
+	// peers( sort: fields )
+	// [ORDER-BY]: sort
+	const (
+		ASC  = " ASC"
+		DESC = " DESC"
+	)
+	var (
+		order string
+		sort  = app.FieldsFunc(
+			req.Order, app.InlineFields,
+		)
+	)
+	if len(sort) == 0 {
+		sort = []string{
+			"name", // ALPHA
+		}
+	}
+	for _, spec := range sort {
+		order = ASC // default
+		switch spec[0] {
+		// NOT URL-encoded PLUS '+' char
+		// we will get as SPACE ' ' char
+		case '+', ' ': // be loyal; URL(+) == ' '
+			spec = spec[1:]
+		case '-', '!':
+			spec = spec[1:]
+			order = " DESC"
+		}
+		switch spec {
+		// complex
+		case "id":
+			{
+				spec = ident("x", "external_id")
+			}
+		case "type":
+			{
+				spec = ident("c", "type")
+			}
+		case "name":
+			{
+				spec = ident("x", "name")
+			}
+		// case "via":
+		// 	{
+		// 		// TODO !!!!
+		// 		spec = ident(left, spec)
+		// 		// SELECT * FROM unnest('{f,t,NULL}'::bool[]) ORDER BY 1 ASC;
+		// 		// ASC  [false, true, NULL]
+		// 		// DESC [NULL, true, false]
+		// 		switch order {
+		// 		case ASC:
+		// 			order = " DESC NULLS LAST"
+		// 		default: // DESC
+		// 			order = " ASC NULLS FIRST"
+		// 		}
+		// 	}
+		default:
+			{
+				err = errors.BadRequest(
+					"customers.query.sort.input",
+					"customers( sort: [%s] ); input: no field support",
+					spec,
+				)
+				return // nil, err
+			}
+		}
+		ctx.Query = ctx.Query.
+			OrderBy(spec + order)
+	}
+	// [OFFSET|LIMIT]: paging
+	if size := req.GetSize(); size > 0 {
+		// OFFSET (page-1)*size -- omit same-sized previous page(s) from result
+		if page := req.GetPage(); page > 1 {
+			ctx.Query = ctx.Query.Offset(
+				(uint64)((page - 1) * (size)),
+			)
+		}
+		// LIMIT (size+1) -- to indicate whether there are more result entries
+		ctx.Query = ctx.Query.Limit(
+			(uint64)(size + 1),
+		)
+	}
+	// endregion: ----- resolve: type, via -----
+
+	// region: ----- select: fields -----
+	ctx.peers = dataFetch[*pb.Customer]{
+		// id
+		func(node *pb.Customer) any {
+			return postgres.Text{Value: &node.Id}
+		},
+		// type
+		func(node *pb.Customer) any {
+			return postgres.Text{Value: &node.Type}
+		},
+	}
+
+	var (
+		withVia = false
+		columns = make([]string, 0, 2) // except: id, type
+		column  = func(name string) bool {
+			var e, n = 0, len(columns)
+			for ; e < n && columns[e] != name; e++ {
+				// lookup: already queried ?
+			}
+			if e < n {
+				// FOUND !
+				return false
+			}
+			// NOT FOUND !
+			columns = append(columns, name)
+			return true
+		}
+	)
+	for _, field := range ctx.input.Fields {
+		switch field {
+		// core:identity
+		case "id":
+		case "type":
+		// user:fields
+		case "name":
+			if !column("name") {
+				break // duplicate
+			}
+			ctx.Query = ctx.Query.Column(
+				ident("x", "name"), // text
+			)
+			ctx.peers = append(ctx.peers,
+				func(node *pb.Customer) any {
+					return postgres.Text{Value: &node.Name}
+				},
+			)
+		case "via":
+			if !column("via") {
+				break // duplicate
+			}
+			ctx.Query = ctx.Query.Column(
+				ident("c", "via"), // text[] -- int8[] | uuid[]
+			)
+			ctx.peers = append(ctx.peers,
+				func(node *pb.Customer) any {
+					return postgres.Text{Value: &node.Name}
+				},
+			)
+			// TODO: prepare VIAs query !!!
+			withVia = true
+		default:
+			err = errors.BadRequest(
+				"customers.query.fields.input",
+				"customers{ %s }; input: no such field",
+				field,
+			)
+		}
+	}
+	// endregion: ----- select: fields -----
+
+	if !withVia {
+		ctx.fetch = ctx.scanPageRows
+		return // ctx, nil
+	}
+	// Complex selection
+	const (
+		viewVia  = "via"  // gateways
+		viewPeer = "peer" // contacts
+	)
+	ctx.With(CTE{
+		Name: viewPeer,
+		Expr: ctx.Query,
+	})
+	// [VIEW]: via
+	viaQ := postgres.PGSQL.
+		Select(
+			"e.id",
+			// "type", "name" projection below ..
+		).
+		From(CompactSQL(
+			`(
+					SELECT UNNEST(via) id --, "type" -- [contact] type
+						FROM peer
+					GROUP BY 1 --, 2 -- [NOTE]: gateway[ messenger ]; contacts[ facebook, instagram, whatsapp ]
+				) e`,
+		))
+
+	if cteVia != "" {
+		// JOIN WITH filter(s) select[ed]
+		viaQ = viaQ.JoinClause(CompactSQL(fmt.Sprintf(
+			`LEFT JOIN %s q ON q.id = e.id`,
+			cteVia,
+		))).Columns(
+			"q.type",
+			"coalesce(q.name, '[deleted]') \"name\"",
+		)
+	} else if !viaPortal {
+		// FROM [chat.bot] ONLY !
+		viaQ = viaQ.JoinClause(CompactSQL(
+			`LEFT JOIN chat.bot b ON b.dc = :pdc AND b.id::::text = e.id`,
+		)).Columns(
+			"b.provider \"type\"",
+			"coalesce(b.name, '[deleted]') \"name\"",
+		)
+	} else if !viaGateway {
+		// FROM [portal.service_app] ONLY !
+		viaQ = viaQ.JoinClause(CompactSQL(
+			`LEFT JOIN portal.service_app a ON a.dc = :pdc AND a.id::::text = e.id`,
+		)).Columns(
+			"(select 'portal' where a.id notnull) \"type\"",
+			"coalesce(a.app, '[deleted]') \"name\"",
+		)
+	} else {
+		// .. UNION ALL ..
+		viaQ = viaQ.JoinClause(CompactSQL(
+			`LEFT JOIN chat.bot b ON b.dc = :pdc AND b.id::::text = e.id`,
+		)).JoinClause(CompactSQL(
+			`LEFT JOIN portal.service_app a ON a.dc = :pdc AND a.id::::text = e.id`,
+		)).Columns(
+			"(case when a.id notnull then 'portal' else b.provider end) \"type\"",
+			"coalesce(b.name, a.app, '[deleted]') \"name\"",
+		)
+	}
+
+	ctx.With(CTE{
+		Name: viewVia,
+		Expr: viaQ,
+	})
+
+	ctx.Query = postgres.PGSQL.
+		Select(
+			"ARRAY(SELECT e FROM via e) via",
+			"ARRAY(SELECT e FROM peer e) peer",
+		)
+
+	ctx.fetch = ctx.scanPageData
+	return // ctx, nil
 }
 
-func (ctx *chatContactsQuery) scanContactsRows(rows *sql.Rows, into *pb.ChatCustomers) error {
+func (ctx *chatContactsQuery) scanPageRows(rows *sql.Rows, into *pb.ChatCustomers) (err error) {
 
-	// NOTE: scan all rows and set peers to response
+	var (
+		node *pb.Customer
+		heap []pb.Customer
+
+		page = into.GetPeers() // input
+		data []*pb.Customer    // output
+
+		plan = ctx.peers
+		eval = make([]any, len(plan))
+		size = ctx.input.Size
+	)
+
+	if 0 < size {
+		data = make([]*pb.Customer, 0, size)
+	}
+
+	if n := size - len(page); 1 < n {
+		heap = make([]pb.Customer, n) // mempage; tidy
+	}
+
+	var (
+		r, c int // row, column
+	)
+	into.Page = int32(ctx.input.Page) // request[ed]
 	for rows.Next() {
-		var peer sqlPeer
-
-		columnTypes, err := rows.ColumnTypes()
+		// LIMIT
+		if 0 < size && len(data) == size {
+			into.Next = true
+			if into.Page < 1 {
+				into.Page = 1 // default
+			}
+			break
+		}
+		// RECORD
+		node = nil // NEW
+		if r < len(page) {
+			// [INTO] given page records
+			// [NOTE] order matters !
+			node = page[r]
+		} else if len(heap) > 0 {
+			node = &heap[0]
+			heap = heap[1:]
+		}
+		// ALLOC
+		if node == nil {
+			node = new(pb.Customer)
+		}
+		// [BIND] data fields to scan row
+		c = 0
+		for _, bind := range plan {
+			df := bind(node)
+			if df != nil {
+				eval[c] = df
+				c++
+				continue
+			}
+		}
+		// FETCH; decode
+		err = rows.Scan(eval...)
 		if err != nil {
 			return err
 		}
-
-		references := make([]any, 0, len(columnTypes))
-		for _, columnType := range columnTypes {
-			switch columnType.Name() {
-			case "id":
-				references = append(references, &peer.ID)
-
-			case "type":
-				references = append(references, &peer.Type)
-
-			case "name":
-				references = append(references, &peer.Name)
-			}
-		}
-
-		err = rows.Scan(references...)
-		if err != nil {
-			return fmt.Errorf("error: reading the result: %v", err)
-		}
-
-		into.Peers = append(into.Peers, &pb.Customer{
-			Id:   peer.ID,
-			Name: peer.Name,
-			Type: peer.Type,
-		})
+		// output: list
+		data = append(data, node)
+		r++
 	}
 
-	// NOTE: Set next and page to response
-	limit := ctx.input.Size
-	size := len(into.Peers)
-	into.Page = int32(ctx.input.Page)
-	if limit > 0 && size > limit {
-		into.Next = true
-		into.Peers = into.Peers[:limit]
+	into.Peers = data
+	if !into.Next && into.Page < 2 {
+		into.Page = 0 // hide; this is all results available !
 	}
 
 	return nil
 }
 
-func (ctx *chatContactsQuery) scanContactsRowsWithVia(rows *sql.Rows, into *pb.ChatCustomers) error {
-	var vias []sqlVia
-	var peers []sqlPeer
+func (ctx *chatContactsQuery) scanPageData(rows *sql.Rows, into *pb.ChatCustomers) error {
 
-	// NOTE: scan only first row
-	if rows.Next() {
-		err := rows.Scan(pq.Array(&peers), pq.Array(&vias))
-		if err != nil {
-			return fmt.Errorf("error: reading the result: %v", err)
+	type (
+		via struct {
+			id    string // int64
+			node  *pb.Peer
+			alias pb.Peer
 		}
-	}
+	)
 
-	// NOTE: Set vias to response
-	for _, v := range vias {
-		into.Vias = append(into.Vias, &pb.Peer{
-			Id:   strings.ReplaceAll(v.ID, "-", ""),
-			Name: v.Name,
-			Type: v.Type,
-		})
-	}
-
-	// NOTE: Set peers to response
-	for _, p := range peers {
-		customer := &pb.Customer{
-			Id:   p.ID,
-			Name: p.Name,
-			Type: p.Type,
-			Via:  make([]*pb.Peer, 0, len(p.ViaIDs)),
-		}
-
-		for _, viaID := range p.ViaIDs {
-			index := slices.IndexFunc(vias, func(v sqlVia) bool {
-				return v.ID == viaID
-			})
-			if index != -1 {
-				customer.Via = append(customer.Via, &pb.Peer{
-					Id: strconv.Itoa(index + 1),
-				})
+	var (
+		vias   []*via
+		getVia = func(id string) *via {
+			var e, n = 0, len(vias)
+			for ; e < n && id != vias[e].id; e++ {
+				// lookup: match by original via( id: int! )
 			}
+			if e == n {
+				panic(fmt.Errorf("via( id: %d ); not fetched", id))
+			}
+			return vias[e]
 		}
+		fetch = []any{ // TextDecoder{
+			// via(s)
+			DecodeText(func(src []byte) error {
+				// parse: array(row(via))
+				rows, err := pgtype.ParseUntypedTextArray(string(src))
+				if err != nil {
+					return err
+				}
 
-		into.Peers = append(into.Peers, customer)
+				var (
+					data *via
+					node *pb.Peer
+					heap []pb.Peer
+
+					page = into.GetVias() // input
+					// data []*pb.Peer        // output
+
+					// eval = make([]any, 4) // len(ctx.plan))
+					size = len(rows.Elements)
+					// temporary
+					text pgtype.Text
+					// scan plan
+					scan = []TextDecoder{
+						// id
+						DecodeText(func(src []byte) error {
+
+							err := postgres.Text{ // .Int8
+								Value: &data.id,
+							}.DecodeText(nil, src)
+
+							if err == nil {
+								node.Id = data.id // strconv.FormatInt(data.id, 10)
+							}
+
+							return err
+						}),
+						// type
+						DecodeText(func(src []byte) error {
+							err := text.DecodeText(nil, src)
+							if err != nil {
+								return err
+							}
+							node.Type = text.String
+							return nil
+						}),
+						// name
+						DecodeText(func(src []byte) error {
+							err := text.DecodeText(nil, src)
+							if err != nil {
+								return err
+							}
+							node.Name = text.String
+							return nil
+						}),
+					}
+				)
+
+				if 0 < size {
+					// data = make([]*pb.Peer, 0, size)
+					vias = make([]*via, 0, size)
+				}
+
+				if n := size - len(page); 1 < n {
+					heap = make([]pb.Peer, n) // mempage; tidy
+				}
+
+				var (
+					// c   int // column
+					raw *pgtype.CompositeTextScanner
+				)
+				for r, row := range rows.Elements {
+					raw = pgtype.NewCompositeTextScanner(nil, []byte(row))
+					// RECORD
+					node = nil // NEW
+					if r < len(page) {
+						// [INTO] given page records
+						// [NOTE] order matters !
+						node = page[r]
+					} else if len(heap) > 0 {
+						node = &heap[0]
+						heap = heap[1:]
+					}
+					// ALLOC
+					if node == nil {
+						node = new(pb.Peer)
+					}
+					data = &via{
+						node: node,
+					}
+
+					for _, col := range scan {
+						raw.ScanDecoder(col)
+						err = raw.Err()
+						if err != nil {
+							return err
+						}
+					}
+
+					data.alias = pb.Peer{
+						Id: strconv.Itoa(len(vias) + 1), // local: serial pk
+					}
+					vias = append(vias, data)
+					// output
+					into.Vias = append(into.Vias, node)
+				}
+				return nil
+			}),
+			// peer(s)
+			DecodeText(func(src []byte) error {
+				// parse: array(row(peer))
+				rows, err := pgtype.ParseUntypedTextArray(string(src))
+				if err != nil {
+					return err
+				}
+
+				var (
+					node *pb.Customer
+					heap []pb.Customer
+
+					page = into.GetPeers() // input
+					data []*pb.Customer    // output
+
+					plan = ctx.peers
+					eval = make([]any, len(plan))
+					size = len(rows.Elements)
+
+					via pgtype.TextArray // pgtype.Int8Array
+				)
+
+				limit := ctx.input.Size
+				into.Page = int32(ctx.input.Page)
+				if 0 < limit && limit < size {
+					size = limit
+					into.Next = true
+					// NOTE: unused "via" record MAY be present !
+				}
+
+				if e := ctx.input.indexField("via"); -1 < e {
+					// hijack
+					plan[e] = func(node *pb.Customer) any {
+						return DecodeText(func(src []byte) error {
+							return via.DecodeText(nil, src)
+						})
+					}
+				}
+
+				if 0 < size {
+					data = make([]*pb.Customer, 0, size)
+				}
+
+				if n := size - len(page); 1 < n {
+					heap = make([]pb.Customer, n) // mempage; tidy
+				}
+
+				var (
+					c   int // column
+					raw *pgtype.CompositeTextScanner
+				)
+				for r, row := range rows.Elements[0:size] {
+					raw = pgtype.NewCompositeTextScanner(nil, []byte(row))
+					// RECORD
+					node = nil // NEW
+					if r < len(page) {
+						// [INTO] given page records
+						// [NOTE] order matters !
+						node = page[r]
+					} else if len(heap) > 0 {
+						node = &heap[0]
+						heap = heap[1:]
+					}
+					// ALLOC
+					if node == nil {
+						node = new(pb.Customer)
+					}
+					// [BIND] data fields to scan row
+					c = 0
+					for _, bind := range ctx.peers {
+
+						df := bind(node)
+						if df != nil {
+							eval[c] = df
+							c++
+							continue
+						}
+						// (df == nil)
+						// omit; pseudo calc
+					}
+
+					for _, col := range eval {
+						raw.ScanDecoder(col.(TextDecoder))
+						err = raw.Err()
+						if err != nil {
+							return err
+						}
+					}
+					// REFERENCES
+					if n := len(via.Elements); n > 0 {
+						refs := make([]*pb.Peer, 0, n)
+						for _, oid := range via.Elements {
+							if gate := getVia(oid.String); gate != nil {
+								refs = append(refs, &gate.alias)
+							}
+						}
+						node.Via = refs
+					}
+					// output: list
+					data = append(data, node)
+				}
+
+				into.Peers = data
+				if !into.Next && into.Page < 2 {
+					into.Page = 0 // hide; ALL results available
+				}
+
+				return nil
+			}),
+		}
+	)
+
+	for rows.Next() {
+		err := rows.Scan(fetch...)
+		if err != nil {
+			return err
+		}
+		// once; MUST: single row
+		break
 	}
 
-	// NOTE: Set next and page to response
-	limit := ctx.input.Size
-	size := len(into.Peers)
-	into.Page = int32(ctx.input.Page)
-	if limit > 0 && size > limit {
-		into.Next = true
-		into.Peers = into.Peers[:limit]
-	}
-
-	return nil
+	return rows.Err()
 }
