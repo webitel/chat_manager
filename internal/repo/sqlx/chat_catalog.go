@@ -23,6 +23,11 @@ var _ CatalogStore = (*sqlxRepository)(nil)
 // Query of external chat customers
 func (c *sqlxRepository) GetCustomers(req *app.SearchOptions, res *api.ChatCustomers) error {
 
+	// WITH portal support ?
+	portal.once.Do(
+		withSchemaPortal(req.Context, c.db),
+	)
+
 	cte, err := getContactsQuery(req)
 	if err != nil {
 		return err
