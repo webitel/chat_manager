@@ -380,6 +380,8 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 			Channel: c.GetProvider(),
 			Contact: chatID,
 		}
+	} else if contact.Channel == "" {
+		contact.Channel = c.GetProvider() // default
 	}
 
 	c.loadMx.Lock()
@@ -412,6 +414,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 			// external client contact
 			ExternalId: contact.Contact,
 			Username:   title,
+			Type:       contact.Channel,
 		}
 		// passthru request cancellation context
 		chat, err := c.Internal.Client.CheckSession(ctx, &lookup)
