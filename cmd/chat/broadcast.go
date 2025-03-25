@@ -232,7 +232,7 @@ func (c *chatService) executeBroadcastSocials(ctx context.Context, authUser *aut
 
 	var (
 		userID       int64  = chatBot.FlowID
-		userType     string = client.Type.String
+		userType     string = userTypeBot
 		userDomainID int64  = chatBot.DomainID
 		userName     string = chatBot.Name
 		userChatName string = chatBot.Name
@@ -310,7 +310,7 @@ func (c *chatService) executeBroadcastSocials(ctx context.Context, authUser *aut
 	to := pg.Channel{
 		DomainID: userDomainID,
 		UserID:   client.ID,
-		Type:     chatBot.Provider,
+		Type:     client.Type.String,
 		Name:     client.Name.String,
 		Internal: false,
 		Connection: sql.NullString{
