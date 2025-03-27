@@ -2,40 +2,46 @@
 ALTER TABLE chat.client ADD COLUMN "type" name;
 
 -- Fix bug with incorrect type in chat.channel. This referrer type was set to a broadcast.
-WITH outgoing AS (
+WITH outgoing AS
+(
     SELECT c.user_id, c.type
     FROM chat.channel c
-    WHERE c.closed_cause = 'broadcast_end'
+    WHERE c.closed_cause = 'broadcast_end' AND NOT c.internal
     GROUP BY c.user_id, c.type
     ORDER BY c.user_id
-),
-original AS (
+)
+, original AS
+(
     SELECT c.user_id, c.type
     FROM chat.channel c
     JOIN outgoing r USING (user_id)
-    WHERE c.closed_cause != 'broadcast_end'
+    WHERE c.closed_cause != 'broadcast_end' AND NOT c.internal
     GROUP BY c.user_id, c.type
     ORDER BY c.user_id
-),
-plan AS (
-    SELECT 
-        r.user_id, 
-        r.type AS old, 
+)
+, plan AS
+(
+    SELECT
+        r.user_id,
+        r.type AS old,
         w.type AS new
     FROM outgoing r
     JOIN original w ON r.user_id = w.user_id
     WHERE r.type != w.type
 )
 UPDATE
-    chat.channel e 
+    chat.channel e
 SET
     "type" = w.new
 FROM
     plan w
 WHERE
-    e.user_id = w.user_id 
+    NOT e.internal
+    AND e.user_id = w.user_id
     AND e.type = w.old
-RETURNING e.*;
+RETURNING
+    e.*
+;
 
 -- Setting the correct values in the 'type' field in the chat.client table.
 -- If the 'type' field contains NULL then this is not the correct logic!!!
