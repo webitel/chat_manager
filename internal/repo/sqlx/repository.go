@@ -127,6 +127,7 @@ type MessageRepository interface {
 		conversationID string,
 	) ([]*Message, error)
 	GetLastMessage(conversationID string) (*Message, error)
+	UpdateMessageDeliveredStatus(ctx context.Context, id int64, status bool) error
 }
 
 type CacheRepository interface {

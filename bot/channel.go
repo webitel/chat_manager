@@ -382,6 +382,9 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 		return c.Close()
 	}
 
+	// Successfully deliver the message
+	message.Delivered = true
+
 	// PERFORM resend to internal chat service provider
 	res, err := c.Gateway.Internal.Client.SendMessage(
 		ctx, // operation cancellation context

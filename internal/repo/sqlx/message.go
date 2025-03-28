@@ -79,7 +79,7 @@ func (repo *sqlxRepository) CreateMessage(ctx context.Context, m *Message) error
 func (repo *sqlxRepository) GetMessages(ctx context.Context, id int64, size, page int32, fields, sort []string, domainID int64, conversationID string) ([]*Message, error) {
 	result := []*Message{}
 	fieldsStr, whereStr, sortStr, limitStr :=
-		"m.id, m.channel_id, m.conversation_id, m.text, m.created_at, m.updated_at, m.type, m.variables", //, "+
+		"m.id, m.channel_id, m.conversation_id, m.text, m.created_at, m.updated_at, m.type, m.variables, m.delivered", //, "+
 		//  "c.user_id, c.type as user_type",
 		"where c.domain_id=$1 and m.conversation_id=$2",
 		"order by created_at desc",
@@ -99,7 +99,7 @@ func (repo *sqlxRepository) GetMessages(ctx context.Context, id int64, size, pag
 
 func (repo *sqlxRepository) GetLastMessage(conversationID string) (*Message, error) {
 	result := &Message{}
-	err := repo.db.Get(result, "select id, text, variables from chat.message where conversation_id=$1 order by created_at desc limit 1", conversationID)
+	err := repo.db.Get(result, "select id, text, variables, delivered from chat.message where conversation_id=$1 order by created_at desc limit 1", conversationID)
 	return result, err
 }
 
@@ -164,6 +164,8 @@ func MessageRequest(req *SearchOptions) (stmt SelectStmt, params []interface{}, 
 			"m.forward_id",
 
 			"m.variables",
+
+			"m.delivered",
 		)
 
 	// region: apply filters
@@ -776,6 +778,7 @@ func SaveMessage(ctx context.Context, dcx sqlx.ExtContext, msg *Message) (err er
 			contentJSONB(msg),                     // $14 - NEW message raw content{keyboard|postback|contact|...}
 			// NullMetadata(props),                   // $12 - NEW message extra properties
 			// msg.Variables,                         // $12 - NEW message extra properties
+			msg.Delivered,
 		)
 
 		if err == nil && msg.ID == 0 {
@@ -849,6 +852,13 @@ func (repo *sqlxRepository) BindMessage(ctx context.Context, oid int64, vars map
 	return err
 }
 
+func (repo *sqlxRepository) UpdateMessageDeliveredStatus(ctx context.Context, id int64, status bool) error {
+
+	_, err := repo.db.ExecContext(ctx, psqlUpdateDeliveredMessage, id, status)
+
+	return err
+}
+
 // Statement to save historical (SENT) message
 //
 // $1 - SENT: message sent timestamp
@@ -874,11 +884,11 @@ const psqlMessageNewQ =
 INSERT INTO chat.message (
   created_at, updated_at, channel_id, conversation_id,
   type, text, file_id, file_url, file_size, file_type, file_name,
-  reply_to, forward_id, variables, content
+  reply_to, forward_id, variables, content, delivered
 ) VALUES (
   $1, NULL, NULLIF($2,$3), $3,
   $4, $5, $6, $7, $8, $9, $10,
-  $11, $12, $13, $14
+  $11, $12, $13, $14, $15
 ) RETURNING id`
 
 // Statement to edit historical (SENT) message
@@ -900,3 +910,12 @@ UPDATE chat.message SET
   file_size = $7, file_type = $8, file_name = $9
  WHERE id = $1 AND channel_id = $2
 RETURNING id` // to keep same results with Save() message operation
+
+var psqlUpdateDeliveredMessage = CompactSQL(`
+	UPDATE
+		chat.messages
+	SET
+		delivered = $2
+	WHERE
+		id = $1
+`)
