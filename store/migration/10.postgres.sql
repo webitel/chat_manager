@@ -49,3 +49,10 @@ FROM (
   	GROUP BY x.user_id, x.type
 ) x
 WHERE c.id = x.user_id;
+
+-- Add a new column 'delivered' of type boolean to the 'chat.message' table.
+-- Will contain whether the message was successfully delivered
+ALTER TABLE chat.message ADD COLUMN delivered boolean DEFAULT false;
+
+-- We consider all past messages to be successfully delivered
+UPDATE chat.message SET delivered = true;

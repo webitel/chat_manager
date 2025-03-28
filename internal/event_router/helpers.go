@@ -176,10 +176,18 @@ func (c *eventRouter) sendMessageToBotUser(from *store.Channel, to *store.Channe
 
 func (c *eventRouter) SendMessageToGateway(sender, target *app.Channel, message *chat.Message) error {
 
-	switch target.User.Channel {
-	case "portal":
-		return c.portalSendMessage(sender, target, message)
-		// default:
+	if target.User.Channel == "portal" {
+		err := c.portalSendMessage(sender, target, message)
+		if err == nil {
+			message.Delivered = true
+			err = c.repo.UpdateMessageDeliveredStatus(context.TODO(), message.Id, message.Delivered)
+			if err != nil {
+				c.log.Error("FAILED update message delivered status",
+					slog.Any("error", err),
+					slog.Int64("message-id", message.Id),
+				)
+			}
+		}
 	}
 
 	// profile[@svhost]
@@ -287,6 +295,18 @@ func (c *eventRouter) SendMessageToGateway(sender, target *app.Channel, message 
 	if err != nil {
 		// FIXME: clear running .host ? got an error !
 		return err
+	}
+
+	if message.Delivered != sendMessage.Message.Delivered {
+		sendMessage.Message.Delivered = true
+
+		err = c.repo.UpdateMessageDeliveredStatus(context.TODO(), sendMessage.Message.Id, sendMessage.Message.Delivered)
+		if err != nil {
+			c.log.Error("FAILED update message delivered status",
+				slog.Any("error", err),
+				slog.Int64("message-id", message.Id),
+			)
+		}
 	}
 
 	// renewed binding(s) processed this message

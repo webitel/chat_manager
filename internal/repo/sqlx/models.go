@@ -301,6 +301,7 @@ type Message struct {
 	// TODO: Variables map[string]string
 	// Variables            types.JSONText `db:"variables" json:"variables,omitempty"`
 	Variables Metadata `db:"variables" json:"variables,omitempty"`
+	Delivered bool     `db:"delivered" json:"delivered,omitempty"`
 }
 
 type Profile struct {
