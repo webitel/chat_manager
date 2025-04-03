@@ -5,10 +5,10 @@ package chat
 
 import (
 	fmt "fmt"
-	proto "github.com/golang/protobuf/proto"
 	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options"
 	messages "github.com/webitel/chat_manager/api/proto/chat/messages"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
+	proto "google.golang.org/protobuf/proto"
 	math "math"
 )
 
@@ -24,12 +24,6 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
-
 // Reference imports to suppress errors if they are not otherwise used.
 var _ api.Endpoint
 var _ context.Context
@@ -40,11 +34,10 @@ var _ server.Option
 
 func NewMessagesServiceEndpoints() []*api.Endpoint {
 	return []*api.Endpoint{
-		&api.Endpoint{
+		{
 			Name:    "MessagesService.BroadcastMessage",
 			Path:    []string{"/chat/broadcast"},
 			Method:  []string{"POST"},
-			Body:    "*",
 			Handler: "rpc",
 		},
 	}
@@ -128,7 +121,6 @@ func RegisterMessagesServiceHandler(s server.Server, hdlr MessagesServiceHandler
 		Name:    "MessagesService.BroadcastMessage",
 		Path:    []string{"/chat/broadcast"},
 		Method:  []string{"POST"},
-		Body:    "*",
 		Handler: "rpc",
 	}))
 	return s.Handle(s.NewHandler(&MessagesService{h}, opts...))

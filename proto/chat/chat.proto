@@ -79,6 +79,13 @@ message Member {
   // string firstname = 6;
   // string lastname = 7;
   string external_id = 8;
+  Gateway via = 9;
+}
+
+message Gateway {
+  int64 id = 1;
+  string type = 2;
+  string name = 3;
 }
 
 message Channel {

@@ -229,6 +229,13 @@ type ConversationMember struct {
 	Internal  bool      `db:"internal" json:"internal"`       // (channel.type == webitel) ?
 	CreatedAt time.Time `db:"created_at" json:"created_at,omitempty"`
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at,omitempty"`
+	Via       *Gateway  `db:"via" json:"via,omitempty"`
+}
+
+type Gateway struct {
+	Id   int64  `json:"id,omitempty"`
+	Type string `json:"type,omitempty"`
+	Name string `json:"name,omitempty"`
 }
 
 func (c *ConversationMembers) Scan(src interface{}) error {

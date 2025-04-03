@@ -96,6 +96,13 @@ type Member struct {
 	UpdatedAt  int64  `json:"updated_at,omitempty"`
 	// Firstname string `json:"firstname,omitempty"`
 	// Lastname  string `json:"lastname,omitempty"`
+	Via *Gateway `json:"via,omitempty"`
+}
+
+type Gateway struct {
+	Id   int64  `json:"id,omitempty"`
+	Type string `json:"type,omitempty"`
+	Name string `json:"name,omitempty"`
 }
 
 type Message struct {

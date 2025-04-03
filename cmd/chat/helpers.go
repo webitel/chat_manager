@@ -166,6 +166,13 @@ func transformConversationFromRepoModel(c *pg.Conversation) *pbchat.Conversation
 			dst.Username = src.Name
 			dst.Internal = src.Internal
 			dst.ExternalId = src.ChatID
+			if via := src.Via; via != nil {
+				dst.Via = &pbchat.Gateway{
+					Id:   via.Id,
+					Type: via.Type,
+					Name: via.Name,
+				}
+			}
 
 			list[e] = dst
 		}

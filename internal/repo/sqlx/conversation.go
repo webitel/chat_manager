@@ -222,9 +222,11 @@ func (repo *sqlxRepository) GetConversations(
 							   ch.internal,
 								 coalesce(cn.external_id, ch.user_id::text) external_id,
 							   ch.created_at,
-							   ch.updated_at
+							   ch.updated_at,
+				    		   case when ch.internal then null else json_build_object('id', b.id, 'name', b.name, 'type', b.provider) end AS via
 						from chat.channel ch
 						left join chat.client cn on not ch.internal and cn.id = ch.user_id
+				        left join chat.bot b on connection = b.id::text
 						where ch.conversation_id = c.id
 					) ss
 				) ch on true

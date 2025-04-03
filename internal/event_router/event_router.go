@@ -315,6 +315,14 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 			// dst.Lastname  = src.Lastname,
 
 			dst.UpdatedAt = src.UpdatedAt
+			if via := src.Via; via != nil {
+				dst.Via = &events.Gateway{
+					Id:   via.Id,
+					Type: via.Type,
+					Name: via.Name,
+				}
+
+			}
 
 			list[e] = dst
 		}
