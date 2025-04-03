@@ -368,7 +368,7 @@ func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pbchat.Save
 		// sender channel ID not found
 		return errors.BadRequest(
 			"chat.save_agent_join_message.channel.from.not_found",
-			"send: FROM user ID=%s sender not found or been closed",
+			"send: FROM user ID=%d sender not found or been closed",
 			webitelUserID,
 		)
 	}
@@ -1175,10 +1175,14 @@ func (s *chatService) JoinConversation(
 		ConversationID: invite.ConversationID,
 		UserID:         invite.UserID,
 		DomainID:       invite.DomainID,
-		Name:           user.Name,
-		PublicName:     user.ChatName,
-		CreatedAt:      invite.CreatedAt,
-		UpdatedAt:      timestamp,
+		// Name:           user.Name,
+		Name: user.ChatName,
+		PublicName: sql.NullString{
+			String: user.ChatName,
+			Valid:  user.ChatName != "",
+		},
+		CreatedAt: invite.CreatedAt,
+		UpdatedAt: timestamp,
 		JoinedAt: sql.NullTime{
 			Time:  timestamp,
 			Valid: true,
@@ -1858,6 +1862,23 @@ func (s *chatService) CheckSession(ctx context.Context, req *pbchat.CheckSession
 		res.Account = &pbchat.Account{}
 		res.Exists = false
 		return nil
+	}
+
+	// Update contact fields: name
+	if req.Username != "" && req.Username != contact.Name.String {
+		contact.Name = sql.NullString{
+			String: req.Username,
+			Valid:  true,
+		}
+
+		err := s.updateClient(ctx, contact)
+		if err != nil {
+			// Log the error but do not interrupt execution
+			log.Error("Failed to update client.name changes",
+				slog.String("name", req.Username),
+				slog.Any("error", err),
+			)
+		}
 	}
 
 	// profileStr := strconv.Itoa(int(req.GetProfileId()))

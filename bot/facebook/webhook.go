@@ -11,14 +11,16 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
-	"path"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
 	"github.com/webitel/chat_manager/bot/facebook/messenger"
 	"github.com/webitel/chat_manager/bot/facebook/webhooks"
+	"github.com/webitel/chat_manager/internal/util"
 )
 
 // RandomBase64String of given n characters length
@@ -743,25 +745,14 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 				// FIXME: This is the Sticker ?
 				continue
 			}
-			// Download: doc.URL
-			url, err := url.Parse(data.URL)
-			if err != nil {
+
+			// Check URL is valid else ignore that
+			if !util.IsURL(data.URL) {
 				// Invalid Attachment URL !
 				c.Log.Error("ATTACHMENT: INVALID",
 					slog.Any("error", err),
 				)
 				continue // NEXT !
-			}
-
-			mimetype := doc.Type
-			filename := path.Base(url.Path)
-			switch filename {
-			case "/", ".":
-				filename = ""
-			}
-
-			if ext := path.Ext(filename); ext != "" {
-				mimetype = path.Join(mimetype, ext[1:]) // crop leading dot(.)
 			}
 
 			if sendMsg.File != nil {
@@ -776,13 +767,32 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 				// break // NOT Applicable yet !
 			}
 
+			// Set file type and file struct to send message
 			sendMsg.Type = "file"
 			sendMsg.File = &chat.File{
-				Id:   0, // TO Be downloaded ON chat_manager service !
-				Url:  data.URL,
-				Mime: mimetype,
-				Name: filename,
-				Size: 0, // Unknown !
+				Id:  0, // TO Be downloaded ON chat_manager service !
+				Url: data.URL,
+			}
+
+			// Fetch file details from URL or headers
+			sendMsg.File.Mime, sendMsg.File.Size, err = fetchFileDetails(c.Client, data.URL)
+			if err != nil {
+				c.Log.Error("ATTACHMENT: INVALID; CANNOT FETCH FILE DETAILS",
+					slog.Any("error", err),
+				)
+			}
+
+			// If mimetype is still empty, use the document's type as default
+			if sendMsg.File.Mime == "" {
+				// doc.Type: [ "audio", "file", "video", "image" ]
+				sendMsg.File.Mime = doc.Type
+			}
+
+			// If filename is still empty, use the default name 'file'
+			sendMsg.File.Name = doc.Type + time.Now().UTC().Format("_2006-01-02_15-04-05")
+			ext, _ := mime.ExtensionsByType(sendMsg.File.Mime)
+			if n := len(ext); n > 0 {
+				sendMsg.File.Name += ext[n-1]
 			}
 
 		case "location":
@@ -838,6 +848,98 @@ func (c *Client) WebhookMessage(event *messenger.Messaging) error {
 	}
 
 	return nil // re // First, if any occured !
+}
+
+// returns valid path.Base(rawpath) filename or none
+// func getfilename(rawpath string) (filename string) {
+// 	filename = path.Base(rawpath)
+// 	ext := path.Ext(filename)
+// 	if len(ext) < 2 { // ".+"
+// 		// No .ext ; invalidate !
+// 		return ""
+// 	}
+// 	name, _ := strings.CutSuffix(filename, ext)
+// 	if name == "" || name[0] == '.' {
+// 		// Hidden ; invalidate !
+// 		return ""
+// 	}
+// 	return // filename
+// }
+
+// fetchFileDetails fetches file data by URL and returns filename, mimeType, size, and error
+func fetchFileDetails(client *http.Client, link string) (mimetype string, size int64, err error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	// Create new HEAD request to resource
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodHead, link, nil)
+	if err != nil {
+		return
+	}
+
+	// Fetch file size and headers
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	// Get file MIME type from headers
+	mimetype = resp.Header.Get("Content-Type")
+	// mimetype, _, _ = mime.ParseMediaType(mimetype)
+	// if mimetype == "" {
+	// 	var filename string
+
+	// 	// Get filename from Content-Disposition header
+	// 	if disposition := resp.Header.Get("Content-Disposition"); disposition != "" {
+	// 		if _, params, err := mime.ParseMediaType(disposition); err == nil {
+	// 			if filename = params["filename"]; filename != "" {
+	// 				// RFC 7578, Section 4.2 requires that if a filename is provided, the
+	// 				// directory path information must not be used.
+	// 				switch filename = path.Base(filename); filename {
+	// 				case ".", "/":
+	// 					// invalid
+	// 					filename = ""
+	// 				default:
+	// 					// OK
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+
+	// 	// If filename is not correctly extracted, try URL's path
+	// 	if filename == "" {
+	// 		// Parse the URL
+	// 		var parsedURL *url.URL
+	// 		parsedURL, err = url.Parse(link)
+	// 		if err != nil {
+	// 			return
+	// 		}
+
+	// 		// Get the file name from URL path
+	// 		filename = path.Base(parsedURL.Path)
+
+	// 		if !isFilename(filename) {
+	// 			filename = ""
+	// 		}
+	// 	}
+
+	// 	if ext := path.Ext(filename); ext != "" {
+	// 		mimetype = mime.TypeByExtension(ext)
+	// 	}
+	// }
+
+	// Get file size from headers
+	contentLength := resp.Header.Get("Content-Length")
+	if contentLength != "" {
+		size, err = strconv.ParseInt(contentLength, 10, 64)
+		if err != nil {
+			return
+		}
+	}
+
+	return
 }
 
 // https://developers.facebook.com/docs/messenger-platform/reference/webhook-events/messaging_postbacks

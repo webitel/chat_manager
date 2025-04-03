@@ -178,7 +178,7 @@ func (m *Channel) Scan(row *sql.Rows) error {
 			target(&m.Variables)
 
 		case "public_name":
-			target(ScanFunc(nil)) // FIXME
+			target(&m.PublicName)
 
 		default:
 
@@ -196,6 +196,7 @@ func (m *Channel) Scan(row *sql.Rows) error {
 
 type Client struct {
 	ID         int64          `db:"id" json:"id"`
+	Type       sql.NullString `db:"type" json:"type,omitempty"`
 	Name       sql.NullString `db:"name" json:"name,omitempty"`
 	Number     sql.NullString `db:"number" json:"number,omitempty"`
 	CreatedAt  time.Time      `db:"created_at" json:"created_at,omitempty"`
@@ -321,10 +322,10 @@ type Profile struct {
 }
 
 type WebitelUser struct {
-	ID       int64          `db:"id" json:"id"`
-	Name     string         `db:"name" json:"name"`
-	DomainID int64          `db:"dc" json:"dc"`
-	ChatName sql.NullString `db:"chat_name" json:"chat_name"`
+	ID       int64  `db:"id" json:"id"`
+	Name     string `db:"name" json:"name"`
+	DomainID int64  `db:"dc" json:"dc"`
+	ChatName string `db:"chat_name" json:"chat_name"`
 }
 
 type ConversationNode struct {

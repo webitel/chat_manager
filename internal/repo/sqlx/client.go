@@ -5,55 +5,45 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/webitel/chat_manager/internal/util"
 )
 
 func (repo *sqlxRepository) UpdateClientChatID(ctx context.Context, id int64, externalId string) error {
 	if externalId == "" {
 		return fmt.Errorf("clients: missing external_id for update")
 	}
-	_, err := repo.db.ExecContext(ctx,
-		`UPDATE chat.client AS c SET external_id=coalesce(nullif($2,''),c.external_id) WHERE c.id=$1`,
-		id, externalId,
-	)
+	_, err := repo.db.ExecContext(ctx, psqlUpdateClientChatIDSQL, id, externalId)
 	return err
 }
 
 func (repo *sqlxRepository) UpdateClientNumber(ctx context.Context, id int64, number string) error {
-	_, err := repo.db.ExecContext(ctx,
-		`UPDATE chat.client AS c SET "number"=coalesce(nullif($2,''),c."number") WHERE c.id=$1`,
-		id, number,
-	)
+	_, err := repo.db.ExecContext(ctx, psqlUpdateClientNumberSQL, id, number)
 	return err
 }
 
-func (repo *sqlxRepository) GetClientByID(ctx context.Context, id int64) (*Client, error) {
-	result := &Client{}
-	err := repo.db.GetContext(ctx, result, "SELECT * FROM chat.client WHERE id=$1", id)
+func (repo *sqlxRepository) UpdateClientName(ctx context.Context, id int64, name string) error {
+	if id < 1 {
+		return fmt.Errorf("UpdateClient: invalid client ID: %d. It must be a positive integer", id)
+	}
+
+	err := repo.db.GetContext(ctx, nil, psqlUpdateClientNameSQL, id, name)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil
+			err = fmt.Errorf("UPDATE: no result")
 		}
-		repo.log.Error("GetClientByID",
-			"error", err,
-		)
-		return nil, err
+		repo.log.Error("UpdateClient", "error", err)
 	}
-	return result, nil
+
+	return nil
+}
+
+func (repo *sqlxRepository) GetClientByID(ctx context.Context, id int64) (*Client, error) {
+	return repo.getClientByColumn(ctx, "id", id)
 }
 
 func (repo *sqlxRepository) GetClientByExternalID(ctx context.Context, externalID string) (*Client, error) {
-	result := &Client{}
-	err := repo.db.GetContext(ctx, result, "SELECT * FROM chat.client WHERE external_id=$1", externalID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		repo.log.Error("GetClientByExternalID",
-			"error", err,
-		)
-		return nil, err
-	}
-	return result, nil
+	return repo.getClientByColumn(ctx, "external_id", externalID)
 }
 
 func (repo *sqlxRepository) CreateClient(ctx context.Context, c *Client) error {
@@ -65,27 +55,24 @@ func (repo *sqlxRepository) CreateClient(ctx context.Context, c *Client) error {
 	}
 	c.CreatedAt = c.CreatedAt.UTC()
 
-	for _, text := range []*sql.NullString{
+	util.ValidateNullStrings(
+		&c.Type,
 		&c.Name,
+		&c.FirstName,
+		&c.LastName,
 		&c.Number,
 		&c.ExternalID,
-		&c.FirstName, &c.LastName,
-	} {
-		text.Valid = text.String != ""
-	}
+	)
 
 	// PERFORM
-	err := repo.db.GetContext(ctx, &c.ID,
-		"INSERT INTO chat.client (name, number, created_at, external_id, first_name, last_name) "+
-			"VALUES ($1, $2, $3, $4, $5, $6) "+
-			"RETURNING id",
-
+	err := repo.db.GetContext(ctx, &c.ID, psqlInsertClientSQL,
+		c.Type,
 		c.Name,
-		c.Number,
-		c.CreatedAt,
-		c.ExternalID,
 		c.FirstName,
 		c.LastName,
+		c.Number,
+		c.ExternalID,
+		c.CreatedAt,
 	)
 
 	if err != nil {
@@ -100,6 +87,7 @@ func (repo *sqlxRepository) CreateClient(ctx context.Context, c *Client) error {
 
 	repo.log.Info("CONTACT",
 		"oid", c.ID,
+		"type", c.Type.String,
 		"name", c.Name.String,
 		"phone", c.Number.String,
 		"contact", c.ExternalID.String,
@@ -125,3 +113,89 @@ func (repo *sqlxRepository) CreateClient(ctx context.Context, c *Client) error {
 	// c.ID = id
 	// return nil
 }
+
+func (repo *sqlxRepository) getClientByColumn(ctx context.Context, column string, value any) (*Client, error) {
+	result := &Client{}
+	query := fmt.Sprintf(psqlSelectClientByColumnSQL, column)
+
+	err := repo.db.GetContext(ctx, result, query, value)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		repo.log.Error(
+			"getClientByColumn",
+			"column", column,
+			"value", value,
+			"error", err,
+		)
+		return nil, err
+	}
+	return result, nil
+}
+
+var psqlUpdateClientChatIDSQL = CompactSQL(`
+	UPDATE
+		chat.client AS c
+	SET
+		external_id = coalesce(nullif($2, ''), c.external_id)
+	WHERE
+		c.id = $1
+`)
+
+var psqlUpdateClientNumberSQL = CompactSQL(`
+	UPDATE
+		chat.client AS c
+	SET
+		"number" = coalesce(nullif($2, ''), c."number")
+	WHERE
+		c.id = $1
+`)
+
+var psqlUpdateClientNameSQL = CompactSQL(`
+	UPDATE
+		chat.client AS c
+	SET
+		name = $2
+	WHERE
+		c.id = $1
+`)
+
+var psqlSelectClientByColumnSQL = CompactSQL(`
+	SELECT
+		c.id,
+		c.type,
+		c.name,
+		c.first_name,
+		c.last_name,
+		c.number,
+		c.external_id,
+		c.created_at
+	FROM
+		chat.client c
+	WHERE
+		c.%s = $1
+`)
+
+var psqlInsertClientSQL = CompactSQL(`
+	INSERT INTO chat.client (
+		type,
+		name,
+		first_name,
+		last_name,
+		number,
+		external_id,
+		created_at			
+	)
+	VALUES (
+		$1,
+		$2,
+		$3,
+		$4,
+		$5,
+		$6,
+		$7
+	)
+	RETURNING
+		id
+`)

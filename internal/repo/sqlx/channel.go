@@ -67,6 +67,9 @@ func (repo *sqlxRepository) GetChannelByID(ctx context.Context, id string) (*Cha
 	return obj, nil
 }
 
+// GetChannelByPeer searches for the desired channel using the external peer id and gateway id,
+// Also, channels that were created by a broadcast are not included in the selection to avoid errors.
+// Because broadcast doesn't set full props like instagram.page, facebook.page...
 func (repo *sqlxRepository) GetChannelByPeer(ctx context.Context, peerId, fromId string) (*Channel, error) {
 	query := `
 		SELECT
@@ -85,7 +88,8 @@ func (repo *sqlxRepository) GetChannelByPeer(ctx context.Context, peerId, fromId
 			WHERE
 				NOT m.internal AND
 				m.user_id = peer.id AND
-				m.connection = ($1::text) -- :from_id::text
+				m.connection = ($1::text) AND -- :from_id::text
+				(NOT (m.props ? 'broadcast') OR (m.props->>'broadcast' = 'false'))
 			ORDER BY
 				m.created_at DESC -- last
 			LIMIT 1
@@ -1130,6 +1134,7 @@ func NewChannel(dcx sqlx.ExtContext, ctx context.Context, channel *Channel) erro
 		channel.FlowBridge,
 
 		channel.ClosedCause,
+		channel.PublicName,
 	)
 
 	if err != nil {
@@ -1173,11 +1178,12 @@ const psqlChannelNewQ = `WITH created AS (
  INSERT INTO chat.channel (
    id, type, name, user_id, domain_id,
    conversation_id, internal, connection, host, props,
-   created_at, updated_at, joined_at, closed_at, flow_bridge, closed_cause
+   created_at, updated_at, joined_at, closed_at, flow_bridge, closed_cause, public_name
  ) VALUES (
    $1, $2, $3, $4, $5,
    $6, $7, $8, $9, $10,
-   $11, $12, $13, $14, $15, $16
+   $11, $12, $13, $14, $15,
+   $16, $17
  )
  RETURNING conversation_id
 )

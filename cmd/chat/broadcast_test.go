@@ -1,4 +1,4 @@
-package util
+package chat
 
 import (
 	"testing"
@@ -28,7 +28,7 @@ func TestMapChannelToAppChannel(t *testing.T) {
 		ClosedAt:       closedAt,
 	}
 
-	appChannel := MapChannelToAppChannel(channel)
+	appChannel := mapChannelToAppChannel(channel)
 
 	assert.NotNil(t, appChannel)
 	assert.Equal(t, channel.DomainID, appChannel.DomainID)
@@ -61,7 +61,7 @@ func TestMapInputMessageToMessage(t *testing.T) {
 		},
 	}
 
-	chatMessage := MapInputMessageToMessage(inputMessage)
+	chatMessage := mapInputMessageToMessage(inputMessage)
 
 	assert.NotNil(t, chatMessage)
 	assert.Equal(t, inputMessage.GetText(), chatMessage.Text)

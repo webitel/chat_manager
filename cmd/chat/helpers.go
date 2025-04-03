@@ -126,9 +126,17 @@ func (s *chatService) createClient(ctx context.Context, req *pbchat.CheckSession
 			req.Username,
 			true,
 		},
+		Type: sql.NullString{
+			req.Type,
+			true,
+		},
 	}
 	err = s.repo.CreateClient(ctx, client)
 	return
+}
+
+func (s *chatService) updateClient(ctx context.Context, client *pg.Client) error {
+	return s.repo.UpdateClientName(ctx, client.ID, client.Name.String)
 }
 
 func transformConversationFromRepoModel(c *pg.Conversation) *pbchat.Conversation {
