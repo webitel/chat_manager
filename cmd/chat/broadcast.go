@@ -173,6 +173,7 @@ func (c *chatService) executeBroadcastSimple(ctx context.Context, peer *pbmessag
 				"CALL Bots.BroadcastMessage IS FAILED",
 				slog.String("peer.id", peer.GetId()),
 				slog.String("peer.via", peer.GetVia()),
+				slog.String("peer.type", peer.GetType()),
 				slog.Any("error", err),
 			)
 
@@ -198,6 +199,7 @@ func (c *chatService) executeBroadcastSocials(ctx context.Context, authUser *aut
 			"CALL Repository.GetClientByExternalID IS FAILED",
 			slog.String("peer.id", peer.GetId()),
 			slog.String("peer.via", peer.GetVia()),
+			slog.String("peer.type", peer.GetType()),
 			slog.Any("error", err),
 		)
 
@@ -216,6 +218,7 @@ func (c *chatService) executeBroadcastSocials(ctx context.Context, authUser *aut
 			"CALL Repository.GetChatBotByID IS FAILED",
 			slog.String("peer.id", peer.GetId()),
 			slog.String("peer.via", peer.GetVia()),
+			slog.String("peer.type", peer.GetType()),
 			slog.Any("error", err),
 		)
 
@@ -393,6 +396,7 @@ func (c *chatService) executeBroadcastSocials(ctx context.Context, authUser *aut
 				"CALL Bots.BroadcastMessage IS FAILED",
 				slog.String("peer.id", peer.GetId()),
 				slog.String("peer.via", peer.GetVia()),
+				slog.String("peer.type", peer.GetType()),
 				slog.Any("error", err),
 			)
 
@@ -502,9 +506,9 @@ func (c *chatService) executeBroadcastPortal(ctx context.Context, authUser *auth
 		"cid":                strconv.FormatInt(client.ID, 10),
 		"chat":               "portal",
 		"from":               client.Name.String,
+		"flow":               strconv.FormatInt(schemaId, 10),
 		"portal.client.id":   peer.GetVia(),
 		"portal.service.uid": strings.ReplaceAll(appUser.ID, "-", ""),
-		"flow":               strconv.FormatInt(schemaId, 10),
 		"broadcast":          "true",
 		// "needs_processing":   "false",
 	}
@@ -623,17 +627,18 @@ func (c *chatService) executeBroadcastPortal(ctx context.Context, authUser *auth
 		}
 	}
 
+	// see: internal/repo/sqlx.(v1.session.go).psqlChatSessionQ SQL
 	sender := app.Channel{
 		DomainID: from.DomainID,
 		User: &app.User{
 			ID:        from.UserID,
-			Channel:   "user",
+			Channel:   "user", // "webitel"
 			Contact:   strconv.FormatInt(from.UserID, 10),
 			FirstName: from.Name,
 		},
 		Chat: &app.Chat{
 			ID:      from.ID,
-			Channel: "webitel",
+			Channel: "websocket", // "webitel"
 			Invite:  conversation.ID,
 		},
 		Variables: from.Variables,
@@ -643,13 +648,13 @@ func (c *chatService) executeBroadcastPortal(ctx context.Context, authUser *auth
 		DomainID: to.DomainID,
 		User: &app.User{
 			ID:        client.ID,
-			Channel:   peer.GetType(),
+			Channel:   "portal", // peer.GetType(),
 			Contact:   peer.GetId(),
 			FirstName: client.FirstName.String,
 		},
 		Chat: &app.Chat{
 			ID:      to.ID,
-			Channel: peer.GetType(),
+			Channel: "portal", // peer.GetType(),
 			Invite:  conversation.ID,
 		},
 		Variables: to.Variables,
@@ -657,14 +662,29 @@ func (c *chatService) executeBroadcastPortal(ctx context.Context, authUser *auth
 
 	err = c.eventRouter.SendMessageToGateway(&sender, &target, message)
 	if err != nil {
+
 		c.log.Error(
 			"CALL EventRouter.SendMessageToGateway IS FAILED",
 			slog.String("peer.id", peer.GetId()),
 			slog.String("peer.via", peer.GetVia()),
+			slog.String("peer.type", peer.GetType()),
 			slog.Any("error", err),
 		)
 
-		return buildBroadcastInternalServerError(peer.GetId())
+		// return buildBroadcastInternalServerError(peer.GetId())
+
+		re := errors.FromError(err)
+		if re.Id == "" {
+			code := http.StatusBadGateway // 502
+			re.Id = "chat.broadcast.portal.error"
+			re.Code = (int32)(code)
+			re.Status = http.StatusText(code)
+			// re.Detail = err.Error() // Something went wrong !
+		}
+
+		return buildBroadcastError(
+			peer.GetId(), re.Code, re.Detail,
+		)
 	}
 
 	return nil
@@ -781,6 +801,32 @@ func buildBroadcastInternalServerError(peerId string) *pbmessages.BroadcastError
 	return buildBroadcastError(peerId, http.StatusInternalServerError, "internal server error")
 }
 
+// sqlx.Channel.(v0).Type [TO] app.Channel.(v1).Chat.Channel
+// see: internal/repo/sqlx.(v1.session.go).psqlChatSessionQ SQL
+var channelType2ChatChannelMap = map[string]string{
+	"webitel": "websocket", // internal ; "engine"
+}
+
+func mapChannelTypeToChatChannel(s string) string {
+	if vs, ok := channelType2ChatChannelMap[s]; ok {
+		return vs
+	}
+	return s
+}
+
+// sqlx.Channel.(v0).Type [TO] app.Channel.(v1).User.Channel
+// see: internal/repo/sqlx.(v1.session.go).psqlChatSessionQ SQL
+var channelType2UserChannelMap = map[string]string{
+	"webitel": "user", // internal; "user"
+}
+
+func mapChannelTypeToUserChannel(s string) string {
+	if vs, ok := channelType2UserChannelMap[s]; ok {
+		return vs
+	}
+	return s
+}
+
 // mapChannelToAppChannel transform sqlxrepo.Channel struct to app.Channel struct
 func mapChannelToAppChannel(channel *sqlxrepo.Channel) *app.Channel {
 	firstName, lastName := util.ParseFullName(channel.FullName())
@@ -789,13 +835,13 @@ func mapChannelToAppChannel(channel *sqlxrepo.Channel) *app.Channel {
 		DomainID: channel.DomainID,
 		User: &app.User{
 			ID:        channel.UserID,
-			Channel:   channel.Type,
+			Channel:   mapChannelTypeToUserChannel(channel.Type),
 			FirstName: firstName,
 			LastName:  lastName,
 		},
 		Chat: &app.Chat{
 			ID:        channel.ID,
-			Channel:   channel.Type,
+			Channel:   mapChannelTypeToChatChannel(channel.Type),
 			FirstName: firstName,
 			LastName:  lastName,
 			Invite:    channel.ConversationID,
