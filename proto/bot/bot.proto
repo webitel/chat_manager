@@ -173,6 +173,8 @@ message SendMessageResponse {
   // // webitel.chat.server.Error error = 1;
   // webitel.chat.server.Message message = 1;
   map<string,string> bindings = 1; // SENT message binding variables
+
+  bool delivered = 2;
 }
 
 message BroadcastMessageRequest {

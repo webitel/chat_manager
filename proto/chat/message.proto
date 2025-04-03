@@ -73,6 +73,8 @@ message Message {
     repeated Account new_chat_members = 20;
     // LeftChatMember description for {"type":"left"} notification
     Account left_chat_member = 21;
+
+    bool delivered = 22;
 }
 
 message File {
