@@ -60,7 +60,7 @@ type Message struct {
 	FileName string `json:"file_name,omitempty"`
 	// The file size, in bytes.
 	// Relevant for `file` type messages
-	FileSize int64 `json:"file_size,omitempty"`
+	FileSize int64 `json:"size,omitempty"`
 	// Video length in seconds.
 	// Relevant for `video` type messages
 	Duration int `json:"duration,omitempty"`
