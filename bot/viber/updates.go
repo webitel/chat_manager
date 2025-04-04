@@ -5,9 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	log2 "github.com/webitel/chat_manager/log"
 	"log/slog"
 	"net/http"
+
+	log2 "github.com/webitel/chat_manager/log"
 
 	"github.com/micro/micro/v3/service/errors"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
@@ -457,18 +458,61 @@ func (c *Bot) onNewMessage(ctx context.Context, event *Update) error {
 	switch message.Type {
 
 	case mediaText:
+		// https://developers.viber.com/docs/api/rest-bot-api/#text-message
 		sendUpdate.Message = &chat.Message{
 			Type: "text",
 			Text: message.Text,
 		}
 
 	case mediaURL:
+		// https://developers.viber.com/docs/api/rest-bot-api/#url-message
 		sendUpdate.Message = &chat.Message{
 			Type: "text",
 			Text: message.MediaURL,
 		}
 
 	case mediaImage:
+		// https://developers.viber.com/docs/api/rest-bot-api/#picture-message
+		sendUpdate.Message = &chat.Message{
+			Type: "file",
+			File: &chat.File{
+				Url: message.MediaURL,
+				// Mime: "image/*",
+				//
+				// [message.FileName] MAY be specified
+				// but has irrelevant file_name for image
+				//
+				// Filename (from .MediaURL) will be [auto-]detected (-if- not specified)
+				// while /webitel.chat.server/ChatService.SendMessage(!) delivery
+			},
+			// Description of an image. Caption. Optional.
+			Text: message.Text,
+		}
+
+	case mediaVideo:
+		// https://developers.viber.com/docs/api/rest-bot-api/#video-message
+		sendUpdate.Message = &chat.Message{
+			Type: "file",
+			File: &chat.File{
+				Url:  message.MediaURL,
+				Size: message.FileSize,
+				// Mime: "video/*",
+			},
+		}
+
+	case mediaSticker:
+		// https://developers.viber.com/docs/api/rest-bot-api/#sticker-message
+		sendUpdate.Message = &chat.Message{
+			Type: "file",
+			File: &chat.File{
+				// message.StickerId,
+				Url: message.MediaURL,
+				// Mime: "sticker/*", "image/png",
+			},
+		}
+
+	case mediaFile:
+		// https://developers.viber.com/docs/api/rest-bot-api/#file-message
 		sendUpdate.Message = &chat.Message{
 			Type: "file",
 			File: &chat.File{
@@ -476,19 +520,11 @@ func (c *Bot) onNewMessage(ctx context.Context, event *Update) error {
 				Name: message.FileName,
 				Size: message.FileSize,
 			},
-			Text: message.Text,
-		}
-
-	case mediaFile, mediaVideo, mediaSticker:
-		sendUpdate.Message = &chat.Message{
-			Type: "file",
-			File: &chat.File{
-				Url:  message.MediaURL,
-				Name: message.FileName,
-			},
 		}
 
 	case mediaContact:
+		// https://developers.viber.com/docs/api/rest-bot-api/#contact-message
+
 		// sendUpdate.Message = &chat.Message{
 		// 	Type: "contact",
 		// 	Contact: &chat.Account{
@@ -533,6 +569,7 @@ func (c *Bot) onNewMessage(ctx context.Context, event *Update) error {
 		}
 
 	case mediaLocation:
+		// https://developers.viber.com/docs/api/rest-bot-api/#location-message
 		location := message.Location
 		sendUpdate.Message = &chat.Message{
 			Type: "text",
