@@ -27,12 +27,13 @@ import (
 
 // Infobip App Client
 type App struct {
-	*bot.Gateway        // internal
-	*http.Client        // external
-	apiToken     string // APIKey: Authorization [required]
-	baseURL      string // BaseURL: https://*.api.infobip.com [required]
-	keyword      string // Keyword: the first word that appears in the message before the blank space [optional]
-	number       string // Number: Sender/Recipient Phone Number [optioonal]
+	*bot.Gateway              // internal
+	*http.Client              // external
+	media        *http.Client // HTTP Client for /media proxy
+	apiToken     string       // APIKey: Authorization [required]
+	baseURL      string       // BaseURL: https://*.api.infobip.com [required]
+	keyword      string       // Keyword: the first word that appears in the message before the blank space [optional]
+	number       string       // Number: Sender/Recipient Phone Number [optioonal]
 }
 
 const (
@@ -121,18 +122,31 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 	// 	app.keyword = "webitel" // default
 	// }
 
-	// HTTP Client
-	client := *(http.DefaultClient) // shallowcopy
-	if client.Transport == nil {
-		client.Transport = http.DefaultTransport
+	// Update running configuration ?
+	if run, _ := state.(*App); run != nil {
+		// reset from NEW configuration
+		run.number = app.number
+		run.keyword = app.keyword
+		run.baseURL = app.baseURL
+		run.apiToken = app.apiToken
+		run.Gateway = agent
+		app = run // [re]use: current !
 	}
-	// Trace(!)
-	client.Transport = &bot.TransportDump{
-		Transport: client.Transport,
-		WithBody:  true,
+
+	if app.Client == nil {
+		// HTTP Client
+		client := *(http.DefaultClient) // shallowcopy
+		if client.Transport == nil {
+			client.Transport = http.DefaultTransport
+		}
+		// Trace(!)
+		client.Transport = &bot.TransportDump{
+			Transport: client.Transport,
+			WithBody:  true,
+		}
+		client.Timeout = time.Second * 15
+		app.Client = &client
 	}
-	client.Timeout = time.Second * 15
-	app.Client = &client
 
 	return app, nil
 }
@@ -268,10 +282,7 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 	// req.Header.Set("Accept", "application/json")
 
 	// HTTP Client
-	httpClient := http.DefaultClient // c.Client
-	// if client == nil {
-	// 	client = http.DefaultClient
-	// }
+	httpClient := c.httpMediaClient()
 	// PERFORM: Call Send API
 	rsp, err := httpClient.Do(req)
 
@@ -284,6 +295,31 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 	}
 
 	defer rsp.Body.Close()
+
+	// https://www.infobip.com/docs/api/channels/whatsapp/whatsapp-inbound-messages/download-whatsapp-inbound-media
+	// statusOK := (200 <= rsp.StatusCode && rsp.StatusCode < 300)
+	statusOK := (rsp.StatusCode == http.StatusOK)
+	if !statusOK {
+
+		var res SendResponse
+		_ = json.NewDecoder(rsp.Body).Decode(&res)
+
+		if res.Error != nil {
+			// Infobip detailed error
+			err = res.Error
+		}
+
+		if err == nil {
+			// General HTTP error
+			err = fmt.Errorf(
+				"(#%d) %s", rsp.StatusCode, rsp.Status,
+			)
+		}
+
+		// Failure ; NON-200 Status !
+		return nil, err
+	}
+
 	// Content-Type
 	if mediaType := rsp.Header.Get("Content-Type"); mediaType != "" {
 		// Split: mediatype/subtype[;opt=param]
@@ -327,6 +363,10 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 				ext = []string{".bin"}
 			case "image/jpeg": // IMAGE
 				ext = []string{".jpg"}
+			case "image/png":
+				ext = []string{".png"}
+			case "image/gif":
+				ext = []string{".gif"}
 			case "audio/mpeg": // AUDIO
 				ext = []string{".mp3"}
 			case "audio/ogg": // VOICE
@@ -759,6 +799,26 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 
 	for _, recvUpdate := range req.Results {
 
+		// Subscription(s):
+		//
+		// - DELIVERY
+		// - CLICK
+		// - IDENTITY_CHANGE
+		// - ACCOUNT_REGISTRATION
+		// - SEEN
+		// - BILLING
+		// - TEMPLATE_UPDATE
+		// - PAYMENT_STATUS
+		// - INBOUND_MESSAGE
+		// - MARKETING_SUBSCRIPTION_UPDATE
+		// - ACCOUNT_UPDATE_NOTIFICATION
+		//
+
+		// We reacts ON message(s) ONLY !
+		if recvUpdate.Message == nil {
+			continue // skip any other update(s) ...
+		}
+
 		sender := bot.Account{
 			// Contact internal IDentifier
 			ID: 0, // LOOKUP
@@ -873,8 +933,11 @@ func (c *App) WebHook(w http.ResponseWriter, r *http.Request) {
 				c.Gateway.Log.Error("INFOBIP: MEDIA",
 					slog.Any("error", err),
 				)
+				sendMessage.Type = "text"
+				sendMessage.Text = "[failed] get media content ; " + err.Error()
+			} else {
+				sendMessage.File = doc
 			}
-			sendMessage.File = doc
 			// // Normalize filename
 			// sendMessage.Text = doc.Name
 

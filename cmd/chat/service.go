@@ -2756,6 +2756,10 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 						ext = []string{".bin"}
 					case "image/jpeg": // IMAGE
 						ext = []string{".jpg"}
+					case "image/png":
+						ext = []string{".png"}
+					case "image/gif":
+						ext = []string{".gif"}
 					case "audio/mpeg": // AUDIO
 						ext = []string{".mp3"}
 					case "audio/ogg": // VOICE
