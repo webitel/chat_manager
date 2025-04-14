@@ -463,8 +463,6 @@ func flowMessage(message *chat.Message) *chat.Message {
 
 // Send @workflow.ConfirmationMessage() or restart @workflow.Start()
 func (c *Channel) Send(message *chat.Message) (err error) {
-
-	// pending := c.Pending // token
 	pending := c.getPending()
 	if pending == "" {
 		pending, err = c.Store.ReadConfirmation(c.ID)
@@ -476,11 +474,7 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 			)
 			return err
 		}
-
-		// c.Pending = pending
-		// c.setPending(pending, "")
 	}
-	// Flow.WaitMessage()
 	if pending == "" {
 		// FIXME: NO confirmation found for chat - means that we are not in {waitMessage} block ?
 		c.Log.Debug("[ CHAT::FLOW ] IDLE",
@@ -496,20 +490,9 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 		"msg.type", message.Type,
 		"msg.id", message.Id,
 	)
-
-	// messages := []*bot.Message{
-	// 	{
-	// 		Id:   message.GetId(),
-	// 		Type: message.GetType(),
-	// 		Value: &bot.Message_Text{
-	// 			Text: message.GetText(),
-	// 		},
-	// 	},
-	// }
 	sendMessage := &bot.ConfirmationMessageRequest{
 		ConversationId: c.ID,
 		ConfirmationId: pending,
-		// Messages:       messages,
 		Messages: []*chat.Message{
 			flowMessage(message),
 		},
@@ -536,7 +519,7 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 			// RESET
 			c.Host = ""
 			// c.Pending = ""
-			c.setPending("", "*") // c.delPending("*")
+			c.setPending("", "*")
 
 			_ = c.Store.DeleteConfirmation(c.ID)
 			_ = c.Store.DeleteConversationNode(c.ID)
@@ -551,14 +534,12 @@ func (c *Channel) Send(message *chat.Message) (err error) {
 			// TODO: ensure this.(ID|ProfileID|DomainID)
 			err = c.Start(message)
 
-			// if err != nil {
-			// 	c.Log.Error().Err(err).Str("channel-id", c.ID).Msg("RE-START Failed")
-			// } else {
-			// 	c.Log.Info().Str("channel-id", c.ID).Msg("RE-START!")
-			// }
-
 			return err // break
-
+		case errConfirmationNotFound:
+			// confirmation not found: (possible) our cache doesn't correspond to the flow cache
+			// delete "pending" variable
+			c.delPending(pending)
+			return err
 		default:
 
 			c.Log.Error("SEND chat@bot", // TO: workflow
@@ -1234,7 +1215,8 @@ func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) er
 }
 
 const (
-	errnoSessionNotFound = "grpc.chat.conversation.not_found"
+	errnoSessionNotFound    = "grpc.chat.conversation.not_found"
+	errConfirmationNotFound = "chat.confirmation_message.not_found"
 )
 
 // func chatFlowError(err *chat.Error) *errors.Error {

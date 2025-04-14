@@ -84,24 +84,6 @@ func (c *Agent) GetChannel(conversationID string) (*Channel, error) {
 		return channel, nil // CACHE: FOUND !
 	}
 
-	// if !ok {
-
-	// 	srv, err := c.Store.ReadConversationNode(conversationID)
-
-	// 	if err != nil {
-
-	// 		c.Log.Error().Err(err).
-	// 		Str("chat-id", conversationID).
-	// 		Str("channel", "workflow").
-	// 		Msg("Looking for channel host")
-
-	// 		return nil, err
-
-	// 	}
-
-	// 	node = srv
-	// }
-
 	channel = &Channel{
 
 		Log:   c.Log,
@@ -110,51 +92,6 @@ func (c *Agent) GetChannel(conversationID string) (*Channel, error) {
 
 		Host: "", // NEW
 		ID:   conversationID,
-		// User: &chat.User{
-		// 	UserId:     0, // flow.schema.id
-		// 	Type:       "workflow",
-		// 	Connection: "",
-		// 	Internal:   true,
-		// },
-		// Chat: &sqlxrepo.Channel{
-		// 	ID:             "", // FIXME
-		// 	Type:           "workflow",
-		// 	ConversationID: conversationID,
-		// 	UserID:         0,
-		// 	// Connection: sql.NullString{
-		// 	// 	String: "workflow:bot@" + node,
-		// 	// 	Valid:  false,
-		// 	// },
-		// 	// ServiceHost: sql.NullString{
-		// 	// 	String: "",
-		// 	// 	Valid:  false,
-		// 	// },
-		// 	// CreatedAt: time.Time{},
-		// 	// Internal:  false,
-		// 	// ClosedAt: sql.NullTime{
-		// 	// 	Time:  time.Time{},
-		// 	// 	Valid: false,
-		// 	// },
-		// 	// UpdatedAt:  time.Time{},
-		// 	// DomainID:   0,
-		// 	// FlowBridge: false,
-		// 	// Name:       "",
-		// 	// ClosedCause: sql.NullString{
-		// 	// 	String: "",
-		// 	// 	Valid:  false,
-		// 	// },
-		// 	// JoinedAt: sql.NullTime{
-		// 	// 	Time:  time.Time{},
-		// 	// 	Valid: false,
-		// 	// },
-		// },
-		// Invite:  "",
-		// Pending: "",
-		// Created: 0,
-		// Updated: 0,
-		// Started: 0,
-		// Joined:  0,
-		// Closed:  0,
 	}
 
 	if !ok {
@@ -193,93 +130,6 @@ func (c *Agent) WaitMessage(conversationId, confirmationId string) error {
 	}
 	return nil
 }
-
-/*func (c *Agent) SendMessage(conversationID string, message *chat.Message) error {
-
-	channel, err := c.GetChannel(conversationID)
-	if err != nil {
-		return err
-	}
-
-	err = channel.Send(message)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-
-	// confirmationID, err := s.chatCache.ReadConfirmation(conversationID)
-	// if err != nil {
-	// 	s.log.Error().Err(err).Str("chat-id", conversationID).Msg("Failed to get {chat.recvMessage.token} from store")
-	// 	return err
-	// }
-	// if confirmationID == "" {
-	// 	// FIXME: NO confirmation found for chat - means that we are not in {waitMessage} block ?
-	// 	s.log.Warn().Str("chat-id", conversationID).Msg("CHAT Flow is NOT waiting for text message(s); DO NOTHING MORE!")
-	// 	return nil
-	// }
-	// s.log.Debug().
-	// 	Str("conversation_id", conversationID).
-	// 	Str("confirmation_id", string(confirmationID)).
-	// 	Msg("send confirmed messages")
-	// messages := []*pbmanager.Message{
-	// 	{
-	// 		Id:   message.GetId(),
-	// 		Type: message.GetType(),
-	// 		Value: &pbmanager.Message_Text{
-	// 			Text: message.GetText(),
-	// 		},
-	// 	},
-	// }
-	// messageReq := &pbmanager.ConfirmationMessageRequest{
-	// 	ConversationId: conversationID,
-	// 	ConfirmationId: confirmationID,
-	// 	Messages:       messages,
-	// }
-	// nodeID, err := s.chatCache.ReadConversationNode(conversationID)
-	// if err != nil {
-	// 	return err
-	// }
-	// if res, err := s.client.ConfirmationMessage(
-	// 	context.Background(),
-	// 	messageReq,
-	// 	client.WithSelectOption(
-	// 		selector.WithStrategy(
-	// 			strategy.PrefferedNode(nodeID),
-	// 		),
-	// 	),
-	// ); err != nil || res.Error != nil {
-	// 	if res != nil {
-	// 		return errors.New(res.Error.Message)
-	// 	}
-	// 	return err
-	// }
-	// s.chatCache.DeleteConfirmation(conversationID)
-	// return nil
-
-	// s.log.Debug().
-	// 	Int64("conversation_id", conversationID).
-	// 	Msg("cache messages for confirmation")
-	// cacheMessage := &pb.Message{
-	// 	Id:   message.GetId(),
-	// 	Type: message.GetType(),
-	// 	Value: &pb.Message_TextMessage_{
-	// 		TextMessage: &pb.Message_TextMessage{
-	// 			Text: message.GetTextMessage().GetText(),
-	// 		},
-	// 	},
-	// }
-	// messageBytes, err := proto.Marshal(cacheMessage)
-	// if err != nil {
-	// 	s.log.Error().Msg(err.Error())
-	// 	return nil
-	// }
-	// if err := s.chatCache.WriteCachedMessage(conversationID, message.GetId(), messageBytes); err != nil {
-	// 	s.log.Error().Msg(err.Error())
-	// }
-	// return nil
-}*/
 
 func (c *Agent) SendMessage(sender *store.Channel, message *chat.Message) error {
 
@@ -336,14 +186,6 @@ func (c *Agent) SendMessageV1(target *app.Channel, message *chat.Message) error 
 			contact.ContactObjectNode(target.Contact)
 		// [NOW] Except webitel.chat.bot there is webitel.chat.portal with no such profile !
 		// // NOTE: sender for now is webitel.chat.bot channel only !
-		// schemaProfileID, serviceNode, err := contact.ContactObjectNode(target.Contact)
-		// // schemaProfileID, err := strconv.ParseInt(sender.Connection.String, 10, 64)
-		// if err != nil {
-		// 	return err
-		// }
-		// // preset: resolved !
-		// channel.ProfileID = schemaProfileID
-		// channel.Host = serviceNode
 	}
 	// endregion
 

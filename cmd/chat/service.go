@@ -3024,7 +3024,9 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 		)
 	}
 
-	for _, member = range members { // chatRoom.Members {
+	var deliveryErr error
+
+	for _, member = range members {
 
 		if member.IsClosed() {
 			continue // omit send TO channel: closed !
@@ -3033,7 +3035,6 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 		switch member.Channel {
 
 		case "websocket": // TO: engine (internal)
-			// s.eventRouter.sendEventToWebitelUser()
 			// NOTE: if sender is an internal chat@channel user (operator)
 			//       we publish message for him (author) as a member too
 			//       to be able to detect chat updates on other browser tabs ...
@@ -3136,12 +3137,14 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 			)
 
 		default: // TO: webitel.chat.bot (external)
-			// s.eventRouter.sendMessageToBotUser()
-			if member == sender { // e == 0
+			if member == sender {
 				continue
 			}
 			deliveryLog(slog.LevelDebug, "")
 			err = c.eventRouter.SendMessageToGateway(sender, member, notify)
+			if err != nil {
+				deliveryErr = err
+			}
 			// Merge SENT message external binding (variables)
 			if notify.Id == 0 {
 				// NOTE: there was a service-level message notification
@@ -3166,18 +3169,6 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 			}
 			// Merged !
 			notify.Variables = binding
-			// user := member.User
-			// // "user": {
-			// // 	"id": 59,
-			// // 	"channel": "telegram",
-			// // 	"contact": "520924760",
-			// // 	"firstName": "srgdemon"
-			// // },
-			// req := gate.SendMessageRequest{
-			// 	ProfileId:      14, // profileID,
-			// 	ExternalUserId: user.Contact, // client.ExternalID.String,
-			// 	Message:        notify,
-			// }
 		}
 
 		(sent)++ // calc active recepients !
@@ -3188,14 +3179,6 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 				slog.LevelError, "; error",
 				"error", err,
 			)
-		}
-
-		if err != nil {
-			// since there are only can be two channels in that version of messages-srv (sender, receiver)
-			// so we should probably return that error
-			// NOTE: maybe in future there will be more than one receiver
-			// and we should decide what to do if message was sent to one receiver but wasn't to the other
-			return 0, err
 		}
 	}
 
@@ -3211,7 +3194,7 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 		)
 	}
 
-	return sent, nil // err
+	return sent, deliveryErr
 }
 
 func (c *chatService) notifyAgentJoinToAllMembers(ctx context.Context, chatRoom *app.Session, notify *pbchat.Message) (sent int, err error) {
