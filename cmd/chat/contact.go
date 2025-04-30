@@ -102,6 +102,12 @@ func (srv *ContactLinkingService) bindNativeClient(ctx *app.Context) error {
 
 func (srv *ContactLinkingService) LinkContactToClient(ctx context.Context, req *pb.LinkContactToClientRequest, res *pb.EmptyResponse) error {
 
+	var (
+		internal        = false
+		gatewayId       string
+		protocol        string
+		externalChannel *store.Channel
+	)
 	// region: ----- Authentication -----
 	authN, err := app.GetContext(
 		ctx, app.AuthorizationRequire(
@@ -132,7 +138,6 @@ func (srv *ContactLinkingService) LinkContactToClient(ctx context.Context, req *
 			"denied: require r:contacts access but not granted",
 		) // (403) Forbidden
 	}
-	internal := false
 	domainId := authN.Authorization.Creds.Dc
 
 	// PERFORM
@@ -142,7 +147,16 @@ func (srv *ContactLinkingService) LinkContactToClient(ctx context.Context, req *
 	}
 
 	if len(channels) <= 0 {
-		return errors.BadRequest("cmd.chat.link_contact_to_client.get_channel.no_channel", "no such conversation")
+		return errors.BadRequest("cmd.chat.link_contact_to_client_no_auth.get_channel.no_channel", "no such conversation")
+	}
+	externalChannel = channels[0]
+	// try get protocol from channel
+	protocol = externalChannel.Variables["chat"]
+	if externalChannel.Connection.String == "" {
+		// if connection empty, then it's portal channel
+		gatewayId = externalChannel.Variables["portal.client.id"]
+	} else {
+		gatewayId = externalChannel.Connection.String
 	}
 
 	_, err = srv.contactIMClientClient.CreateIMClients(ctx, &contacts.CreateIMClientsRequest{
@@ -151,8 +165,9 @@ func (srv *ContactLinkingService) LinkContactToClient(ctx context.Context, req *
 		Input: []*contacts.InputIMClient{
 			{
 				CreatedBy:    strconv.FormatInt(authN.Authorization.Creds.UserId, 10),
-				ExternalUser: strconv.FormatInt(channels[0].UserID, 10),
-				GatewayId:    channels[0].Connection.String,
+				ExternalUser: strconv.FormatInt(externalChannel.UserID, 10),
+				GatewayId:    gatewayId,
+				Protocol:     protocol,
 			},
 		},
 	})
@@ -164,8 +179,12 @@ func (srv *ContactLinkingService) LinkContactToClient(ctx context.Context, req *
 }
 
 func (srv *ContactLinkingService) LinkContactToClientNA(ctx context.Context, req *pb.LinkContactToClientNARequest, res *pb.LinkContactToClientNAResponse) error {
-
-	internal := false
+	var (
+		internal        = false
+		gatewayId       string
+		protocol        string
+		externalChannel *store.Channel
+	)
 
 	// PERFORM
 	channels, err := srv.channelStore.GetChannels(ctx, nil, &req.ConversationId, nil, &internal, nil, nil)
@@ -176,6 +195,15 @@ func (srv *ContactLinkingService) LinkContactToClientNA(ctx context.Context, req
 	if len(channels) <= 0 {
 		return errors.BadRequest("cmd.chat.link_contact_to_client_no_auth.get_channel.no_channel", "no such conversation")
 	}
+	externalChannel = channels[0]
+	// try get protocol from channel
+	protocol = externalChannel.Variables["chat"]
+	if externalChannel.Connection.String == "" || externalChannel.Connection.String == "0" {
+		// if connection empty, then it's portal channel
+		gatewayId = externalChannel.Variables["portal.client.id"]
+	} else {
+		gatewayId = externalChannel.Connection.String
+	}
 
 	_, err = srv.contactIMClientClient.UpsertIMClients(ctx, &contacts.UpsertIMClientsRequest{
 		ContactId: req.ContactId,
@@ -183,7 +211,8 @@ func (srv *ContactLinkingService) LinkContactToClientNA(ctx context.Context, req
 		Input: []*contacts.InputIMClient{
 			{
 				ExternalUser: strconv.FormatInt(channels[0].UserID, 10),
-				GatewayId:    channels[0].Connection.String,
+				GatewayId:    gatewayId,
+				Protocol:     protocol,
 			},
 		},
 	})
