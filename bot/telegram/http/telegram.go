@@ -471,6 +471,10 @@ retry:
 		// [optional] STORE external SENT message binding
 		message.Variables = binding
 	}
+
+	// Successfully deliver the message
+	notify.Message.Delivered = true
+
 	// +OK
 	return nil
 }
