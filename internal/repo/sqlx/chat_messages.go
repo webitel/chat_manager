@@ -1082,7 +1082,9 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 				)
 				ctx.plan = append(ctx.plan,
 					func(node *pb.Message) any {
-						return dbx.ScanJSONBytes(&node.Context)
+						return DecodeText(func(src []byte) error {
+							return dbx.ScanJSONBytes(&node.Context)(src)
+						})
 					},
 				)
 			}
@@ -1661,7 +1663,9 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 				)
 				ctx.plan = append(ctx.plan,
 					func(node *pb.ChatMessage) any {
-						return dbx.ScanJSONBytes(&node.Context)
+						return DecodeText(func(src []byte) error {
+							return dbx.ScanJSONBytes(&node.Context)(src)
+						})
 					},
 				)
 			}
