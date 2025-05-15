@@ -43,8 +43,9 @@ func (c *TransportDump) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 
-	// region: DUMP Response
-	dump, err = httputil.DumpResponse(resp, c.WithBody) // && resp.ContentLength > 0)
+	// region: DUMP Response ; disclose 4xx+ error(s)
+	withBody := c.WithBody || (400 <= resp.StatusCode) // 4xx .. 5xx
+	dump, err = httputil.DumpResponse(resp, withBody)  // && resp.ContentLength > 0)
 
 	tracef = stdlog.Tracef
 	if err != nil {

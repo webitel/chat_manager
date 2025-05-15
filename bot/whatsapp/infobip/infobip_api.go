@@ -1,6 +1,7 @@
 package infobip
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -18,31 +19,31 @@ import (
 // https://www.infobip.com/docs/api#channels/whatsapp/receive-whatsapp-inbound-messages
 type Updates struct { // NewMessage struct {
 	// Collection of reports, one per every received message
-	Results             []*Update `json:"results"`
+	Results []*Update `json:"results"`
 	// Number of returned messages in this request
-	MessageCount        int64     `json:"messageCount"`
+	MessageCount int64 `json:"messageCount"`
 	// Number of remaining new messages on Infobip servers ready to be returned in the next request
-	PendingMessageCount int64     `json:"pendingMessageCount"`
+	PendingMessageCount int64 `json:"pendingMessageCount"`
 }
 
 // Report for every received message.
 type Update struct {
 	// Number which sent the message.
-	From        string    `json:"from"`
+	From string `json:"from"`
 	// Sender provided during the activation process.
-	To          string    `json:"to"`
+	To string `json:"to"`
 	// WHATSAPP
-	Integration string    `json:"integrationType,omitempty"`
+	Integration string `json:"integrationType,omitempty"`
 	// Date and time when Infobip received the message.
-	ReceivedAt  Timestamp `json:"receivedAt,omitempty"`
+	ReceivedAt Timestamp `json:"receivedAt,omitempty"`
 	// The ID that uniquely identifies the received message.
-	MessageID   string    `json:"messageId"`
+	MessageID string `json:"messageId"`
 	// Message content(s)
-	Message     *Message  `json:"message"`
+	Message *Message `json:"message"`
 	// Information about recipient.
-	Contact     *Contact  `json:"contact,omitempty"`
+	Contact *Contact `json:"contact,omitempty"`
 	// Message price.
-	Price       *Price    `json:"price"`
+	Price *Price `json:"price"`
 }
 
 // Contact info
@@ -69,11 +70,11 @@ type Message struct {
 	// - BUTTON
 	// - INTERACTIVE_BUTTON_REPLY
 	// - INTERACTIVE_LIST_REPLY
-	Type     string `json:"type"`
+	Type string `json:"type"`
 	// Information about the message to which the end user responded.
-	Context  struct {
+	Context struct {
 		// MessageId of the message to which the end user responded
-		ID	string `json:"id"`
+		ID string `json:"id"`
 		// End user's phone number
 		From string `json:"from"`
 		// Product information included in the incoming message
@@ -97,9 +98,9 @@ type Message struct {
 	} `json:"identity,omitempty"`
 	// Content of the end user's message
 	// Types: [TEXT, BUTTON]
-	Text      string `json:"text,omitempty"`
+	Text string `json:"text,omitempty"`
 	// Types: [IMAGE, AUDIO, VIDEO, DOCUMENT]
-	Caption   string `json:"caption,omitempty"`
+	Caption string `json:"caption,omitempty"`
 	// Types: [IMAGE, AUDIO, VIDEO, STICKER, DOCUMENT, LOCATION(url)]
 	URL string `json:"url,omitempty"`
 
@@ -144,7 +145,7 @@ type Message struct {
 
 type Price struct {
 	// The currency in which the price is displayed
-	Currency        string  `json:"currency"`
+	Currency string `json:"currency"`
 	// The price per individual message
 	PricePerMessage float64 `json:"pricePerMessage"`
 }
@@ -213,7 +214,7 @@ type SendMediaMessage struct {
 	// Required (IMAGE, AUDIO, VOICE, VIDEO, STICKER, DOCUMENT").
 	// string [ 1 .. 2048 ] characters
 	MediaURL string `json:"mediaUrl"`
-	
+
 	// File name of the document.
 	// Optional (type: DOCUMENT). string [ 0 .. 240 ] characters
 	Filename string `json:"filename,omitempty"`
@@ -235,7 +236,7 @@ func mediaType(mime string) string {
 	mtype := mime
 	// Extract: type[/subtype][; param=value]+
 	mopts := strings.IndexAny(mtype, "/;")
-	
+
 	if mopts > 0 {
 		mtype = mtype[0:mopts]
 	}
@@ -243,11 +244,11 @@ func mediaType(mime string) string {
 	mtype = strings.ToUpper(mtype)
 	switch mtype {
 	case MediaImage,
-		 MediaAudio,
-		 MediaVideo:
-		 // OK
+		MediaAudio,
+		MediaVideo:
+		// OK
 	default:
-		 mtype = MediaFile
+		mtype = MediaFile
 	}
 
 	return mtype
@@ -311,7 +312,6 @@ type InteractiveButtonsMessage struct {
 		// Content of the message body.
 		// Rquired. string [ 1 .. 1024 ] characters
 		Text string `json:"text"`
-
 	} `json:"body"`
 
 	// Footer of a message containing one or more interactive elements.
@@ -326,7 +326,6 @@ type InteractiveButtonsMessage struct {
 		// It can have up to three buttons.
 		// Required. Array of objects [ 1 .. 3 ] items
 		Buttons []Button `json:"buttons"`
-
 	} `json:"action"`
 }
 
@@ -350,7 +349,6 @@ type Button struct {
 	Title string `json:"title"`
 }
 
-
 type Timestamp time.Time
 
 func (t *Timestamp) UnmarshalText(data []byte) error {
@@ -361,7 +359,6 @@ func (t *Timestamp) UnmarshalText(data []byte) error {
 	*(*time.Time)(t) = dt
 	return nil
 }
-
 
 type SendResponse struct {
 
@@ -380,10 +377,9 @@ type SendResponse struct {
 	// and how to recover from an error should there be any.
 	Status *MessageStatus `json:"status"`
 
-	// 
+	//
 	Error *RequestError `json:"requestError,omitempty"`
 }
-
 
 type MessageStatus struct {
 
@@ -395,7 +391,7 @@ type MessageStatus struct {
 
 	// Status ID.
 	ID int32 `json:"id,omitempty"`
-	
+
 	// Status name.
 	Name string `json:"name,omitempty"`
 
@@ -407,9 +403,7 @@ type MessageStatus struct {
 }
 
 type RequestError struct {
-
 	Exception *ServiceError `json:"serviceException,omitempty"`
-
 }
 
 func (e *RequestError) Error() string {
@@ -430,7 +424,17 @@ type ServiceError struct {
 
 func (e *ServiceError) Error() string {
 	for param, errs := range e.Validations {
-		return param +": "+ errs[0] // Any(!)
+		return param + ": " + errs[0] // Any(!)
 	}
-	return e.Message
+	return fmt.Sprintf("(#%s) %s", e.ID, e.Message)
+}
+
+type StatusError struct {
+	Code     int
+	Status   string
+	Response []byte
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("(#%d) %s ; %s", e.Code, e.Status, e.Response)
 }
