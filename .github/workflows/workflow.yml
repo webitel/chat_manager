@@ -47,7 +47,7 @@ jobs:
       package-contents: |
         src=scripts/systemd/messages-bot.service dst=/etc/systemd/system/webitel-messages-bot.service type=config
         src=scripts/systemd/messages-srv.service dst=/etc/systemd/system/webitel-messages-srv.service type=config
-        src=bot/telegram/gotd/public/ dst=/var/lib/webitel/public-html/
+        src=bot/telegram/gotd/public/ dst=/var/lib/webitel/public-html
 
   deploy:
     name: Deploy
