@@ -12,7 +12,7 @@ concurrency:
 jobs:
   prepare:
     name: Prepare
-    uses: webitel/reusable-workflows/.github/workflows/go-prepare.yml@42624c81a02e6b3657ba0835411efb8b10088a04
+    uses: webitel/reusable-workflows/.github/workflows/go-prepare.yml@92f33743e9e222310998d710adf61bb196f493a3
     with:
       development-branch: ${{ github.event.repository.default_branch }}
       triggered-branch: ${{ github.ref_name }}
@@ -21,7 +21,7 @@ jobs:
   checks:
     name: Checks
     needs: [ prepare ]
-    uses: webitel/reusable-workflows/.github/workflows/go-checks.yml@42624c81a02e6b3657ba0835411efb8b10088a04
+    uses: webitel/reusable-workflows/.github/workflows/go-checks.yml@92f33743e9e222310998d710adf61bb196f493a3
     permissions:
       contents: read
       actions: read
@@ -30,7 +30,7 @@ jobs:
   compile:
     name: Build
     needs: [ prepare ]
-    uses: webitel/reusable-workflows/.github/workflows/go-build.yml@42624c81a02e6b3657ba0835411efb8b10088a04
+    uses: webitel/reusable-workflows/.github/workflows/go-build.yml@92f33743e9e222310998d710adf61bb196f493a3
     with:
       binary-name: messages
       ldflags: >
@@ -47,12 +47,12 @@ jobs:
       package-contents: |
         src=scripts/systemd/messages-bot.service dst=/etc/systemd/system/webitel-messages-bot.service type=config
         src=scripts/systemd/messages-srv.service dst=/etc/systemd/system/webitel-messages-srv.service type=config
-        src=bot/telegram/gotd/public dst=/var/lib/webitel/public-html type=dir
+        src=bot/telegram/gotd/public/ dst=/var/lib/webitel/public-html/
 
   deploy:
     name: Deploy
     needs: [ prepare, compile ]
-    uses: webitel/reusable-workflows/.github/workflows/_deploy.yml@42624c81a02e6b3657ba0835411efb8b10088a04
+    uses: webitel/reusable-workflows/.github/workflows/_deploy.yml@92f33743e9e222310998d710adf61bb196f493a3
     permissions: { contents: write }
     secrets: inherit
     with:
