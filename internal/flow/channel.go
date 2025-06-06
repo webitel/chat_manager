@@ -1104,6 +1104,10 @@ func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) er
 		return err
 	}
 
+	if c.DomainID() == 0 {
+		c.Chat.DomainID = originator.DomainID
+	}
+
 	// Format: [;]date:from:to
 	// from: channel_id
 	// to: schema_id
