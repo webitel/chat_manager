@@ -2213,6 +2213,8 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			ConversationID: targetChatID,
 		}
 
+		// Custom [message.type] classifier. Optional.
+		saveMessage.Kind = strings.TrimSpace(sendMessage.Kind)
 		// [RAW]: Message Content details
 		saveMessage.Contact = notify.Contact
 		// Quick Reply Button(s) ?
@@ -2243,6 +2245,7 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			slog.String("conversation_id", saveMessage.ConversationID),
 			slog.String("channel_id", saveMessage.ChannelID),
 			slog.String("type", saveMessage.Type),
+			slog.String("kind", saveMessage.Kind),
 		)
 	}
 
@@ -2450,6 +2453,13 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		// 	// cleanup broken set: {"": ?}
 		// 	sendMessage.Variables = nil
 		// }
+	}
+	// Save as message.variables["kind"]
+	if saveMessage.Kind != "" {
+		if saveMessage.Variables == nil {
+			saveMessage.Variables = make(pg.Metadata)
+		}
+		saveMessage.Variables["kind"] = saveMessage.Kind
 	}
 
 	// endregion
@@ -2974,6 +2984,7 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 			sentMsg := []slog.Attr{
 				slog.Int64("id", notify.Id),
 				slog.String("type", notify.Type),
+				slog.String("kind", notify.Kind),
 			}
 			// if notify.Text != "" || notify.Type == "text" {
 			// 	sentMsg = append(sentMsg,
@@ -2994,10 +3005,15 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 		// copy of [TO] chat.thread.id
 		"conversation_id", sender.Chat.Invite,
 	}
+	// LOG: [kind/]type
+	messageType := notify.Type
+	if kind := notify.Kind; kind != "" {
+		messageType = kind + "/" + messageType
+	}
 	debugText := fmt.Sprintf(
 		"[ CHAT ] thread( %s ).message( %d; %s ).FROM( %s:%s )",
 		sender.Chat.Invite, // conversation_id::chat.thread.id
-		notify.Id, notify.Type,
+		notify.Id, messageType,
 		sender.User.Channel, sender.User.Contact,
 	)
 	// Start delivery ...

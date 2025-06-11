@@ -1877,6 +1877,10 @@
           "format": "int64",
           "description": "Timestamp when this message was last edited."
         },
+        "kind": {
+          "type": "string",
+          "title": "Kind of the message. Custom type classifier. Optional. Default: empty.\nMay be used by the client UI to extend set of general message.type(s): [ text | file ]"
+        },
         "text": {
           "type": "string",
           "description": "Message Text."

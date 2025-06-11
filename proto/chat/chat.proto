@@ -134,6 +134,7 @@ message HistoryMessage {
   // int64 conversation_id = 3;
   // // int64 from_user_id = 2;
   // // string from_user_type = 3;
+  string kind = 3;
   string type = 5;
   string text = 4;
   File   file = 8;

@@ -168,6 +168,7 @@ func getMessagesInput(req *app.SearchOptions) (args chatMessagesArgs, err error)
 				"from", // sender; user
 				"date",
 				"edit",
+				"kind", // custom message.type classifier.
 				"text",
 				"file",
 			},
@@ -546,6 +547,7 @@ func getContactMessagesInput(req *app.SearchOptions) (args contactChatMessagesAr
 				},
 				// operational
 				[]string{
+					// "kind",
 					"sender", // chat member, on behalf of the "chat" (dialog)
 					"context",
 					"postback", // Quick Reply button Click[ed].
@@ -1011,6 +1013,20 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 							node.Sender = sender
 							return nil
 						})
+					},
+				)
+			}
+		case "kind":
+			{
+				if !column(field) {
+					break // switch; duplicate!
+				}
+				ctx.Query = ctx.Query.Column(
+					ident(left, "variables->>'kind'"),
+				)
+				ctx.plan = append(ctx.plan,
+					func(node *pb.Message) any {
+						return postgres.Text{Value: &node.Kind}
 					},
 				)
 			}
@@ -1594,6 +1610,20 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 						})
 					},
 				)
+			}
+		case "kind":
+			{
+				// if !column(field) {
+				// 	break // switch; duplicate!
+				// }
+				// ctx.Query = ctx.Query.Column(
+				// 	ident(left, "variables->>'kind'"),
+				// )
+				// ctx.plan = append(ctx.plan,
+				// 	func(node *pb.ChatMessage) any {
+				// 		return postgres.Text{Value: &node.Kind}
+				// 	},
+				// )
 			}
 		case "text":
 			{

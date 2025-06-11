@@ -261,6 +261,7 @@ func transformMessageFromRepoModel(message *pg.Message) *pbchat.HistoryMessage {
 		// ConversationId: message.ConversationID,
 		//FromUserId:   message.UserID.Int64,
 		//FromUserType: message.UserType.String,
+		Kind:      message.Kind,
 		Type:      message.Type,
 		Text:      message.Text,                 //.String,
 		CreatedAt: timestamp(message.CreatedAt), // message.CreatedAt.Unix() * 1000,

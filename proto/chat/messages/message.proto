@@ -28,6 +28,10 @@ message Message {
   // Timestamp when this message was last edited.
   int64 edit = 6;
 
+  // Kind of the message. Custom type classifier. Optional. Default: empty.
+  // May be used by the client UI to extend set of general message.type(s): [ text | file ]
+  string kind = 19;
+
   // // MIME Type of the message, e.g.: text, file, read, status etc.
   // string type = 5;
   

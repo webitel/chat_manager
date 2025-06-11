@@ -298,6 +298,8 @@ type Message struct {
 	CreatedAt time.Time `db:"created_at" json:"created_at,omitempty"`
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at,omitempty"`
 
+	// Custom [Message.Type] classifier. Optional.
+	Kind string `db:"kind" json:"kind"`
 	Type string `db:"type" json:"type"`
 	// Text                 sql.NullString `db:"text" json:"text,omitempty"`
 	Text                 string    `db:"text" json:"text,omitempty"`
