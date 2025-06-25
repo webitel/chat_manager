@@ -3,8 +3,10 @@ package sqlxrepo
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	// "encoding/json"
@@ -842,9 +844,72 @@ func (repo *sqlxRepository) SaveMessage(ctx context.Context, msg *Message) error
 
 func (repo *sqlxRepository) BindMessage(ctx context.Context, oid int64, vars map[string]string) error {
 
+	if len(vars) > 0 {
+		// remove invalid (empty) key
+		delete(vars, "")
+	}
+
+	if len(vars) == 0 {
+		// No changes for update
+		return nil
+	}
+
+	var (
+		expr   = "COALESCE(variables,'{}')"
+		params = make([]interface{}, 0, 3)
+	)
+
+	param := func(v interface{}) (sql string) {
+		params = append(params, v)
+		return "$" + strconv.Itoa(len(params))
+	}
+	// $1 - (chat.message).id
+	_ = param(oid)
+
+	var (
+		del []string          // remove key(s)
+		set map[string]string // [re]set key(s)
+	)
+
+	for key, value := range vars {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue // omit empty keys
+		}
+		// CASE: blank "" -or- null
+		if value == "" {
+			// TODO: "variables - '$key'"
+			if del == nil {
+				del = make([]string, 0, len(vars))
+			}
+			del = append(del, key)
+			continue
+		}
+		// TODO: "variables || '{$key: $value}'::jsonb"
+		if set == nil {
+			set = make(map[string]string, len(vars))
+		}
+		set[key] = value
+	}
+	// 1. Remove empty value[d] keys
+	if len(del) != 0 {
+
+		var keys pgtype.TextArray
+		_ = keys.Set(del)
+
+		expr += " - " + param(&keys) + "::text[]"
+	}
+	// 2. Reset attributes
+	if len(set) != 0 {
+
+		jsonb, _ := json.Marshal(set)
+
+		expr += " || " + param(string(jsonb)) + "::jsonb"
+	}
+
 	_, err := repo.db.ExecContext(ctx,
-		"UPDATE chat.message SET variables = $2 WHERE id = $1",
-		oid, NullMetadata(vars),
+		"UPDATE chat.message SET variables = "+(expr)+" WHERE id = $1",
+		params...,
 	)
 
 	return err
