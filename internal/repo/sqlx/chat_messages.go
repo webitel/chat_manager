@@ -58,6 +58,11 @@ type chatMessagesArgs struct {
 	CaseId int64
 	// Make sure that chat connected with contact
 	ContactId int64
+	// Exclude messages filter options
+	Exclude struct {
+		// Kind of message(s) to exclude
+		Kind []string
+	}
 }
 
 type contactChatMessagesArgs struct {
@@ -329,6 +334,47 @@ func getMessagesInput(req *app.SearchOptions) (args chatMessagesArgs, err error)
 						input,
 					)
 					return // args, err
+				}
+			}
+		case "exclude.kind":
+			{
+				switch data := input.(type) {
+				case string:
+					{
+						data = strings.TrimSpace(data)
+						if data == "" {
+							// ignore: empty
+							break
+						}
+						args.Exclude.Kind = []string{data}
+					}
+				case []string:
+					{
+						// explode by: ',' or ' '
+						data = app.FieldsFunc(
+							data, app.InlineFields,
+						)
+						for i, n := 0, len(data); i < n; i++ {
+							data[i] = strings.TrimSpace(data[i])
+							if data[i] == "" {
+								// ignore: empty
+								data = append(data[:i], data[i+1:]...)
+								n--
+								i--
+							}
+						}
+						if len(data) == 0 {
+							// ignore: none
+							break
+						}
+						args.Exclude.Kind = data
+					}
+				default:
+					err = errors.BadRequest(
+						"messages.query.exclude.kind.input",
+						"messages( exclude.kind: [string!] ); input: convert %T into []string",
+						input,
+					)
 				}
 			}
 		default:
@@ -1151,6 +1197,24 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 		ctx.Query = ctx.Query.Where(fmt.Sprintf(
 			"%s AT TIME ZONE 'UTC' %s :offset.date",
 			ident(left, "created_at"), offsetOp,
+		))
+	}
+	// EXCLUDE message.kind[of] records
+	if len(ctx.Input.Exclude.Kind) > 0 {
+		var (
+			expr      = "<> ALL(:kind.not)"
+			param any = ctx.Input.Exclude.Kind
+		)
+		if len(ctx.Input.Exclude.Kind) == 1 {
+			expr = "<> :kind.not"
+			param = ctx.Input.Exclude.Kind[0]
+		}
+		ctx.Params.set(
+			"kind.not", param,
+		)
+		ctx.Query = ctx.Query.Where(fmt.Sprintf(
+			"coalesce(%s,'') %s",
+			ident(left, "variables->>'kind'"), expr,
 		))
 	}
 	// LIMIT

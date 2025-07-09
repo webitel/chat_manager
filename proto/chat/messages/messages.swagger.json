@@ -803,6 +803,17 @@
             "in": "query",
             "required": false,
             "type": "string"
+          },
+          {
+            "name": "exclude.kind",
+            "description": "Kind of messages to exclude from results",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
           }
         ],
         "tags": [
@@ -1003,6 +1014,17 @@
             "in": "query",
             "required": false,
             "type": "string"
+          },
+          {
+            "name": "exclude.kind",
+            "description": "Kind of messages to exclude from results",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
           }
         ],
         "tags": [
@@ -1738,6 +1760,18 @@
         }
       },
       "description": "Media File."
+    },
+    "webitel.chat.FilterMessageExclude": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "Kind of messages to exclude from results"
+        }
+      }
     },
     "webitel.chat.GetAgentChatsResponse": {
       "type": "object",
