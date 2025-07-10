@@ -534,6 +534,12 @@ func (srv *Catalog) GetHistory(ctx context.Context, req *pb.ChatMessagesRequest,
 			search.FilterAND("group", vs)
 		}
 	}
+	// ?exclude.kind=custom
+	if fx := req.GetExclude(); fx != nil {
+		if vs := fx.GetKind(); len(vs) > 0 {
+			search.FilterAND("exclude.kind", vs)
+		}
+	}
 
 	list, re := srv.store.GetHistory(&search)
 	if err = re; err != nil {

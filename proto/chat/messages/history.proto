@@ -50,5 +50,13 @@ message ChatMessagesRequest {
   // Includes the history of ONLY those dialogs
   // whose member channel(s) contain
   // a specified set of variables.
-  map<string,string> group = 8;
+  map<string, string> group = 8;
+
+  // Exclude messages filter options
+  FilterMessageExclude exclude = 11;
+}
+
+message FilterMessageExclude {
+  // Kind of messages to exclude from results
+  repeated string kind = 1;
 }
