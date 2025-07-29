@@ -374,7 +374,7 @@ func nullChatUpdates(src *bot.ChatUpdates) *bot.ChatUpdates {
 	if src != nil {
 		for _, s := range []string{
 			src.Title, src.Close,
-			src.Join, src.Left,
+			src.Join, src.Left, src.FileFail,
 		} {
 			if s != "" {
 				return src

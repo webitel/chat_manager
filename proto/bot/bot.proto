@@ -60,6 +60,8 @@ message ChatUpdates {
   // Left member update.
   // Context: chat.Account.
   string left = 4;
+  // Failed file upload update.
+  string file_fail = 5;
 }
 
 // webitel.chat.server.Profile
