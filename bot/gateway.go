@@ -924,7 +924,7 @@ func (c *Gateway) Read(ctx context.Context, notify *Update) (err error) {
 
 	// PERFORM: receive !
 	err = channel.Recv(ctx, sendMessage)
-	if errors2.Is(err, FileUploadPolicyError) {
+	if errors2.Is(err, FileUploadPolicyError) { // if file policy error occured - send system warning message
 		text, err := c.Template.MessageText(FilePolicyFailType, nil)
 		if err != nil {
 			return err
