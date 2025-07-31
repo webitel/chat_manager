@@ -300,6 +300,8 @@ func (s *chatService) SendServiceMessage(ctx context.Context, req *pbchat.SendSe
 
 	var (
 		sendMessage *pbchat.Message
+		sender      *app.Channel
+		agent, flow *app.Channel
 	)
 	if req.GetMessage() == nil {
 		return errors.BadRequest("chat.service.save_agent_join_message.check_args.message", "message required")
@@ -318,10 +320,9 @@ func (s *chatService) SendServiceMessage(ctx context.Context, req *pbchat.SendSe
 	if err != nil {
 		return err
 	}
-	// set agent as sender
-	var agent, flow *app.Channel
+	allMembers := append([]*app.Channel{chat.Channel}, chat.Members...)
 	// find agent and flow channels
-	for _, member := range chat.Members {
+	for _, member := range allMembers {
 		if member.Closed != 0 {
 			continue
 		}
@@ -332,9 +333,10 @@ func (s *chatService) SendServiceMessage(ctx context.Context, req *pbchat.SendSe
 			flow = member
 		}
 	}
-	chat.Channel = agent
+	// agent has priority over bot
+	sender = agent
 	if chat.Channel == nil {
-		chat.Channel = flow
+		sender = flow
 	}
 
 	if chat.Channel == nil {
@@ -345,14 +347,14 @@ func (s *chatService) SendServiceMessage(ctx context.Context, req *pbchat.SendSe
 		)
 	}
 
-	_, err = s.saveMessage(ctx, nil, chat.Channel, sendMessage)
+	_, err = s.saveMessage(ctx, nil, sender, sendMessage)
 
 	if err != nil {
 		return err
 	}
 
 	// PERFORM message publish|broadcast
-	_, err = s.sendSystemLevelMessage(ctx, chat, sendMessage)
+	_, err = s.sendSystemLevelMessage(ctx, sender, allMembers, sendMessage)
 
 	if err != nil {
 		log.Error("FAILED Notify Websocket",
@@ -3173,11 +3175,9 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 	return sent, deliveryErr
 }
 
-func (c *chatService) sendSystemLevelMessage(ctx context.Context, chatRoom *app.Session, notify *pbchat.Message) (sent int, err error) {
-	// FROM
-	sender := chatRoom.Channel
+func (c *chatService) sendSystemLevelMessage(ctx context.Context, sender *app.Channel, receivers []*app.Channel, notify *pbchat.Message) (sent int, err error) {
 	// TO
-	if len(chatRoom.Members) == 0 {
+	if len(receivers) == 0 {
 		return 0, nil // NO ANY recepient(s) !
 	}
 
@@ -3192,7 +3192,7 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, chatRoom *app.
 		header map[string]string
 	)
 
-	for _, member := range chatRoom.Members {
+	for _, member := range receivers {
 
 		if member.IsClosed() {
 			continue // omit send TO channel: closed !
@@ -3277,6 +3277,8 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, chatRoom *app.
 				Header: header,
 				Body:   data.wesocket,
 			})
+		case "chatflow":
+			// skip: chatflow is not supported for system-level messages
 		default: // TO: webitel.chat.bot (external)
 			if member == sender {
 				continue
