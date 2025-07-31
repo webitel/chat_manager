@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	wlog "github.com/webitel/chat_manager/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -15,8 +18,6 @@ import (
 	"strings"
 	"time"
 	"unicode"
-
-	wlog "github.com/webitel/chat_manager/log"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/micro/micro/v3/service/broker"
@@ -38,6 +39,8 @@ import (
 	"github.com/webitel/chat_manager/internal/util"
 )
 
+var FilePolicyViolationError = errors.New("chat.file.policy.violation", "file policy violation", http.StatusForbidden)
+
 type Service interface {
 	GetConversations(ctx context.Context, req *pbchat.GetConversationsRequest, res *pbchat.GetConversationsResponse) error
 	GetConversationByID(ctx context.Context, req *pbchat.GetConversationByIDRequest, res *pbchat.GetConversationByIDResponse) error
@@ -45,7 +48,7 @@ type Service interface {
 
 	SendMessage(ctx context.Context, req *pbchat.SendMessageRequest, res *pbchat.SendMessageResponse) error
 	// [WTEL-4695]: duct tape, please make me normal when chats will be rewrited (agent join message knows only webitel.chat.bot)
-	SaveAgentJoinMessage(context.Context, *pbchat.SaveAgentJoinMessageRequest, *pbchat.SaveAgentJoinMessageResponse) error
+	SendServiceMessage(context.Context, *pbchat.SendServiceMessageRequest, *pbchat.SendServiceMessageResponse) error
 	DeleteMessage(ctx context.Context, req *pbchat.DeleteMessageRequest, res *pbchat.HistoryMessage) error
 	StartConversation(ctx context.Context, req *pbchat.StartConversationRequest, res *pbchat.StartConversationResponse) error
 	CloseConversation(ctx context.Context, req *pbchat.CloseConversationRequest, res *pbchat.CloseConversationResponse) error
@@ -214,41 +217,12 @@ func (s *chatService) SendMessage(
 	req *pbchat.SendMessageRequest,
 	res *pbchat.SendMessageResponse,
 ) error {
-
-	// const (
-
-	// 	precision = (int64)(time.Millisecond) // milli: 1e6
-	// )
-
 	var (
-
-		// localtime = time.Now()
-		// // timestamp = localtime.Unix() // seconds
-		// // epochtime = localtime.UnixNano()/precision
-
-		sendMessage = req.GetMessage()
-		// recvMessage0 = pg.Message { // saveMessage
-		// 	CreatedAt: localtime.UTC(),
-		// 	// UpdatedAt: time.IsZero(!) // NOT edited yet !
-		// }
-
-		// edit = (sendMessage.UpdatedAt != 0)
-
+		sendMessage  = req.GetMessage()
 		senderFromID = req.GetAuthUserId()
 		senderChatID = req.GetChannelId()
-
 		targetChatID = req.GetConversationId()
 	)
-
-	// log := s.log.With(
-	// 	slog.String("channel_id", senderChatID),
-	// 	slog.String("conversation_id", targetChatID),
-	// 	slog.Int64("auth_user_id", senderFromID),
-	// 	slog.String("type", sendMessage.GetType()),
-	// 	slog.String("text", sendMessage.GetText()),
-	// 	slog.Any("file", sendMessage.GetFile()))
-
-	// log.Debug("SEND Message")
 
 	if senderChatID == "" {
 		senderChatID = targetChatID
@@ -305,11 +279,6 @@ func (s *chatService) SendMessage(
 		// Failed to store message or validation error !
 		return err
 	}
-
-	// // show chat room state
-	// data, _ := json.MarshalIndent(chat, "", "  ")
-	// s.log.Debug().Msg(string(data))
-
 	// PERFORM message publish|broadcast
 	_, err = s.sendMessage(ctx, chat, sendMessage)
 
@@ -327,28 +296,17 @@ func (s *chatService) SendMessage(
 	return nil
 }
 
-func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pbchat.SaveAgentJoinMessageRequest, rsp *pbchat.SaveAgentJoinMessageResponse) error {
+func (s *chatService) SendServiceMessage(ctx context.Context, req *pbchat.SendServiceMessageRequest, _ *pbchat.SendServiceMessageResponse) error {
 
 	var (
-		sendMessage   *pbchat.Message
-		webitelUserID int64
+		sendMessage *pbchat.Message
 	)
 	if req.GetMessage() == nil {
 		return errors.BadRequest("chat.service.save_agent_join_message.check_args.message", "message required")
 	}
 	sendMessage = req.GetMessage()
 
-	if sendMessage.GetFrom() == nil {
-		return errors.BadRequest("chat.service.save_agent_join_message.check_args.message.from", "message.from required")
-	}
-
-	webitelUserID = sendMessage.From.GetId()
-	if webitelUserID == 0 {
-		return errors.BadRequest("chat.service.save_agent_join_message.check_args.message.from.id", "message.from.id required")
-	}
-
 	log := s.log.With(
-		slog.Int64("webitel_user", webitelUserID),
 		slog.String("type", sendMessage.GetType()),
 		slog.String("text", sendMessage.GetText()),
 		slog.Any("file", sendMessage.GetFile()),
@@ -356,33 +314,28 @@ func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pbchat.Save
 
 	log.Debug("SEND Message")
 
-	// region: lookup target chat session by unique webitel user id
-	chat, err := s.repo.GetSessionByInternalUserId(ctx, webitelUserID, req.GetReceiver())
-
+	chat, err := s.repo.GetSession(ctx, req.GetReceiver())
 	if err != nil {
-		// lookup operation error
 		return err
 	}
-
-	if chat == nil {
-		// sender channel ID not found
-		return errors.BadRequest(
-			"chat.save_agent_join_message.channel.from.not_found",
-			"send: FROM user ID=%d sender not found or been closed",
-			webitelUserID,
-		)
+	for _, member := range chat.Members {
+		if member.Channel == "websocket" && member.Closed == 0 {
+			chat.Channel = member
+			break
+		}
 	}
 
-	//if senderFromID != 0 && chat.User.ID != senderFromID {
-	//	// mismatch sender contact ID
-	//	return errors.BadRequest(
-	//		"chat.save_agent_join_message.user.mismatch",
-	//		"send: FROM channel ID=%s user ID=%d mismatch",
-	//		senderChatID, senderFromID,
-	//	)
-	//}
+	// if operator channel not found then change the sender channel to the open chatflow channel
+	if chat.Channel == nil {
+		for _, member := range chat.Members {
+			if member.Channel == "chatflow" && member.Closed == 0 {
+				chat.Channel = member
+				break
+			}
+		}
+	}
 
-	if chat.IsClosed() {
+	if chat.Channel == nil {
 		// sender channel is already closed !
 		return errors.BadRequest(
 			"chat.save_agent_join_message.channel.from.closed",
@@ -391,18 +344,14 @@ func (s *chatService) SaveAgentJoinMessage(ctx context.Context, req *pbchat.Save
 		)
 	}
 
-	sender := chat.Channel
-
-	// save message from the sender perspective (remove me or do from the flow in the future)
-	_, err = s.saveMessage(ctx, nil, sender, sendMessage)
+	_, err = s.saveMessage(ctx, nil, chat.Channel, sendMessage)
 
 	if err != nil {
-		// Failed to store message or validation error !
 		return err
 	}
 
 	// PERFORM message publish|broadcast
-	_, err = s.notifyAgentJoinToAllMembers(ctx, chat, sendMessage)
+	_, err = s.sendSystemLevelMessage(ctx, chat, sendMessage)
 
 	if err != nil {
 		log.Error("FAILED Notify Websocket",
@@ -2702,10 +2651,16 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 				log.Error("Failed to UploadFileUrl",
 					slog.Any("error", err),
 				)
-				return nil, errors.InternalServerError(
-					"chat.upload.document.error",
-					"upload: %s", err.Error(),
-				)
+				if grpcErr, ok := status.FromError(err); ok {
+					switch grpcErr.Code() {
+					case codes.FailedPrecondition:
+						// file policy violation
+						return nil, FilePolicyViolationError
+					}
+				}
+				// TODO: return regular error
+				return nil, FilePolicyViolationError
+
 			}
 
 			// CHECK: finally(!) response document data
@@ -3217,7 +3172,7 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 	return sent, deliveryErr
 }
 
-func (c *chatService) notifyAgentJoinToAllMembers(ctx context.Context, chatRoom *app.Session, notify *pbchat.Message) (sent int, err error) {
+func (c *chatService) sendSystemLevelMessage(ctx context.Context, chatRoom *app.Session, notify *pbchat.Message) (sent int, err error) {
 	// FROM
 	sender := chatRoom.Channel
 	// TO

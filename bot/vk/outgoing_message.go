@@ -235,7 +235,7 @@ func (c *VKBot) ConvertInternalToOutcomingMessage(update *bot.Update) (*Outgoing
 
 		if channel.ChannelID != "" {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &chat.SaveAgentJoinMessageRequest{Message: messageToSave, Receiver: channel.ChannelID})
+			_, err = c.Gateway.Internal.Client.SendServiceMessage(ctx, &chat.SendServiceMessageRequest{Message: messageToSave, Receiver: channel.ChannelID})
 			cancel()
 			if err != nil {
 				return nil, err

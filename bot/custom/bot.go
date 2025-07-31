@@ -272,13 +272,12 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 		// format new message to the engine for saving it in the DB as operator message [WTEL-4695]
 		messageToSave := &pbchat.Message{
 			Id:        message.Id,
-			Type:      "text",
+			Type:      bot.TextType,
 			Text:      text,
 			CreatedAt: time.Now().UnixMilli(),
-			From:      peer,
 		}
-		if channel != nil && channel.ChannelID != "" {
-			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &pbchat.SaveAgentJoinMessageRequest{Message: messageToSave, Receiver: channel.ChannelID})
+		if channel.ChannelID != "" {
+			_, err = c.Gateway.Internal.Client.SendServiceMessage(ctx, &pbchat.SendServiceMessageRequest{Message: messageToSave, Receiver: channel.ChannelID})
 			if err != nil {
 				return err
 			}

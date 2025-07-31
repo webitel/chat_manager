@@ -34,7 +34,7 @@ service ChatService {
   rpc GetHistoryMessages(GetHistoryMessagesRequest) returns (GetHistoryMessagesResponse) {}
 
   // [WTEL-4695] crutch
-  rpc SaveAgentJoinMessage(SaveAgentJoinMessageRequest) returns (SaveAgentJoinMessageResponse) {}
+  rpc SendServiceMessage(SendServiceMessageRequest) returns (SendServiceMessageResponse) {}
 
   // API /v1
   rpc SetVariables(SetVariablesRequest) returns (ChatVariablesResponse) {}
@@ -120,12 +120,12 @@ message UpdateChannelRequest {
 message UpdateChannelResponse {}
 
 
-message SaveAgentJoinMessageRequest {
+message SendServiceMessageRequest {
   Message message = 1;
   string receiver = 2;
 }
 
-message SaveAgentJoinMessageResponse {
+message SendServiceMessageResponse {
 }
 
 message HistoryMessage {
