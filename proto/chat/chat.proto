@@ -33,7 +33,8 @@ service ChatService {
   rpc GetConversationByID(GetConversationByIDRequest) returns (GetConversationByIDResponse) {}
   rpc GetHistoryMessages(GetHistoryMessagesRequest) returns (GetHistoryMessagesResponse) {}
 
-  // [WTEL-4695] crutch
+  // [WTEL-4695], [WTEL6931] - tasks
+  // SendServiceMessage sends a service level message
   rpc SendServiceMessage(SendServiceMessageRequest) returns (SendServiceMessageResponse) {}
 
   // API /v1
@@ -121,8 +122,8 @@ message UpdateChannelResponse {}
 
 
 message SendServiceMessageRequest {
-  Message message = 1;
-  string receiver = 2;
+  Message message = 1; // message to send
+  string chat_id = 2; // either conversation id or channel id
 }
 
 message SendServiceMessageResponse {

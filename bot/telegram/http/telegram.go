@@ -288,13 +288,14 @@ func (c *TelegramBot) SendNotify(ctx context.Context, notify *bot.Update) error 
 		if channel != nil && channel.ChannelID != "" {
 			_, err = c.Gateway.Internal.Client.SendServiceMessage(
 				ctx, &chat.SendServiceMessageRequest{
-					Message:  messageToSave,
-					Receiver: channel.ChannelID,
+					Message: messageToSave,
+					ChatId:  channel.ChannelID,
 				},
 			)
 			if err != nil {
 				return err
 			}
+			return nil
 		}
 
 		// Set text to message

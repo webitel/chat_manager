@@ -2594,10 +2594,11 @@ func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) err
 			From:      peer,
 		}
 		if channel != nil && channel.ChannelID != "" {
-			_, err = c.Gateway.Internal.Client.SendServiceMessage(ctx, &chat.SendServiceMessageRequest{Message: messageToSave, Receiver: channel.ChannelID})
+			_, err = c.Gateway.Internal.Client.SendServiceMessage(ctx, &chat.SendServiceMessageRequest{Message: messageToSave, ChatId: channel.ChannelID})
 			if err != nil {
 				return err
 			}
+			return nil
 		}
 
 	case "left": // ACK: ChatService.LeaveConversation()

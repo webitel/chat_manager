@@ -314,7 +314,7 @@ func (s *chatService) SendServiceMessage(ctx context.Context, req *pbchat.SendSe
 
 	log.Debug("SEND Message")
 
-	chat, err := s.repo.GetSession(ctx, req.GetReceiver())
+	chat, err := s.repo.GetSession(ctx, req.GetChatId())
 	if err != nil {
 		return err
 	}

@@ -277,10 +277,11 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 			CreatedAt: time.Now().UnixMilli(),
 		}
 		if channel.ChannelID != "" {
-			_, err = c.Gateway.Internal.Client.SendServiceMessage(ctx, &pbchat.SendServiceMessageRequest{Message: messageToSave, Receiver: channel.ChannelID})
+			_, err = c.Gateway.Internal.Client.SendServiceMessage(ctx, &pbchat.SendServiceMessageRequest{Message: messageToSave, ChatId: channel.ChannelID})
 			if err != nil {
 				return err
 			}
+			return nil
 		}
 		webhookMessage.Text = text
 
