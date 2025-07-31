@@ -25,9 +25,10 @@ import (
 )
 
 const (
-	CaptchaSuffix = "/captcha"
-	TextType      = "text"
-	FileType      = "file"
+	CaptchaSuffix      = "/captcha"
+	TextType           = "text"
+	FileType           = "file"
+	FilePolicyFailType = "file_policy_fail"
 )
 
 // Service intercomunnication proxy

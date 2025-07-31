@@ -5,7 +5,7 @@ package chat
 
 import (
 	fmt "fmt"
-	proto "github.com/golang/protobuf/proto"
+	proto "google.golang.org/protobuf/proto"
 	math "math"
 )
 
@@ -20,12 +20,6 @@ import (
 var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
-
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ api.Endpoint
@@ -67,7 +61,7 @@ type ChatService interface {
 	GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, opts ...client.CallOption) (*GetConversationByIDResponse, error)
 	GetHistoryMessages(ctx context.Context, in *GetHistoryMessagesRequest, opts ...client.CallOption) (*GetHistoryMessagesResponse, error)
 	// [WTEL-4695] crutch
-	SaveAgentJoinMessage(ctx context.Context, in *SaveAgentJoinMessageRequest, opts ...client.CallOption) (*SaveAgentJoinMessageResponse, error)
+	SendServiceMessage(ctx context.Context, in *SendServiceMessageRequest, opts ...client.CallOption) (*SendServiceMessageResponse, error)
 	// API /v1
 	SetVariables(ctx context.Context, in *SetVariablesRequest, opts ...client.CallOption) (*ChatVariablesResponse, error)
 	BlindTransfer(ctx context.Context, in *ChatTransferRequest, opts ...client.CallOption) (*ChatTransferResponse, error)
@@ -235,9 +229,9 @@ func (c *chatService) GetHistoryMessages(ctx context.Context, in *GetHistoryMess
 	return out, nil
 }
 
-func (c *chatService) SaveAgentJoinMessage(ctx context.Context, in *SaveAgentJoinMessageRequest, opts ...client.CallOption) (*SaveAgentJoinMessageResponse, error) {
-	req := c.c.NewRequest(c.name, "ChatService.SaveAgentJoinMessage", in)
-	out := new(SaveAgentJoinMessageResponse)
+func (c *chatService) SendServiceMessage(ctx context.Context, in *SendServiceMessageRequest, opts ...client.CallOption) (*SendServiceMessageResponse, error) {
+	req := c.c.NewRequest(c.name, "ChatService.SendServiceMessage", in)
+	out := new(SendServiceMessageResponse)
 	err := c.c.Call(ctx, req, out, opts...)
 	if err != nil {
 		return nil, err
@@ -293,7 +287,7 @@ type ChatServiceHandler interface {
 	GetConversationByID(context.Context, *GetConversationByIDRequest, *GetConversationByIDResponse) error
 	GetHistoryMessages(context.Context, *GetHistoryMessagesRequest, *GetHistoryMessagesResponse) error
 	// [WTEL-4695] crutch
-	SaveAgentJoinMessage(context.Context, *SaveAgentJoinMessageRequest, *SaveAgentJoinMessageResponse) error
+	SendServiceMessage(context.Context, *SendServiceMessageRequest, *SendServiceMessageResponse) error
 	// API /v1
 	SetVariables(context.Context, *SetVariablesRequest, *ChatVariablesResponse) error
 	BlindTransfer(context.Context, *ChatTransferRequest, *ChatTransferResponse) error
@@ -316,7 +310,7 @@ func RegisterChatServiceHandler(s server.Server, hdlr ChatServiceHandler, opts .
 		GetConversations(ctx context.Context, in *GetConversationsRequest, out *GetConversationsResponse) error
 		GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, out *GetConversationByIDResponse) error
 		GetHistoryMessages(ctx context.Context, in *GetHistoryMessagesRequest, out *GetHistoryMessagesResponse) error
-		SaveAgentJoinMessage(ctx context.Context, in *SaveAgentJoinMessageRequest, out *SaveAgentJoinMessageResponse) error
+		SendServiceMessage(ctx context.Context, in *SendServiceMessageRequest, out *SendServiceMessageResponse) error
 		SetVariables(ctx context.Context, in *SetVariablesRequest, out *ChatVariablesResponse) error
 		BlindTransfer(ctx context.Context, in *ChatTransferRequest, out *ChatTransferResponse) error
 	}
@@ -391,8 +385,8 @@ func (h *chatServiceHandler) GetHistoryMessages(ctx context.Context, in *GetHist
 	return h.ChatServiceHandler.GetHistoryMessages(ctx, in, out)
 }
 
-func (h *chatServiceHandler) SaveAgentJoinMessage(ctx context.Context, in *SaveAgentJoinMessageRequest, out *SaveAgentJoinMessageResponse) error {
-	return h.ChatServiceHandler.SaveAgentJoinMessage(ctx, in, out)
+func (h *chatServiceHandler) SendServiceMessage(ctx context.Context, in *SendServiceMessageRequest, out *SendServiceMessageResponse) error {
+	return h.ChatServiceHandler.SendServiceMessage(ctx, in, out)
 }
 
 func (h *chatServiceHandler) SetVariables(ctx context.Context, in *SetVariablesRequest, out *ChatVariablesResponse) error {

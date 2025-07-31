@@ -719,10 +719,11 @@ func (c *Client) SendNotify(ctx context.Context, notify *bot.Update) error {
 			From:      peer,
 		}
 		if channel != nil && channel.ChannelID != "" {
-			_, err = c.Gateway.Internal.Client.SaveAgentJoinMessage(ctx, &pbchat.SaveAgentJoinMessageRequest{Message: messageToSave, Receiver: channel.ChannelID})
+			_, err = c.Gateway.Internal.Client.SendServiceMessage(ctx, &pbchat.SendServiceMessageRequest{Message: messageToSave, ChatId: channel.ChannelID})
 			if err != nil {
 				return err
 			}
+			return nil
 		}
 		// Send Text
 		sendMessage.Text = text

@@ -924,7 +924,22 @@ func (c *Gateway) Read(ctx context.Context, notify *Update) (err error) {
 
 	// PERFORM: receive !
 	err = channel.Recv(ctx, sendMessage)
-
+	if errors2.Is(err, FileUploadPolicyError) { // if file policy error occured - send system warning message
+		text, err := c.Template.MessageText(FilePolicyFailType, nil)
+		if err != nil {
+			return err
+		}
+		warningMessage := &chat.Message{
+			Type:      "text",
+			Text:      text,
+			Variables: sendMessage.Variables,
+			Contact:   sendMessage.Contact,
+			CreatedAt: sendMessage.CreatedAt,
+			UpdatedAt: sendMessage.UpdatedAt,
+			From:      sendMessage.From,
+		}
+		_, err = c.Internal.Client.SendServiceMessage(ctx, &chat.SendServiceMessageRequest{Message: warningMessage})
+	}
 	if err != nil {
 		return err // NACK(!)
 	}

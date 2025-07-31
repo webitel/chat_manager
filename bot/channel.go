@@ -2,6 +2,9 @@ package bot
 
 import (
 	"context"
+	"errors"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"log/slog"
 	"strconv"
 	"sync"
@@ -17,6 +20,8 @@ import (
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	strategy "github.com/webitel/chat_manager/internal/selector"
 )
+
+var FileUploadPolicyError = errors.New("this type of file is not allowed to upload")
 
 type Channel struct {
 	Host string // webitel.chat.server node-id serving .this channel
@@ -415,6 +420,12 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 		log.Error("<<<<< RECV <<<<<",
 			slog.Any("error", err),
 		)
+		if st, ok := status.FromError(err); ok && message.File != nil {
+			switch st.Code() {
+			case codes.FailedPrecondition: // storage file policy violation
+				return FileUploadPolicyError
+			}
+		}
 	}
 
 	return err
