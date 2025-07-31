@@ -318,29 +318,30 @@ func (s *chatService) SendServiceMessage(ctx context.Context, req *pbchat.SendSe
 	if err != nil {
 		return err
 	}
+	// set agent as sender
+	var agent, flow *app.Channel
+	// find agent and flow channels
 	for _, member := range chat.Members {
-		if member.Channel == "websocket" && member.Closed == 0 {
-			chat.Channel = member
-			break
+		if member.Closed != 0 {
+			continue
+		}
+		switch member.Channel {
+		case "websocket":
+			agent = member
+		case "chatflow":
+			flow = member
 		}
 	}
-
-	// if operator channel not found then change the sender channel to the open chatflow channel
+	chat.Channel = agent
 	if chat.Channel == nil {
-		for _, member := range chat.Members {
-			if member.Channel == "chatflow" && member.Closed == 0 {
-				chat.Channel = member
-				break
-			}
-		}
+		chat.Channel = flow
 	}
 
 	if chat.Channel == nil {
-		// sender channel is already closed !
+		// unable to find sender
 		return errors.BadRequest(
-			"chat.save_agent_join_message.channel.from.closed",
-			"send: FROM chat channel ID=%s is closed",
-			chat.ID,
+			"chat.send.channel.from.not_found",
+			"send: sender not found or been closed",
 		)
 	}
 
@@ -3190,14 +3191,8 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, chatRoom *app.
 		}{}
 		header map[string]string
 	)
-	// Broadcast message to every member in the room,
-	// in front of chaRoom.Channel as a sender !
-	members := make([]*app.Channel, 1+len(chatRoom.Members))
 
-	members[0] = sender
-	copy(members[1:], chatRoom.Members)
-
-	for _, member := range members { // chatRoom.Members {
+	for _, member := range chatRoom.Members {
 
 		if member.IsClosed() {
 			continue // omit send TO channel: closed !
@@ -3206,7 +3201,6 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, chatRoom *app.
 		switch member.Channel {
 
 		case "websocket": // TO: engine (internal)
-			// s.eventRouter.sendEventToWebitelUser()
 			// NOTE: if sender is an internal chat@channel user (operator)
 			//       we publish message for him (author) as a member too
 			//       to be able to detect chat updates on other browser tabs ...
@@ -3276,7 +3270,6 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, chatRoom *app.
 					"content_type": "text/json",
 				}
 			}
-
 			agent := broker.DefaultBroker // service.Options().Broker
 			err = agent.Publish(fmt.Sprintf("event.%s.%d.%d",
 				events.MessageEventType, member.DomainID, member.User.ID,
@@ -3284,8 +3277,30 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, chatRoom *app.
 				Header: header,
 				Body:   data.wesocket,
 			})
+		default: // TO: webitel.chat.bot (external)
+			if member == sender {
+				continue
+			}
+			err = c.eventRouter.SendMessageToGateway(sender, member, notify)
+			if err != nil {
+				return 0, err
+			}
+			// Merge SENT message external binding (variables)
+			if notify.Id == 0 {
+				// NOTE: there was a service-level message notification
+				//       so we omit message binding
+				continue
+			}
+		}
+
+		(sent)++ // calc active recepients !
+
+		if err != nil {
+			// FIXME: just log failed attempt ?
+			return 0, err
 		}
 	}
+
 	return sent, nil // err
 }
 
