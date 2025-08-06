@@ -339,7 +339,8 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
                        FROM contacts.contact_imclient im
                                 LEFT JOIN contacts.contact ct ON im.contact_id = ct.id
                        WHERE im.user_id = ANY
-                             (SELECT user_id FROM chat.channel WHERE NOT internal AND conversation_id = ` + ident(left, "id") + ` LIMIT 1)) contact`),
+                             (SELECT user_id FROM chat.channel WHERE NOT internal AND conversation_id = ` + ident(left, "id") + ` LIMIT 1)
+                       LIMIT 1) contact`),
 			)
 			plan = append(plan, func(node *messages.AgentChat) any {
 				return fetchPeerRow(&node.Contact)
