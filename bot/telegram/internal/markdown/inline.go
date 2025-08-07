@@ -24,10 +24,17 @@ func (p *inlineParser) CanOpenCloser(opener, closer *parser.Delimiter) bool {
 	return opener.Char == closer.Char
 }
 
+// OnMatch returns a new node based on the number of delimiters consumed.
+// If the number of delimiters consumed is greater than the number of
+// functions provided, it will use the last function in the slice.
 func (p *inlineParser) OnMatch(consumes int) gast.Node {
-	var node gast.Node
+	var (
+		node     gast.Node
+		nodesLen = len(p.n)
+	)
+
 	for m := consumes - 1; m >= 0 && node == nil; m-- {
-		if m >= len(p.n) {
+		if m >= nodesLen {
 			continue
 		}
 		new := p.n[m]
