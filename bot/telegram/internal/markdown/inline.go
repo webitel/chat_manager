@@ -27,8 +27,7 @@ func (p *inlineParser) CanOpenCloser(opener, closer *parser.Delimiter) bool {
 func (p *inlineParser) OnMatch(consumes int) gast.Node {
 	var node gast.Node
 	for m := consumes - 1; m >= 0 && node == nil; m-- {
-		if len(p.n) <= m {
-			m = len(p.n)
+		if m >= len(p.n) {
 			continue
 		}
 		new := p.n[m]
