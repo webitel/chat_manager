@@ -24,7 +24,7 @@ require (
 	github.com/micro/micro/v3 v3.10.1
 	github.com/mitchellh/hashstructure v1.1.0
 	github.com/pkg/errors v0.9.1
-	github.com/rs/zerolog v1.33.0
+	github.com/rs/zerolog v1.34.0
 	github.com/samber/slog-formatter v1.1.1
 	github.com/streadway/amqp v1.1.0
 	github.com/urfave/cli/v2 v2.3.0
