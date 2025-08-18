@@ -940,7 +940,7 @@ func (c *Gateway) Read(ctx context.Context, notify *Update) (err error) {
 				UpdatedAt: sendMessage.UpdatedAt,
 				From:      sendMessage.From,
 			}
-			_, sendErr := c.Internal.Client.SendServiceMessage(ctx, &chat.SendServiceMessageRequest{Message: warningMessage})
+			_, sendErr := c.Internal.Client.SendServiceMessage(ctx, &chat.SendServiceMessageRequest{Message: warningMessage, ChatId: channel.SessionID})
 			if sendErr != nil {
 				return sendErr
 			}
