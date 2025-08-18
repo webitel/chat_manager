@@ -5,9 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	wlog "github.com/webitel/chat_manager/log"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -23,6 +20,7 @@ import (
 	"github.com/micro/micro/v3/service/broker"
 	"github.com/micro/micro/v3/service/context/metadata"
 	"github.com/micro/micro/v3/service/errors"
+	wlog "github.com/webitel/chat_manager/log"
 
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/pkg/events"
@@ -2654,15 +2652,8 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 				log.Error("Failed to UploadFileUrl",
 					slog.Any("error", err),
 				)
-				if grpcErr, ok := status.FromError(err); ok {
-					switch grpcErr.Code() {
-					case codes.FailedPrecondition:
-						// file policy violation
-						return nil, FilePolicyViolationError
-					}
-				}
 				// TODO: return regular error
-				return nil, FilePolicyViolationError
+				return nil, err
 
 			}
 

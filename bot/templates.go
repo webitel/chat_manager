@@ -91,6 +91,7 @@ func (m *Template) FromProto(on *bot.ChatUpdates) error {
 		{UpdateChatTitle, on.GetTitle()},
 		{UpdateChatMember, on.GetJoin()},
 		{UpdateLeftMember, on.GetLeft()},
+		{FilePolicyFailType, on.GetFilePolicyFail()},
 	} {
 		e.text = strings.TrimSpace(e.text)
 		// addTemplate

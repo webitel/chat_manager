@@ -218,7 +218,7 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 		if is := (spec != nil); is {
 			for _, tmpl := range []string{
 				spec.Title, spec.Close,
-				spec.Join, spec.Left,
+				spec.Join, spec.Left, spec.FilePolicyFail,
 			} {
 				tmpl = strings.TrimSpace(tmpl)
 				if is = (tmpl != ""); is {

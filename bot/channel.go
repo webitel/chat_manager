@@ -3,13 +3,12 @@ package bot
 import (
 	"context"
 	"errors"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"log/slog"
 	"strconv"
 	"sync"
 	"time"
 
+	microerr "github.com/micro/micro/v3/service/errors"
 	wlog "github.com/webitel/chat_manager/log"
 
 	"github.com/micro/micro/v3/service/client"
@@ -407,26 +406,26 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 	log := c.Log.With(
 		slog.String("text", messageText),
 	)
-
-	if err == nil {
-		// TODO: Remove if clause !
-		// For backwards capability only !
-		if res.Message != nil {
-
-			*(message) = *(res.Message)
-		}
-		log.Debug("<<<<< RECV <<<<<")
-	} else {
+	if err != nil {
 		log.Error("<<<<< RECV <<<<<",
 			slog.Any("error", err),
 		)
-		if st, ok := status.FromError(err); ok && message.File != nil {
-			switch st.Code() {
-			case codes.FailedPrecondition: // storage file policy violation
+		if uploadErr := microerr.FromError(err); uploadErr != nil && message.File != nil {
+			switch uploadErr.Detail {
+			case "policy.file.allow":
+				// file policy violation
 				return FileUploadPolicyError
 			}
 		}
+		return err
 	}
+	// TODO: Remove if clause !
+	// For backwards capability only !
+	if res.Message != nil {
+
+		*(message) = *(res.Message)
+	}
+	log.Debug("<<<<< RECV <<<<<")
 
 	return err
 }
