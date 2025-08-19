@@ -9,6 +9,7 @@ import (
 
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/api/proto/bot"
+	"github.com/webitel/chat_manager/api/proto/storage"
 )
 
 type (
@@ -103,7 +104,7 @@ func Validate(e *Bot) error {
 
 // Setup validates and configures the gateway
 // driver according to this bot's profile settings
-func (srv *Service) setup(add *Bot) (*Gateway, error) {
+func (srv *Service) setup(add *Bot, fileStorage storage.FileService) (*Gateway, error) {
 
 	// Model validation(s) !
 	err := Validate(add)
@@ -144,14 +145,10 @@ func (srv *Service) setup(add *Bot) (*Gateway, error) {
 	// CHECK: Provider specific options are well formed !
 	agent := &Gateway{
 
-		Log:      log,
-		Bot:      add,
-		Internal: srv,
-		// Template: NewTemplate(add.Provider),
-		// // CACHE Store
-		// RWMutex:  new(sync.RWMutex),
-		// internal: make(map[int64]*Channel), // map[internal.user.id]
-		// external: make(map[string]*Channel), // map[provider.user.id]
+		Log:           log,
+		Bot:           add,
+		Internal:      srv,
+		storageClient: fileStorage,
 	}
 
 	// NOTE: We oblige providers to independently manage templates for updates.

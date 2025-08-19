@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -18,10 +17,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
-	"github.com/micro/micro/v3/service/client"
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/api/proto/chat"
-	"github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/bot"
 )
 
@@ -420,106 +417,14 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 	}
 	// Populate unique filename
 	media.Name = filename
-
-	// serviceName := "storage"
-	grpcClient := client.DefaultClient
-	store := storage.NewFileService("storage", grpcClient)
-	stream, err := store.UploadFile(context.TODO())
-	// uploadFile := grpcClient.NewRequest(
-	// 	"storage", "FileService.UploadFile",
-	// 	&storage.UploadFileRequest{
-	// 		Data: &storage.UploadFileRequest_Metadata_{
-	// 			Metadata: &storage.UploadFileRequest_Metadata{
-	// 				DomainId: recipient.DomainID(),
-	// 				MimeType: media.Mime,
-	// 				Name:     media.Name,
-	// 				Uuid:     uuid.Must(uuid.NewRandom()).String(),
-	// 			},
-	// 		},
-	// 	},
-	// )
+	metadata, err := c.Gateway.UploadFile(context.TODO(), 4096, media.Mime, media.Name, uuid.Must(uuid.NewRandom()).String(), rsp.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	// c.Gateway.Log.Debug().Interface("media", media).Msg("storage.uploadFile")
-	err = stream.Send(&storage.UploadFileRequest{
-		Data: &storage.UploadFileRequest_Metadata_{
-			Metadata: &storage.UploadFileRequest_Metadata{
-				DomainId: recipient.DomainID(),
-				MimeType: media.Mime,
-				Name:     media.Name,
-				Uuid:     uuid.Must(uuid.NewRandom()).String(),
-			},
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-	// defer stream.Close()
-
-	var (
-		n    int
-		buf  = make([]byte, 4096) // Chunks Size
-		data = storage.UploadFileRequest_Chunk{
-			// Chunk: nil, // buf[:],
-		}
-		push = storage.UploadFileRequest{
-			Data: &data,
-		}
-	)
-	for {
-		n, err = rsp.Body.Read(buf)
-		if err != nil {
-			if err == io.EOF {
-				err = nil
-			} else {
-				break
-			}
-		}
-		data.Chunk = buf[0:n]
-		err = stream.Send(&push)
-		if err != nil {
-			break
-		}
-		if n == 0 {
-			break
-		}
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	var res *storage.UploadFileResponse
-	res, err = stream.CloseAndRecv()
-	if err != nil {
-		return nil, err
-	}
-
-	fileURI := res.FileUrl
-	if path.IsAbs(fileURI) {
-		// NOTE: We've got not a valid URL but filepath
-		srv := c.Gateway.Internal
-		hostURL, err := url.ParseRequestURI(srv.HostURL())
-		if err != nil {
-			panic(err)
-		}
-		fileURL := &url.URL{
-			Scheme: hostURL.Scheme,
-			Host:   hostURL.Host,
-		}
-		fileURL, err = fileURL.Parse(fileURI)
-		if err != nil {
-			panic(err)
-		}
-		fileURI = fileURL.String()
-		res.FileUrl = fileURI
-	}
-
-	media.Id = res.FileId
-	media.Url = res.FileUrl
-	media.Size = res.Size
+	media.Id = metadata.Id
+	media.Url = metadata.Url
+	media.Size = metadata.Size
 
 	return media, nil
 }

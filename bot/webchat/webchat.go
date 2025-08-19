@@ -15,21 +15,17 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"path"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/micro/micro/v3/service/client"
 	errs "github.com/micro/micro/v3/service/errors"
 	"github.com/pkg/errors"
 
 	"github.com/gorilla/websocket"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
-
-	"github.com/webitel/chat_manager/api/proto/storage"
 )
 
 // webChat room with external client
@@ -37,7 +33,7 @@ import (
 
 type CaptchaHandler interface {
 	HandleCaptcha(rsp http.ResponseWriter, req *http.Request)
-	GetEnabled() bool
+	Enabled() bool
 }
 
 type webChat struct {
@@ -726,24 +722,7 @@ func (c *limitedReader) Read(b []byte) (n int, err error) {
 	return // n, err
 }
 
-// type mediaFile struct {
-// 	Id        int64  `json:"id"`
-// 	MimeType  string `json:"mime"`
-// 	Name      string `json:"name"`
-// 	Size      int64  `json:"size"`
-// 	SharedUrl string `json:"shared"`
-// }
-
 func (c *WebChatBot) uploadMediaFile(sender *bot.Channel, media *chat.File, content io.Reader) (*chat.File, error) {
-
-	client := client.DefaultClient
-	store := storage.NewFileService("storage", client)
-	stream, err := store.UploadFile(context.TODO())
-
-	if err != nil {
-		return nil, err
-	}
-
 	var randomId [16]byte
 	_, _ = rand.Read(randomId[:])
 	filename := fmt.Sprintf("%x", randomId[:])
@@ -751,88 +730,13 @@ func (c *WebChatBot) uploadMediaFile(sender *bot.Channel, media *chat.File, cont
 	if media.Name != "" {
 		filename += "_" + media.Name
 	}
-
-	err = stream.Send(&storage.UploadFileRequest{
-		Data: &storage.UploadFileRequest_Metadata_{
-			Metadata: &storage.UploadFileRequest_Metadata{
-				DomainId: sender.DomainID(),
-				MimeType: media.Mime,
-				Name:     filename,
-				Uuid:     sender.ChannelID, // parent
-			},
-		},
-	})
-
+	metadata, err := c.Gateway.UploadFile(context.TODO(), 4096, media.Mime, media.GetName(), sender.ChannelID, content)
 	if err != nil {
 		return nil, err
 	}
-	// defer stream.Close()
-
-	var (
-		n    int
-		buf  = make([]byte, 4096) // Chunks Size
-		data = storage.UploadFileRequest_Chunk{
-			// Chunk: nil, // buf[:],
-		}
-		push = storage.UploadFileRequest{
-			Data: &data,
-		}
-	)
-
-	for {
-		n, err = content.Read(buf)
-		if err != nil {
-			if err == io.EOF {
-				err = nil
-				// n = 0
-			} else {
-				break
-			}
-		}
-		data.Chunk = buf[0:n]
-		err = stream.Send(&push)
-		if err != nil {
-			break
-		}
-		if n == 0 {
-			break
-		}
-	}
-
-	if err != nil {
-		// stream.Close() // CANCEL !
-		return nil, err
-	}
-
-	var res *storage.UploadFileResponse
-	res, err = stream.CloseAndRecv() // RecvMsg(&res)
-	if err != nil {
-		return nil, err
-	}
-
-	fileURI := res.FileUrl
-	if path.IsAbs(fileURI) {
-		// NOTE: We've got not a valid URL but filepath
-		srv := c.Gateway.Internal
-		hostURL, err := url.ParseRequestURI(srv.HostURL())
-		if err != nil {
-			panic(err)
-		}
-		fileURL := &url.URL{
-			Scheme: hostURL.Scheme,
-			Host:   hostURL.Host,
-		}
-		fileURL, err = fileURL.Parse(fileURI)
-		if err != nil {
-			panic(err)
-		}
-		fileURI = fileURL.String()
-		res.FileUrl = fileURI
-	}
-
-	media.Id = res.FileId
-	media.Url = res.FileUrl
-	media.Size = res.Size
+	media.Id = metadata.Id
+	media.Url = metadata.Url
+	media.Size = metadata.Size
 
 	return media, nil
 }
@@ -1049,7 +953,7 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 	responseHeader.Set("Access-Control-Allow-Origin", origin)
 
 	if strings.HasSuffix(req.URL.Path, bot.CaptchaSuffix) {
-		if c.Captcha != nil && c.Captcha.GetEnabled() {
+		if c.Captcha != nil && c.Captcha.Enabled() {
 
 			switch req.Method {
 			case http.MethodGet:
