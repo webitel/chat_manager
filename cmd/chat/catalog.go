@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/hex"
 	"log/slog"
 	"strconv"
@@ -398,7 +397,6 @@ func (srv *Catalog) GetHistory(ctx context.Context, req *pb.ChatMessagesRequest,
 	switch input := req.GetChat().(type) {
 	case *pb.ChatMessagesRequest_Peer:
 		{
-
 			peer = input.Peer
 		}
 	case *pb.ChatMessagesRequest_ChatId:
@@ -426,15 +424,7 @@ func (srv *Catalog) GetHistory(ctx context.Context, req *pb.ChatMessagesRequest,
 			"messages( peer.id: string! ); input: required",
 		)
 	}
-	// peer.id can be encoded in base64url (for example viber has peer.id with slashes)
-	// try to decode it
-	decoded, decodeErr := base64.RawURLEncoding.DecodeString(peer.GetId())
-	if decodeErr == nil {
-		peer = &pb.Peer{
-			Type: peer.GetType(),
-			Id:   string(decoded),
-		}
-	}
+
 	if peer.GetType() == "" {
 		return errors.BadRequest(
 			"messages.query.peer.type.required",
