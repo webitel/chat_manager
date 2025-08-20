@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
@@ -352,7 +353,12 @@ func getMessagesInput(req *app.SearchOptions) (args chatMessagesArgs, err error)
 					{
 						// explode by: ',' or ' '
 						data = app.FieldsFunc(
-							data, app.InlineFields,
+							// data, app.InlineFields, // case-ignore (lower)
+							data, func(inline string) []string { // case-exact !!!
+								return strings.FieldsFunc(inline, func(c rune) bool {
+									return c == ',' || unicode.IsSpace(c)
+								})
+							},
 						)
 						for i, n := 0, len(data); i < n; i++ {
 							data[i] = strings.TrimSpace(data[i])
