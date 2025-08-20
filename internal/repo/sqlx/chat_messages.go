@@ -784,7 +784,7 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 				var chatId pgtype.UUID
 				err = chatId.Set(ctx.Input.Peer.Id)
 				if err != nil {
-					return ctx, err
+					panic("messages.chat.id: " + err.Error())
 				}
 				ctx.Params.set("chat.id", &chatId)
 				ctx.Query = ctx.Query.Where(
