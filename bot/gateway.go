@@ -1058,7 +1058,7 @@ func (c *Gateway) Read(ctx context.Context, notify *Update) (err error) {
 	if err != nil {
 		if errors.Is(err, FileUploadPolicyError) { // if file policy error occured - send system warning message
 			err = nil // do not send error to chat provider
-			sendErr := c.SendServiceMessage(ctx, FilePolicyFailType, channel.SessionID)
+			sendErr := c.SendServiceMessageByTemplate(ctx, FilePolicyFailType, channel.SessionID, nil)
 			if sendErr != nil {
 				return sendErr
 			}
@@ -1069,23 +1069,33 @@ func (c *Gateway) Read(ctx context.Context, notify *Update) (err error) {
 	return nil // ACK(+)
 }
 
-func (c *Gateway) SendServiceMessage(ctx context.Context, template string, chatId string) error {
+func (c *Gateway) SendServiceMessage(ctx context.Context, text string, chatId string) error {
 	if chatId == "" {
 		return fmt.Errorf("empty chat id")
 	}
-	text, err := c.Template.MessageText(template, nil)
-	if err != nil {
-		return err
+	if text == "" {
+		return fmt.Errorf("system messages can't be without text")
 	}
 	warningMessage := &chat.Message{
 		Type: "text",
 		Text: text,
 	}
-	_, err = c.Internal.Client.SendServiceMessage(ctx, &chat.SendServiceMessageRequest{Message: warningMessage, ChatId: chatId})
+	_, err := c.Internal.Client.SendServiceMessage(ctx, &chat.SendServiceMessageRequest{Message: warningMessage, ChatId: chatId})
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+func (c *Gateway) SendServiceMessageByTemplate(ctx context.Context, templateName string, chatId string, context any) error {
+	if chatId == "" {
+		return fmt.Errorf("empty chat id")
+	}
+	text, err := c.Template.MessageText(templateName, context)
+	if err != nil {
+		return err
+	}
+	return c.SendServiceMessage(ctx, text, chatId)
 }
 
 func (c *Gateway) TraceLog(msg string, args ...any) {

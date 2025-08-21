@@ -816,7 +816,7 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 			mediaFile, err := getFile(c.App, mediaFile, &location)
 			if err != nil {
 				if errors.Is(err, bot.FileUploadPolicyError) {
-					err = c.App.SendServiceMessage(ctx, bot.FilePolicyFailType, channel.SessionID)
+					err = c.App.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
 				}
 				log.Error("telegram.upload.getFile",
 					slog.Any("error", err),
@@ -955,7 +955,7 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 					slog.Any("error", err),
 				)
 				if errors.Is(err, bot.FileUploadPolicyError) {
-					err = c.App.SendServiceMessage(ctx, bot.FilePolicyFailType, channel.SessionID)
+					err = c.App.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
 				}
 				log.Error("telegram.upload.getFile",
 					slog.Any("error", err),

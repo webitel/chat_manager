@@ -1518,7 +1518,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 
 			if err != nil {
 				if errors.Is(err, bot.FileUploadPolicyError) { // if file policy error occured - send system warning message
-					err = c.SendServiceMessage(ctx, bot.FilePolicyFailType, channel.SessionID)
+					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
 				}
 				c.Gateway.Log.Error("whatsApp.onMediaMessage",
 					slog.Any("error", err),
@@ -1545,7 +1545,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 
 			if err != nil {
 				if errors.Is(err, bot.FileUploadPolicyError) { // if file policy error occured - send system warning message
-					err = c.SendServiceMessage(ctx, bot.FilePolicyFailType, channel.SessionID)
+					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
 				}
 				c.Gateway.Log.Error("whatsApp.onMediaMessage",
 					slog.Any("error", err),
@@ -1573,7 +1573,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 
 			if err != nil {
 				if errors.Is(err, bot.FileUploadPolicyError) { // if file policy error occured - send system warning message
-					err = c.SendServiceMessage(ctx, bot.FilePolicyFailType, channel.SessionID)
+					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
 				}
 				c.Gateway.Log.Error("whatsApp.onMediaMessage",
 					slog.Any("error", err),
@@ -1601,7 +1601,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 
 			if err != nil {
 				if errors.Is(err, bot.FileUploadPolicyError) { // if file policy error occured - send system warning message
-					err = c.SendServiceMessage(ctx, bot.FilePolicyFailType, channel.SessionID)
+					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
 				}
 				c.Gateway.Log.Error("whatsApp.onMediaMessage",
 					slog.Any("error", err),
@@ -1628,7 +1628,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 
 			if err != nil {
 				if errors.Is(err, bot.FileUploadPolicyError) { // if file policy error occured - send system warning message
-					err = c.SendServiceMessage(ctx, bot.FilePolicyFailType, channel.SessionID)
+					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
 				}
 				c.Gateway.Log.Error("whatsApp.onMediaMessage",
 					slog.Any("error", err),
