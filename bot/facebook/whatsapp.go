@@ -1512,7 +1512,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 		case "audio": // https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples#media-messages
 			// message.Audio
 			media := &message.Audio.Document
-			sendMsg.File, err = c.whatsAppDownloadMedia( //+
+			sendMsg.File, err = c.whatsAppDownloadMedia(
 				ctx, media, update.Metadata.PhoneNumberID, message.ID,
 			)
 
@@ -1539,7 +1539,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 		case "image":
 			// message.Image
 			media := &message.Image.Document
-			sendMsg.File, err = c.whatsAppDownloadMedia( // +
+			sendMsg.File, err = c.whatsAppDownloadMedia(
 				ctx, media, update.Metadata.PhoneNumberID, message.ID,
 			)
 
@@ -1567,7 +1567,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 		case "sticker":
 			// message.Sticker
 			media := &message.Sticker.Document
-			sendMsg.File, err = c.whatsAppDownloadMedia( // +
+			sendMsg.File, err = c.whatsAppDownloadMedia(
 				ctx, media, update.Metadata.PhoneNumberID, message.ID,
 			)
 
@@ -1595,7 +1595,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 		case "video":
 			// message.Video
 			media := &message.Video.Document
-			sendMsg.File, err = c.whatsAppDownloadMedia( // +
+			sendMsg.File, err = c.whatsAppDownloadMedia(
 				ctx, media, update.Metadata.PhoneNumberID, message.ID,
 			)
 
@@ -1622,7 +1622,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 		case "document":
 			// message.Document
 			media := message.Document
-			sendMsg.File, err = c.whatsAppDownloadMedia( // +
+			sendMsg.File, err = c.whatsAppDownloadMedia(
 				ctx, media, update.Metadata.PhoneNumberID, message.ID,
 			)
 
@@ -2141,7 +2141,7 @@ func (c *Client) whatsAppDownloadMedia(ctx context.Context, media *whatsapp.Docu
 	// Populate unique filename
 	doc.Name = filename
 
-	metadata, err := c.Gateway.UploadFile(context.TODO(), 4096, doc.Mime, doc.Name, uuid.Must(uuid.NewRandom()).String(), res.Body)
+	metadata, err := c.Gateway.UploadFile(ctx, 4096, doc.Mime, doc.Name, uuid.Must(uuid.NewRandom()).String(), res.Body)
 	if err != nil {
 		return nil, err
 	}
