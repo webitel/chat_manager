@@ -4,12 +4,14 @@ import (
 	"context"
 	goerr "errors"
 	"fmt"
-	log2 "github.com/webitel/chat_manager/log"
 	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-faster/errors"
+	log2 "github.com/webitel/chat_manager/log"
 
 	"github.com/gotd/td/bin"
 	"github.com/gotd/td/telegram"
@@ -813,6 +815,9 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 
 			mediaFile, err := getFile(c.App, mediaFile, &location)
 			if err != nil {
+				if errors.Is(err, bot.FileUploadPolicyError) {
+					err = c.App.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
+				}
 				log.Error("telegram.upload.getFile",
 					slog.Any("error", err),
 				)
@@ -946,6 +951,12 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 
 			mediaFile, err := getFile(c.App, mediaFile, &location)
 			if err != nil {
+				log.Error("telegram.upload.getFile",
+					slog.Any("error", err),
+				)
+				if errors.Is(err, bot.FileUploadPolicyError) {
+					err = c.App.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
+				}
 				log.Error("telegram.upload.getFile",
 					slog.Any("error", err),
 				)

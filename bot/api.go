@@ -358,9 +358,8 @@ func (srv *Service) CreateBot(ctx context.Context, add *pbbot.Bot, obj *pbbot.Bo
 	// 	internal: make(map[int64]*Channel), // map[internal.user.id]
 	// 	external: make(map[string]*Channel), // map[provider.user.id]
 	// }
-
 	// Perform ChatBot Provider setup
-	agent, err := srv.setup(add)
+	agent, err := srv.setup(add, srv.fileService)
 	// agent.External, err = setup(agent)
 
 	if err != nil {
@@ -640,7 +639,7 @@ func (srv *Service) UpdateBot(ctx context.Context, req *pbbot.UpdateBotRequest, 
 	// // TODO: Validate result object !
 	// err = Validate(res)
 	// TODO: check provider specific .metadata options !!!!!!!!!!!!!!!!!!!!!!!
-	gate, err := srv.setup(res)
+	gate, err := srv.setup(res, srv.fileService)
 
 	if err != nil {
 		return err // 400

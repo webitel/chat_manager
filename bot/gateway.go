@@ -2,8 +2,9 @@ package bot
 
 import (
 	"context"
-	errors2 "errors"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -13,16 +14,21 @@ import (
 	"time"
 
 	"github.com/micro/micro/v3/service/context/metadata"
-	"github.com/micro/micro/v3/service/errors"
+	microerr "github.com/micro/micro/v3/service/errors"
 	auth "github.com/webitel/chat_manager/api/proto/auth"
 	gate "github.com/webitel/chat_manager/api/proto/bot"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/app"
 	access "github.com/webitel/chat_manager/auth"
 	wlog "github.com/webitel/chat_manager/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const ExternalChatPropertyName = "externalChatID"
+
+var FileUploadPolicyError = errors.New("this type of file is not allowed to upload")
 
 // Gateway service agent
 type Gateway struct {
@@ -38,14 +44,139 @@ type Gateway struct {
 	loadMx *sync.Mutex
 	// cache: memory
 	*sync.RWMutex
-	internal map[int64]*Channel  // map[internal.user.id]
-	external map[string]*Channel // map[provider.user.id]
-	deleted  bool                // indicate whether we need to dispose this bot gateway after last channel closed
+	internal      map[int64]*Channel  // map[internal.user.id]
+	external      map[string]*Channel // map[provider.user.id]
+	deleted       bool                // indicate whether we need to dispose this bot gateway after last channel closed
+	storageClient storage.FileService
+}
+
+type UploadedFileMetadata struct {
+	Id                 int64
+	Url                string
+	Size               int64
+	ResponseStatusCode int32
 }
 
 // DomainID that this gateway profile belongs to
 func (c *Gateway) DomainID() int64 {
 	return c.Bot.GetDc().GetId()
+}
+
+// UploadFile upload body of the file to the storage service,
+func (c *Gateway) UploadFile(ctx context.Context, chunkSize int, mime string, name string, uuid string, body io.Reader) (metadata *UploadedFileMetadata, err error) {
+	metadata, err = c.uploadFile(ctx, chunkSize, mime, name, uuid, body)
+	if err != nil {
+		return nil, HandleFileUploadError(err)
+	}
+	srv := c.Internal
+	hostURL, err := url.ParseRequestURI(srv.HostURL())
+	if err != nil {
+		return nil, err
+	}
+	fileURL := &url.URL{
+		Scheme: hostURL.Scheme,
+		Host:   hostURL.Host,
+	}
+	fileURL, err = fileURL.Parse(metadata.Url)
+	if err != nil {
+		return nil, err
+	}
+	metadata.Url = fileURL.String()
+	return metadata, nil
+}
+
+func (c *Gateway) uploadFile(ctx context.Context, chunkSize int, mime string, name string, uuid string, body io.Reader) (metadata *UploadedFileMetadata, err error) {
+	if body == nil {
+		return nil, errors.New("upload: body is nil")
+	}
+	if chunkSize == 0 {
+		chunkSize = 4096
+	}
+
+	upstream, err := c.storageClient.UploadFile(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	err = upstream.Send(&storage.UploadFileRequest{
+		Data: &storage.UploadFileRequest_Metadata_{
+			Metadata: &storage.UploadFileRequest_Metadata{
+				DomainId: c.DomainID(), // recipient.DomainID(),
+				MimeType: mime,
+				Name:     name,
+				Uuid:     uuid,
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	var (
+		n    int
+		buf  = make([]byte, 4096) // Chunks Size
+		data = storage.UploadFileRequest_Chunk{
+			// Chunk: nil, // buf[:],
+		}
+		push = storage.UploadFileRequest{
+			Data: &data,
+		}
+		sent int64
+	)
+	for {
+		n, err = body.Read(buf)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+			} else {
+				break
+			}
+		}
+		data.Chunk = buf[0:n]
+		err = upstream.Send(&push)
+		if err != nil {
+			break
+		}
+		if n == 0 {
+			break
+		}
+		sent += int64(n)
+	}
+	// close stream anyway
+	res, closeErr := upstream.CloseAndRecv()
+	if closeErr != nil {
+		// TODO: log possible send data error
+		return nil, closeErr
+	}
+	// if error occurred while sending data return
+	if err != nil {
+		return nil, err
+	}
+
+	// init
+	metadata = &UploadedFileMetadata{
+		Id:                 res.FileId,
+		Url:                res.FileUrl,
+		Size:               res.Size,
+		ResponseStatusCode: int32(res.GetCode()),
+	}
+
+	return metadata, nil
+}
+
+// HandleFileUploadError resolves error either to well-known file type error or returns original error.
+func HandleFileUploadError(err error) error {
+	var (
+		returnErr = err
+	)
+	if grpcErr, ok := status.FromError(err); ok {
+		switch grpcErr.Code() {
+		case codes.FailedPrecondition:
+			// file policy violation
+			returnErr = FileUploadPolicyError
+		}
+	}
+	return returnErr
 }
 
 // Register internal webhook callback handler to external service provider
@@ -313,7 +444,7 @@ func (c *Gateway) AdminAuthorization(rsp http.ResponseWriter, req *http.Request)
 		),
 	)
 	if err != nil {
-		re := errors.FromError(err)
+		re := microerr.FromError(err)
 		if re.Code < 400 {
 			re.Code = http.StatusUnauthorized // 401
 			re.Status = http.StatusText(int(re.Code))
@@ -329,11 +460,11 @@ func (c *Gateway) AdminAuthorization(rsp http.ResponseWriter, req *http.Request)
 	scope := authN.HasObjclass(objclassBots)
 	if scope == nil {
 		// ERR: Has NO license product GRANTED !
-		err = errors.Forbidden(
+		err = microerr.Forbidden(
 			"chat.bot.access.denied",
 			"chatbot: objclass access DENIED !",
 		)
-		re := errors.FromError(err)
+		re := microerr.FromError(err)
 		http.Error(rsp, re.Error(), int(re.Code))
 		return err
 	}
@@ -341,11 +472,11 @@ func (c *Gateway) AdminAuthorization(rsp http.ResponseWriter, req *http.Request)
 	const mode = access.READ
 	if !authN.CanAccess(scope, mode) {
 		// ERR: Has NO access to objclass been GRANTED !
-		err = errors.Forbidden(
+		err = microerr.Forbidden(
 			"chat.bot.access.forbidden",
 			"chatbot: objclass READ privilege NOT GRANTED !",
 		)
-		re := errors.FromError(err)
+		re := microerr.FromError(err)
 		http.Error(rsp, re.Error(), int(re.Code))
 		return err
 	}
@@ -374,7 +505,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 
 	if contact == nil {
 		if chatID == "" {
-			return nil, errors2.New("not enough information to form/get channel")
+			return nil, errors.New("not enough information to form/get channel")
 		}
 		contact = &Account{
 			Channel: c.GetProvider(),
@@ -474,7 +605,7 @@ func (c *Gateway) GetChannel(ctx context.Context, chatID string, contact *Accoun
 			// CHECK: Can we accept NEW one ?
 			if !c.Bot.GetEnabled() {
 				c.Log.Warn("[ GATE::DISABLED ]")
-				return nil, errors.New(
+				return nil, microerr.New(
 					"chat.bot.channel.disabled",
 					"chat: bot is disabled",
 					http.StatusBadGateway,
@@ -925,30 +1056,48 @@ func (c *Gateway) Read(ctx context.Context, notify *Update) (err error) {
 	// PERFORM: receive !
 	err = channel.Recv(ctx, sendMessage)
 	if err != nil {
-		if errors2.Is(err, FileUploadPolicyError) { // if file policy error occured - send system warning message
-			err = nil
-			text, err := c.Template.MessageText(FilePolicyFailType, nil)
-			if err != nil {
-				return err
-			}
-			warningMessage := &chat.Message{
-				Type:      "text",
-				Text:      text,
-				Variables: sendMessage.Variables,
-				Contact:   sendMessage.Contact,
-				CreatedAt: sendMessage.CreatedAt,
-				UpdatedAt: sendMessage.UpdatedAt,
-				From:      sendMessage.From,
-			}
-			_, sendErr := c.Internal.Client.SendServiceMessage(ctx, &chat.SendServiceMessageRequest{Message: warningMessage, ChatId: channel.SessionID})
+		if errors.Is(err, FileUploadPolicyError) { // if file policy error occured - send system warning message
+			err = nil // do not send error to chat provider
+			sendErr := c.SendServiceMessageByTemplate(ctx, FilePolicyFailType, channel.SessionID, nil)
 			if sendErr != nil {
 				return sendErr
 			}
 		}
+		return err
 	}
 
 	return nil // ACK(+)
 }
+
+func (c *Gateway) SendServiceMessage(ctx context.Context, text string, chatId string) error {
+	if chatId == "" {
+		return fmt.Errorf("empty chat id")
+	}
+	if text == "" {
+		return fmt.Errorf("system messages can't be without text")
+	}
+	warningMessage := &chat.Message{
+		Type: "text",
+		Text: text,
+	}
+	_, err := c.Internal.Client.SendServiceMessage(ctx, &chat.SendServiceMessageRequest{Message: warningMessage, ChatId: chatId})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Gateway) SendServiceMessageByTemplate(ctx context.Context, templateName string, chatId string, context any) error {
+	if chatId == "" {
+		return fmt.Errorf("empty chat id")
+	}
+	text, err := c.Template.MessageText(templateName, context)
+	if err != nil {
+		return err
+	}
+	return c.SendServiceMessage(ctx, text, chatId)
+}
+
 func (c *Gateway) TraceLog(msg string, args ...any) {
 	wlog.TraceLog(c.Log, msg, args...)
 }

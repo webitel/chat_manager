@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -24,10 +25,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
-	"github.com/micro/micro/v3/service/client"
-	"github.com/micro/micro/v3/service/errors"
+	microerr "github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/api/proto/chat"
-	"github.com/webitel/chat_manager/api/proto/storage"
 	"github.com/webitel/chat_manager/bot"
 	graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
 	"github.com/webitel/chat_manager/bot/facebook/webhooks"
@@ -64,7 +63,7 @@ func (c *Client) renderWhatsAppBusinessResponse(rsp http.ResponseWriter, req *ht
 
 		if err != nil {
 
-			re := errors.FromError(err)
+			re := microerr.FromError(err)
 
 			code := int(re.Code)
 			rsp.WriteHeader(code)
@@ -112,7 +111,7 @@ func (c *Client) renderWhatsAppBusinessAccounts(rsp http.ResponseWriter, req *ht
 
 		if err != nil {
 
-			re := errors.FromError(err)
+			re := microerr.FromError(err)
 
 			code := int(re.Code)
 			rsp.WriteHeader(code)
@@ -343,7 +342,7 @@ func (c *Client) RemoveWhatsAppAccounts(ctx context.Context, WABAID ...string) (
 	accounts := c.SearchWhatsAppAccounts(ctx, WABAID...)
 	if n := len(WABAID); n != 0 && n != len(accounts) {
 		// ERR: NOT ALL requested WhatsApp Business Accounts found !
-		err = errors.BadRequest(
+		err = microerr.BadRequest(
 			"chat.whatsapp.accounts.remove.partial",
 			"remove: not all requested WhatsApp Business Accounts found",
 		)
@@ -547,7 +546,7 @@ func (c *Client) whatsAppVerifyToken(accessToken string) error {
 		},
 	)
 	if err != nil {
-		return errors.BadGateway(
+		return microerr.BadGateway(
 			"chat.bot.whatsapp.oauth.error",
 			"WhatsApp: "+err.Error(),
 		)
@@ -568,7 +567,7 @@ next:
 		}
 	}
 	if len(required) != 0 {
-		return errors.BadRequest(
+		return microerr.BadRequest(
 			"chat.bot.whatsapp.token.invalid",
 			"whatsapp: token.scope=%#v required but not granted",
 			required,
@@ -1061,7 +1060,7 @@ func (c *Client) whatsAppDialogPhoneNumber(chat *bot.Channel) (account *whatsapp
 		if WAID == "" {
 			// NOTE: We cannot determine WHatsApp conversation side(s)
 			// It all starts from WhatsApp Business Account Phone Number identification !..
-			err = errors.BadRequest(
+			err = microerr.BadRequest(
 				"chat.bot.whatsapp.account.missing",
 				"whatsapp: missing .number=? reference for .user=%s conversation",
 				chat.Account.Contact, // chat.ChatID,
@@ -1079,7 +1078,7 @@ func (c *Client) whatsAppDialogPhoneNumber(chat *bot.Channel) (account *whatsapp
 	}
 
 	if account == nil {
-		err = errors.NotFound(
+		err = microerr.NotFound(
 			"chat.bot.whatsapp.account.not_found",
 			"whatsapp: conversation .user=%s .peer=%s not found",
 			chat.Account.Contact, WAID,
@@ -1131,7 +1130,7 @@ func (c *Client) whatsAppOnUpdates(ctx context.Context, event *webhooks.Entry) {
 			c.whatsAppOnMessages(ctx, &update)
 		} // else if statuses := update.Statuses; len(statuses) != 0 {
 
-		// } else if errors := update.Errors; len(errors) != 0 {
+		// } else if microerr := update.microerr; len(microerr) != 0 {
 
 		// }
 
@@ -1212,7 +1211,7 @@ func (c *Client) whatsAppOnUnknown(
 	//                 "type": "interactive"
 	//               }
 	//             ],
-	//             "errors": [
+	//             "microerr": [
 	//               {
 	//                 "code": 131000,
 	//                 "title": "Something went wrong",
@@ -1436,7 +1435,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 
 		// case "unknown":
 		default:
-			// FIXME: len(update.Errors) == 0
+			// FIXME: len(update.microerr) == 0
 			c.whatsAppOnUnknown(
 				ctx, update, recipient, message,
 			)
@@ -1462,7 +1461,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 
 		if err != nil {
 			// Failed locate chat channel !
-			re := errors.FromError(err)
+			re := microerr.FromError(err)
 			if re.Code == 0 {
 				re.Code = (int32)(http.StatusBadGateway)
 			}
@@ -1518,6 +1517,9 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 			)
 
 			if err != nil {
+				if errors.Is(err, bot.FileUploadPolicyError) { // if file policy error occured - send system warning message
+					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
+				}
 				c.Gateway.Log.Error("whatsApp.onMediaMessage",
 					slog.Any("error", err),
 					slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
@@ -1542,6 +1544,9 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 			)
 
 			if err != nil {
+				if errors.Is(err, bot.FileUploadPolicyError) { // if file policy error occured - send system warning message
+					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
+				}
 				c.Gateway.Log.Error("whatsApp.onMediaMessage",
 					slog.Any("error", err),
 					slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
@@ -1567,6 +1572,9 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 			)
 
 			if err != nil {
+				if errors.Is(err, bot.FileUploadPolicyError) { // if file policy error occured - send system warning message
+					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
+				}
 				c.Gateway.Log.Error("whatsApp.onMediaMessage",
 					slog.Any("error", err),
 					slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
@@ -1592,6 +1600,9 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 			)
 
 			if err != nil {
+				if errors.Is(err, bot.FileUploadPolicyError) { // if file policy error occured - send system warning message
+					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
+				}
 				c.Gateway.Log.Error("whatsApp.onMediaMessage",
 					slog.Any("error", err),
 					slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
@@ -1616,6 +1627,9 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 			)
 
 			if err != nil {
+				if errors.Is(err, bot.FileUploadPolicyError) { // if file policy error occured - send system warning message
+					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
+				}
 				c.Gateway.Log.Error("whatsApp.onMediaMessage",
 					slog.Any("error", err),
 					slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
@@ -1738,7 +1752,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 			// message.System
 
 		case "unknown": // https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples#unknown-messages
-			// message.Errors
+			// message.microerr
 		default:
 			// message.Location // https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples#location-messages
 			if location := message.Location; location != nil {
@@ -1977,7 +1991,7 @@ func (c *Client) whatsAppDownloadMedia(ctx context.Context, media *whatsapp.Docu
 			return nil, err
 		}
 		if media.Link == "" {
-			return nil, errors.BadRequest(
+			return nil, microerr.BadRequest(
 				"chat.bot.whatsapp.media.link.missing",
 				"whatsapp: download media.link required but missing",
 			)
@@ -2004,7 +2018,7 @@ func (c *Client) whatsAppDownloadMedia(ctx context.Context, media *whatsapp.Docu
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, errors.BadGateway(
+		return nil, microerr.BadGateway(
 			"chat.bot.whatsapp.media.download.error",
 			"whatsapp: media; download: ("+strconv.Itoa(res.StatusCode)+") "+res.Status,
 		)
@@ -2127,98 +2141,15 @@ func (c *Client) whatsAppDownloadMedia(ctx context.Context, media *whatsapp.Docu
 	// Populate unique filename
 	doc.Name = filename
 
-	// CONNECT: storage service
-	serviceClient := client.DefaultClient
-	storageClient := storage.NewFileService("storage", serviceClient)
-	upstream, err := storageClient.UploadFile(context.TODO())
-
+	metadata, err := c.Gateway.UploadFile(ctx, 4096, doc.Mime, doc.Name, uuid.Must(uuid.NewRandom()).String(), res.Body)
 	if err != nil {
 		return nil, err
 	}
-
-	// c.Gateway.Log.Debug().Interface("media", media).Msg("storage.uploadFile")
-	err = upstream.Send(&storage.UploadFileRequest{
-		Data: &storage.UploadFileRequest_Metadata_{
-			Metadata: &storage.UploadFileRequest_Metadata{
-				DomainId: c.Gateway.DomainID(), // recipient.DomainID(),
-				MimeType: doc.Mime,
-				Name:     doc.Name,
-				Uuid:     uuid.Must(uuid.NewRandom()).String(),
-			},
-		},
-	})
-	if err != nil {
-		return nil, err
+	if doc.Size != metadata.Size {
+		return nil, fmt.Errorf("whatsapp: download media; content length delta: " + strconv.FormatInt(doc.Size-metadata.Size, 10))
 	}
-	// defer stream.Close()
-
-	var (
-		n    int
-		buf  = make([]byte, 4096) // Chunks Size
-		data = storage.UploadFileRequest_Chunk{
-			// Chunk: nil, // buf[:],
-		}
-		push = storage.UploadFileRequest{
-			Data: &data,
-		}
-		sent int64
-	)
-	for {
-		n, err = res.Body.Read(buf)
-		if err != nil {
-			if err == io.EOF {
-				err = nil
-			} else {
-				break
-			}
-		}
-		data.Chunk = buf[0:n]
-		err = upstream.Send(&push)
-		if err != nil {
-			break
-		}
-		if n == 0 {
-			break
-		}
-		sent += int64(n)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	var ret *storage.UploadFileResponse
-	ret, err = upstream.CloseAndRecv()
-	if err != nil {
-		return nil, err
-	}
-
-	fileURI := ret.FileUrl
-	if path.IsAbs(fileURI) {
-		// NOTE: We've got not a valid URL but filepath
-		srv := c.Gateway.Internal
-		hostURL, err := url.ParseRequestURI(srv.HostURL())
-		if err != nil {
-			panic(err)
-		}
-		fileURL := &url.URL{
-			Scheme: hostURL.Scheme,
-			Host:   hostURL.Host,
-		}
-		fileURL, err = fileURL.Parse(fileURI)
-		if err != nil {
-			panic(err)
-		}
-		fileURI = fileURL.String()
-		ret.FileUrl = fileURI
-	}
-
-	doc.Id = ret.FileId
-	doc.Url = ret.FileUrl
-	if doc.Size != sent {
-		panic("whatsapp: download media; content length delta: " + strconv.FormatInt(doc.Size-sent, 10))
-	}
-	// doc.Size = sent // ret.Size // ???
+	doc.Id = metadata.Id
+	doc.Size = metadata.Size
 
 	return doc, nil
 }

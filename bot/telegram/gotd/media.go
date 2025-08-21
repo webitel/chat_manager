@@ -19,6 +19,7 @@ import (
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/api/proto/storage"
+	"github.com/webitel/chat_manager/bot"
 	"go.uber.org/multierr"
 )
 
@@ -131,19 +132,19 @@ loop:
 					},
 				})
 				if err != nil {
-					return nil, err
+					// parse error through function to understand type of error
+					return nil, bot.HandleFileUploadError(err)
 				}
-				// defer stream.Close()
 			}
 			// WRITE
 			mpart.Chunk = part.Bytes
 			err = stream.Send(&push)
 			if err != nil {
 				if _, re := stream.CloseAndRecv(); re != nil {
-					err = re // drain original error from APIl not grpc.stream EOF
+					return nil, re
 				}
-				// c.Gateway.Log.Err(re).Interface("res", res).Msg("storage.uploadFile(cancel)")
-				return nil, err
+				// parse error through function to understand type of error
+				return nil, bot.HandleFileUploadError(err)
 			}
 			// if len(data) == 0 {
 			if len(data) < getFile.Limit {

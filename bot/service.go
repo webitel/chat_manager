@@ -152,7 +152,7 @@ func (srv *Service) onStart() {
 	for _, profile := range bots {
 		// TODO: Check profile.domain license activity; validity boundaries
 		pid := profile.GetId()
-		gate, err := srv.setup(profile)
+		gate, err := srv.setup(profile, srv.fileService)
 		if err != nil {
 			continue
 		}
@@ -520,7 +520,7 @@ func (srv *Service) Gateway(ctx context.Context, pid int64, uri string) (*Gatewa
 	// endregion
 
 	pid = profile.GetId()
-	agent, err := srv.setup(profile)
+	agent, err := srv.setup(profile, srv.fileService)
 
 	if err != nil {
 		return nil, err

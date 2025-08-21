@@ -72,7 +72,7 @@ func NewRecaptchaHandler(settings string) (CaptchaHandler, error) {
 	return &RecaptchaHandler{setting: &recatpchaSetting}, nil
 }
 
-func (h *RecaptchaHandler) GetEnabled() bool {
+func (h *RecaptchaHandler) Enabled() bool {
 	return h.setting.Enabled
 }
 

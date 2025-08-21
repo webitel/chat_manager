@@ -2,7 +2,6 @@ package bot
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"strconv"
 	"sync"
@@ -19,8 +18,6 @@ import (
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	strategy "github.com/webitel/chat_manager/internal/selector"
 )
-
-var FileUploadPolicyError = errors.New("this type of file is not allowed to upload")
 
 type Channel struct {
 	Host string // webitel.chat.server node-id serving .this channel
