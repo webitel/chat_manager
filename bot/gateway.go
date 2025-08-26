@@ -1060,7 +1060,7 @@ func (c *Gateway) Read(ctx context.Context, notify *Update) (err error) {
 			err = nil // do not send error to chat provider
 			chatId := channel.SessionID
 			if chatId == "" {
-				chatId = channel.ChatID
+				chatId = channel.ChannelID
 			}
 			sendErr := c.SendServiceMessageByTemplate(ctx, FilePolicyFailType, chatId, nil)
 			if sendErr != nil {

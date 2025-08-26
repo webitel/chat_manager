@@ -25,10 +25,20 @@ import (
 )
 
 const (
-	CaptchaSuffix      = "/captcha"
-	TextType           = "text"
-	FileType           = "file"
+	CaptchaSuffix = "/captcha"
+
+	// Template type
 	FilePolicyFailType = "file_policy_fail"
+)
+
+const (
+	// Message types
+	TextType = "text"
+	FileType = "file"
+)
+
+const (
+	DefaultFilePolicyMessage = "Forbidden file format"
 )
 
 // Service intercomunnication proxy

@@ -387,11 +387,24 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 
 		err := c.Start(ctx, message)
 		if err != nil {
-			if isFilePolicyError(err) {
-				return FileUploadPolicyError
+			if isFilePolicyError(err) { // try to send templated message from client name to start conversation
+				text, err := c.Gateway.Template.MessageText(FilePolicyFailType, nil)
+				if err != nil {
+					return err
+				}
+				if text == "" {
+					text = DefaultFilePolicyMessage
+				}
+				// copy message, but change the type to text and remove file to properly start conversation
+				copied := *message
+				copied.Text = text
+				copied.File = nil
+				copied.Type = TextType
+				return c.Start(ctx, &copied)
 			}
 			return err
 		}
+		return nil
 
 	}
 
