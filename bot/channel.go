@@ -349,6 +349,16 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 	// const commandClose = "/stop" // internal: from !
 	// // // NOTE: sending the last conversation message
 	messageText := message.GetText()
+	isFilePolicyError := func(err error) bool {
+		if uploadErr := microerr.FromError(err); uploadErr != nil && message.File != nil {
+			switch uploadErr.Detail {
+			case "policy.file.allow":
+				// file policy violation
+				return true
+			}
+		}
+		return false
+	}
 	// close := messageText == commandClose
 	close := messageText == commandCloseRecvDisposition && message.Type == "text"
 	// // if close {
@@ -375,7 +385,14 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 			return nil
 		}
 
-		return c.Start(ctx, message)
+		err := c.Start(ctx, message)
+		if err != nil {
+			if isFilePolicyError(err) {
+				return FileUploadPolicyError
+			}
+			return err
+		}
+
 	}
 
 	if close {
@@ -407,12 +424,8 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 		log.Error("<<<<< RECV <<<<<",
 			slog.Any("error", err),
 		)
-		if uploadErr := microerr.FromError(err); uploadErr != nil && message.File != nil {
-			switch uploadErr.Detail {
-			case "policy.file.allow":
-				// file policy violation
-				return FileUploadPolicyError
-			}
+		if isFilePolicyError(err) {
+			return FileUploadPolicyError
 		}
 		return err
 	}
