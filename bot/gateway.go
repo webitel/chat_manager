@@ -1058,7 +1058,11 @@ func (c *Gateway) Read(ctx context.Context, notify *Update) (err error) {
 	if err != nil {
 		if errors.Is(err, FileUploadPolicyError) { // if file policy error occured - send system warning message
 			err = nil // do not send error to chat provider
-			sendErr := c.SendServiceMessageByTemplate(ctx, FilePolicyFailType, channel.ChatID, nil)
+			chatId := channel.SessionID
+			if chatId == "" {
+				chatId = channel.ChatID
+			}
+			sendErr := c.SendServiceMessageByTemplate(ctx, FilePolicyFailType, chatId, nil)
 			if sendErr != nil {
 				return sendErr
 			}
