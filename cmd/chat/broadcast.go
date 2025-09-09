@@ -108,6 +108,15 @@ func (c *chatService) executeBroadcast(ctx context.Context, authUser *auth.User,
 			resp.Variables = util.MargeMaps(resp.Variables, vars)
 
 		case "telegram", "viber", "facebook", "messenger", "instagram", "whatsapp", "vk", "custom":
+			if peer.GetType() == "custom" {
+				if message.Variables == nil {
+					message.Variables = make(map[string]string)
+				}
+				for key, value := range req.GetVariables() {
+					message.Variables[key] = value
+				}
+			}
+
 			vars, fail := c.executeBroadcastSocials(ctx, authUser, peer, message)
 			if fail != nil {
 				resp.Failure = append(resp.Failure, fail)
