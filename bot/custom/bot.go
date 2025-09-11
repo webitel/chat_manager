@@ -398,7 +398,7 @@ func (c *CustomGateway) WebHook(reply http.ResponseWriter, notice *http.Request)
 	}
 	// check hash
 	suspiciousHash := notice.Header.Get(HashHeader)
-	if validHash := calculateHash(bodyBuf.Bytes(), c.params.Secret); hmac.Equal([]byte(validHash), []byte(suspiciousHash)) { // threat or no sign
+	if validHash := calculateHash(bodyBuf.Bytes(), c.params.Secret); !hmac.Equal([]byte(validHash), []byte(suspiciousHash)) { // threat or no sign
 
 		c.Gateway.Log.Error("custom/bot.hashCheck",
 			slog.String("suspicious", suspiciousHash),
