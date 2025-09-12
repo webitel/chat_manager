@@ -21,9 +21,10 @@ import (
 )
 
 func isZeroUUID(uuid [16]byte) bool {
-	const max = 16
-	for e := 0; e < max && uuid[e] != 0; e++ {
-		return false // FOUND: non-zero(!) byte
+	for e := 0; e < 16; e++ {
+		if uuid[e] != 0 {
+			return false // FOUND: non-zero(!) byte
+		}
 	}
 	return true // ALL(16) are zero(!)
 }
