@@ -25,6 +25,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/micro/micro/v3/service/broker"
 	microerr "github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/bot"
@@ -1105,7 +1106,7 @@ func (c *Client) whatsAppOnUpdates(ctx context.Context, event *webhooks.Entry) {
 		// The type of notification.
 		// The only option for this API is messages.
 		switch change.Field {
-		case "messages":
+		case "messages", "calls":
 			// OK: Accept !
 			// update.messages;
 			// update.statuses;
@@ -1128,6 +1129,30 @@ func (c *Client) whatsAppOnUpdates(ctx context.Context, event *webhooks.Entry) {
 		update.ID = event.ObjectID // WABAID
 		if len(update.Messages) != 0 {
 			c.whatsAppOnMessages(ctx, &update)
+		} else if len(update.Calls) != 0 && update.Metadata != nil && c.whatsApp != nil {
+			bro := broker.DefaultBroker
+			var name string
+			if len(update.Contacts) != 0 {
+				name = update.Contacts[0].GetName()
+			}
+
+			for _, call := range update.Calls {
+				err = bro.Publish(fmt.Sprintf("whatsapp.%d.calls", c.Gateway.Id), &broker.Message{
+					Header: map[string]string{
+						"token":    c.whatsApp.AccessToken,
+						"name":     name,
+						"phone-id": update.Metadata.PhoneNumberID,
+					},
+					Body: call,
+				})
+				if err != nil {
+					c.Gateway.Log.Error("whatsapp.onUpdate.calls",
+						slog.Any("error", err),
+					)
+				}
+			}
+
+			return
 		} // else if statuses := update.Statuses; len(statuses) != 0 {
 
 		// } else if microerr := update.microerr; len(microerr) != 0 {
