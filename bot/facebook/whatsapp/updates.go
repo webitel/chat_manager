@@ -1,5 +1,7 @@
 package whatsapp
 
+import "encoding/json"
+
 // Update Entry of event notification.
 // The Update value object contains details for the change that triggered the webhook.
 // This object is nested within the changes array of the entry array.
@@ -34,6 +36,8 @@ type Update struct {
 
 	// Information about a message received by the business that is subscribed to the webhook.
 	Messages []*Message `json:"messages,omitempty"`
+
+	Calls []json.RawMessage `json:"calls"`
 
 	// Status for a message that was sent by the business that is subscribed to the webhook.
 	Statuses []*Status `json:"statuses,omitempty"`
