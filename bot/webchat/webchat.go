@@ -737,6 +737,7 @@ func (c *WebChatBot) uploadMediaFile(sender *bot.Channel, media *chat.File, cont
 	media.Id = metadata.Id
 	media.Url = metadata.Url
 	media.Size = metadata.Size
+	media.Malware = metadata.Malware
 
 	return media, nil
 }

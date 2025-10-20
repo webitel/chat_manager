@@ -196,6 +196,7 @@ loop:
 	mediaFile.Id = res.FileId
 	mediaFile.Url = res.FileUrl
 	mediaFile.Size = res.Size
+	mediaFile.Malware = res.Malware != nil && res.Malware.Found
 
 	return mediaFile, nil
 }
