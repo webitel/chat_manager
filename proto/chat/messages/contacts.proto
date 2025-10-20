@@ -153,6 +153,8 @@ message MessageFile {
 
   // Exact url of file (if exists)
   string url = 6;
+
+  bool malware = 7;
 }
 
 message MessageReplyMarkup {
