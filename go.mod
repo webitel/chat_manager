@@ -16,9 +16,9 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.21.0
 	github.com/hashicorp/consul/api v1.13.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/jackc/pgconn v1.12.1
-	github.com/jackc/pgtype v1.11.0
-	github.com/jackc/pgx/v4 v4.16.1
+	github.com/jackc/pgconn v1.14.3
+	github.com/jackc/pgtype v1.14.0
+	github.com/jackc/pgx/v4 v4.18.2
 	github.com/jmoiron/sqlx v1.3.5
 	github.com/lmittmann/tint v1.1.2
 	github.com/micro/micro/v3 v3.10.1
