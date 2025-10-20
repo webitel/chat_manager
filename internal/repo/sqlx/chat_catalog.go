@@ -847,10 +847,11 @@ func fetchFileRow(value **api.File) any {
 		}
 
 		var (
-			ok   bool // false
-			text pgtype.Text
-			int8 pgtype.Int8
-			row  = []TextDecoder{
+			ok        bool // false
+			text      pgtype.Text
+			boolValue pgtype.Bool
+			int8      pgtype.Int8
+			row       = []TextDecoder{
 				// id
 				DecodeText(func(src []byte) error {
 					err := int8.DecodeText(nil, src)
@@ -896,6 +897,15 @@ func fetchFileRow(value **api.File) any {
 					}
 					return err
 				}),
+				// malware
+				DecodeText(func(src []byte) error {
+					err := boolValue.DecodeText(nil, src)
+					if err == nil && boolValue.Status == pgtype.Present {
+						res.Malware = boolValue.Bool
+						ok = true
+					}
+					return err
+				}),
 			}
 			raw = pgtype.NewCompositeTextScanner(nil, src)
 		)
@@ -933,10 +943,11 @@ func fetchContactFileRow(value **api.MessageFile) any {
 		}
 
 		var (
-			ok   bool // false
-			text pgtype.Text
-			int8 pgtype.Int8
-			row  = []TextDecoder{
+			ok       bool // false
+			text     pgtype.Text
+			boolType pgtype.Bool
+			int8     pgtype.Int8
+			row      = []TextDecoder{
 				// id
 				DecodeText(func(src []byte) error {
 					err := int8.DecodeText(nil, src)
@@ -973,10 +984,20 @@ func fetchContactFileRow(value **api.MessageFile) any {
 					}
 					return err
 				}),
+				// File url (optional)
 				DecodeText(func(src []byte) error {
 					err := text.DecodeText(nil, src)
 					if err == nil && text.Status == pgtype.Present {
 						res.Url = text.String
+						ok = true
+					}
+					return err
+				}),
+				// File malware (optional)
+				DecodeText(func(src []byte) error {
+					err := boolType.DecodeText(nil, src)
+					if err == nil && boolType.Status == pgtype.Present {
+						res.Malware = boolType.Bool
 						ok = true
 					}
 					return err
