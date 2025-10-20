@@ -1,8 +1,6 @@
 module github.com/webitel/chat_manager
 
-go 1.22.7
-
-toolchain go1.22.9
+go 1.23.0
 
 require (
 	github.com/Masterminds/squirrel v1.5.2
@@ -36,7 +34,7 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.57.0
 	go.opentelemetry.io/otel/log v0.5.0
 	go.opentelemetry.io/otel/sdk v1.32.0
-	golang.org/x/oauth2 v0.23.0
+	golang.org/x/oauth2 v0.27.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20240903143218-8af14fe29dc1
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241104194629-dd2ea8efbc28
 	google.golang.org/protobuf v1.36.5
