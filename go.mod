@@ -5,7 +5,7 @@ go 1.22.7
 toolchain go1.22.9
 
 require (
-	github.com/Masterminds/squirrel v1.5.2
+	github.com/Masterminds/squirrel v1.5.4
 	github.com/SevereCloud/vksdk/v2 v2.16.0
 	github.com/beevik/guid v1.0.0
 	github.com/go-logr/logr v1.4.2
