@@ -2770,6 +2770,8 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 				"source": "file",
 			})
 
+			doc.Malware = res.Malware != nil && res.Malware.Found
+
 		} else if doc.Id < 0 {
 
 			// DO NOT store/cache requested;
@@ -2787,10 +2789,11 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		// Fill .Document
 		saveMessage.Type = "file"
 		saveMessage.File = &pg.Document{
-			ID:   doc.Id,
-			Size: doc.Size,
-			Type: doc.Mime,
-			Name: doc.Name,
+			ID:      doc.Id,
+			Size:    doc.Size,
+			Type:    doc.Mime,
+			Name:    doc.Name,
+			Malware: doc.Malware,
 		}
 		if doc.Id == 0 {
 			saveMessage.File.URL = doc.Url
@@ -3040,11 +3043,12 @@ func (c *chatService) sendMessage(ctx context.Context, chatRoom *app.Session, no
 				// File
 				if doc := notify.File; doc != nil {
 					notice.File = &events.File{
-						ID:   doc.Id,
-						URL:  doc.Url,
-						Type: doc.Mime,
-						Size: doc.Size,
-						Name: doc.Name,
+						ID:      doc.Id,
+						URL:     doc.Url,
+						Type:    doc.Mime,
+						Size:    doc.Size,
+						Name:    doc.Name,
+						Malware: doc.Malware,
 					}
 				}
 				// Postback. Button click[ed].

@@ -280,11 +280,12 @@ type Invite struct {
 }
 
 type Document struct {
-	ID   int64  `json:"id,omitempty"`
-	URL  string `json:"url,omitempty"`
-	Type string `json:"type,omitempty"`
-	Size int64  `json:"size,omitempty"`
-	Name string `json:"name,omitempty"`
+	ID      int64  `json:"id,omitempty"`
+	URL     string `json:"url,omitempty"`
+	Type    string `json:"type,omitempty"`
+	Size    int64  `json:"size,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Malware bool   `json:"malware,omitempty"`
 }
 
 type Message struct {

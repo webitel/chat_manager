@@ -2175,6 +2175,7 @@ func (c *Client) whatsAppDownloadMedia(ctx context.Context, media *whatsapp.Docu
 	}
 	doc.Id = metadata.Id
 	doc.Size = metadata.Size
+	doc.Malware = metadata.Malware
 
 	return doc, nil
 }

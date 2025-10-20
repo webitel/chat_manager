@@ -5,7 +5,7 @@ package chat
 
 import (
 	fmt "fmt"
-	proto "google.golang.org/protobuf/proto"
+	proto "github.com/golang/protobuf/proto"
 	math "math"
 )
 
@@ -20,6 +20,12 @@ import (
 var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the proto package it is being compiled against.
+// A compilation error at this line likely means your copy of the
+// proto package needs to be updated.
+const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ api.Endpoint
@@ -60,7 +66,8 @@ type ChatService interface {
 	GetConversations(ctx context.Context, in *GetConversationsRequest, opts ...client.CallOption) (*GetConversationsResponse, error)
 	GetConversationByID(ctx context.Context, in *GetConversationByIDRequest, opts ...client.CallOption) (*GetConversationByIDResponse, error)
 	GetHistoryMessages(ctx context.Context, in *GetHistoryMessagesRequest, opts ...client.CallOption) (*GetHistoryMessagesResponse, error)
-	// [WTEL-4695] crutch
+	// [WTEL-4695], [WTEL6931] - tasks
+	// SendServiceMessage sends a service level message
 	SendServiceMessage(ctx context.Context, in *SendServiceMessageRequest, opts ...client.CallOption) (*SendServiceMessageResponse, error)
 	// API /v1
 	SetVariables(ctx context.Context, in *SetVariablesRequest, opts ...client.CallOption) (*ChatVariablesResponse, error)
@@ -286,7 +293,8 @@ type ChatServiceHandler interface {
 	GetConversations(context.Context, *GetConversationsRequest, *GetConversationsResponse) error
 	GetConversationByID(context.Context, *GetConversationByIDRequest, *GetConversationByIDResponse) error
 	GetHistoryMessages(context.Context, *GetHistoryMessagesRequest, *GetHistoryMessagesResponse) error
-	// [WTEL-4695] crutch
+	// [WTEL-4695], [WTEL6931] - tasks
+	// SendServiceMessage sends a service level message
 	SendServiceMessage(context.Context, *SendServiceMessageRequest, *SendServiceMessageResponse) error
 	// API /v1
 	SetVariables(context.Context, *SetVariablesRequest, *ChatVariablesResponse) error

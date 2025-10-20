@@ -425,6 +425,7 @@ func (c *App) forwardFile(media *chat.File, recipient *bot.Channel) (*chat.File,
 	media.Id = metadata.Id
 	media.Url = metadata.Url
 	media.Size = metadata.Size
+	media.Malware = metadata.Malware
 
 	return media, nil
 }

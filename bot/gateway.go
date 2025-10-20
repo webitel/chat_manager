@@ -55,6 +55,7 @@ type UploadedFileMetadata struct {
 	Url                string
 	Size               int64
 	ResponseStatusCode int32
+	Malware            bool
 }
 
 // DomainID that this gateway profile belongs to
@@ -160,6 +161,8 @@ func (c *Gateway) uploadFile(ctx context.Context, chunkSize int, mime string, na
 		Size:               res.Size,
 		ResponseStatusCode: int32(res.GetCode()),
 	}
+
+	metadata.Malware = res.Malware != nil && res.Malware.Found
 
 	return metadata, nil
 }
