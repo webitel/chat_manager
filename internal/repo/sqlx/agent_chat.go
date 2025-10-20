@@ -207,11 +207,11 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
                    (file),
                    content)
         FROM chat.message m
-                 LEFT JOIN LATERAL (SELECT m.file_id, m.file_size, m.file_type, m.file_name, m.file_url
+                 LEFT JOIN LATERAL (SELECT m.file_id, m.file_size, m.file_type, m.file_name, m.file_url, false
                                     WHERE m.file_id NOTNULL OR m.file_url NOTNULL) file ON true
         WHERE m.conversation_id = ` + ident(left, "id") + `
         ORDER BY m.id DESC
-        LIMIT 1) `,
+        LIMIT 1) `, // check malware  exists(select 1 from storage.files files where files.id = m.file_id and cast(files.malware->'found' as bool)
 			)
 			plan = append(plan, func(node *messages.AgentChat) any {
 				return DecodeText(func(src []byte) error {
