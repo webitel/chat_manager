@@ -1129,30 +1129,45 @@ func (c *Client) whatsAppOnUpdates(ctx context.Context, event *webhooks.Entry) {
 		update.ID = event.ObjectID // WABAID
 		if len(update.Messages) != 0 {
 			c.whatsAppOnMessages(ctx, &update)
-		} else if len(update.Calls) != 0 && update.Metadata != nil && c.whatsApp != nil {
+		} else if change.Field == "calls" && update.Metadata != nil && c.whatsApp != nil {
 			bro := broker.DefaultBroker
 			var name string
 			if len(update.Contacts) != 0 {
 				name = update.Contacts[0].GetName()
 			}
 
-			for _, call := range update.Calls {
+			hdrs := map[string]string{
+				"token":    c.whatsApp.AccessToken,
+				"name":     name,
+				"phone-id": update.Metadata.PhoneNumberID,
+			}
+
+			if len(update.Calls) != 0 {
+				for _, call := range update.Calls {
+					err = bro.Publish(fmt.Sprintf("whatsapp.%d.calls", c.Gateway.Id), &broker.Message{
+						Header: hdrs,
+						Body:   call,
+					})
+					if err != nil {
+						c.Gateway.Log.Error("whatsapp.onUpdate.calls",
+							slog.Any("error", err),
+						)
+					}
+				}
+			}
+
+			for _, st := range update.Statuses {
+				call, _ := json.Marshal(st)
 				err = bro.Publish(fmt.Sprintf("whatsapp.%d.calls", c.Gateway.Id), &broker.Message{
-					Header: map[string]string{
-						"token":    c.whatsApp.AccessToken,
-						"name":     name,
-						"phone-id": update.Metadata.PhoneNumberID,
-					},
-					Body: call,
+					Header: hdrs,
+					Body:   call,
 				})
 				if err != nil {
-					c.Gateway.Log.Error("whatsapp.onUpdate.calls",
+					c.Gateway.Log.Error("whatsapp.onUpdate.statuses",
 						slog.Any("error", err),
 					)
 				}
 			}
-
-			return
 		} // else if statuses := update.Statuses; len(statuses) != 0 {
 
 		// } else if microerr := update.microerr; len(microerr) != 0 {
