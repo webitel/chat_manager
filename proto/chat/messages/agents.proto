@@ -15,6 +15,12 @@ service AgentChatService {
       get: "/agent/chats"
     };
   }
+  rpc GetAgentChatsCounter(GetAgentChatsCounterRequest) returns (GetAgentChatsCounterResponse) {
+    option(google.api.http) = {
+      get: "/agent/chats/counter"
+    };
+  }
+
   rpc MarkChatProcessed(MarkChatProcessedRequest) returns (MarkChatProcessedResponse) {
     option(google.api.http) = {
       patch: "/agent/chats/{chat_id}"
@@ -38,6 +44,16 @@ message GetAgentChatsResponse {
   bool next = 1;
   int32 page = 2;
   repeated AgentChat items = 3;
+}
+
+
+message GetAgentChatsCounterRequest {
+  bool only_closed = 6;
+  bool only_unprocessed = 7;
+}
+
+message GetAgentChatsCounterResponse {
+  int32 count = 1;
 }
 
 message MarkChatProcessedRequest {

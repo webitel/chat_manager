@@ -170,6 +170,68 @@ func (srv *AgentChatsService) GetAgentChats(ctx context.Context, req *pb.GetAgen
 	return nil
 }
 
+func (srv *AgentChatsService) GetAgentChatsCounter(ctx context.Context, req *pb.GetAgentChatsCounterRequest, res *pb.GetAgentChatsCounterResponse) error {
+
+	// region: ----- Authentication -----
+	authN, err := app.GetContext(
+		ctx, app.AuthorizationRequire(
+			srv.authN.GetAuthorization,
+		),
+		srv.bindNativeClient,
+	)
+
+	if err != nil {
+		return err // 401
+	}
+	// endregion: ----- Authentication -----
+
+	// region: ----- Authorization -----
+	scope := authN.Authorization.HasObjclass(scopeChats)
+	if scope == nil {
+		return errors.Forbidden(
+			"agent_chat.objclass.access.denied",
+			"denied: require r:chats access but not granted",
+		) // (403) Forbidden
+	}
+	if !authN.Authorization.CanAccess(scope, auth.READ) {
+		return errors.Forbidden(
+			"agent_chat.objclass.access.denied",
+			"denied: require r:chats access but not granted",
+		) // (403) Forbidden
+	}
+	// endregion
+	search := app.SearchOptions{
+		Context: *(authN),
+		Access:  auth.READ,
+	}
+	// only with current agent
+	// required for API security
+	search.FilterAND("agent", authN.Creds.GetUserId())
+
+	// Only closed
+	onlyClosed := req.GetOnlyClosed()
+	search.FilterAND("closed", &onlyClosed)
+
+	onlyUnprocessed := req.GetOnlyUnprocessed()
+	search.FilterAND("unprocessed", &onlyUnprocessed)
+
+	// Only for current day
+	currentTime := app.CurrentTime()
+	year, month, day := currentTime.Date()
+	location := currentTime.Location()
+	startOfTheDay := time.Date(year, month, day, 0, 0, 0, 0, location)
+	search.FilterAND("date", &pb.Timerange{Since: startOfTheDay.UnixMilli(), Until: currentTime.UnixMilli()})
+
+	count, err := srv.store.GetAgentChatsCounter(&search)
+	if err != nil {
+		return err
+	}
+
+	res.Count = int32(count)
+
+	return nil
+}
+
 func (srv *AgentChatsService) MarkChatProcessed(ctx context.Context, request *pb.MarkChatProcessedRequest, response *pb.MarkChatProcessedResponse) error {
 	// region: ----- Authentication -----
 	authN, err := app.GetContext(

@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
+	"time"
+
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jackc/pgtype"
 	"github.com/micro/micro/v3/service/errors"
@@ -12,8 +15,6 @@ import (
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/internal/repo/sqlx/proto"
 	"github.com/webitel/chat_manager/store/postgres"
-	"strconv"
-	"time"
 )
 
 func (c *sqlxRepository) MarkChatAsProcessed(ctx context.Context, chatId string, agentId int64) (int64, error) {
@@ -25,6 +26,86 @@ func (c *sqlxRepository) MarkChatAsProcessed(ctx context.Context, chatId string,
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+func (c *sqlxRepository) GetAgentChatsCounter(req *app.SearchOptions) (int64, error) {
+	if req == nil {
+		return 0, errors.BadRequest("sqlxrepo.get_agent_chats_counter.check_req.nil", "request required")
+	}
+
+	args, err := newAgentChatQueryArgs(req)
+	if err != nil {
+		return 0, err
+	}
+
+	queryBuilder, err := getAgentChatCounterQuery(args)
+	if err != nil {
+		return 0, err
+	}
+
+	query, queryArgs, err := queryBuilder.ToSql()
+	if err != nil {
+		return 0, err
+	}
+
+	var count int64
+
+	err = c.db.QueryRowContext(
+		req.Context, query, queryArgs...,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+func getAgentChatCounterQuery(args *agentChatArgs) (query sq.SelectBuilder, err error) {
+	if args == nil {
+		err = errors.BadRequest("sqlxrepo.agent_chat.select_agent_chat_thread.check_args.args", "args required")
+		return
+	}
+
+	query = postgres.PGSQL.
+		Select(
+			"COUNT(*)",
+		).
+		From(
+			"chat.channel ch",
+		)
+	if args.AgentId >= 0 {
+		query = query.Where("ch.user_id = ?", args.AgentId).Where("ch.internal")
+	}
+
+	if args.Timerange != nil {
+
+		if args.Timerange.Since > 0 {
+			query = query.Where("ch.created_at >= ?", time.UnixMilli(args.Timerange.Since))
+		}
+
+		if args.Timerange.Until > 0 {
+			query = query.Where("ch.created_at <= ?", time.UnixMilli(args.Timerange.Until))
+		}
+	}
+
+	if args.Closed != nil {
+		if *args.Closed {
+			query = query.Where("ch.closed_at NOTNULL").
+				// remove postprocessing case
+				Where("NOT EXISTS (SELECT FROM call_center.cc_member_attempt a WHERE a.agent_call_id = ch.id::varchar AND a.state != 'leaving')")
+		} else {
+			query = query.Where("ch.closed_at ISNULL")
+		}
+	}
+
+	if args.Unprocessed != nil {
+		if *args.Unprocessed {
+			query = query.Where(fmt.Sprintf("(ch.props -> '%s' NOTNULL OR (ch.props ->> '%[1]s')::bool)", ChatNeedsProcessingVariable))
+		} else {
+			query = query.Where(fmt.Sprintf("(ch.props -> '%s' ISNULL OR NOT (ch.props ->> '%[1]s')::bool)", ChatNeedsProcessingVariable))
+		}
+	}
+	return
 }
 
 func (c *sqlxRepository) GetAgentChats(req *app.SearchOptions, res *messages.GetAgentChatsResponse) error {
@@ -421,7 +502,9 @@ func newAgentChatQueryArgs(req *app.SearchOptions) (*agentChatArgs, error) {
 	if req == nil {
 		return nil, nil
 	}
+
 	var args agentChatArgs
+
 	for param, v := range req.Filter {
 		switch param {
 		case "agent":

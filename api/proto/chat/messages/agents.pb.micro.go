@@ -5,8 +5,8 @@ package messages
 
 import (
 	fmt "fmt"
-	proto "github.com/golang/protobuf/proto"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
+	proto "google.golang.org/protobuf/proto"
 	math "math"
 )
 
@@ -22,12 +22,6 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
-
 // Reference imports to suppress errors if they are not otherwise used.
 var _ api.Endpoint
 var _ context.Context
@@ -38,17 +32,22 @@ var _ server.Option
 
 func NewAgentChatServiceEndpoints() []*api.Endpoint {
 	return []*api.Endpoint{
-		&api.Endpoint{
+		{
 			Name:    "AgentChatService.GetAgentChats",
 			Path:    []string{"/agent/chats"},
 			Method:  []string{"GET"},
 			Handler: "rpc",
 		},
-		&api.Endpoint{
+		{
+			Name:    "AgentChatService.GetAgentChatsCounter",
+			Path:    []string{"/agent/chats/counter"},
+			Method:  []string{"GET"},
+			Handler: "rpc",
+		},
+		{
 			Name:    "AgentChatService.MarkChatProcessed",
 			Path:    []string{"/agent/chats/{chat_id}"},
 			Method:  []string{"PATCH"},
-			Body:    "",
 			Handler: "rpc",
 		},
 	}
@@ -58,6 +57,7 @@ func NewAgentChatServiceEndpoints() []*api.Endpoint {
 
 type AgentChatService interface {
 	GetAgentChats(ctx context.Context, in *GetAgentChatsRequest, opts ...client.CallOption) (*GetAgentChatsResponse, error)
+	GetAgentChatsCounter(ctx context.Context, in *GetAgentChatsCounterRequest, opts ...client.CallOption) (*GetAgentChatsCounterResponse, error)
 	MarkChatProcessed(ctx context.Context, in *MarkChatProcessedRequest, opts ...client.CallOption) (*MarkChatProcessedResponse, error)
 }
 
@@ -83,6 +83,16 @@ func (c *agentChatService) GetAgentChats(ctx context.Context, in *GetAgentChatsR
 	return out, nil
 }
 
+func (c *agentChatService) GetAgentChatsCounter(ctx context.Context, in *GetAgentChatsCounterRequest, opts ...client.CallOption) (*GetAgentChatsCounterResponse, error) {
+	req := c.c.NewRequest(c.name, "AgentChatService.GetAgentChatsCounter", in)
+	out := new(GetAgentChatsCounterResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *agentChatService) MarkChatProcessed(ctx context.Context, in *MarkChatProcessedRequest, opts ...client.CallOption) (*MarkChatProcessedResponse, error) {
 	req := c.c.NewRequest(c.name, "AgentChatService.MarkChatProcessed", in)
 	out := new(MarkChatProcessedResponse)
@@ -97,12 +107,14 @@ func (c *agentChatService) MarkChatProcessed(ctx context.Context, in *MarkChatPr
 
 type AgentChatServiceHandler interface {
 	GetAgentChats(context.Context, *GetAgentChatsRequest, *GetAgentChatsResponse) error
+	GetAgentChatsCounter(context.Context, *GetAgentChatsCounterRequest, *GetAgentChatsCounterResponse) error
 	MarkChatProcessed(context.Context, *MarkChatProcessedRequest, *MarkChatProcessedResponse) error
 }
 
 func RegisterAgentChatServiceHandler(s server.Server, hdlr AgentChatServiceHandler, opts ...server.HandlerOption) error {
 	type agentChatService interface {
 		GetAgentChats(ctx context.Context, in *GetAgentChatsRequest, out *GetAgentChatsResponse) error
+		GetAgentChatsCounter(ctx context.Context, in *GetAgentChatsCounterRequest, out *GetAgentChatsCounterResponse) error
 		MarkChatProcessed(ctx context.Context, in *MarkChatProcessedRequest, out *MarkChatProcessedResponse) error
 	}
 	type AgentChatService struct {
@@ -116,10 +128,15 @@ func RegisterAgentChatServiceHandler(s server.Server, hdlr AgentChatServiceHandl
 		Handler: "rpc",
 	}))
 	opts = append(opts, api.WithEndpoint(&api.Endpoint{
+		Name:    "AgentChatService.GetAgentChatsCounter",
+		Path:    []string{"/agent/chats/counter"},
+		Method:  []string{"GET"},
+		Handler: "rpc",
+	}))
+	opts = append(opts, api.WithEndpoint(&api.Endpoint{
 		Name:    "AgentChatService.MarkChatProcessed",
 		Path:    []string{"/agent/chats/{chat_id}"},
 		Method:  []string{"PATCH"},
-		Body:    "",
 		Handler: "rpc",
 	}))
 	return s.Handle(s.NewHandler(&AgentChatService{h}, opts...))
@@ -131,6 +148,10 @@ type agentChatServiceHandler struct {
 
 func (h *agentChatServiceHandler) GetAgentChats(ctx context.Context, in *GetAgentChatsRequest, out *GetAgentChatsResponse) error {
 	return h.AgentChatServiceHandler.GetAgentChats(ctx, in, out)
+}
+
+func (h *agentChatServiceHandler) GetAgentChatsCounter(ctx context.Context, in *GetAgentChatsCounterRequest, out *GetAgentChatsCounterResponse) error {
+	return h.AgentChatServiceHandler.GetAgentChatsCounter(ctx, in, out)
 }
 
 func (h *agentChatServiceHandler) MarkChatProcessed(ctx context.Context, in *MarkChatProcessedRequest, out *MarkChatProcessedResponse) error {
