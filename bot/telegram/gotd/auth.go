@@ -255,6 +255,14 @@ func (c *sessionAuth) backup() ([]byte, error) {
 	return data, nil
 }
 
+func authSentCodeClassParser(sentCode tg.AuthSentCodeClass) (*tg.AuthSentCode, error) {
+	parsedCode, ok := sentCode.(*tg.AuthSentCode)
+	if !ok {
+		return nil, errors.New("error asserting AuthSentCodeClass into AuthSentCode")
+	}
+	return parsedCode, nil
+}
+
 // SendCode sends the verification code for login
 func (c *sessionAuth) SendCode(ctx context.Context, phone string) (*tg.AuthSentCode, error) {
 
@@ -284,8 +292,14 @@ func (c *sessionAuth) SendCode(ctx context.Context, phone string) (*tg.AuthSentC
 			return nil, err
 		}
 		c.phone = phone
-		c.request = request
-		return request, nil
+		
+		requestPtr, err := authSentCodeClassParser(request)
+		if err != nil {
+			return nil, err
+		}
+
+		c.request = requestPtr
+		return requestPtr, nil
 	}
 
 	sendCode := &tg.AuthSendCodeRequest{
@@ -326,10 +340,16 @@ func (c *sessionAuth) SendCode(ctx context.Context, phone string) (*tg.AuthSentC
 		}
 		return nil, err
 	}
-
+	
 	c.phone = phone
-	c.request = sentCode
-	return sentCode, nil
+
+	sentCodePtr, err := authSentCodeClassParser(sentCode)
+	if err != nil {
+		return nil, err
+	}
+	c.request = sentCodePtr
+
+	return sentCodePtr, nil
 }
 
 // Cancel the login verification code
