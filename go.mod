@@ -32,7 +32,7 @@ require (
 	github.com/webitel/webitel-go-kit v0.0.21-0.20241119150325-b21de048f596
 	github.com/yuin/goldmark v1.4.13
 	go.opentelemetry.io/contrib/bridges/otelslog v0.3.0
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.57.0
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.63.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.57.0
 	go.opentelemetry.io/otel/log v0.5.0
 	go.opentelemetry.io/otel/sdk v1.38.0
