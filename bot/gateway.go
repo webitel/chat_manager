@@ -1105,7 +1105,17 @@ func (c *Gateway) SendServiceMessageByTemplate(ctx context.Context, templateName
 	if text == "" {
 		return nil
 	}
-	return c.SendServiceMessage(ctx, text, chatId)
+	msg := &chat.Message{
+		Type: "text",
+		Text: text,
+		Variables: map[string]string{
+			"from":     "bot",
+			"template": templateName,
+		},
+	}
+
+	_, err = c.Internal.Client.SendServiceMessage(ctx, &chat.SendServiceMessageRequest{Message: msg, ChatId: chatId})
+	return err
 }
 
 func (c *Gateway) TraceLog(msg string, args ...any) {

@@ -331,10 +331,16 @@ func (s *chatService) SendServiceMessage(ctx context.Context, req *pbchat.SendSe
 			flow = member
 		}
 	}
-	// agent has priority over bot
-	sender = agent
-	if chat.Channel == nil {
+
+	vars := sendMessage.GetVariables()
+	if vars != nil && vars["from"] == "bot" && flow != nil {
 		sender = flow
+	} else {
+	// agent has priority over bot
+		sender = agent
+		if chat.Channel == nil {
+			sender = flow
+		}
 	}
 
 	if chat.Channel == nil {
