@@ -1117,7 +1117,7 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 							%[1]s.file_type "type",
 							%[1]s.file_name "name",
 							%[1]s.file_url "url",
-							(%[3]s.malware->'found')::bool malware
+							(%[3]s.malware->'found')::::bool malware
 						WHERE %[1]s.file_id NOTNULL OR %[1]s.file_url NOTNULL
 					) %[2]s ON true`,
 						left, messageFileAs, storageFileAs,
@@ -1737,7 +1737,7 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 							%[1]s.file_type "type",
 							%[1]s.file_name "name",
 							%[1]s.file_url "url",
-							(%[3]s.malware->'found')::bool malware
+							(%[3]s.malware->'found')::::bool malware
 						WHERE %[1]s.file_id NOTNULL OR %[1]s.file_url NOTNULL
 					) %[2]s ON true`,
 						left, messageFileAs, storageFileAs,
