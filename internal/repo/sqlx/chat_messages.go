@@ -1102,6 +1102,12 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 				if !column(field) {
 					break // switch; duplicate!
 				}
+				const storageFileAs = "fd"
+				ctx.Query = ctx.Query.JoinClause(fmt.Sprintf(
+					"LEFT JOIN storage.files %[2]s ON %[2]s.id = %[1]s.file_id",
+					left, storageFileAs,
+				))
+				const messageFileAs = "file"
 				ctx.Query = ctx.Query.JoinClause(
 					CompactSQL(fmt.Sprintf(
 						`LEFT JOIN LATERAL(
@@ -1111,15 +1117,14 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 							%[1]s.file_type "type",
 							%[1]s.file_name "name",
 							%[1]s.file_url "url",
-							cast(files.malware->'found' as boolean) malware
-						FROM storage.files files
-						WHERE files.id = %[1]s.file_id AND
-						%[1]s.file_id NOTNULL OR %[1]s.file_url NOTNULL
+							(%[3]s.malware->'found')::bool malware
+						WHERE %[1]s.file_id NOTNULL OR %[1]s.file_url NOTNULL
 					) %[2]s ON true`,
-						left, "file",
-					)))
+						left, messageFileAs, storageFileAs,
+					)),
+				)
 				ctx.Query = ctx.Query.Column(
-					"(file)", // ROW(file)
+					"(" + messageFileAs + ")", // ROW(file)
 				)
 				ctx.plan = append(ctx.plan,
 					func(node *pb.Message) any {
@@ -1717,6 +1722,12 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 				if !column(field) {
 					break // switch; duplicate!
 				}
+				const storageFileAs = "fd"
+				ctx.Query = ctx.Query.JoinClause(fmt.Sprintf(
+					"LEFT JOIN storage.files %[2]s ON %[2]s.id = %[1]s.file_id",
+					left, storageFileAs,
+				))
+				const messageFileAs = "file"
 				ctx.Query = ctx.Query.JoinClause(
 					CompactSQL(fmt.Sprintf(
 						`LEFT JOIN LATERAL(
@@ -1726,15 +1737,14 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 							%[1]s.file_type "type",
 							%[1]s.file_name "name",
 							%[1]s.file_url "url",
-							cast(files.malware->'found' as boolean) malware
-						FROM storage.files files
-						WHERE files.id = %[1]s.file_id AND
-						%[1]s.file_id NOTNULL OR m.file_url NOTNULL 
+							(%[3]s.malware->'found')::bool malware
+						WHERE %[1]s.file_id NOTNULL OR %[1]s.file_url NOTNULL
 					) %[2]s ON true`,
-						left, "file",
-					)))
+						left, messageFileAs, storageFileAs,
+					)),
+				)
 				ctx.Query = ctx.Query.Column(
-					"(file)", // ROW(file)
+					"(" + messageFileAs + ")", // ROW(file)
 				)
 				ctx.plan = append(ctx.plan,
 					func(node *pb.ChatMessage) any {
