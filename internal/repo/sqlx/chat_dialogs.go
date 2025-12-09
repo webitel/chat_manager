@@ -492,6 +492,7 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 					, content
 					FROM
 						chat.message m
+					LEFT JOIN storage.files fd ON fd.id = m.file_id
 					LEFT JOIN LATERAL
 					(
 						SELECT
@@ -500,6 +501,7 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 						, m.file_type
 						, m.file_name
 						, m.file_url
+						, (fd.malware->'found')::::bool malware
 						WHERE
 							m.file_id NOTNULL OR m.file_url NOTNULL
 					) file ON true
