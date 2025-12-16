@@ -336,7 +336,7 @@ func (s *chatService) SendServiceMessage(ctx context.Context, req *pbchat.SendSe
 	if vars != nil && vars["from"] == "bot" && flow != nil {
 		sender = flow
 	} else {
-	// agent has priority over bot
+		// agent has priority over bot
 		sender = agent
 		if chat.Channel == nil {
 			sender = flow
@@ -3218,7 +3218,7 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, sender *app.Ch
 					},
 					Message: events.Message{
 						ID:        notify.Id,
-						ChannelID: sender.Chat.ID,
+						ChannelID: member.Chat.ID,
 						Type:      notify.Type,
 						Text:      notify.Text,
 						// File:   notify.File,
