@@ -488,7 +488,7 @@ func (srv *Catalog) GetHistory(ctx context.Context, req *pb.ChatMessagesRequest,
 		// ),
 		// Size: int(req.GetSize()),
 		// Page: int(req.GetPage()),
-		Size: int(req.GetLimit()),
+		Size: int(req.GetLimit()) + 1,
 	}
 	// Can SELECT ANY object(s) ?
 	super := &auth.PermissionSelectAny
@@ -550,8 +550,12 @@ func (srv *Catalog) GetHistory(ctx context.Context, req *pb.ChatMessagesRequest,
 	res.Messages = list.Messages
 	res.Chats = list.Chats
 	res.Peers = list.Peers
-	res.Page = list.Page
-	res.Next = list.Next
+
+	if len(res.Messages) > int(req.GetLimit()) {
+		res.Next = true
+		res.Messages = res.Messages[:len(res.Messages)-1]
+	}
+	res.Page = int32(res.GetPage())
 
 	// TODO: Output sanitizer ...
 
