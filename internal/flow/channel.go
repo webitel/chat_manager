@@ -1010,14 +1010,20 @@ func (c *Channel) TransferToUser(originator *app.Channel, userToID int64) error 
 	// c.Variables["flow"] = strconv.FormatInt(schemaToID, 10)
 	// Start NEW workflow schema routine within this c channel.
 	user := originator.User
+	
+	msgVars := make(map[string]string)
+	if c.Variables != nil {
+		for key, val := range c.Variables {
+			msgVars[key] = val
+		}
+	}
+	msgVars["xfer"] = xferNext
+	
 	err = c.startUser(&chat.Message{
 		Id:   0,
 		Type: "xfer",
 		Text: "transfer",
-		Variables: map[string]string{
-			// "flow": strconv.FormatInt(schemaToID, 10),
-			"xfer": xferNext,
-		},
+		Variables: msgVars,
 		CreatedAt: date,
 		// originator.Chat.User
 		From: &chat.Account{
@@ -1140,14 +1146,21 @@ func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) er
 	c.Variables["flow"] = schemaNextID
 	// Start NEW workflow schema routine within this c channel.
 	user := originator.User
+	
+	msgVars := make(map[string]string)
+	if c.Variables != nil {
+		for key, val := range c.Variables {
+			msgVars[key] = val
+		}
+	}
+	msgVars["xfer"] = xferNext
+	msgVars["flow"] = schemaNextID
+
 	err = c.Start(&chat.Message{
 		Id:   0,
 		Type: "xfer",
 		Text: "transfer",
-		Variables: map[string]string{
-			"flow": schemaNextID,
-			"xfer": xferNext,
-		},
+		Variables: msgVars,
 		CreatedAt: date,
 		// originator.Chat.User
 		From: &chat.Account{
