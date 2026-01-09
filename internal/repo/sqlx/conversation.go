@@ -139,7 +139,7 @@ func (repo *sqlxRepository) GetConversations(
 	// conversations := make([]*Conversation, 0, size)
 	var (
 		fieldsStr = // "c.*, m.*, ch.*"
-		"c.id, c.title, c.created_at, c.closed_at, c.updated_at, c.domain_id" +
+		"c.id, c.title, c.created_at, c.closed_at, c.updated_at, c.domain_id, c.props" +
 			", m.messages" +
 			", ch.members"
 

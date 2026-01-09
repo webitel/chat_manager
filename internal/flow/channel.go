@@ -1039,9 +1039,14 @@ func (c *Channel) TransferToUser(originator *app.Channel, userToID int64) error 
 	}
 
 	// Save/Update chat.(conversation).variables changes ...
-	if e := c.Store.Setvar(c.ID, map[string]string{
-		"xfer": c.Variables["xfer"],
-	}); e != nil {
+	varsToSave := make(map[string]string)
+	if c.Variables != nil {
+		for key, val := range c.Variables {
+			varsToSave[key] = val
+		}
+	}
+
+	if e := c.Store.Setvar(c.ID, varsToSave); e != nil {
 		// [WARN] Failed to persist chat.(conversation).variables
 		c.Log.Warn("Failed to update chat variables",
 			"var.xfer", xferFull,
@@ -1163,10 +1168,16 @@ func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) er
 	}
 
 	// Save/Update chat.(conversation).variables changes ...
-	if e := c.Store.Setvar(c.ID, map[string]string{
-		"flow": schemaNextID,
-		"xfer": xferFull,
-	}); e != nil {
+	varsToSave := make(map[string]string)
+	if c.Variables != nil {
+		for key, val := range c.Variables {
+			varsToSave[key] = val
+		}
+	}
+	varsToSave["flow"] = schemaNextID
+	varsToSave["xfer"] = xferFull
+
+	if e := c.Store.Setvar(c.ID, varsToSave); e != nil {
 		// [WARN] Failed to persist chat.(conversation).variables
 		c.Log.Warn("Failed to update chat variables",
 			"var.flow", schemaToID,

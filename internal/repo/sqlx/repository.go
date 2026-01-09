@@ -39,6 +39,7 @@ type Repository interface {
 	GetPortalAppUser(ctx context.Context, portalUserId, serviceAppId string) (*AppUser, error)
 	GetPortalAppSchemaID(ctx context.Context, portalAppId string) (int64, error)
 	GetChatBotByID(ctx context.Context, botId int64) (*ChatBot, error)
+	GetFlowSchemeVariables(ctx context.Context, flowID int64, domainID int64) (map[string]string, error)
 }
 
 // type ProfileRepository interface {
