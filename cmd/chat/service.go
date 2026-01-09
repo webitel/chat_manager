@@ -3564,6 +3564,34 @@ func (c *chatService) SetVariables(ctx context.Context, req *pbchat.SetVariables
 	return nil
 }
 
+func (c *chatService) extractOldFlowVariables(ctx context.Context, conversationID string) (map[string]string, error) {
+	conversation, err := c.repo.GetConversationByID(ctx, conversationID)
+	if err != nil || conversation == nil {
+		return nil, nil
+	}
+
+	oldFlowIDRaw, ok := conversation.Variables["flow"]
+	if !ok || oldFlowIDRaw == "" {
+		return nil, nil
+	}
+
+	oldFlowID, err := strconv.ParseInt(oldFlowIDRaw, 10, 64)
+	if err != nil {
+		c.log.Debug("invalid flow ID format", slog.String("flow_id", oldFlowIDRaw))
+		return nil, nil
+	}
+
+	oldFlowVars, err := c.repo.GetFlowSchemeVariables(ctx, oldFlowID, conversation.DomainID)
+	if err != nil {
+		c.log.Debug("failed to query old flow schema variables",
+			slog.String("flow_id", oldFlowIDRaw),
+			slog.Any("error", err))
+		return nil, nil
+	}
+
+	return oldFlowVars, nil
+}
+
 func (c *chatService) BlindTransfer(ctx context.Context, req *pbchat.ChatTransferRequest, res *pbchat.ChatTransferResponse) error {
 
 	var (
@@ -3721,12 +3749,33 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pbchat.ChatTransfe
 		return nil
 	}*/
 
+	oldFlowVars, err := c.extractOldFlowVariables(ctx, chatFlowID)
+	if err != nil {
+		c.log.Warn("failed to extract old flow schema variables",
+			slog.String("conversation_id", chatFlowID),
+			slog.Any("error", err))
+		oldFlowVars = nil
+	}
+
+	transferVars := req.GetVariables()
+	if transferVars == nil {
+		transferVars = make(map[string]string)
+	}
+
+	if oldFlowVars != nil {
+		for key, val := range oldFlowVars {
+			if _, exists := transferVars[key]; !exists {
+				transferVars[key] = val
+			}
+		}
+	}
+
 	// PERFORM: SWITCH Flow runtime schema(s) !
 	err = c.flowClient.TransferTo(
 		chatFlowID, originator,
 		schemaToID, userToID,
 		// merge channel.variables latest state
-		req.Variables,
+		transferVars,
 	)
 
 	if err != nil {

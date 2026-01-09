@@ -594,6 +594,57 @@ func (repo *sqlxRepository) UpdateChannelHost(ctx context.Context, channelID, ho
 	return err
 }
 
+func (repo *sqlxRepository) GetFlowSchemeVariables(ctx context.Context, flowID, domainID int64) (map[string]string, error) {
+	var schemeJSON []byte
+
+	query := `
+		SELECT s.scheme 
+		FROM flow.acr_routing_scheme s
+		WHERE s.id = $1 AND s.domain_id = $2
+		LIMIT 1
+	`
+
+	err := repo.db.GetContext(ctx, &schemeJSON, query, flowID, domainID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if schemeJSON == nil || len(schemeJSON) == 0 {
+		return nil, nil
+	}
+
+	var schemeArray []map[string]any
+	if err := json.Unmarshal(schemeJSON, &schemeArray); err != nil {
+		return nil, nil
+	}
+
+	setData := make(map[string]string)
+
+	for _, item := range schemeArray {
+		if setObj, ok := item["set"].(map[string]any); ok {
+			// Extract all values from the set object
+			for key, val := range setObj {
+				if strVal, ok := val.(string); ok {
+					setData[key] = strVal
+				} else if valBytes, err := json.Marshal(val); err == nil {
+					// Convert non-string values to JSON strings
+					setData[key] = string(valBytes)
+				}
+			}
+			break
+		}
+	}
+
+	if len(setData) == 0 {
+		return nil, nil
+	}
+
+	return setData, nil
+}
+
 func (repo *sqlxRepository) BindChannel(ctx context.Context, channelID string, vars map[string]string) (env map[string]string, err error) {
 
 	if vars != nil {
