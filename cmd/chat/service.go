@@ -1124,6 +1124,25 @@ func (s *chatService) JoinConversation(
 
 	timestamp := app.CurrentTime().UTC()
 
+	conversation, err := s.repo.GetConversationByID(ctx, invite.ConversationID)
+	conversationVars := make(map[string]string)
+	if err != nil {
+		log.Debug("Failed to fetch conversation for variables merge",
+			slog.String("conversation_id", invite.ConversationID),
+			slog.Any("error", err),
+		)
+	} else if conversation != nil && conversation.Variables != nil {
+		conversationVars = conversation.Variables
+	}
+
+	channelVars := make(map[string]string)
+	for key, val := range conversationVars {
+		channelVars[key] = val
+	}
+	for key, val := range invite.Variables {
+		channelVars[key] = val
+	}
+
 	channel := &pg.Channel{
 		ID:             invite.ID, // FROM: INVITE token !
 		Type:           "webitel",
@@ -1143,7 +1162,7 @@ func (s *chatService) JoinConversation(
 			Time:  timestamp,
 			Valid: true,
 		},
-		Variables: invite.Variables,
+		Variables: channelVars,
 	}
 
 	if !invite.InviterChannelID.Valid {
