@@ -268,6 +268,25 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 
 	// const precision = (int64)(time.Millisecond)
 
+	mergedVariables := make(map[string]string)
+
+	conv, err := e.repo.GetConversationByID(context.Background(), conversation.Id)
+	if err != nil {
+		e.log.Warn("failed to load conversation variables",
+			slog.String("conversation_id", conversation.Id),
+			slog.Any("error", err))
+	} else if conv != nil && conv.Variables != nil {
+		for key, val := range conv.Variables {
+			mergedVariables[key] = val
+		}
+	}
+
+	if invite.Variables != nil {
+		for key, val := range invite.Variables {
+			mergedVariables[key] = val
+		}
+	}
+
 	mes := events.UserInvitationEvent{
 		BaseEvent: events.BaseEvent{
 			ConversationID: conversation.Id,
@@ -276,7 +295,7 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 		InviteID:   invite.ID,
 		Title:      invite.Title.String,
 		TimeoutSec: invite.TimeoutSec,
-		Variables:  invite.Variables,
+		Variables:  mergedVariables,
 		Conversation: events.Conversation{
 			ID:    conversation.Id,
 			Title: conversation.Title,
@@ -377,7 +396,7 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 		Body: data,
 	}
 
-	err := e.broker.Publish(fmt.Sprintf("event.%s.%d.%d",
+	err = e.broker.Publish(fmt.Sprintf("event.%s.%d.%d",
 		events.UserInvitationEventType, invite.DomainID, invite.UserID,
 	), notify)
 
