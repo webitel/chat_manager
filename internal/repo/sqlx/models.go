@@ -216,7 +216,7 @@ type Conversation struct {
 	Messages      []*Message // ConversationMessages
 	MembersBytes  []byte     `db:"members" json:"members"`
 	MessagesBytes []byte     `db:"messages" json:"messages"`
-	Variables     Metadata   `db:"vars" json:"variables"`
+	Variables     Metadata   `db:"props" json:"variables"`
 }
 
 type ConversationMembers []*ConversationMember
