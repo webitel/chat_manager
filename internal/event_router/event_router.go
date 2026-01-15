@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/micro/micro/v3/service/broker"
@@ -276,8 +277,20 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 			slog.String("conversation_id", conversation.Id),
 			slog.Any("error", err))
 	} else if conv != nil && conv.Variables != nil {
-		for key, val := range conv.Variables {
-			mergedVariables[key] = val
+		if flowIDRaw, ok := conv.Variables["old_flow"]; ok && flowIDRaw != "" {
+			if flowID, parseErr := strconv.ParseInt(flowIDRaw, 10, 64); parseErr == nil {
+				flowVars, varErr := e.repo.GetFlowSchemeVariables(context.Background(), flowID, invite.DomainID)
+				if varErr != nil {
+					e.log.Debug("failed to load flow schema variables",
+						slog.String("conversation_id", conversation.Id),
+						slog.String("flow_id", flowIDRaw),
+						slog.Any("error", varErr))
+				} else if flowVars != nil {
+					for key, val := range flowVars {
+						mergedVariables[key] = val
+					}
+				}
+			}
 		}
 	}
 
