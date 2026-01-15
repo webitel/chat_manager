@@ -1011,19 +1011,14 @@ func (c *Channel) TransferToUser(originator *app.Channel, userToID int64) error 
 	// Start NEW workflow schema routine within this c channel.
 	user := originator.User
 	
-	msgVars := make(map[string]string)
-	if c.Variables != nil {
-		for key, val := range c.Variables {
-			msgVars[key] = val
-		}
-	}
-	msgVars["xfer"] = xferNext
-	
 	err = c.startUser(&chat.Message{
 		Id:   0,
 		Type: "xfer",
 		Text: "transfer",
-		Variables: msgVars,
+		Variables: map[string]string{
+			// "flow": strconv.FormatInt(schemaToID, 10),
+			"xfer": xferNext,
+		},
 		CreatedAt: date,
 		// originator.Chat.User
 		From: &chat.Account{
@@ -1142,25 +1137,22 @@ func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) er
 	}
 	c.Variables["xfer"] = xferFull
 	schemaThisID := c.Variables["flow"]
+	if schemaThisID != "" && c.Variables["old_flow"] == "" {
+		c.Variables["old_flow"] = schemaThisID
+	}
 	schemaNextID := strconv.FormatInt(schemaToID, 10)
 	c.Variables["flow"] = schemaNextID
 	// Start NEW workflow schema routine within this c channel.
 	user := originator.User
-	
-	msgVars := make(map[string]string)
-	if c.Variables != nil {
-		for key, val := range c.Variables {
-			msgVars[key] = val
-		}
-	}
-	msgVars["xfer"] = xferNext
-	msgVars["flow"] = schemaNextID
 
 	err = c.Start(&chat.Message{
 		Id:   0,
 		Type: "xfer",
 		Text: "transfer",
-		Variables: msgVars,
+		Variables: map[string]string{
+			"flow": schemaNextID,
+			"xfer": xferNext,
+		},
 		CreatedAt: date,
 		// originator.Chat.User
 		From: &chat.Account{
@@ -1189,6 +1181,9 @@ func (c *Channel) TransferToSchema(originator *app.Channel, schemaToID int64) er
 	}
 	varsToSave["flow"] = schemaNextID
 	varsToSave["xfer"] = xferFull
+	if schemaThisID != "" {
+		varsToSave["old_flow"] = schemaThisID
+	}
 
 	if e := c.Store.Setvar(c.ID, varsToSave); e != nil {
 		// [WARN] Failed to persist chat.(conversation).variables
