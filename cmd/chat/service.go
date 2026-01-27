@@ -39,6 +39,10 @@ import (
 
 var FilePolicyViolationError = errors.New("chat.file.policy.violation", "file policy violation", http.StatusForbidden)
 
+const (
+	FilePolicyFailType = "file_policy_fail"
+)
+
 type Service interface {
 	GetConversations(ctx context.Context, req *pbchat.GetConversationsRequest, res *pbchat.GetConversationsResponse) error
 	GetConversationByID(ctx context.Context, req *pbchat.GetConversationByIDRequest, res *pbchat.GetConversationByIDResponse) error
@@ -3211,6 +3215,11 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, sender *app.Ch
 				if timestamp == 0 {
 					timestamp = notify.CreatedAt
 				}
+				channelID := member.Chat.ID
+				vars := notify.GetVariables()
+				if vars != nil && vars["from"] == "bot" && vars["template"] == FilePolicyFailType {
+					channelID = "" // hide channelId to mark system messages
+				}
 				notice := events.MessageEvent{
 					BaseEvent: events.BaseEvent{
 						ConversationID: sender.Chat.Invite, // hidden channel.conversation_id
@@ -3218,7 +3227,7 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, sender *app.Ch
 					},
 					Message: events.Message{
 						ID:        notify.Id,
-						ChannelID: member.Chat.ID,
+						ChannelID: channelID,
 						Type:      notify.Type,
 						Text:      notify.Text,
 						// File:   notify.File,
