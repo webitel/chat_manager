@@ -223,49 +223,11 @@ func getContactsQuery(req *app.SearchOptions) (ctx chatContactsQuery, err error)
 		"pdc": ctx.input.PDC,
 	}
 
-	// region: ----- resolve: type, via -----
+	// region: ----- STEP 1: resolve: type, via -----
 	const (
 		left = "c" // [FROM] alias
 	)
 
-	ctx.Query = postgres.PGSQL.
-		Select(
-			ident(left, "type"),
-			ident(left, "user_id"),
-			"array_agg(distinct via.id)filter(where via.id notnull)via",
-		).
-		From(
-			"chat.channel "+left,
-		).
-		Where(
-			ident(left, "domain_id")+" = :pdc",
-		).
-		Where(
-			"NOT "+ident(left, "internal"), // REFERENCE chat.client
-		).
-		GroupBy(
-			ident(left, "user_id"),
-			ident(left, "type"),
-		)
-	// peers( type: string )
-	switch typeOf := ctx.input.Type; typeOf {
-	case "", "*":
-		// ANY ; disable !
-		ctx.input.Type = ""
-	default:
-		{
-			eq, vs := "=", any(typeOf)
-			if strings.ContainsAny(typeOf, "*?") {
-				eq, vs = "ILIKE", app.Substring(typeOf)
-			}
-			ctx.Params.set("peer.type", vs)
-			ctx.Query = ctx.Query.Where(fmt.Sprintf(
-				"%s %s :peer.type COLLATE \"C\"",
-				ident(left, "type"), eq,
-			))
-		}
-	}
-	// context via.* filter(s) ..
 	var (
 		cteVia     string                // optional: [via] gateways selection
 		viaPortal  = ctx.input.ViaPortal // support: schema [portal] installed ?
@@ -471,40 +433,73 @@ func getContactsQuery(req *app.SearchOptions) (ctx chatContactsQuery, err error)
 			END
 		)`
 	}
-	ctx.Query = ctx.Query.JoinClause(CompactSQL(fmt.Sprintf(
-		"LEFT JOIN LATERAL ("+chatViaQ+") via(id) ON true", left,
-	)))
-	if cteVia != "" {
-		// select [chat.channel] for requested gateway(s) ONLY !
-		ctx.Query = ctx.Query.
-			JoinClause("JOIN q ON via.id = q.id") // INNER
+
+	// endregion: ----- STEP 1 -----
+
+	// region: ----- STEP 2: Build channel EXISTS subquery -----
+
+	representativeChannelQ := postgres.PGSQL.
+		Select(
+			ident(left, "type"),
+			"via.id AS via_id",
+		).
+		From("chat.channel " + left).
+		Where(ident(left, "user_id") + " = x.id").
+		Where(ident(left, "domain_id") + " = :pdc").
+		Where("NOT " + ident(left, "internal")).
+		JoinClause(CompactSQL(fmt.Sprintf(
+			"LEFT JOIN LATERAL ("+chatViaQ+") via(id) ON true", left,
+		))).
+		OrderBy(ident(left, "type") + " ASC").
+		OrderBy(ident(left, "id") + " ASC").
+		Limit(1)
+
+	// Apply type filter
+	if ctx.input.Type != "" {
+		eq, vs := "=", any(ctx.input.Type)
+		if strings.ContainsAny(ctx.input.Type, "*?") {
+			eq, vs = "ILIKE", app.Substring(ctx.input.Type)
+		}
+		ctx.Params.set("peer.type", vs)
+		representativeChannelQ = representativeChannelQ.Where(fmt.Sprintf(
+			"%s %s :peer.type COLLATE \"C\"",
+			ident(left, "type"), eq,
+		))
 	}
 
-	peerQ := ctx.Query
+	// Apply via filter
+	if cteVia != "" {
+		representativeChannelQ = representativeChannelQ.JoinClause("JOIN q ON via.id = q.id")
+	}
 
-	ctx.Query = postgres.PGSQL.
+	// endregion: ----- STEP 2 -----
+
+	// region: ----- STEP 3: Build main user query -----
+
+	sqlStr, _, err := representativeChannelQ.ToSql()
+	if err != nil {
+		return ctx, err
+	}
+
+	mainQuery := postgres.PGSQL.
 		Select(
-			ident("x", "external_id")+" id", // text
-			ident("c", "type"),              // text
+			ident("x", "id")+" user_id",
+			ident("x", "external_id"),
+			ident("x", "name"),
+			"rep.type",
 		).
-		From(
-			"chat.client x",
-		).
-		JoinClause(&JOIN{
-			Kind:  "JOIN", // INNER; type, via ...
-			Table: peerQ.Prefix("(").Suffix(")"),
-			Alias: "c",
-			Pred:  sq.Expr("c.user_id = x.id"),
-		})
+		From("chat.client x").
+		JoinClause(
+			"CROSS JOIN LATERAL (" + sqlStr + ") AS rep",
+		)
 
-	// peers( q: string )
 	if q := ctx.input.Q; q != "" && !app.IsPresent(q) {
 		eq, vs := "=", any(q)
 		if strings.ContainsAny(q, "*?") {
 			eq, vs = "ILIKE", app.Substring(q)
 		}
 		ctx.Params.set("q", vs)
-		ctx.Query = ctx.Query.Where(fmt.Sprintf(
+		mainQuery = mainQuery.Where(fmt.Sprintf(
 			"%s %s :q COLLATE \"default\"",
 			ident("x", "name"), eq,
 		))
@@ -521,12 +516,12 @@ func getContactsQuery(req *app.SearchOptions) (ctx chatContactsQuery, err error)
 			eq, vs = " = :id", &id.Elements[0]
 		}
 		ctx.Params.set("id", vs)
-		ctx.Query = ctx.Query.Where(
+		mainQuery = mainQuery.Where(
 			ident("x", "external_id") + eq,
 		)
 	}
-	// peers( sort: fields )
-	// [ORDER-BY]: sort
+
+	// Apply sorting (only user-level fields for now)
 	const (
 		ASC  = " ASC"
 		DESC = " DESC"
@@ -551,22 +546,16 @@ func getContactsQuery(req *app.SearchOptions) (ctx chatContactsQuery, err error)
 			spec = spec[1:]
 		case '-', '!':
 			spec = spec[1:]
-			order = " DESC"
+			order = DESC
 		}
 		switch spec {
 		// complex
 		case "id":
-			{
-				spec = ident("x", "external_id")
-			}
+			mainQuery = mainQuery.OrderBy(ident("x", "external_id") + order)
 		case "type":
-			{
-				spec = ident("c", "type")
-			}
+			mainQuery = mainQuery.OrderBy("rep.type" + order)
 		case "name":
-			{
-				spec = ident("x", "name")
-			}
+			mainQuery = mainQuery.OrderBy(ident("x", "name") + order)
 		// case "via":
 		// 	{
 		// 		// TODO !!!!
@@ -591,23 +580,106 @@ func getContactsQuery(req *app.SearchOptions) (ctx chatContactsQuery, err error)
 				return // nil, err
 			}
 		}
-		ctx.Query = ctx.Query.
-			OrderBy(spec + order)
 	}
+
 	// [OFFSET|LIMIT]: paging
 	if size := req.GetSize(); size > 0 {
 		// OFFSET (page-1)*size -- omit same-sized previous page(s) from result
 		if page := req.GetPage(); page > 1 {
-			ctx.Query = ctx.Query.Offset(
-				(uint64)((page - 1) * (size)),
+			mainQuery = mainQuery.Offset(
+				(uint64)((page - 1) * size),
 			)
 		}
-		// LIMIT (size+1) -- to indicate whether there are more result entries
-		ctx.Query = ctx.Query.Limit(
+		mainQuery = mainQuery.Limit(
 			(uint64)(size + 1),
 		)
 	}
-	// endregion: ----- resolve: type, via -----
+
+	// Store as CTE
+	ctx.With(CTE{
+		Name: "target_users",
+		Expr: mainQuery,
+	})
+
+	// endregion: ----- STEP 3 -----
+
+	// region: ----- STEP 4: Aggregate channels ONLY for target users -----
+
+	channelAggQuery := postgres.PGSQL.
+		Select(
+			ident(left, "type"),
+			ident(left, "user_id"),
+			"array_agg(DISTINCT via.id ORDER BY via.id) FILTER(WHERE via.id IS NOT NULL) via",
+		).
+		From("chat.channel "+left).
+		JoinClause("JOIN target_users tu ON tu.user_id = "+ident(left, "user_id")).
+		Where(ident(left, "domain_id")+" = :pdc").
+		Where("NOT "+ident(left, "internal")).
+		JoinClause(CompactSQL(fmt.Sprintf(
+			"LEFT JOIN LATERAL ("+chatViaQ+") via(id) ON true", left,
+		))).
+		GroupBy(
+			ident(left, "user_id"),
+			ident(left, "type"),
+		)
+
+	// Apply same filters to aggregation for consistency
+	if ctx.input.Type != "" {
+		eq := "="
+		if strings.ContainsAny(ctx.input.Type, "*?") {
+			eq = "ILIKE"
+		}
+		channelAggQuery = channelAggQuery.Where(fmt.Sprintf(
+			"%s %s :peer.type COLLATE \"C\"",
+			ident(left, "type"), eq,
+		))
+	}
+
+	if cteVia != "" {
+		channelAggQuery = channelAggQuery.JoinClause("JOIN q ON via.id = q.id")
+	}
+
+	// endregion: ----- STEP 4 -----
+
+	// region: ----- STEP 5: Final assembly -----
+
+	ctx.Query = postgres.PGSQL.
+		Select(
+			ident("x", "external_id")+" id",
+			ident("c", "type"),
+		).
+		From("chat.client x").
+		JoinClause("JOIN target_users tu ON tu.user_id = x.id").
+		JoinClause(&JOIN{
+			Kind:  "JOIN",
+			Table: channelAggQuery.Prefix("(").Suffix(")"),
+			Alias: "c",
+			Pred:  sq.Expr("c.user_id = x.id"),
+		})
+
+	// Re-apply sorting to final query
+    for _, spec := range sort {
+		order = ASC
+		switch spec[0] {
+		case '+', ' ':
+			spec = spec[1:]
+		case '-', '!':
+			spec = spec[1:]
+			order = DESC
+		}
+		switch spec {
+		case "id":
+			ctx.Query = ctx.Query.OrderBy(ident("x", "external_id") + order)
+		case "type":
+			ctx.Query = ctx.Query.OrderBy(ident("c", "type") + order)
+		case "name":
+			ctx.Query = ctx.Query.OrderBy(ident("x", "name") + order)
+		}
+	} 
+	ctx.Query = ctx.Query.OrderBy(ident("x", "id") + ASC)
+
+
+	// endregion: ----- STEP 5 -----
 
 	// region: ----- select: fields -----
 	ctx.peers = dataFetch[*pb.Customer]{
