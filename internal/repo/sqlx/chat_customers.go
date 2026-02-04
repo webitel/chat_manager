@@ -491,10 +491,13 @@ func getContactsQuery(req *app.SearchOptions) (ctx chatContactsQuery, err error)
 			"chat.client x",
 		).
 		JoinClause(&JOIN{
-			Kind:  "JOIN", // INNER; type, via ...
-			Table: peerQ.Prefix("(").Suffix(")"),
+			// Kind:  "JOIN", // INNER; type, via ...
+			// Table: peerQ.Prefix("(").Suffix(")"),
+			// Pred:  sq.Expr("c.user_id = x.id"),
 			Alias: "c",
-			Pred:  sq.Expr("c.user_id = x.id"),
+			Kind:  "JOIN LATERAL", // INNER; type, via ...
+			Table: peerQ.Prefix("(").Where("c.user_id = x.id").Suffix(")"),
+			Pred:  sq.Expr("true"),
 		})
 
 	// peers( q: string )
