@@ -17,6 +17,8 @@ import (
 	"github.com/webitel/chat_manager/store/postgres"
 )
 
+const MeetingIDVariableName = "wbt_meeting_id"
+
 func (c *sqlxRepository) MarkChatAsProcessed(ctx context.Context, chatId string, agentId int64) (int64, error) {
 
 	result, err := c.db.ExecContext(
@@ -118,7 +120,7 @@ func (c *sqlxRepository) GetAgentChats(req *app.SearchOptions, res *messages.Get
 	if err != nil {
 		return err
 	}
-
+	fmt.Printf(query)
 	rows, err := c.db.QueryContext(
 		ctx, query, args...,
 	)
@@ -157,7 +159,8 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
 		Params: params{},
 	}
 	ctx.Query = postgres.PGSQL.Select().
-		From("chat.conversation " + left)
+		From("chat.conversation " + left).
+		Where(fmt.Sprintf("%s.props ->> '%s' IS NULL", left, MeetingIDVariableName))
 
 	threadQ, re := selectAgentChatThread(args, ctx.Params)
 	if err = re; err != nil {
