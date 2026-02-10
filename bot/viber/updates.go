@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
-	"text/template/parse"
 
 	log2 "github.com/webitel/chat_manager/log"
 
