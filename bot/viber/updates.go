@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
+	"text/template/parse"
 
 	log2 "github.com/webitel/chat_manager/log"
 
@@ -461,7 +463,7 @@ func (c *Bot) onNewMessage(ctx context.Context, event *Update) error {
 		// https://developers.viber.com/docs/api/rest-bot-api/#text-message
 		sendUpdate.Message = &chat.Message{
 			Type: "text",
-			Text: message.Text,
+			Text: parseTextWithEmoji(message.Text),
 		}
 
 	case mediaURL:
@@ -486,7 +488,7 @@ func (c *Bot) onNewMessage(ctx context.Context, event *Update) error {
 				// while /webitel.chat.server/ChatService.SendMessage(!) delivery
 			},
 			// Description of an image. Caption. Optional.
-			Text: message.Text,
+			Text: parseTextWithEmoji(message.Text),
 		}
 
 	case mediaVideo:

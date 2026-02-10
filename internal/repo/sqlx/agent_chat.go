@@ -120,7 +120,6 @@ func (c *sqlxRepository) GetAgentChats(req *app.SearchOptions, res *messages.Get
 	if err != nil {
 		return err
 	}
-	fmt.Printf(query)
 	rows, err := c.db.QueryContext(
 		ctx, query, args...,
 	)
