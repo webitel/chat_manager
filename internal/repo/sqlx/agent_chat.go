@@ -69,12 +69,9 @@ func getAgentChatCounterQuery(args *agentChatArgs) (query sq.SelectBuilder, err 
 	}
 
 	query = postgres.PGSQL.
-		Select(
-			"COUNT(*)",
-		).
-		From(
-			"chat.channel ch",
-		)
+		Select("COUNT(*)").
+		From("chat.channel ch").
+		InnerJoin(fmt.Sprintf("chat.conversation conv ON conv.id = ch.conversation_id AND conv.props ->> '%s' ISNULL", MeetingIDVariableName))	
 	if args.AgentId >= 0 {
 		query = query.Where("ch.user_id = ?", args.AgentId).Where("ch.internal")
 	}
