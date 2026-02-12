@@ -20,21 +20,20 @@ import (
 	"github.com/micro/micro/v3/service/broker"
 	"github.com/micro/micro/v3/service/context/metadata"
 	"github.com/micro/micro/v3/service/errors"
-	wlog "github.com/webitel/chat_manager/log"
-
-	"github.com/webitel/chat_manager/app"
-	"github.com/webitel/chat_manager/pkg/events"
 
 	pbbot "github.com/webitel/chat_manager/api/proto/bot"
 	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 	pbmessages "github.com/webitel/chat_manager/api/proto/chat/messages"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
+	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/internal/auth"
 	event "github.com/webitel/chat_manager/internal/event_router"
 	"github.com/webitel/chat_manager/internal/flow"
 	"github.com/webitel/chat_manager/internal/keyboard"
 	pg "github.com/webitel/chat_manager/internal/repo/sqlx"
 	"github.com/webitel/chat_manager/internal/util"
+	wlog "github.com/webitel/chat_manager/log"
+	"github.com/webitel/chat_manager/pkg/events"
 )
 
 var FilePolicyViolationError = errors.New("chat.file.policy.violation", "file policy violation", http.StatusForbidden)
@@ -127,7 +126,6 @@ func (s *chatService) UpdateChannel(
 	req *pbchat.UpdateChannelRequest,
 	res *pbchat.UpdateChannelResponse,
 ) error {
-
 	var (
 		channelChatID = req.GetChannelId()
 		channelFromID = req.GetAuthUserId()
@@ -146,7 +144,6 @@ func (s *chatService) UpdateChannel(
 	channel, err := s.repo.CheckUserChannel(
 		ctx, channelChatID, channelFromID,
 	)
-
 	if err != nil {
 
 		s.log.Error("FAILED Lookup Channel",
@@ -238,7 +235,6 @@ func (s *chatService) SendMessage(
 
 	// region: lookup target chat session by unique sender chat channel id
 	chat, err := s.repo.GetSession(ctx, senderChatID)
-
 	if err != nil {
 		// lookup operation error
 		return err
@@ -276,14 +272,12 @@ func (s *chatService) SendMessage(
 	// Validate and normalize message to send
 	// Mostly also stores non-service-level message to persistent DB
 	_, err = s.saveMessage(ctx, nil, sender, sendMessage)
-
 	if err != nil {
 		// Failed to store message or validation error !
 		return err
 	}
 	// PERFORM message publish|broadcast
 	_, err = s.sendMessage(ctx, chat, sendMessage)
-
 	if err != nil {
 		// log.Error("FAILED Sending Message",
 		// 	slog.Any("error", err),
@@ -299,7 +293,6 @@ func (s *chatService) SendMessage(
 }
 
 func (s *chatService) SendServiceMessage(ctx context.Context, req *pbchat.SendServiceMessageRequest, _ *pbchat.SendServiceMessageResponse) error {
-
 	var (
 		sendMessage *pbchat.Message
 		sender      *app.Channel
@@ -356,14 +349,12 @@ func (s *chatService) SendServiceMessage(ctx context.Context, req *pbchat.SendSe
 	}
 
 	_, err = s.saveMessage(ctx, nil, sender, sendMessage)
-
 	if err != nil {
 		return err
 	}
 
 	// PERFORM message publish|broadcast
 	_, err = s.sendSystemLevelMessage(ctx, sender, allMembers, sendMessage)
-
 	if err != nil {
 		log.Error("FAILED Notify Websocket",
 			slog.Any("error", err),
@@ -379,7 +370,6 @@ func (s *chatService) DeleteMessage(
 	req *pbchat.DeleteMessageRequest,
 	res *pbchat.HistoryMessage,
 ) error {
-
 	var (
 		dialogChatID = req.GetConversationId() // TO: Dialog.ID
 		senderChatID = req.GetChannelId()      // FROM: Chat.ID
@@ -398,7 +388,6 @@ func (s *chatService) DeleteMessage(
 		senderChatID, dialogChatID,
 		req.GetVariables(),
 	)
-
 	if err != nil {
 		return err
 	}
@@ -419,7 +408,7 @@ func (s *chatService) DeleteMessage(
 		for key, val := range req.Variables {
 			fmt += " " + key + ":" + val + ";"
 		}
-		return // fmt
+		return fmt // fmt
 	}
 
 	if msg == nil || (req.Id != 0 && msg.ID != req.Id) {
@@ -452,7 +441,6 @@ func (s *chatService) DeleteMessage(
 
 	// region: lookup target chat session by unique sender chat channel id
 	dialog, err := s.repo.GetSession(ctx, senderChatID) // by: sender
-
 	if err != nil {
 		// lookup operation error
 		return err
@@ -506,7 +494,6 @@ func (s *chatService) StartConversation(
 	req *pbchat.StartConversationRequest,
 	res *pbchat.StartConversationResponse,
 ) error {
-
 	var (
 		// TODO: keep track .sender.host to be able to respond to
 		//       the same .sender service node for .this unique chat channel
@@ -549,7 +536,6 @@ func (s *chatService) StartConversation(
 
 	// ORIGINATOR: CHAT channel, sender
 	channel := pg.Channel{
-
 		Type:   req.GetUser().GetType(),
 		UserID: req.GetUser().GetUserId(),
 
@@ -580,7 +566,6 @@ func (s *chatService) StartConversation(
 	startDate := localtime.Add(time.Millisecond)
 	// ORIGINATEE: CHAT channel, target: chat@bot
 	conversation := &pg.Conversation{
-
 		CreatedAt: startDate,
 		UpdatedAt: startDate,
 
@@ -600,7 +585,6 @@ func (s *chatService) StartConversation(
 			Type: "text",
 			Text: "/start",
 		}
-
 	} else {
 		// Validate START message type !
 		messageType := startMessage.Type
@@ -871,7 +855,6 @@ func (s *chatService) CloseConversation(
 
 	// region: lookup target chat session by unique sender chat channel id
 	chat, err := s.repo.GetSession(ctx, senderChatID)
-
 	if err != nil {
 		// lookup operation error
 		return err
@@ -909,7 +892,6 @@ func (s *chatService) CloseConversation(
 
 	if targetChatID == "" {
 		targetChatID = chat.Invite
-
 	} else if !strings.EqualFold(chat.Invite, targetChatID) {
 		// invalid target CHAT conversation ID
 		return errors.BadRequest(
@@ -923,7 +905,6 @@ func (s *chatService) CloseConversation(
 	// endregion
 
 	_, err = s.sendChatClosed(ctx, chat, cause)
-
 	if err != nil {
 		log.Error("FAILED Notify Chat Members",
 			slog.Any("error", err),
@@ -1058,7 +1039,6 @@ func (s *chatService) JoinConversation(
 	req *pbchat.JoinConversationRequest,
 	res *pbchat.JoinConversationResponse,
 ) error {
-
 	from := req.GetAuthUserId() // FROM
 	token := req.GetInviteId()  // AUTH
 
@@ -1084,7 +1064,6 @@ func (s *chatService) JoinConversation(
 	log.Debug("JOIN Conversation")
 
 	invite, err := s.repo.GetInviteByID(ctx, token)
-
 	if err != nil {
 		log.Error("FAILED Lookup INVITE token",
 			slog.Any("error", err),
@@ -1107,7 +1086,6 @@ func (s *chatService) JoinConversation(
 	}
 
 	user, err := s.repo.GetWebitelUserByID(ctx, from, invite.DomainID)
-
 	if err != nil {
 		log.Error("FAILED Lookup Chat User",
 			slog.Any("error", err),
@@ -1174,7 +1152,6 @@ func (s *chatService) JoinConversation(
 	err = s.eventRouter.RouteJoinConversation(
 		channel, &invite.ConversationID,
 	)
-
 	if err != nil {
 		s.log.Error("FAILED Notify Chat Members",
 			slog.Any("error", err),
@@ -1190,7 +1167,6 @@ func (s *chatService) JoinConversation(
 }
 
 func (s *chatService) leaveChat(ctx context.Context, req *pbchat.LeaveConversationRequest, breakBridge flow.BreakBridgeCause) error {
-
 	var (
 		channelChatID  = req.GetChannelId()
 		channelFromID  = req.GetAuthUserId()
@@ -1209,7 +1185,6 @@ func (s *chatService) leaveChat(ctx context.Context, req *pbchat.LeaveConversati
 	sender, err := s.repo.CheckUserChannel(
 		ctx, channelChatID, channelFromID,
 	)
-
 	if err != nil {
 		log.Error("FAILED Lookup CHAT Channel",
 			slog.Any("error", err),
@@ -1259,7 +1234,6 @@ func (s *chatService) leaveChat(ctx context.Context, req *pbchat.LeaveConversati
 	await := make(chan error, 2)
 	for _, async := range []func(){
 		func() {
-
 			// await <- s.flowClient.BreakBridge(
 			// 	sender.ConversationID, breakBridge,
 			// )
@@ -1284,7 +1258,6 @@ func (s *chatService) leaveChat(ctx context.Context, req *pbchat.LeaveConversati
 			await <- s.eventRouter.RouteLeaveConversation(
 				closed, &sender.ConversationID, leaveNotify,
 			)
-
 		},
 	} {
 		go async()
@@ -1380,7 +1353,6 @@ func (s *chatService) InviteToConversation(
 
 	domainID := req.GetDomainId()
 	invite := &pg.Invite{
-
 		UserID:         req.GetUser().GetUserId(),
 		DomainID:       domainID,
 		TimeoutSec:     req.GetTimeoutSec(),
@@ -1540,7 +1512,6 @@ func (s *chatService) InviteToConversation(
 				err = s.flowClient.BreakBridge(
 					req.ConversationId, flow.TimeoutCause,
 				)
-
 				if err != nil {
 					ilog.Error(err.Error(),
 						slog.Any("error", err),
@@ -1552,13 +1523,11 @@ func (s *chatService) InviteToConversation(
 				&domainID, &invite.ConversationID, &invite.UserID,
 				&invite.ID, string(flow.TimeoutCause),
 			)
-
 			if err != nil {
 				ilog.Error("FAILED Notify User INVITE Timeout",
 					slog.Any("error", err),
 				)
 			}
-
 		}()
 	}
 	res.InviteId = invite.ID
@@ -1570,7 +1539,6 @@ func (s *chatService) DeclineInvitation(
 	req *pbchat.DeclineInvitationRequest,
 	res *pbchat.DeclineInvitationResponse,
 ) error {
-
 	userID := req.GetAuthUserId()
 	conversationID := req.GetConversationId()
 
@@ -1583,7 +1551,6 @@ func (s *chatService) DeclineInvitation(
 	log.Debug("DECLINE Invitation")
 
 	invite, err := s.repo.GetInviteByID(ctx, req.GetInviteId())
-
 	if err != nil {
 		log.Error(err.Error(),
 			slog.Any("error", err),
@@ -1609,7 +1576,6 @@ func (s *chatService) DeclineInvitation(
 
 	// PERFORM: Mark invite token as 'closed' !
 	closed, err := s.repo.CloseInvite(ctx, invite.ID)
-
 	if err != nil {
 		re := errors.FromError(err)
 		if re.Id == "" {
@@ -1741,7 +1707,6 @@ func (s *chatService) DeclineInvitation(
 }
 
 func (s *chatService) WaitMessage(ctx context.Context, req *pbchat.WaitMessageRequest, res *pbchat.WaitMessageResponse) error {
-
 	s.log.Debug(
 		"[ CHAT::FLOW ] WAIT message",
 		"conversation_id", req.GetConversationId(),
@@ -1795,7 +1760,6 @@ func (s *chatService) WaitMessage(ctx context.Context, req *pbchat.WaitMessageRe
 //   - Identify whether exists channel for
 //     requested chat-bot gateway profile.id
 func (s *chatService) CheckSession(ctx context.Context, req *pbchat.CheckSessionRequest, res *pbchat.CheckSessionResponse) error {
-
 	log := s.log.With(
 		slog.String("external_id", req.GetExternalId()),
 		slog.Int64("profile_id", req.GetProfileId()),
@@ -1895,7 +1859,6 @@ func (s *chatService) CheckSession(ctx context.Context, req *pbchat.CheckSession
 }
 
 func (s *chatService) GetConversations(ctx context.Context, req *pbchat.GetConversationsRequest, res *pbchat.GetConversationsResponse) error {
-
 	log := s.log.With(
 		slog.String("conversation_id", req.GetId()),
 	)
@@ -1915,7 +1878,7 @@ func (s *chatService) GetConversations(ctx context.Context, req *pbchat.GetConve
 		req.GetPage(),
 		req.GetFields(),
 		req.GetSort(),
-		user.DomainID, //req.GetDomainId(),
+		user.DomainID, // req.GetDomainId(),
 		req.GetActive(),
 		req.GetUserId(),
 		req.GetMessageSize(),
@@ -1944,7 +1907,7 @@ func (s *chatService) GetConversationByID(ctx context.Context, req *pbchat.GetCo
 		return err
 	}
 	conversation, err := s.repo.GetConversations(ctx, req.GetId(), 0, 0, nil, nil, user.DomainID, false, 0, 0)
-	//conversation, err := s.repo.GetConversationByID(ctx, req.GetId())
+	// conversation, err := s.repo.GetConversationByID(ctx, req.GetId())
 	if err != nil {
 		log.Error(err.Error(),
 			slog.Any("error", err),
@@ -1993,7 +1956,6 @@ func (s *chatService) GetHistoryMessages(ctx context.Context, req *pbchat.GetHis
 
 // func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, senderChatID string, targetChatID string, notify *pb.Message) (saved *pg.Message, err error) {
 func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, sender *app.Channel, notify *pbchat.Message) (saved *pg.Message, err error) {
-
 	var (
 		sendMessage = notify
 
@@ -2108,7 +2070,6 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		saveMessage, err = c.repo.GetMessage(
 			ctx, sendMessage.Id, senderChatID, targetChatID, findBinding,
 		)
-
 		if err != nil {
 			return nil, errors.BadRequest(
 				"chat.message.lookup.error",
@@ -2162,7 +2123,6 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 	} else {
 		// Allocate NEW message to be saved !
 		saveMessage = &pg.Message{
-
 			CreatedAt: localtime, // .UTC().Truncate(app.TimePrecision),
 			// UpdatedAt: time.Time{}.IsZero(!) // MUST: NOT EDITED !
 
@@ -2219,9 +2179,8 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		forwardMessage, err := c.repo.GetMessage(ctx,
 			forwardFromMessageID, "", forwardFromChatID, forwardFromBinding,
 		)
-
 		if err != nil {
-			var forwardFrom interface{} = forwardFromMessageID
+			var forwardFrom any = forwardFromMessageID
 			if forwardFromMessageID == 0 {
 				forwardFrom = forwardFromBinding
 			}
@@ -2261,7 +2220,7 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		}
 
 		if !found {
-			var forwardFrom interface{} = forwardFromMessageID
+			var forwardFrom any = forwardFromMessageID
 			if forwardFromMessageID == 0 {
 				forwardFrom = forwardFromBinding
 			}
@@ -2315,14 +2274,13 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			replyToMessage, err := c.repo.GetMessage(ctx,
 				replyToMessageID, "", targetChatID, replyToBinding,
 			)
-
 			if err != nil {
 				// return nil, errors.BadRequest(
 				// 	"chat.message.lookup.error",
 				// 	"reply: message ID=%d lookup: %s",
 				// 	 replyToMessageID, err,
 				// )
-				var replyTo interface{} = replyToMessageID
+				var replyTo any = replyToMessageID
 				if replyToMessageID == 0 {
 					replyTo = replyToBinding
 				}
@@ -2361,7 +2319,7 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 				// 	"reply: original message ID=%d not found",
 				// 	 replyToMessageID,
 				// )
-				var replyTo interface{} = replyToMessageID
+				var replyTo any = replyToMessageID
 				if replyToMessageID == 0 {
 					replyTo = replyToBinding
 				}
@@ -2395,7 +2353,6 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 	if saveBinding != nil {
 		delete(saveBinding, "")
 		if len(saveBinding) != 0 {
-
 			// data, err := json.Marshal(saveBinding)
 			// if err != nil {
 			// 	// Failed to store message variables !
@@ -2408,7 +2365,6 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			// // populate to be saved !
 			// saveMessage.Variables = data
 			saveMessage.Variables = saveBinding
-
 		} // else {
 		// 	// cleanup broken set: {"": ?}
 		// 	sendMessage.Variables = nil
@@ -2447,7 +2403,6 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		} else {
 			sendMessage.Type = "text"
 		}
-
 	}
 
 	switch sendMessage.Type {
@@ -2596,7 +2551,6 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		}
 		// CHECK: provided URL is valid ?
 		href, err := url.ParseRequestURI(doc.Url) // href
-
 		if err != nil {
 			return nil, errors.BadRequest(
 				"chat.send.document.url.invalid",
@@ -2657,7 +2611,6 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 					Url:      doc.Url,
 				},
 			)
-
 			if err != nil {
 				log.Error("Failed to UploadFileUrl",
 					slog.Any("error", err),
@@ -2783,7 +2736,6 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 			doc.Malware = res.Malware != nil && res.Malware.Found
 
 		} else if doc.Id < 0 {
-
 			// DO NOT store/cache requested;
 			// JUST rely original CDN media URL
 
@@ -2839,7 +2791,6 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 
 		// TODO: update chat.channel set updated_at = ${saveMessage.UpdatedAt} where id = ${senderChat.ID}
 		err = c.repo.UpdateChannel(ctx, sender.Chat.ID, &readMessageTill)
-
 		if err != nil {
 			return nil, err
 		}
@@ -3336,7 +3287,6 @@ func debugLogChatGroup(side *app.Channel) []slog.Attr {
 // sendClosed publishes final message to all related members
 // Override: event_router.RouteCloseConversation[FromFlow]()
 func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session, text string) (sent int, err error) {
-
 	localtime := app.CurrentTime()
 	// FROM
 	sender := chatRoom.Channel
@@ -3463,7 +3413,7 @@ func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session,
 			deliveryLog(slog.LevelDebug, "")
 			// Send workflow channel .Break() message to stop chat.flow routine ...
 			// FIXME: - delete: chat.confirmation; - delete: chat.flow.node
-			err = c.flowClient.CloseConversation(member.Chat.ID, "") // .ConversationID
+			err = c.flowClient.CloseConversation(member.Chat.ID, text) // .ConversationID
 
 			// if err != nil {
 			// 	c.log.Error().Err(err).
@@ -3480,7 +3430,6 @@ func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session,
 
 			if notice == nil {
 				notice = &pbchat.Message{
-
 					Id: 0, // SERVICE MESSAGE !
 
 					Type: "closed", // "text",
@@ -3521,7 +3470,6 @@ func (c *chatService) sendChatClosed(ctx context.Context, chatRoom *app.Session,
 }
 
 func (c *chatService) SetVariables(ctx context.Context, req *pbchat.SetVariablesRequest, res *pbchat.ChatVariablesResponse) error {
-
 	channelId := req.GetChannelId()
 	if channelId == "" {
 		return errors.BadRequest(
@@ -3563,7 +3511,6 @@ func (c *chatService) SetVariables(ctx context.Context, req *pbchat.SetVariables
 	// channel := chat.Channel
 	// channel.MergeVars(req.GetVariables())
 	envars, err := c.repo.BindChannel(ctx, channelId, changes)
-
 	if err != nil {
 		return err
 	}
@@ -3574,7 +3521,6 @@ func (c *chatService) SetVariables(ctx context.Context, req *pbchat.SetVariables
 }
 
 func (c *chatService) BlindTransfer(ctx context.Context, req *pbchat.ChatTransferRequest, res *pbchat.ChatTransferResponse) error {
-
 	var (
 		userToID   = req.GetUserId()
 		schemaToID = req.GetSchemaId()
@@ -3628,7 +3574,6 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pbchat.ChatTransfe
 	chat, err := c.repo.GetSession(
 		ctx, coalesce(chatFromID, chatFlowID),
 	)
-
 	if err != nil {
 		return err
 	}
@@ -3749,7 +3694,6 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pbchat.ChatTransfe
 		// merge channel.variables latest state
 		req.Variables,
 	)
-
 	if err != nil {
 		return err
 	}
@@ -3758,7 +3702,6 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pbchat.ChatTransfe
 }
 
 func (c *chatService) SendUserAction(ctx context.Context, req *pbchat.SendUserActionRequest, res *pbchat.SendUserActionResponse) error {
-
 	senderChatID := req.GetChannelId()
 	if senderChatID == "" {
 		return errors.BadRequest(
@@ -3769,7 +3712,6 @@ func (c *chatService) SendUserAction(ctx context.Context, req *pbchat.SendUserAc
 
 	// region: lookup target chat session by unique sender chat channel id
 	chat, err := c.repo.GetSession(ctx, senderChatID)
-
 	if err != nil {
 		// lookup operation error
 		return err
