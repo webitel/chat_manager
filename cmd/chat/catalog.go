@@ -488,7 +488,7 @@ func (srv *Catalog) GetHistory(ctx context.Context, req *pb.ChatMessagesRequest,
 		// ),
 		// Size: int(req.GetSize()),
 		// Page: int(req.GetPage()),
-		Size: int(req.GetLimit()) + 1,
+		Size: int(req.GetLimit()),
 	}
 	// Can SELECT ANY object(s) ?
 	super := &auth.PermissionSelectAny
@@ -551,9 +551,9 @@ func (srv *Catalog) GetHistory(ctx context.Context, req *pb.ChatMessagesRequest,
 	res.Chats = list.Chats
 	res.Peers = list.Peers
 
-	if len(res.Messages) > int(req.GetLimit()) {
+	if limit := search.GetSize(); limit > 0 && len(res.Messages) > limit {
 		res.Next = true
-		res.Messages = res.Messages[:len(res.Messages)-1]
+		res.Messages = res.Messages[:limit]
 	}
 	res.Page = int32(res.GetPage())
 

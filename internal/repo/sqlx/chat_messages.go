@@ -1234,7 +1234,7 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 	// LIMIT
 	if ctx.Input.Limit > 0 {
 		ctx.Query = ctx.Query.Limit(
-			uint64(ctx.Input.Limit),
+			uint64(ctx.Input.Limit + 1),
 		)
 	}
 
