@@ -265,6 +265,23 @@ func (e *eventRouter) RouteInvite(conversationID *string, userID *int64) error {
 	return nil
 }
 
+func (e *eventRouter) loadFlowSchemaVars(conv *store.Conversation, domainID int64) map[string]string {
+	if flowIDRaw, ok := conv.Variables["old_flow"]; ok && flowIDRaw != "" {
+		if flowID, err := strconv.ParseInt(flowIDRaw, 10, 64); err == nil {
+			if vars, err := e.repo.GetFlowSchemeVariables(context.Background(), flowID, domainID); err == nil && len(vars) > 0 {
+				return vars
+			}
+		}
+	}
+	if flowIDRaw, ok := conv.Variables["flow"]; ok && flowIDRaw != "" {
+		if flowID, err := strconv.ParseInt(flowIDRaw, 10, 64); err == nil {
+			vars, _ := e.repo.GetFlowSchemeVariables(context.Background(), flowID, domainID)
+			return vars
+		}
+	}
+	return nil
+}
+
 func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, invite *store.Invite) error {
 
 	// const precision = (int64)(time.Millisecond)
@@ -277,19 +294,12 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 			slog.String("conversation_id", conversation.Id),
 			slog.Any("error", err))
 	} else if conv != nil && conv.Variables != nil {
-		if flowIDRaw, ok := conv.Variables["old_flow"]; ok && flowIDRaw != "" {
-			if flowID, parseErr := strconv.ParseInt(flowIDRaw, 10, 64); parseErr == nil {
-				flowVars, varErr := e.repo.GetFlowSchemeVariables(context.Background(), flowID, invite.DomainID)
-				if varErr != nil {
-					e.log.Debug("failed to load flow schema variables",
-						slog.String("conversation_id", conversation.Id),
-						slog.String("flow_id", flowIDRaw),
-						slog.Any("error", varErr))
-				} else if flowVars != nil {
-					for key, val := range flowVars {
-						mergedVariables[key] = val
-					}
-				}
+		flowVars := e.loadFlowSchemaVars(conv, invite.DomainID)
+		for key, val := range flowVars {
+			if resolved, ok := conv.Variables[key]; ok && resolved != "" {
+				mergedVariables[key] = resolved
+			} else {
+				mergedVariables[key] = val
 			}
 		}
 	}
