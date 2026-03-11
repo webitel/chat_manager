@@ -3682,8 +3682,10 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pbchat.ChatTransfe
 
 	conv, err := c.repo.GetConversationByID(ctx, chatFlowID)
 	if err == nil && conv != nil {
-		if oldFlowID, ok := conv.Variables["flow"]; ok && oldFlowID != "" {
-			transferVars["old_flow"] = oldFlowID
+		if oldFlow, ok := conv.Variables["old_flow"]; ok && oldFlow != "" {
+			transferVars["old_flow"] = oldFlow
+		} else if flowID, ok := conv.Variables["flow"]; ok && flowID != "" {
+			transferVars["old_flow"] = flowID
 		}
 	}
 
@@ -3692,7 +3694,7 @@ func (c *chatService) BlindTransfer(ctx context.Context, req *pbchat.ChatTransfe
 		chatFlowID, originator,
 		schemaToID, userToID,
 		// merge channel.variables latest state
-		req.Variables,
+		transferVars,
 	)
 	if err != nil {
 		return err
