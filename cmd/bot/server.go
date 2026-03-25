@@ -1,41 +1,41 @@
 package bot
 
 import (
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
-
-	"log/slog"
 	"strings"
+	"time"
 
+	micro "github.com/micro/micro/v3/service"
 	"github.com/micro/micro/v3/service/broker"
 	"github.com/micro/micro/v3/service/client"
 	"github.com/micro/micro/v3/service/server"
 	microgrpcsrv "github.com/micro/micro/v3/service/server/grpc"
 	"github.com/pkg/errors"
-	audProto "github.com/webitel/chat_manager/api/proto/logger"
-	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
-	aud "github.com/webitel/chat_manager/logger"
-	"github.com/webitel/chat_manager/otel"
+	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	"google.golang.org/grpc"
 
-	micro "github.com/micro/micro/v3/service"
-	"github.com/urfave/cli/v2"
-	"github.com/webitel/chat_manager/auth"
-	"github.com/webitel/chat_manager/bot"
-	sqlxrepo "github.com/webitel/chat_manager/internal/repo/sqlx"
-	"github.com/webitel/chat_manager/internal/wrapper"
-	"github.com/webitel/chat_manager/log"
-	"github.com/webitel/chat_manager/store/postgres"
+	otelsdk "github.com/webitel/webitel-go-kit/otel/sdk"
 
 	pb "github.com/webitel/chat_manager/api/proto/bot"
 	pbchat "github.com/webitel/chat_manager/api/proto/chat"
+	audProto "github.com/webitel/chat_manager/api/proto/logger"
+	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
+	"github.com/webitel/chat_manager/auth"
+	"github.com/webitel/chat_manager/bot"
 	"github.com/webitel/chat_manager/cmd"
-	otelsdk "github.com/webitel/webitel-go-kit/otel/sdk"
+	sqlxrepo "github.com/webitel/chat_manager/internal/repo/sqlx"
+	"github.com/webitel/chat_manager/internal/wrapper"
+	"github.com/webitel/chat_manager/log"
+	aud "github.com/webitel/chat_manager/logger"
+	"github.com/webitel/chat_manager/otel"
+	"github.com/webitel/chat_manager/store/postgres"
 )
 
 const (
@@ -45,24 +45,21 @@ const (
 )
 
 var (
-	agent pbchat.ChatService
-	//logger  zerolog.Logger
+	srv *bot.Service
+
+	agent   pbchat.ChatService
 	service *micro.Service
-	// bot     ChatServer // V0
-	srv *bot.Service // *Service   // V1
-	// Command Flags
+
 	Flags = []cli.Flag{
 		&cli.StringFlag{
 			Name:    "log_level",
 			EnvVars: []string{"WBTL_LOG_LEVEL"},
 			Usage:   "Log Level",
-			// Value:   "info",
 		},
 		&cli.StringFlag{
 			Name:    "site_url",
 			EnvVars: []string{"WEBITEL_BOT_PROXY"},
 			Usage:   "Public HTTP site URL used when registering webhooks with BOT providers.",
-			// Value: "https://example.com/chat", // TODO: use http[s]://${address} if blank
 		},
 		&cli.StringFlag{
 			Name:  "web_root",
@@ -73,29 +70,36 @@ var (
 			Name:    "address",
 			EnvVars: []string{"WEBITEL_BOT_ADDRESS"},
 			Usage:   "Bind address for the HTTP server.",
-			Value:   "127.0.0.1:10030", // default
+			Value:   "127.0.0.1:10030",
 		},
-		&cli.StringFlag{
-			Name:    "db-dsn",
-			EnvVars: []string{"WEBITEL_DBO_ADDRESS"},
-			Usage:   "Persistent database driver name and a driver-specific data source name.",
+		&cli.IntFlag{
+			Name:    "db-max-open-conns",
+			EnvVars: []string{"WEBITEL_DBO_MAX_OPEN_CONNS"},
+			Usage:   "Maximum number of open connections to the database.",
+			Value:   25,
 		},
-		// // TODO: remove below !
-		// &cli.StringFlag{
-		// 	Name:    "cert_path",
-		// 	EnvVars: []string{"CERT_PATH"},
-		// 	Usage:   "SSl certificate",
-		// },
-		// &cli.StringFlag{
-		// 	Name:    "key_path",
-		// 	EnvVars: []string{"KEY_PATH"},
-		// 	Usage:   "SSl key",
-		// },
+		&cli.IntFlag{
+			Name:    "db-max-idle-conns",
+			EnvVars: []string{"WEBITEL_DBO_MAX_IDLE_CONNS"},
+			Usage:   "Maximum number of idle connections in the pool.",
+			Value:   25,
+		},
+		&cli.DurationFlag{
+			Name:    "db-conn-max-idle-time",
+			EnvVars: []string{"WEBITEL_DBO_CONN_MAX_IDLE_TIME"},
+			Usage:   "Maximum amount of time a connection may be idle before being closed.",
+			Value:   1 * time.Minute,
+		},
+		&cli.DurationFlag{
+			Name:    "db-conn-max-lifetime",
+			EnvVars: []string{"WEBITEL_DBO_CONN_MAX_LIFETIME"},
+			Usage:   "Maximum amount of time a connection may be reused.",
+			Value:   5 * time.Minute,
+		},
 	}
 )
 
 func Run(ctx *cli.Context) error {
-
 	if ctx.Bool("help") {
 		cli.ShowSubcommandHelp(ctx)
 		// os.Exit(1)
@@ -127,7 +131,6 @@ func Run(ctx *cli.Context) error {
 			resourceAttrs...,
 		)),
 	)
-
 	if err != nil {
 		// fatal(fmt.Errorf("[O]pen[Tel]emetry configuration failed"))
 		return err // log(FATAL) & exit(1)
@@ -160,7 +163,7 @@ func Run(ctx *cli.Context) error {
 		micro.AfterStop(func() error { return srv.Close() }),
 	)
 
-	//logsLvl := ctx.String("log_level")
+	// logsLvl := ctx.String("log_level")
 	baseURL := ctx.String("site_url")
 	webRoot := ctx.String("web_root")
 	srvAddr := ctx.String("address")
@@ -201,7 +204,14 @@ func Run(ctx *cli.Context) error {
 	// cfg.ConversationTimeout = c.Uint64("conversation_timeout")
 
 	// Open persistent [D]ata[S]ource[N]ame ...
-	dbo, err := postgres.OpenDB(stdlog, ctx.String("db-dsn"))
+	dbopts := []postgres.Option{
+		postgres.WithMaxOpenConns(ctx.Int("db-max-open-conns")),
+		postgres.WithMaxIdleConns(ctx.Int("db-max-idle-conns")),
+		postgres.WithConnMaxIdleTime(ctx.Duration("db-conn-max-idle-time")),
+		postgres.WithConnMaxLifetime(ctx.Duration("db-conn-max-lifetime")),
+	}
+
+	dbo, err := postgres.OpenDB(stdlog, ctx.String("db-dsn"), dbopts...)
 	if err != nil {
 		return errors.Wrap(err, "Invalid DSN String")
 	}
