@@ -72,6 +72,11 @@ var (
 			Usage:   "Bind address for the HTTP server.",
 			Value:   "127.0.0.1:10030",
 		},
+		&cli.StringFlag{
+			Name:    "db-dsn",
+			EnvVars: []string{"WEBITEL_DBO_ADDRESS"},
+			Usage:   "Persistent database driver name and a driver-specific data source name.",
+		},
 		&cli.IntFlag{
 			Name:    "db-max-open-conns",
 			EnvVars: []string{"WEBITEL_DBO_MAX_OPEN_CONNS"},
