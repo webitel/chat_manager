@@ -622,27 +622,43 @@ func (repo *sqlxRepository) GetFlowSchemeVariables(ctx context.Context, flowID, 
 	}
 
 	setData := make(map[string]string)
+	var exportKeys []string
 
 	for _, item := range schemeArray {
 		if setObj, ok := item["set"].(map[string]any); ok {
-			// Extract all values from the set object
 			for key, val := range setObj {
 				if strVal, ok := val.(string); ok {
 					setData[key] = strVal
 				} else if valBytes, err := json.Marshal(val); err == nil {
-					// Convert non-string values to JSON strings
 					setData[key] = string(valBytes)
 				}
 			}
-			break
+		}
+		if exportList, ok := item["export"].([]any); ok {
+			for _, v := range exportList {
+				if name, ok := v.(string); ok {
+					exportKeys = append(exportKeys, name)
+				}
+			}
 		}
 	}
 
-	if len(setData) == 0 {
+	if len(exportKeys) == 0 {
 		return nil, nil
 	}
 
-	return setData, nil
+	exported := make(map[string]string, len(exportKeys))
+	for _, key := range exportKeys {
+		if val, ok := setData[key]; ok {
+			exported[key] = val
+		}
+	}
+
+	if len(exported) == 0 {
+		return nil, nil
+	}
+
+	return exported, nil
 }
 
 func (repo *sqlxRepository) BindChannel(ctx context.Context, channelID string, vars map[string]string) (env map[string]string, err error) {
