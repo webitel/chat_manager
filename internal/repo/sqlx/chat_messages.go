@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgtype"
 	"github.com/micro/micro/v3/service/errors"
+
 	pb "github.com/webitel/chat_manager/api/proto/chat/messages"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/internal/repo/sqlx/proto"
@@ -1510,8 +1511,8 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 	threadAlias := "q"
 	ctx.Query = postgres.PGSQL.
 		Select(
-			// mandatory(!)
-			ident(left, "id"),
+			ident(left, "id"),              // mandatory(!)
+			ident(left, "conversation_id"), // referenced by message_chat CTE below; not consumed by scan
 		).
 		From(
 			"chat.message " + left,
@@ -1528,6 +1529,10 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 		// "id"
 		func(node *pb.ChatMessage) any {
 			return postgres.Int8{Value: &node.Id}
+		},
+		// "conversation_id": exposed for message_chat CTE, discarded at scan
+		func(node *pb.ChatMessage) any {
+			return DecodeText(func(src []byte) error { return nil })
 		},
 	)
 
@@ -1854,22 +1859,16 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 	// endregion: ----- select: message(s) -----
 
 	// region: ----- select: sender(s) -----
+	// distinct conversation ids of messages on the current page
 	ctx.Query = postgres.PGSQL.
-		Select(
-			ident(left, "sender_chat_id") + " id",
-		).
-		From(
-			messageView + " " + left,
-		).
-		GroupBy(
-			ident(left, "sender_chat_id"),
-		)
+		Select("DISTINCT " + ident(left, "conversation_id") + " id").
+		From(messageView + " " + left)
 
 	const (
-		senderChatView = "sender_chat"
+		messageChatView = "message_chat"
 	)
 	ctx.With(CTE{
-		Name: senderChatView,
+		Name: messageChatView,
 		Expr: ctx.Query,
 	})
 
@@ -1895,7 +1894,7 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 				JoinClause(fmt.Sprintf(
 					// INNER
 					"JOIN %[2]s %[3]s ON %[1]s.id = %[3]s.id",
-					"c", senderChatView, "q",
+					"c", messageChatView, "q",
 				)).
 				JoinClause(fmt.Sprintf(
 					"LEFT JOIN %[2]s %[3]s ON %[3]s.id = (%[1]s.props->>'flow')::::int8",
@@ -1915,8 +1914,8 @@ func getContactHistoryQuery(req *app.SearchOptions, updates bool) (ctx contactCh
 						"chat.channel c",
 					).
 					JoinClause(fmt.Sprintf( // INNER
-						"JOIN %[2]s %[3]s ON %[1]s.id = %[3]s.id",
-						"c", senderChatView, "q",
+						"JOIN %[2]s %[3]s ON %[1]s.conversation_id = %[3]s.id",
+						"c", messageChatView, "q",
 					)).
 					JoinClause(fmt.Sprintf( // external
 						"LEFT JOIN %[2]s %[3]s ON NOT %[1]s.internal AND %[3]s.id = %[1]s.user_id",
