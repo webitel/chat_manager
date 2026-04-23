@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"time"
 
 	"github.com/micro/micro/v3/service/broker"
@@ -18,6 +17,20 @@ import (
 	store "github.com/webitel/chat_manager/internal/repo/sqlx"
 	"github.com/webitel/chat_manager/internal/util"
 )
+
+var systemChannelVars = map[string]struct{}{
+	"chat":             {},
+	"cid":              {},
+	"externalChatID":   {},
+	"flow":             {},
+	"old_flow":         {},
+	"xfer":             {},
+	"chat_transferred": {},
+	"chatplan_name":    {},
+	"from":             {},
+	"user":             {},
+	"needs_processing": {},
+}
 
 type eventRouter struct {
 	botClient gate.BotsService
@@ -265,23 +278,6 @@ func (e *eventRouter) RouteInvite(conversationID *string, userID *int64) error {
 	return nil
 }
 
-func (e *eventRouter) loadFlowSchemaVars(conv *store.Conversation, domainID int64) map[string]string {
-	if flowIDRaw, ok := conv.Variables["old_flow"]; ok && flowIDRaw != "" {
-		if flowID, err := strconv.ParseInt(flowIDRaw, 10, 64); err == nil {
-			if vars, err := e.repo.GetFlowSchemeVariables(context.Background(), flowID, domainID); err == nil && len(vars) > 0 {
-				return vars
-			}
-		}
-	}
-	if flowIDRaw, ok := conv.Variables["flow"]; ok && flowIDRaw != "" {
-		if flowID, err := strconv.ParseInt(flowIDRaw, 10, 64); err == nil {
-			vars, _ := e.repo.GetFlowSchemeVariables(context.Background(), flowID, domainID)
-			return vars
-		}
-	}
-	return nil
-}
-
 func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, invite *store.Invite) error {
 
 	// const precision = (int64)(time.Millisecond)
@@ -293,21 +289,21 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 		e.log.Warn("failed to load conversation variables",
 			slog.String("conversation_id", conversation.Id),
 			slog.Any("error", err))
-	} else if conv != nil && conv.Variables != nil {
-		flowVars := e.loadFlowSchemaVars(conv, invite.DomainID)
-		for key, val := range flowVars {
-			if resolved, ok := conv.Variables[key]; ok && resolved != "" {
-				mergedVariables[key] = resolved
-			} else {
-				mergedVariables[key] = val
+	} else if conv != nil {
+		// Filter out system keys
+		for key, val := range conv.Variables {
+			if val == "" {
+				continue
 			}
+			if _, reserved := systemChannelVars[key]; reserved {
+				continue
+			}
+			mergedVariables[key] = val
 		}
 	}
 
-	if invite.Variables != nil {
-		for key, val := range invite.Variables {
-			mergedVariables[key] = val
-		}
+	for key, val := range invite.Variables {
+		mergedVariables[key] = val
 	}
 
 	mes := events.UserInvitationEvent{
