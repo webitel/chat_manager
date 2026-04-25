@@ -89,11 +89,29 @@ func (r *rabbitMQChannel) DeclareQueue(queue string, args amqp.Table) error {
 		queue, // name
 		false, // durable
 		true,  // autoDelete
-		false, // exclusive
+		true,  // exclusive
 		false, // noWait
 		args,  // args
 	)
 	return err
+}
+
+func durableQueueOptions(args amqp.Table) amqp.Table {
+	const queueType = "x-queue-type"
+	if args == nil {
+		return amqp.Table{
+			queueType: "quorum",
+		}
+	}
+	vs, ok := args[queueType]
+	switch vs {
+	case "", "classic":
+		ok = false // [re]declare
+	}
+	if !ok {
+		args[queueType] = "quorum"
+	}
+	return args
 }
 
 func (r *rabbitMQChannel) DeclareDurableQueue(queue string, args amqp.Table) error {
@@ -103,7 +121,7 @@ func (r *rabbitMQChannel) DeclareDurableQueue(queue string, args amqp.Table) err
 		false, // autoDelete
 		false, // exclusive
 		false, // noWait
-		args,  // args
+		durableQueueOptions(args),
 	)
 	return err
 }
