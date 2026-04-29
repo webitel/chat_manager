@@ -77,6 +77,7 @@ func TestTemplate_MessageText(t *testing.T) {
 		{"title", args{"title", &templatePeer}, "<José Antonio Domínguez Bandera> aka @banderas", false},
 		{"join", args{"join", &templatePeer}, "md2: 👤 *José Antonio* ||Domínguez Bandera||", false},
 		{"left", args{"left", &templatePeer}, "md2: 👤 ~*José Antonio* ||Domínguez Bandera||~", false},
+		{"file_policy_fail not registered", args{"file_policy_fail", nil}, "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
