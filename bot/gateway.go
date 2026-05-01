@@ -1103,6 +1103,14 @@ func (c *Gateway) SendServiceMessageByTemplate(ctx context.Context, templateName
 		return err
 	}
 	if text == "" {
+		text = defaultServiceMessageText[templateName]
+		if text != "" {
+			c.Log.Warn("service message template not configured; using default",
+				slog.String("template", templateName),
+			)
+		}
+	}
+	if text == "" {
 		return nil
 	}
 	msg := &chat.Message{
