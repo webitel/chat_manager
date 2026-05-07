@@ -212,7 +212,7 @@ func (repo *sqlxRepository) GetConversations(
 					) s
 				) m on true
 				left join LATERAL (
-					select json_agg(ss) as members
+					select json_agg(ss order by ss.created_at) as members
 					from (
 						select
 							   ch.id,
