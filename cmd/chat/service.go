@@ -335,12 +335,12 @@ func (s *chatService) SendServiceMessage(ctx context.Context, req *pbchat.SendSe
 	} else {
 		// agent has priority over bot
 		sender = agent
-		if chat.Channel == nil {
+		if sender == nil {
 			sender = flow
 		}
 	}
 
-	if chat.Channel == nil {
+	if chat.Channel == nil || sender == nil {
 		// unable to find sender
 		return errors.BadRequest(
 			"chat.send.channel.from.not_found",
