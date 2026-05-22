@@ -336,6 +336,13 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 				slog.String("update", message.Type),
 			)
 
+			if err := checkWebhookResponse("custom.bot.send_notify.closed_type.do_request", rsp); err != nil {
+				c.Gateway.Log.Error("custom/bot.updateChatHttpRequestError",
+					slog.Any("error", err),
+					slog.String("update", message.Type),
+				)
+				return err
+			}
 		}
 
 		present := c.processCloseQueueByChatId(chatId)
@@ -371,6 +378,14 @@ func (c *CustomGateway) SendNotify(ctx context.Context, notify *bot.Update) erro
 	c.Gateway.TraceLog(fmt.Sprintf("custom/bot.updateChatRequest; url = %s; http response status=%s; update request=%s", req.URL.String(), rsp.Status, string(body)),
 		slog.String("update", message.Type),
 	)
+
+	if err := checkWebhookResponse("custom.bot.send_notify.do_request", rsp); err != nil {
+		c.Gateway.Log.Error("custom/bot.updateChatHttpRequestError",
+			slog.Any("error", err),
+			slog.String("update", message.Type),
+		)
+		return err
+	}
 	// SUCCESS
 	return nil
 }
@@ -635,6 +650,14 @@ func (c *CustomGateway) BroadcastMessage(ctx context.Context, req *pbbot.Broadca
 		slog.String("broadcast", eventId),
 	)
 
+	if err := checkWebhookResponse("custom.bot.broadcast.do_request", httpResponse); err != nil {
+		c.Gateway.Log.Error("custom/bot.broadcastHttpRequest",
+			slog.Any("error", err),
+			slog.String("broadcast", eventId),
+		)
+		return err
+	}
+
 	// if the timeout 0 - don't wait
 	if req.Timeout != 0 {
 		//c.broadcastEvents.Add(eventId, broadcast.Recipients)
@@ -690,6 +713,21 @@ func (c *CustomGateway) BroadcastMessage(ctx context.Context, req *pbbot.Broadca
 	}
 	// SUCCESS
 	return nil
+}
+
+func checkWebhookResponse(errPrefix string, resp *http.Response) error {
+	defer resp.Body.Close()
+	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+	_, _ = io.Copy(io.Discard, resp.Body) 
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+	detail := fmt.Sprintf("customer webhook responded HTTP %s: %s",
+		resp.Status, strings.TrimSpace(string(snippet)))
+	if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+		return errors.BadRequest(errPrefix+".rejected", "%s", detail)
+	}
+	return errors.InternalServerError(errPrefix+".rejected", "%s", detail)
 }
 
 func calculateHash(body []byte, secret string) string {
