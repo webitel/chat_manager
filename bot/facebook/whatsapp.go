@@ -1739,6 +1739,20 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 				}
 			}
 
+			// Interactive object MAY NOT be provided
+			if interactive == nil {
+				c.Gateway.Log.Warn("whatsApp.onMessage",
+					slog.String("error", "interactive: missing object"),
+					slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+					slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+					slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+					slog.String("chat", update.Product),        // "whatsapp"
+					slog.String("from", contact.Contact),       // PHONE_NUMBER
+					slog.String("user", contact.DisplayName()),
+				)
+				continue // next: message(s)
+			}
+
 			switch interactive.Type {
 			case "button_reply":
 				// "interactive": {
@@ -1749,6 +1763,19 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 				// 	}
 				// }
 				reply := interactive.QuickReply
+				if reply == nil {
+					c.Gateway.Log.Warn("whatsApp.onMessageReply",
+						slog.String("interactive", interactive.Type),
+						slog.String("error", "button_reply: missing object"),
+						slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+						slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+						slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+						slog.String("chat", update.Product),        // "whatsapp"
+						slog.String("from", contact.Contact),       // PHONE_NUMBER
+						slog.String("user", contact.DisplayName()),
+					)
+					continue // next: message(s)
+				}
 				text := reply.ID // button.code
 
 				sendMsg.Type = "text"
@@ -1764,6 +1791,19 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 				// 	}
 				// }
 				reply := interactive.ListReply
+				if reply == nil {
+					c.Gateway.Log.Warn("whatsApp.onMessageReply",
+						slog.String("interactive", interactive.Type),
+						slog.String("error", "list_reply: missing object"),
+						slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+						slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+						slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+						slog.String("chat", update.Product),        // "whatsapp"
+						slog.String("from", contact.Contact),       // PHONE_NUMBER
+						slog.String("user", contact.DisplayName()),
+					)
+					continue // next: message(s)
+				}
 				text := reply.ID // button.code
 
 				sendMsg.Type = "text"
