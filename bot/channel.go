@@ -434,6 +434,38 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 		slog.String("text", messageText),
 	)
 	if err != nil {
+		if re := microerr.FromError(err); re != nil && re.Id == "chat.send.channel.from.closed" {
+			log.Warn("[ RECV::RECOVER ]",
+				slog.String("cause", "remote channel closed; restarting"),
+				slog.String("channel_id", c.ChannelID),
+				slog.String("session_id", c.SessionID),
+			)
+
+			bot := c.Gateway
+			bot.Lock()
+			if e, ok := bot.external[c.ChatID]; ok && e == c {
+				delete(bot.external, c.ChatID)
+				delete(bot.internal, c.Account.ID)
+			}
+			bot.Unlock()
+
+			c.ChannelID = ""
+			c.SessionID = ""
+			c.Closed = 0
+
+			if startErr := c.Start(ctx, message); startErr != nil {
+				if isFilePolicyError(startErr) {
+					return FileUploadPolicyError
+				}
+				log.Error("[ RECV::RECOVER ]",
+					slog.Any("error", startErr),
+				)
+				return startErr
+			}
+			log.Info("[ RECV::RECOVER ]", slog.String("status", "restarted"))
+			return nil
+		}
+
 		log.Error("<<<<< RECV <<<<<",
 			slog.Any("error", err),
 		)
