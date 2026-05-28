@@ -41,12 +41,6 @@ const (
 	DefaultFilePolicyMessage = "Forbidden file format"
 )
 
-// defaultServiceMessageText returns hardcoded fallback for templates that
-// must reach the agent even when the gateway has no configured text.
-var defaultServiceMessageText = map[string]string{
-	FilePolicyFailType: DefaultFilePolicyMessage,
-}
-
 // Service intercomunnication proxy
 type Service struct {
 	// cmd/bot.Service
