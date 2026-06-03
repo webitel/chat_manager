@@ -47,7 +47,7 @@ jobs:
     uses: webitel/reusable-workflows/.github/workflows/golang-build.yml@v2
     with:
       arch: ${{ matrix.arch }}
-      binary-name: messages
+      binary-name: webitel-messages
       ldflags: >
         -s -w
         -X github.com/webitel/chat_manager/cmd.GitTag=${{ github.ref_name }}
