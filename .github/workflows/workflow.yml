@@ -68,6 +68,9 @@ jobs:
 
       package-depends: 
       scripts: |
+        postinstall: deploy/debian/postinst.sh
+        preremove: deploy/debian/prerm.sh
+        postremove: deploy/debian/postrm.sh
         
 
   deploy:
