@@ -64,10 +64,14 @@ jobs:
         src=scripts/systemd/messages-bot.service dst=/etc/systemd/system/webitel-messages-bot.service type=config
         src=scripts/systemd/messages-srv.service dst=/etc/systemd/system/webitel-messages-srv.service type=config
         src=bot/telegram/gotd/public/ dst=/var/lib/webitel/public-html
+        src=.env.example dst=/etc/default/webitel-messages type=config
         
 
       package-depends: 
       scripts: |
+        postinstall: deploy/debian/postinst.sh
+        preremove: deploy/debian/prerm.sh
+        postremove: deploy/debian/postrm.sh
         
 
   deploy:
