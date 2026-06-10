@@ -2425,10 +2425,15 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		}
 
 		if text == "" {
-			return nil, errors.BadRequest(
-				"chat.send.message.text.missing",
-				"send: message text is missing",
-			)
+			// allow empty text for the file_policy_fail placeholder marker so the
+			// FE can render its own stub (no template configured on the gateway)
+			vars := sendMessage.GetVariables()
+			if vars["from"] != "bot" || vars["template"] != FilePolicyFailType {
+				return nil, errors.BadRequest(
+					"chat.send.message.text.missing",
+					"send: message text is missing",
+				)
+			}
 		}
 		// reset: normalized !
 		sendMessage.Text = text
@@ -3168,8 +3173,15 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, sender *app.Ch
 				}
 				channelID := member.Chat.ID
 				vars := notify.GetVariables()
-				if vars != nil && vars["from"] == "bot" && vars["template"] == FilePolicyFailType {
-					channelID = "" // hide channelId to mark system messages
+				var marker map[string]string
+				if vars != nil && vars["from"] == "bot" {
+					marker = map[string]string{
+						"from":     "bot",
+						"template": vars["template"],
+					}
+					if vars["template"] == FilePolicyFailType {
+						channelID = "" // hide channelId to mark system messages
+					}
 				}
 				notice := events.MessageEvent{
 					BaseEvent: events.BaseEvent{
@@ -3181,6 +3193,7 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, sender *app.Ch
 						ChannelID: channelID,
 						Type:      notify.Type,
 						Text:      notify.Text,
+						Variables: marker,
 						// File:   notify.File,
 						CreatedAt: notify.CreatedAt, // NEW
 						UpdatedAt: notify.UpdatedAt, // EDITED

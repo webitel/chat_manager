@@ -1102,7 +1102,8 @@ func (c *Gateway) SendServiceMessageByTemplate(ctx context.Context, templateName
 	if err != nil {
 		return err
 	}
-	if text == "" {
+	if text == "" && templateName != FilePolicyFailType {
+		// file_policy_fail must always emit a marker so the FE can render its placeholder
 		return nil
 	}
 	msg := &chat.Message{
