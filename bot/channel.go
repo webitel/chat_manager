@@ -19,6 +19,21 @@ import (
 	strategy "github.com/webitel/chat_manager/internal/selector"
 )
 
+const errChatSendChannelFromClosed = "chat.send.channel.from.closed"
+
+// isFilePolicyMessageError reports whether err is the chat-server file-policy
+// rejection ("policy.file.allow") for a message that carries a file payload.
+func isFilePolicyMessageError(err error, message *chat.Message) bool {
+	if message == nil || message.File == nil {
+		return false
+	}
+	re := microerr.FromError(err)
+	if re == nil {
+		return false
+	}
+	return re.Detail == "policy.file.allow"
+}
+
 type Channel struct {
 	Host string // webitel.chat.server node-id serving .this channel
 
@@ -342,6 +357,25 @@ func (c *Channel) Start(ctx context.Context, message *chat.Message) error {
 	return nil
 }
 
+func (c *Channel) startWithFilePolicyFallback(ctx context.Context, message *chat.Message) error {
+	err := c.Start(ctx, message)
+	if err == nil || !isFilePolicyMessageError(err, message) {
+		return err
+	}
+	text, terr := c.Gateway.Template.MessageText(FilePolicyFailType, nil)
+	if terr != nil {
+		return terr
+	}
+	if text == "" {
+		text = DefaultFilePolicyMessage
+	}
+	copied := *message
+	copied.Text = text
+	copied.File = nil
+	copied.Type = TextType
+	return c.Start(ctx, &copied)
+}
+
 // SendMessage [FROM] .provider [TO] flow-bot@chat.server
 func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 
@@ -349,16 +383,6 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 	// const commandClose = "/stop" // internal: from !
 	// // // NOTE: sending the last conversation message
 	messageText := message.GetText()
-	isFilePolicyError := func(err error) bool {
-		if uploadErr := microerr.FromError(err); uploadErr != nil && message.File != nil {
-			switch uploadErr.Detail {
-			case "policy.file.allow":
-				// file policy violation
-				return true
-			}
-		}
-		return false
-	}
 	// close := messageText == commandClose
 	close := messageText == commandCloseRecvDisposition && message.Type == "text"
 	// // if close {
@@ -385,26 +409,7 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 			return nil
 		}
 
-		err := c.Start(ctx, message)
-		if err != nil {
-			if isFilePolicyError(err) { // try to send templated message from client name to start conversation
-				text, err := c.Gateway.Template.MessageText(FilePolicyFailType, nil)
-				if err != nil {
-					return err
-				}
-				if text == "" {
-					text = DefaultFilePolicyMessage
-				}
-				// copy message, but change the type to text and remove file to properly start conversation
-				copied := *message
-				copied.Text = text
-				copied.File = nil
-				copied.Type = TextType
-				return c.Start(ctx, &copied)
-			}
-			return err
-		}
-		return nil
+		return c.startWithFilePolicyFallback(ctx, message)
 
 	}
 
@@ -434,29 +439,26 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 		slog.String("text", messageText),
 	)
 	if err != nil {
-		if re := microerr.FromError(err); re != nil && re.Id == "chat.send.channel.from.closed" {
+		if re := microerr.FromError(err); re != nil && re.Id == errChatSendChannelFromClosed {
 			log.Warn("[ RECV::RECOVER ]",
 				slog.String("cause", "remote channel closed; restarting"),
 				slog.String("channel_id", c.ChannelID),
 				slog.String("session_id", c.SessionID),
 			)
 
-			bot := c.Gateway
-			bot.Lock()
-			if e, ok := bot.external[c.ChatID]; ok && e == c {
-				delete(bot.external, c.ChatID)
-				delete(bot.internal, c.Account.ID)
-			}
-			bot.Unlock()
-
 			c.ChannelID = ""
 			c.SessionID = ""
 			c.Closed = 0
 
-			if startErr := c.Start(ctx, message); startErr != nil {
-				if isFilePolicyError(startErr) {
-					return FileUploadPolicyError
+			if startErr := c.startWithFilePolicyFallback(ctx, message); startErr != nil {
+				bot := c.Gateway
+				bot.Lock()
+				if e, ok := bot.external[c.ChatID]; ok && e == c {
+					delete(bot.external, c.ChatID)
+					delete(bot.internal, c.Account.ID)
 				}
+				bot.Unlock()
+
 				log.Error("[ RECV::RECOVER ]",
 					slog.Any("error", startErr),
 				)
@@ -469,7 +471,7 @@ func (c *Channel) Recv(ctx context.Context, message *chat.Message) error {
 		log.Error("<<<<< RECV <<<<<",
 			slog.Any("error", err),
 		)
-		if isFilePolicyError(err) {
+		if isFilePolicyMessageError(err, message) {
 			return FileUploadPolicyError
 		}
 		return err
