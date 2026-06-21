@@ -1,0 +1,73 @@
+[Unit]
+Description=Webitel Messages Chat
+After=network.target consul.service rabbitmq-server.service postgresql.service
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=webitel
+Group=webitel
+LogsDirectory=webitel
+StateDirectory=webitel/webitel-messages-srv
+Environment=HOME=/var/lib/webitel/webitel-messages-srv
+
+EnvironmentFile=/etc/default/webitel-messages-srv
+EnvironmentFile=-/etc/default/webitel-otel
+EnvironmentFile=-/etc/default/webitel
+ExecStart=/usr/local/bin/webitel-messages app
+
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStartSec=0
+TimeoutStopSec=30
+LimitNOFILE=64000
+LimitNPROC=4096
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=webitel-messages-srv
+
+# Filesystem isolation
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoExecPaths=/
+ExecPaths=/usr/local/bin/webitel-messages
+ReadWritePaths=/usr/share/webitel
+
+# Process isolation
+PrivateDevices=yes
+PrivateUsers=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+ProcSubset=pid
+NoNewPrivileges=yes
+PrivateMounts=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+ProtectClock=yes
+ProtectHostname=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+UMask=0077
+
+# Capabilities & syscalls
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+SystemCallFilter=~@resources
+SystemCallFilter=~@obsolete
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target
