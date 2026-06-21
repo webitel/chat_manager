@@ -62,9 +62,10 @@ var (
 			Usage:   "Public HTTP site URL used when registering webhooks with BOT providers.",
 		},
 		&cli.StringFlag{
-			Name:  "web_root",
-			Usage: "Base folder where the website additional assets are located.",
-			Value: "/var/lib/webitel/public-html",
+			Name:    "web_root",
+			EnvVars: []string{"WEBITEL_BOT_WEB_ROOT"},
+			Usage:   "Base folder where the website additional assets are located.",
+			Value:   "/var/lib/webitel/public-html",
 		},
 		&cli.StringFlag{
 			Name:    "address",
