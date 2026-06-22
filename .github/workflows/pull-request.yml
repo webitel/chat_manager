@@ -58,7 +58,6 @@ jobs:
         src=bot/telegram/gotd/public/ dst=/usr/share/webitel/webitel-messages-bot/public-html
         src=.env.bot.example dst=/etc/default/webitel-messages-bot type=config mode=0640
         src=.env.app.example dst=/etc/default/webitel-messages-srv type=config mode=0640
-        src=.env.otel.example dst=/etc/default/webitel-otel type=config mode=0640
         
 
       scripts: |
