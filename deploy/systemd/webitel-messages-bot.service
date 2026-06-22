@@ -10,7 +10,6 @@ User=webitel
 Group=webitel
 LogsDirectory=webitel
 StateDirectory=webitel/webitel-messages-bot
-Environment=HOME=/var/lib/webitel/webitel-messages-bot
 
 EnvironmentFile=/etc/default/webitel-messages-bot
 EnvironmentFile=-/etc/default/webitel-otel
@@ -37,6 +36,7 @@ PrivateTmp=yes
 NoExecPaths=/
 ExecPaths=/usr/local/bin/webitel-messages
 ReadWritePaths=/usr/share/webitel
+ReadWritePaths=/var/lib/webitel
 
 # Process isolation
 PrivateDevices=yes
