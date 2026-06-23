@@ -3257,6 +3257,13 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, sender *app.Ch
 			if member == sender {
 				continue
 			}
+			// empty-text bot service marker (e.g. file_policy_fail placeholder)
+			// is an FE-only signal; do not re-deliver to external chat providers
+			// because they reject empty text and break the webhook ACK chain
+			vars := notify.GetVariables()
+			if notify.Text == "" && vars["from"] == "bot" {
+				continue
+			}
 			err = c.eventRouter.SendMessageToGateway(sender, member, notify)
 			if err != nil {
 				return 0, err
