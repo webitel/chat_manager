@@ -2409,7 +2409,9 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 
 	case "text":
 
-		text := sendMessage.Text
+		// blank, unless one of the candidates below has some non-whitespace text;
+		// so whitespace-only input is rejected the same way as empty input
+		text := ""
 		postback := sendMessage.Postback
 		// coalesce(...)
 		for _, vs := range []string{
