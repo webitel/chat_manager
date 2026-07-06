@@ -2307,10 +2307,11 @@ func (c *Client) whatsAppUploadMedia(ctx context.Context, from *whatsapp.WhatsAp
 			if err == nil && rpcErr.Message != "" {
 				err = &rpcErr
 			}
-			if err != nil {
-				formWriter.CloseWithError(err)
-				return
+			if err == nil {
+				err = fmt.Errorf("whatsapp: media source: %s", res.Status)
 			}
+			formWriter.CloseWithError(err)
+			return
 		}
 		// MIMEType from source
 		mediaType, _, err := mime.ParseMediaType(
@@ -2407,6 +2408,10 @@ func (c *Client) whatsAppUploadMedia(ctx context.Context, from *whatsapp.WhatsAp
 
 	if err != nil {
 		return nil, err
+	}
+
+	if rpc.Document == nil || rpc.Document.ID == "" {
+		return nil, fmt.Errorf("whatsapp: upload media %q; no document id returned", media.Name)
 	}
 
 	return rpc.Document, nil
@@ -2527,55 +2532,44 @@ func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) err
 			MediaVideo = "video"
 		)
 
-		var (
-			src = sentMsg.File
-			dst *whatsapp.Document
-		)
+		src := sentMsg.File
+		if src == nil {
+			return microerr.BadRequest(
+				"chat.bot.whatsapp.send.file.missing",
+				"whatsapp: send: message type=file; file is missing",
+			)
+		}
 		for _, mediaType := range []string{
 			MediaImage, MediaAudio, MediaVideo,
 		} {
 			if strings.HasPrefix(src.Mime, mediaType) {
 				if len(src.Mime) == len(mediaType) || src.Mime[len(mediaType)] == '/' {
-					dst, err = c.whatsAppUploadMedia(ctx, sender, src)
-					if err != nil {
-						return err
-					}
 					sendMsg.Type = mediaType
 					break
 				}
 			}
 		}
+		// NOT image/audio/video ? => document (pdf, docx, xlsx, ...)
+		if sendMsg.Type == "" {
+			sendMsg.Type = "document"
+		}
+		dst, err := c.whatsAppUploadMedia(ctx, sender, src)
+		if err != nil {
+			return err
+		}
 		switch sendMsg.Type {
 		case MediaImage:
 			// https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media#upload-media
 			sendMsg.Image = &dst.Media
-			// sendMsg.Image = &whatsapp.Media{
-			// 	ID:      "",
-			// 	Link:    doc.Url,
-			// 	Caption: sentMsg.Text,
-			// }
 		case MediaAudio:
 			sendMsg.Audio = &dst.Media
-			// sendMsg.Audio = &whatsapp.Media{
-			// 	ID:   "",
-			// 	Link: doc.Url,
-			// }
 		case MediaVideo:
 			sendMsg.Video = &dst.Media
-			// sendMsg.Video = &whatsapp.Media{
-			// 	ID:      "",
-			// 	Link:    doc.Url,
-			// 	Caption: sentMsg.Text,
-			// }
-		default:
-			sendMsg.Type = "document"
+		default: // "document"
 			sendMsg.Document = &dst.Media
-			// sendMsg.Document = &whatsapp.Media{
-			// 	ID:       "",
-			// 	Link:     doc.Url,
-			// 	Caption:  sentMsg.Text,
-			// 	Filename: doc.Name,
-			// }
+			// The extension of the filename specifies what format
+			// the document is displayed as in WhatsApp
+			sendMsg.Document.Filename = src.Name
 		}
 
 	case "joined": // ACK: ChatService.JoinConversation()
@@ -2673,7 +2667,7 @@ func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) err
 	}
 
 	// TARGET[chat_id]: MESSAGE[message_id]
-	if len(res.Messages) == 1 {
+	if res != nil && len(res.Messages) == 1 {
 		WAMID := res.Messages[0].ID
 		setVar(chatId, WAMID)
 	}
