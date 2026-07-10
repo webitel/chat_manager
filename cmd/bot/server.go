@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"context"
 	"log/slog"
 	"net"
 	"net/url"
@@ -21,6 +22,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	"google.golang.org/grpc"
 
+	"github.com/webitel/webitel-go-kit/infra/httpproxy"
 	otelsdk "github.com/webitel/webitel-go-kit/otel/sdk"
 
 	pb "github.com/webitel/chat_manager/api/proto/bot"
@@ -60,6 +62,11 @@ var (
 			Name:    "site_url",
 			EnvVars: []string{"WEBITEL_BOT_PROXY"},
 			Usage:   "Public HTTP site URL used when registering webhooks with BOT providers.",
+		},
+		&cli.StringFlag{
+			Name:    "proxy_config_file",
+			EnvVars: []string{"PROXY_CONFIG_FILE"},
+			Usage:   "Outbound proxy settings file (http_proxy/https_proxy/no_proxy) watched for changes.",
 		},
 		&cli.StringFlag{
 			Name:    "web_root",
@@ -144,6 +151,24 @@ func Run(ctx *cli.Context) error {
 
 	defer otel.Shutdown(ctx.Context)
 	stdlog := slog.Default()
+
+	// Bind http.DefaultTransport to the proxy manager before any BOT provider
+	// builds its client, so outbound messenger traffic follows the watched
+	// proxy settings without a restart. Bots with a per-profile http_proxy
+	// (corezoid metadata) keep their own static proxy and take precedence.
+	proxyMgr := httpproxy.NewManager(httpproxy.WithLogger(stdlog))
+	if err := proxyMgr.HookDefaultTransport(); err != nil {
+		return err
+	}
+
+	watchCtx, watchCancel := context.WithCancel(ctx.Context)
+	defer watchCancel()
+
+	go func() {
+		// WatchFile logs its own setup failures; empty path keeps
+		// environment-based settings.
+		_ = proxyMgr.WatchFile(watchCtx, ctx.String("proxy_config_file"))
+	}()
 
 	server := server.DefaultServer
 	err = server.Init(microgrpcsrv.Options(
