@@ -14,12 +14,14 @@ import (
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/auth"
 	store "github.com/webitel/chat_manager/internal/repo/sqlx"
+	"github.com/webitel/protos/gateway/contacts"
 )
 
 type AgentChatsService struct {
-	logs  *slog.Logger
-	authN *auth.Client
-	store store.AgentChatStore
+	logs          *slog.Logger
+	authN         *auth.Client
+	store         store.AgentChatStore
+	contactClient contacts.ContactsService
 }
 
 type AgentChatServiceOption func(srv *AgentChatsService) error
@@ -41,6 +43,13 @@ func AgentChatServiceAuthN(client *auth.Client) AgentChatServiceOption {
 func AgentChatServiceConversationStore(store store.AgentChatStore) AgentChatServiceOption {
 	return func(srv *AgentChatsService) error {
 		srv.store = store
+		return nil
+	}
+}
+
+func AgentChatServiceContactClient(client contacts.ContactsService) AgentChatServiceOption {
+	return func(srv *AgentChatsService) error {
+		srv.contactClient = client
 		return nil
 	}
 }
@@ -164,10 +173,69 @@ func (srv *AgentChatsService) GetAgentChats(ctx context.Context, req *pb.GetAgen
 	if err != nil {
 		return err
 	}
+	if contactAccess {
+		srv.fillContactsEtag(ctx, res)
+	}
 	if res.Page != 0 {
 		res.Page = int32(search.GetPage())
 	}
 	return nil
+}
+
+// fillContactsEtag sets contact.etag on each chat by fetching it from the
+// contacts service in a single batch 
+func (srv *AgentChatsService) fillContactsEtag(ctx context.Context, res *pb.GetAgentChatsResponse) {
+	if srv.contactClient == nil {
+		return
+	}
+	// unique contact ids present on the page
+	ids := make([]string, 0, len(res.GetItems()))
+	seen := make(map[string]struct{}, len(res.GetItems()))
+	for _, item := range res.GetItems() {
+		id := item.GetContact().GetId()
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return
+	}
+	// SearchContacts caps the result page at 32; query in chunks.
+	const chunkSize = 30
+	etags := make(map[string]string, len(ids))
+	for off := 0; off < len(ids); off += chunkSize {
+		end := off + chunkSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunk := ids[off:end]
+		list, err := srv.contactClient.SearchContacts(ctx, &contacts.SearchContactsRequest{
+			Id:     chunk,
+			Fields: []string{"id", "etag"},
+			Size:   int32(len(chunk)),
+		})
+		if err != nil {
+			srv.logs.Warn("agent_chats: fetch contacts etag",
+				slog.Any("error", err),
+			)
+			return // graceful: leave etag empty
+		}
+		for _, c := range list.GetData() {
+			etags[c.GetId()] = c.GetEtag()
+		}
+	}
+	for _, item := range res.GetItems() {
+		if c := item.GetContact(); c != nil {
+			if etag, ok := etags[c.GetId()]; ok {
+				c.Etag = etag
+			}
+		}
+	}
 }
 
 func (srv *AgentChatsService) GetAgentChatsCounter(ctx context.Context, req *pb.GetAgentChatsCounterRequest, res *pb.GetAgentChatsCounterResponse) error {
