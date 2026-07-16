@@ -41,6 +41,11 @@ type searchChatArgs struct {
 	// <true> -- IS|WAS connected; ( join: + )
 	// <false> -- NEVER connected; ( join: 0 )
 	Joined *bool
+	// Rated dialogs ONLY that have [not] been rated (WTEL-9850).
+	// <nil> -- any; whatever
+	// <true> -- HAS an audit rate
+	// <false> -- has NO audit rate
+	Rated *bool
 
 	// Chat (thread|member) IDs
 	// Combined
@@ -195,6 +200,30 @@ func searchChatRequest(req *app.SearchOptions) (args searchChatArgs, err error) 
 					err = errors.BadRequest(
 						"chat.query.joined.input",
 						"chat( joined: %v ) convert %[1]T into bool",
+						input,
+					)
+					return // err
+				}
+			}
+		case "rated":
+			{
+				switch data := input.(type) {
+				case *wrapperspb.BoolValue:
+					{
+						if data == nil {
+							break // omitted
+						}
+						is := data.GetValue()
+						args.Rated = &is
+					}
+				case *bool:
+					args.Rated = data
+				case bool:
+					args.Rated = &data
+				default:
+					err = errors.BadRequest(
+						"chat.query.rated.input",
+						"chat( rated: %v ) convert %[1]T into bool",
 						input,
 					)
 					return // err

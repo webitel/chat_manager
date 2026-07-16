@@ -103,6 +103,9 @@ message ChatDialogsRequest {
   // Dialogs ONLY that are currently [not] active( closed: ? ).
   google.protobuf.BoolValue online = 10;
 
+  // Dialogs ONLY that have [not] been rated.
+  google.protobuf.BoolValue rated = 14;
+
   // // Joined filters only those participants
   // // who have [not] been connected to the chat.
   // // ( join: * )

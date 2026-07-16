@@ -911,6 +911,19 @@ func selectChatMember(req searchChatArgs, params params) (cte chatMemberQ, err e
 		}
 		cte.JOIN.Kind = join
 	}
+	// chat( rated: bool ) -- WTEL-9850
+	if req.Rated != nil {
+		exists := "EXISTS"
+		if !(*(req.Rated)) {
+			exists = "NOT EXISTS"
+		}
+		cond := fmt.Sprintf(
+			"%s (SELECT 1 FROM call_center.cc_audit_rate WHERE conversation_id = %s.conversation_id)",
+			exists, left,
+		)
+		cte.member.query = cte.member.query.Where(cond)
+		cte.invite.query = cte.invite.query.Where(cond)
+	}
 
 	return
 }
@@ -990,6 +1003,14 @@ func selectChatThread(req searchChatArgs, params params) (cte sq.SelectBuilder, 
 		if !(*vs) { // NOT ?
 			// NOTE: Allways JOINED !
 			cte = cte.Where("false") // EXCLUDE
+		}
+	}
+	// chat( rated: bool ) -- WTEL-9850
+	if vs := req.Rated; vs != nil {
+		if *(vs) {
+			cte = cte.Where("EXISTS (SELECT 1 FROM call_center.cc_audit_rate WHERE conversation_id = c.id)")
+		} else {
+			cte = cte.Where("NOT EXISTS (SELECT 1 FROM call_center.cc_audit_rate WHERE conversation_id = c.id)")
 		}
 	}
 
