@@ -15,153 +15,30 @@ import (
 	"github.com/gotd/td/tg"
 )
 
-/*/ termAuth implements authentication via terminal.
 type sessionAuth struct {
-	noSignUp
-
-	phoneNumber  string
-	logoutTokens [][]byte // up to 20
-
-	stage interface{}
-	// nil - Unauthorized
-	// string - Phone
-	// *tg.AuthSentCode = Code sent; await user action
-	// telegram.ErrPasswordAuthNeeded = Code verified; await 2FA password
-	// *tg.User = Authorized; OK
-	complete chan interface{}
-}
-
-type (
-	authorizationPhone string
-	authorizationCode  string
-	authorization2FA   string
-)
-
-func (c sessionAuth) run(ctx context.Context) {
-	select {
-	case stage := <-c.complete:
-		switch stage.(type) {
-		case authorizationPhone:
-
-		case authorizationCode:
-
-		case authorization2FA:
-
-		}
-	case <-ctx.Done():
-	}
-}
-
-func (c sessionAuth) Phone(ctx context.Context) (string, error) {
-	if c.phoneNumber != "" {
-		return c.phoneNumber, nil
-	}
-
-	if c.phoneNumber == "" {
-		fmt.Print("[TELEGRAM] Enter phone number: ")
-		phone, err := bufio.NewReader(os.Stdin).ReadString('\n')
-		if err != nil {
-			return "", err
-		}
-		c.phoneNumber = strings.TrimSpace(phone)
-	}
-	return c.phoneNumber, nil
-}
-
-// type authorizationCode string
-
-func (a sessionAuth) Code(ctx context.Context, req *tg.AuthSentCode) (string, error) {
-
-	fmt.Print("[TELEGRAM] Enter code: ")
-	code, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(code), nil
-}
-
-func (a sessionAuth) Password(_ context.Context) (string, error) {
-	fmt.Print("[TELEGRAM] Enter 2FA password: ")
-	bytePwd, err := term.ReadPassword(0)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(bytePwd)), nil
-}
-
-var defaultAuth auth.Flow = auth.NewFlow(
-	// auth.Env("USER_", auth.CodeAuthenticatorFunc(
-	// 	func(ctx context.Context, state *tg.AuthSentCode) (string, error) {
-	// 		fmt.Print("Enter code: ")
-	// 		code, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	// 		if err != nil {
-	// 			return "", err
-	// 		}
-	// 		return strings.TrimSpace(code), nil
-	// 	},
-	// )),
-	termAuth{
-		phone: os.Getenv("USER_PHONE"),
-	},
-	auth.SendCodeOptions{
-		// AllowFlashCall allows phone verification via phone calls.
-		AllowFlashCall: false,
-		// Pass true if the phone number is used on the current device.
-		// Ignored if AllowFlashCall is not set.
-		CurrentNumber: false,
-		// If a token that will be included in eventually sent SMSs is required:
-		// required in newer versions of android, to use the android SMS receiver APIs.
-		AllowAppHash: false,
-	},
-)
-*/
-
-type sessionAuth struct {
-	// ctor
 	*session
-	// opts
-	// sync.Mutex        // guard
-	// rxURI string // redirectURI
-	phone string // current phone number
-	// state
+
+	phone     string // current phone number
 	requestAt time.Time
 	request   *tg.AuthSentCode // login: await verification code
 	sessionAt time.Time        // authenticatedAt timestamp
-	// session   *tg.AuthAuthorization // successful login session
-	tokens [][]byte // future login tokens
-	user   *tg.User // loggedIn
-
-	notify []chan *tg.User
-	// err error
+	tokens    [][]byte         // future login tokens
+	user      *tg.User         // loggedIn
+	notify    []chan *tg.User
 }
 
 func newSessionAuth(c *session) *sessionAuth {
-
 	login := &sessionAuth{
 		session: c,
 	}
 
-	// // Fetch user info.
-	// // me, err := app.Self(ctx)
-	// me, err := peers.Self(context.TODO())
-	// if err == nil {
-	// 	login.user = me.Raw()
-	// }
-
-	// state = err
 	return login
 }
 
-func (c *sessionAuth) Lock() {
-	c.session.sync.Lock()
-}
-
-func (c *sessionAuth) Unlock() {
-	c.session.sync.Unlock()
-}
+func (c *sessionAuth) Lock()   { c.session.sync.Lock() }
+func (c *sessionAuth) Unlock() { c.session.sync.Unlock() }
 
 func (c *sessionAuth) User() *tg.User {
-
 	c.Lock()
 	defer c.Unlock()
 
@@ -192,7 +69,6 @@ func (c *sessionAuth) API() *tg.Client {
 
 // restore .logoutTokens dataset
 func (c *sessionAuth) restore(data []byte) error {
-
 	if len(data) == 0 {
 		return nil
 	}
@@ -205,10 +81,7 @@ func (c *sessionAuth) restore(data []byte) error {
 	}
 
 	const max = 20
-	n := len(state.Tokens)
-	if n > max {
-		n = max
-	}
+	n := min(len(state.Tokens), max)
 
 	if n == 0 {
 		return nil
@@ -222,16 +95,13 @@ func (c *sessionAuth) restore(data []byte) error {
 		n = m
 	}
 
-	c.tokens = append(c.tokens,
-		state.Tokens[0:n]...,
-	)
+	c.tokens = append(c.tokens, state.Tokens[0:n]...)
 
 	return nil
 }
 
 // backup .logoutTokens dataset
 func (c *sessionAuth) backup() ([]byte, error) {
-
 	var tokens [][]byte
 
 	c.Lock()
@@ -265,14 +135,14 @@ func authSentCodeClassParser(sentCode tg.AuthSentCodeClass) (*tg.AuthSentCode, e
 
 // SendCode sends the verification code for login
 func (c *sessionAuth) SendCode(ctx context.Context, phone string) (*tg.AuthSentCode, error) {
-
 	c.Lock()
 	defer c.Unlock()
 	// Latest attempt timestamp
 	c.requestAt = time.Now()
 	if c.request != nil {
 		// TODO: resendCode
-		request, err := c.API().AuthResendCode(ctx,
+		request, err := c.API().AuthResendCode(
+			ctx,
 			&tg.AuthResendCodeRequest{
 				PhoneNumber:   phone,
 				PhoneCodeHash: c.request.PhoneCodeHash,
@@ -292,7 +162,7 @@ func (c *sessionAuth) SendCode(ctx context.Context, phone string) (*tg.AuthSentC
 			return nil, err
 		}
 		c.phone = phone
-		
+
 		requestPtr, err := authSentCodeClassParser(request)
 		if err != nil {
 			return nil, err
@@ -306,14 +176,8 @@ func (c *sessionAuth) SendCode(ctx context.Context, phone string) (*tg.AuthSentC
 		APIID:       c.session.App.apiId,
 		APIHash:     c.session.App.apiHash,
 		PhoneNumber: phone,
-		// Settings: tg.CodeSettings{
-		// 	AllowFlashcall:  false,
-		// 	CurrentNumber:   false,
-		// 	AllowAppHash:    false,
-		// 	AllowMissedCall: false,
-		// 	LogoutTokens:    c.tokens,
-		// },
 	}
+
 	if tokens := c.tokens; len(tokens) != 0 {
 		sendCode.Settings.SetLogoutTokens(tokens)
 	}
@@ -340,7 +204,7 @@ func (c *sessionAuth) SendCode(ctx context.Context, phone string) (*tg.AuthSentC
 		}
 		return nil, err
 	}
-	
+
 	c.phone = phone
 
 	sentCodePtr, err := authSentCodeClassParser(sentCode)
@@ -354,7 +218,6 @@ func (c *sessionAuth) SendCode(ctx context.Context, phone string) (*tg.AuthSentC
 
 // Cancel the login verification code
 func (c *sessionAuth) CancelCode(ctx context.Context) error {
-
 	c.Lock()
 	defer c.Unlock()
 
@@ -369,22 +232,8 @@ func (c *sessionAuth) CancelCode(ctx context.Context) error {
 		},
 	)
 
-	// Make idempotent !
-	// _, err := c.api.AuthCancelCode(ctx, ...
-	// if err != nil {
-	// 	// https://core.telegram.org/method/auth.cancelCode#possible-errors
-	// 	if re, is := tgerr.As(err); is {
-	// 		switch re.Type {
-	// 		case tg.ErrPhoneCodeExpired: // "PHONE_CODE_EXPIRED": // The phone code you provided has expired.
-	// 		case tg.ErrPhoneNumberInvalid: // "PHONE_NUMBER_INVALID": // The phone number is invalid.
-	// 		}
-	// 	}
-	// 	return err
-	// }
-
 	c.request = nil
 	return nil
-	// panic("not implemented")
 }
 
 // loginSession checks that `res` is *tg.AuthAuthorization and returns authorization result or error.
@@ -443,26 +292,12 @@ func (c *sessionAuth) SignIn(ctx context.Context, code string) (*tg.AuthAuthoriz
 	}
 
 	authZ, err := loginSession(res)
-
-	// if errors.Is(err, auth.ErrPasswordAuthNeeded) {
-	// 	password, err := f.Auth.Password(ctx)
-	// 	if err != nil {
-	// 		return errors.Wrap(err, "get password")
-	// 	}
-	// 	if _, err := client.Password(ctx, password); err != nil {
-	// 		return errors.Wrap(err, "sign in with password")
-	// 	}
-	// 	return nil
-	// }
-
 	if err != nil {
 		return nil, err
 	}
 
 	c.request = nil          // Code used !
 	c.sessionAt = time.Now() // Authenticated timestamp
-	// c.user, _ = authZ.GetUser().AsNotEmpty()
-	// c.signal() // LOCKED
 	user, _ := authZ.GetUser().AsNotEmpty()
 	// LOCKED
 	c.doAuth(user)
@@ -515,8 +350,6 @@ func (c *sessionAuth) Password(ctx context.Context, password string) (*tg.AuthAu
 
 	c.request = nil          // Code used !
 	c.sessionAt = time.Now() // Authenticated timestamp
-	// c.user, _ = authZ.GetUser().AsNotEmpty()
-	// c.signal() // LOCKED
 	user, _ := authZ.GetUser().AsNotEmpty()
 	// LOCKED
 	c.doAuth(user)
@@ -531,20 +364,7 @@ func (c *sessionAuth) LogOut(ctx context.Context) error {
 	defer c.Unlock()
 
 	res, err := c.API().AuthLogOut(ctx)
-	// var (
-	// 	err error
-	// 	res = &tg.AuthLoggedOut{
-	// 		FutureAuthToken: []byte("VsDfV2s78eq"),
-	// 	}
-	// )
-
 	if err != nil {
-		// https://core.telegram.org/method/auth.logOut#possible-errors
-		// if re, is := tgerr.As(err); is {
-		// 	switch re.Type {
-		// 	case *tgerr.Error: // (400)
-		// 	}
-		// }
 		return err
 	}
 
@@ -576,9 +396,6 @@ func (c *sessionAuth) LogOut(ctx context.Context) error {
 		tokens[0] = res.FutureAuthToken
 		c.tokens = tokens
 	}
-	// FIXME: Middleware will do it's job: AUTH_KEY_UNREGISTERED !
-	// c.user = nil
-	// c.signal()
 
 	// LOCKED
 	c.doAuth(nil)
@@ -600,8 +417,6 @@ func (c *sessionAuth) signal() {
 }
 
 func (c *sessionAuth) init() {
-	// Fetch user info.
-	// me, err := app.Self(ctx)
 	self, err := c.peers.Self(context.TODO())
 	if err != nil {
 		if tgerr.IsCode(err, 401) {
@@ -611,19 +426,7 @@ func (c *sessionAuth) init() {
 		}
 	}
 
-	// c.Lock()
-	// defer c.Unlock()
-
-	// c.resetUser(self.Raw())
 	c.Auth(self.Raw())
-
-	// sessionUser := c.user
-	// currentUser := self.Raw()
-	// c.user = currentUser
-
-	// if currentUser.GetID() != sessionUser.GetID() {
-	// 	c.signal() // notify subscribers
-	// }
 }
 
 // Subscribe for authorizationState changes
@@ -631,7 +434,6 @@ func (c *sessionAuth) init() {
 // - non <nil> *tg.User reference is case of session new Login
 // - <nil> *tg.User reference in case of session Logout
 func (c *sessionAuth) Subscribe() <-chan *tg.User {
-
 	notify := make(chan *tg.User, 1) // buffered
 
 	c.Lock()
@@ -643,16 +445,10 @@ func (c *sessionAuth) Subscribe() <-chan *tg.User {
 		c.init()
 	}
 
-	// if c.user != nil {
-	// 	// Immediate if user authorized !
-	// 	notify <- c.user
-	// }
-
 	return notify
 }
 
 func (c *sessionAuth) Unsubscribe(notify <-chan *tg.User) {
-
 	var origin chan *tg.User
 
 	c.Lock()
@@ -691,14 +487,7 @@ func (c *sessionAuth) MiddlewareHook(next tg.Invoker) telegram.InvokeFunc {
 		err := next.Invoke(ctx, input, output)
 		// Logout/Terminate session interception
 		if c.user != nil && auth.IsUnauthorized(err) {
-
 			c.Auth(nil)
-			// c.Lock()
-
-			// c.user = nil
-			// c.signal()
-
-			// c.Unlock()
 		}
 		// Operation error ?
 		return err
