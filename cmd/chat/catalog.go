@@ -252,6 +252,10 @@ func (srv *Catalog) GetDialogs(ctx context.Context, req *pb.ChatDialogsRequest, 
 		online := vs.GetValue()
 		search.FilterAND("online", &online)
 	}
+	if vs := req.Rated; vs != nil {
+		rated := vs.GetValue()
+		search.FilterAND("rated", &rated)
+	}
 	if vs := req.Group; len(vs) > 0 {
 		if delete(vs, ""); len(vs) > 0 {
 			search.FilterAND("group", vs)
