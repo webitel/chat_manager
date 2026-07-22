@@ -568,6 +568,21 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 			))
 			return alias
 		}
+		rateAlias    string
+		joinAuditRate = func() string {
+			alias := rateAlias
+			if alias != "" {
+				return alias
+			}
+			// once
+			alias = "ar"
+			rateAlias = alias
+			ctx.Query = ctx.Query.JoinClause(CompactSQL(fmt.Sprintf(
+				` LEFT JOIN call_center.cc_audit_rate %s ON %s.conversation_id = %s.thread_id`,
+				alias, alias, left,
+			)))
+			return alias
+		}
 		needsProcessingAlias string
 		joinNeedsProcessing  = func() string {
 			alias := needsProcessingAlias
@@ -1013,6 +1028,16 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 				)
 				plan = append(plan, func(node *api.Dialog) any {
 					return fetchQueueRow(&node.Queue)
+				})
+			}
+		case "rate_id":
+			{
+				ar := joinAuditRate()
+				ctx.Query = ctx.Query.Column(
+					ident(ar, "id"),
+				)
+				plan = append(plan, func(node *api.Dialog) any {
+					return postgres.Int8{Value: &node.RateId}
 				})
 			}
 

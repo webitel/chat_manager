@@ -213,6 +213,7 @@ func (srv *Catalog) GetDialogs(ctx context.Context, req *pb.ChatDialogsRequest, 
 					"closed",
 					"started",
 					"message",
+					"rate_id",
 				},
 				// extra
 				[]string{
