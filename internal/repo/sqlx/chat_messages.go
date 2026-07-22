@@ -597,13 +597,13 @@ func getContactMessagesInput(req *app.SearchOptions) (args contactChatMessagesAr
 					"edit",
 					"text",
 					"file",
-					"chat", // chat dialog, that this message belongs to ..
+					"chat",    // chat dialog, that this message belongs to ..
+					"context", // message variables
 				},
 				// operational
 				[]string{
 					// "kind",
-					"sender", // chat member, on behalf of the "chat" (dialog)
-					"context",
+					"sender",   // chat member, on behalf of the "chat" (dialog)
 					"postback", // Quick Reply button Click[ed].
 					"keyboard", // Quick Replies. Button(s)
 				},
@@ -632,12 +632,12 @@ func getContactMessagesInput(req *app.SearchOptions) (args contactChatMessagesAr
 					"edit",
 					"text",
 					"file",
+					"context", // message variables
 				},
 				// operational
 				[]string{
-					"chat",   // chat dialog, that this message belongs to ..
-					"sender", // chat member, on behalf of the "chat" (dialog)
-					"context",
+					"chat",     // chat dialog, that this message belongs to ..
+					"sender",   // chat member, on behalf of the "chat" (dialog)
 					"postback", // Quick Reply button Click[ed].
 					"keyboard", // Quick Replies. Button(s)
 				},
