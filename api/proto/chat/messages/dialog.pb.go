@@ -54,7 +54,10 @@ type Dialog struct {
 	// Close reason if closed from the request sender perspective
 	ClosedCause string `protobuf:"bytes,13,opt,name=closed_cause,json=closedCause,proto3" json:"closed_cause,omitempty"`
 	// OPTIONAL. Last dialog queue
-	Queue         *Peer `protobuf:"bytes,14,opt,name=queue,proto3" json:"queue,omitempty"`
+	Queue *Peer `protobuf:"bytes,14,opt,name=queue,proto3" json:"queue,omitempty"`
+	// Audit rate ID (call_center.cc_audit_rate.id) if this dialog has been rated (WTEL-9850).
+	// Zero value means - NOT rated yet.
+	RateId        int64 `protobuf:"varint,15,opt,name=rate_id,json=rateId,proto3" json:"rate_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -180,6 +183,13 @@ func (x *Dialog) GetQueue() *Peer {
 	return nil
 }
 
+func (x *Dialog) GetRateId() int64 {
+	if x != nil {
+		return x.RateId
+	}
+	return 0
+}
+
 // ChatDialogs dataset
 type ChatDialogs struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -268,7 +278,6 @@ type ChatDialogsRequest struct {
 	// Dialogs ONLY that are currently [not] active( closed: ? ).
 	Online *wrapperspb.BoolValue `protobuf:"bytes,10,opt,name=online,proto3" json:"online,omitempty"`
 	// Dialogs ONLY that have [not] been rated.
-	// ( rated: ? )
 	Rated *wrapperspb.BoolValue `protobuf:"bytes,14,opt,name=rated,proto3" json:"rated,omitempty"`
 	// Includes ONLY those chat dialogs
 	// whose member channel(s) contain
@@ -396,7 +405,7 @@ var File_chat_messages_dialog_proto protoreflect.FileDescriptor
 
 const file_chat_messages_dialog_proto_rawDesc = "" +
 	"\n" +
-	"\x1achat/messages/dialog.proto\x12\fwebitel.chat\x1a\x18chat/messages/peer.proto\x1a\x18chat/messages/chat.proto\x1a\x1bchat/messages/message.proto\x1a\x1egoogle/protobuf/wrappers.proto\"\xf7\x03\n" +
+	"\x1achat/messages/dialog.proto\x12\fwebitel.chat\x1a\x18chat/messages/peer.proto\x1a\x18chat/messages/chat.proto\x1a\x1bchat/messages/message.proto\x1a\x1egoogle/protobuf/wrappers.proto\"\x90\x04\n" +
 	"\x06Dialog\x12\x0e\n" +
 	"\x02dc\x18\x01 \x01(\x03R\x02dc\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12$\n" +
@@ -411,7 +420,8 @@ const file_chat_messages_dialog_proto_rawDesc = "" +
 	"\acontext\x18\v \x03(\v2!.webitel.chat.Dialog.ContextEntryR\acontext\x12,\n" +
 	"\amembers\x18\f \x03(\v2\x12.webitel.chat.ChatR\amembers\x12!\n" +
 	"\fclosed_cause\x18\r \x01(\tR\vclosedCause\x12(\n" +
-	"\x05queue\x18\x0e \x01(\v2\x12.webitel.chat.PeerR\x05queue\x1a:\n" +
+	"\x05queue\x18\x0e \x01(\v2\x12.webitel.chat.PeerR\x05queue\x12\x17\n" +
+	"\arate_id\x18\x0f \x01(\x03R\x06rateId\x1a:\n" +
 	"\fContextEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"_\n" +

@@ -57,6 +57,8 @@ message Dialog {
   string closed_cause = 13;
   // OPTIONAL. Last dialog queue
   Peer queue = 14;
+  // Zero value means - NOT rated yet.
+  int64 rate_id = 15;
 
 }
 
