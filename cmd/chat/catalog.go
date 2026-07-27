@@ -479,12 +479,12 @@ func (srv *Catalog) GetHistory(ctx context.Context, req *pb.ChatMessagesRequest,
 					"kind",
 					"text",
 					"file",
+					"context", // message variables, e.g.: file_policy_fail marker
 				},
 				// extra
 				[]string{
 					"chat",   // chat dialog, that this message belongs to ..
 					"sender", // chat member, on behalf of the "chat" (dialog)
-					"context",
 				},
 			),
 		),
@@ -662,12 +662,12 @@ func (srv *Catalog) GetUpdates(ctx context.Context, req *pb.ChatMessagesRequest,
 					"kind",
 					"text",
 					"file",
+					"context", // message variables, e.g.: file_policy_fail marker
 				},
 				// extra
 				[]string{
 					"chat",   // chat dialog, that this message belongs to ..
 					"sender", // chat member, on behalf of the "chat" (dialog)
-					"context",
 				},
 			),
 		),
