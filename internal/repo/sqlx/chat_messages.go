@@ -179,12 +179,12 @@ func getMessagesInput(req *app.SearchOptions) (args chatMessagesArgs, err error)
 				"kind", // custom message.type classifier.
 				"text",
 				"file",
+				"context", // message variables
 			},
 			// operational
 			[]string{
-				"chat",   // chat dialog, that this message belongs to ..
-				"sender", // chat member, on behalf of the "chat" (dialog)
-				"context",
+				"chat",     // chat dialog, that this message belongs to ..
+				"sender",   // chat member, on behalf of the "chat" (dialog)
 				"postback", // Quick Reply button Click[ed].
 				"keyboard", // Quick Replies. Button(s)
 			},
