@@ -3176,13 +3176,17 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, sender *app.Ch
 				channelID := member.Chat.ID
 				vars := notify.GetVariables()
 				var marker map[string]string
-				if vars != nil && vars["from"] == "bot" {
-					marker = map[string]string{
-						"from":     "bot",
-						"template": vars["template"],
-					}
-					if vars["template"] == FilePolicyFailType {
-						channelID = "" // hide channelId to mark system messages
+				if vars["from"] == "bot" && vars["template"] == FilePolicyFailType {
+					if notify.Text == "" {
+						marker = map[string]string{
+							"from":     "bot",
+							"template": FilePolicyFailType,
+						}
+						channelID = vars["chat"]
+					} else {
+						// templated text: keep the pre-marker payload shape —
+						// a bot message with hidden channelId, no variables
+						channelID = ""
 					}
 				}
 				notice := events.MessageEvent{
