@@ -487,15 +487,16 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 		},
 	}
 
+	// ALREADY PAGED ON THREAD CTE!
 	// [OFFSET|LIMIT]: paging
-	if size := req.GetSize(); size > 0 {
-		// OFFSET (page-1)*size -- omit same-sized previous page(s) from result
-		if page := req.GetPage(); page > 1 {
-			ctx.Query = ctx.Query.Offset((uint64)((page - 1) * size))
-		}
-		// LIMIT (size+1) -- to indicate whether there are more result entries
-		ctx.Query = ctx.Query.Limit((uint64)(size + 1))
-	}
+	// if size := req.GetSize(); size > 0 {
+	// 	// OFFSET (page-1)*size -- omit same-sized previous page(s) from result
+	// 	if page := req.GetPage(); page > 1 {
+	// 		ctx.Query = ctx.Query.Offset((uint64)((page - 1) * size))
+	// 	}
+	// 	// LIMIT (size+1) -- to indicate whether there are more result entries
+	// 	ctx.Query = ctx.Query.Limit((uint64)(size + 1))
+	// }
 	// Arguments
 	var (
 		// temporary
@@ -568,7 +569,7 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 			))
 			return alias
 		}
-		rateAlias    string
+		rateAlias     string
 		joinAuditRate = func() string {
 			alias := rateAlias
 			if alias != "" {
