@@ -71,7 +71,7 @@ func getAgentChatCounterQuery(args *agentChatArgs) (query sq.SelectBuilder, err 
 	query = postgres.PGSQL.
 		Select("COUNT(*)").
 		From("chat.channel ch").
-		InnerJoin(fmt.Sprintf("chat.conversation conv ON conv.id = ch.conversation_id AND conv.props ->> '%s' ISNULL", MeetingIDVariableName))	
+		InnerJoin(fmt.Sprintf("chat.conversation conv ON conv.id = ch.conversation_id AND conv.props ->> '%s' ISNULL", MeetingIDVariableName))
 	if args.AgentId >= 0 {
 		query = query.Where("ch.user_id = ?", args.AgentId).Where("ch.internal")
 	}
@@ -229,7 +229,11 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
 			})
 		case "gateway":
 			ctx.Query = ctx.Query.Column(
-				CompactSQL(`(SELECT ROW (via.id, via.provider, via.name)
+				CompactSQL(`(SELECT ROW (
+								via.id,
+								coalesce(via.provider, main.props->>'chat'),
+								coalesce(via.name, main.props->>'portal.client.app')
+							)
 							FROM chat.channel ext
 									 LEFT JOIN chat.bot via ON via.id::::text = ext.connection
 							WHERE ext.conversation_id = ` + ident(left, "id") + `
@@ -465,7 +469,9 @@ func selectAgentChatThread(args *agentChatArgs, params params) (cte sq.SelectBui
 		err = errors.BadRequest("sqlxrepo.agent_chat.select_agent_chat_thread.check_args.agent", "agent id required")
 		return
 	}
+
 	params.set("agent", args.AgentId)
+
 	if args.Timerange == nil || (args.Timerange.Since <= 0 && args.Timerange.Until <= 0) {
 		err = errors.BadRequest("sqlxrepo.agent_chat.select_agent_chat_thread.check_args.timerange", "time range required")
 		return
