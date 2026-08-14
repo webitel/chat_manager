@@ -258,7 +258,7 @@ func (c *session) backup() {
 	var textValue string // remove
 	if login := c.login; login != nil {
 		if data, _ := login.backup(); len(data) != 0 {
-			textValue = binaryText.EncodeToString(data)
+			textValue = c.backupData(context.Background(), data)
 		}
 	}
 	// PERFORM:
@@ -278,7 +278,7 @@ func (c *session) backup() {
 func (c *session) restore() error {
 	profile := c.App.Gateway.GetMetadata()
 	if text, _ := profile[optionSessionAuth]; text != "" {
-		data, err := binaryText.DecodeString(text)
+		data, err := c.restoreData(context.Background(), text)
 		if err != nil {
 			return err
 		}
@@ -345,7 +345,7 @@ func (c *session) connect() error {
 func (c *session) runtime(ctx context.Context) error {
 
 	// c.login.restore()
-	c.App.restore()
+	_ = c.App.restore()
 	// FIXME: To avoid users.getUsers call twice
 	// we will get a sleep for a while to give a chance
 	// to cache session user while subscribing for updates on startup
@@ -503,7 +503,7 @@ func (c *session) saveSession(ctx context.Context, drop bool) error {
 	c.sync.Unlock()
 	reset := "" // NOTE: len(data) == 0; drop == true
 	if !drop && len(data) != 0 {
-		reset = binaryText.EncodeToString(data)
+		reset = c.backupData(ctx, data)
 	}
 	return c.App.Gateway.SetMetadata(
 		ctx, map[string]string{
@@ -544,11 +544,13 @@ func (c *session) LoadSession(ctx context.Context) (data []byte, err error) {
 	// }
 	profile := c.App.Gateway.Bot.GetMetadata()
 	text, _ := profile[optionSessionData]
-	data, err = binaryText.DecodeString(text)
-	if err == nil {
-		c.data = data // cache
+	data, err = c.restoreData(ctx, text)
+	if err != nil {
+		return data, err
 	}
-	return // data, err
+	// OK ; +cache
+	c.data = data
+	return data, nil
 }
 
 func (c *session) StoreSession(ctx context.Context, data []byte) error {

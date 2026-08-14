@@ -14,6 +14,7 @@ import (
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/app"
 	"github.com/webitel/chat_manager/bot"
+	"github.com/webitel/crypto/cryptostore/schema"
 
 	dbl "github.com/webitel/chat_manager/store/database"
 	"github.com/webitel/chat_manager/store/postgres"
@@ -230,7 +231,7 @@ func (s *pgsqlBotStore) Delete(req *app.DeleteOptions) (int64, error) {
 	// 	// UPDATE SET enabled = false
 	// }
 
-	delete := psql.Delete("chat.bot") // postgres.PGSQL
+	delete := psql.Delete(schemaTableChatGate + " bot") // alias
 
 	paramIDs := pgtype.Int8Array{}
 	err := paramIDs.Set(req.ID)
@@ -386,6 +387,8 @@ func nullChatUpdates(src *bot.ChatUpdates) *bot.ChatUpdates {
 	return src
 }
 
+const schemaTableChatGate = "chat.bot"
+
 func createBotRequest(req *app.CreateOptions, obj *bot.Bot) (stmtQ SelectStmt, params params, err error) {
 
 	deref := app.SearchOptions{
@@ -401,12 +404,12 @@ func createBotRequest(req *app.CreateOptions, obj *bot.Bot) (stmtQ SelectStmt, p
 	}
 
 	stmtQ = stmtQ.
-		Prefix("WITH created AS (" +
-			"INSERT INTO chat.bot (dc, uri, name, flow_id, enabled, updates, provider, metadata, created_at, created_by, updated_at, updated_by)" +
+		Prefix(fmt.Sprintf("WITH created AS (" +
+			"INSERT INTO %s AS bot (dc, uri, name, flow_id, enabled, updates, provider, metadata, created_at, created_by, updated_at, updated_by)" +
 			" VALUES (:dc, :uri, :name, :flow_id, :enabled, :updates, :provider, :metadata, :created_at, :created_by, :created_at, :created_by)" +
 			" RETURNING bot.*" +
-			")",
-		).
+			")", schemaTableChatGate,
+		)).
 		From("created bot")
 
 	params["dc"] = obj.GetDc().GetId()
@@ -422,7 +425,7 @@ func createBotRequest(req *app.CreateOptions, obj *bot.Bot) (stmtQ SelectStmt, p
 		nullChatUpdates(obj.GetUpdates()),
 	))
 	params.set("provider", obj.GetProvider())
-	params.set("metadata", dbl.NullJSONBytes(
+	params.set("metadata", gatewayMetadataValue(
 		obj.GetMetadata(),
 	))
 	params.set("created_by", obj.GetCreatedBy().GetId())
@@ -437,7 +440,7 @@ func searchBotRequest(req *app.SearchOptions) (stmtQ SelectStmt, params params, 
 
 	// ----- FROM -----
 	params = map[string]interface{}{}
-	stmtQ = psql.Select().From("chat.bot")
+	stmtQ = psql.Select().From(schemaTableChatGate + " bot") // alias
 	// ----- REALM -----
 	if dc := req.Creds.GetDc(); dc != 0 {
 		params.set("dc", dc)
@@ -801,7 +804,7 @@ func searchBotResults(rows *sql.Rows, limit int) ([]*bot.Bot, error) {
 			}
 		case "metadata":
 			row[i] = func() interface{} {
-				return dbl.ScanJSONBytes(&obj.Metadata) // *map[string]string
+				return decryptJSONB(&obj.Metadata, schemaTableChatGate, "metadata") // *map[string]string
 			}
 		case "created_at":
 			row[i] = func() interface{} {
@@ -882,7 +885,7 @@ func searchBotResults(rows *sql.Rows, limit int) ([]*bot.Bot, error) {
 func updateBotRequest(req *app.UpdateOptions, set *bot.Bot) (stmt SelectStmt, params params, err error) {
 
 	// UPDATE
-	update := psql.Update("chat.bot")
+	update := psql.Update(schemaTableChatGate + " bot")
 
 	params = map[string]interface{}{
 		"dc": req.Creds.GetDc(),
@@ -941,7 +944,7 @@ func updateBotRequest(req *app.UpdateOptions, set *bot.Bot) (stmt SelectStmt, pa
 			)
 			update = update.Set("updates", dbl.Expr(":updates"))
 		case "metadata":
-			params.set("metadata", dbl.NullJSONBytes(
+			params.set("metadata", gatewayMetadataValue(
 				set.GetMetadata(),
 			))
 			update = update.Set("metadata", dbl.Expr(":metadata"))
@@ -1058,6 +1061,40 @@ func postgresErrorT(err *pgconn.PgError) error {
 	return err
 }
 
+func gatewayMetadataValue(md map[string]string) []byte {
+	
+	const table, column = schemaTableChatGate, "metadata"
+	
+	jsonb := dbl.NullJSONBytes(md)
+	record := schema.Record{
+		column: jsonb,
+	}
+
+	codec := Crypto().Unit(table)
+	err := codec.EncodeRecords(
+		context.Background(),
+		[]schema.Record{record},
+	)
+	if err != nil {
+		// failed to encrypt sensitive data
+		// will retry on next time update ..
+		args := []any{
+			"column", strings.Join(
+				[]string{table, column}, ".",
+			),
+			"err", err,
+		}
+		slog.Warn(
+			"Failed to encrypt sensitive data ; Keeping it plain until next data update",
+			args...,
+		)
+		return jsonb // plaintext
+		// panic(fmt.Errorf("cryptostore/schema: encrypt %s.%s; %w", table, column, err))
+	}
+	jsonb = record[column].([]byte)
+	return jsonb // encrypted
+}
+
 func ScanRefer(dst **bot.Refer) dbl.ScanFunc {
 	return func(src interface{}) error {
 		if src == nil {
@@ -1089,7 +1126,7 @@ func ScanRefer(dst **bot.Refer) dbl.ScanFunc {
 func (repo *sqlxRepository) GetChatBotByID(ctx context.Context, botId int64) (*ChatBot, error) {
 	result := &ChatBot{}
 
-	query := `
+	query := fmt.Sprintf(`
 		SELECT
 			b.id,
 			b.dc,
@@ -1100,10 +1137,12 @@ func (repo *sqlxRepository) GetChatBotByID(ctx context.Context, botId int64) (*C
 			b.created_at,
 			b.updated_at
 		FROM
-			chat.bot b
+			%s b
 		WHERE
 			b.id = $1 -- :bot_id;
-	`
+	`,
+		schemaTableChatGate,
+	)
 
 	err := repo.db.GetContext(ctx, result, query, botId)
 	if err != nil {

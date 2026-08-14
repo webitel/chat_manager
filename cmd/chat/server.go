@@ -162,7 +162,7 @@ func Run(ctx *cli.Context) error {
 		postgres.WithConnMaxLifetime(ctx.Duration("db-conn-max-lifetime")),
 	}
 
-	dbo, err := OpenDB(stdlog, ctx.String("db-dsn"), dbopts...)
+	dbo, err := postgres.OpenDB(stdlog, ctx.String("db-dsn"), dbopts...)
 	if err != nil {
 		log.FataLog(stdlog,
 			"[--db-dsn] Invalid DSN String",

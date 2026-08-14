@@ -257,6 +257,11 @@ func Run(ctx *cli.Context) error {
 	// }
 
 	// configure
+	
+	// failfast: load cryptostore/schema.Codec from environment
+	if err = sqlxrepo.CryptoInit(); err != nil {
+		return err
+	}
 	store := sqlxrepo.NewBotStore(stdlog, dbo.DB)
 	auditor := aud.NewClient(broker.DefaultBroker, audProto.NewConfigService("logger", sender))
 	fileService := pbstorage.NewFileService("storage", sender)
