@@ -966,12 +966,19 @@ func selectChatThread(req searchChatArgs, params params) (cte sq.SelectBuilder, 
 		JoinClause( // host
 			"LEFT JOIN chat.conversation_node h ON h.conversation_id = c.id",
 		).
-		// Where(
-		// 	"c.domain_id = :pdc",
-		// ).
+		JoinClause(CompactSQL(`
+			left join lateral (
+				select m.created_at as date
+				from chat.message m
+				where m.conversation_id = c.id
+				order by m.id desc
+				limit 1
+			) top on true
+		`)).
 		OrderBy(
 			"c.closed_at NOTNULL", // ONLINE FIRST
-			"c.created_at DESC",   // NEWest..to..OLDest
+			"coalesce(c.closed_at, top.date, c.created_at) desc",
+			"c.id desc",
 		).
 		Limit(
 			64,
