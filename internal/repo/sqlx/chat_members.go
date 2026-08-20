@@ -394,13 +394,23 @@ func selectChatQuery(ctx *SELECT, req *app.SearchOptions) (plan dataFetch[*api.C
 			if _, ok := cols[column]; ok {
 				return false // duplicate; ignore
 			}
+
 			expr := fmt.Sprintf(
-				`LEFT JOIN LATERAL (SELECT %[1]s.id, %[1]s.strategy, %[1]s.name
-							FROM call_center.cc_member_attempt_history m
-								LEFT JOIN call_center.cc_queue %[1]s ON m.queue_id = %[1]s.id
-							WHERE m.member_call_id = %[2]s.thread_id::::varchar
-							ORDER BY %[2]s."join" desc
-							LIMIT 1) %[3]s ON true`,
+				`LEFT JOIN LATERAL (
+            		SELECT %[1]s.id, %[1]s.strategy, %[1]s.name
+              		FROM (
+                		SELECT m.queue_id
+                  		FROM call_center.cc_member_attempt m
+                    	WHERE m.member_call_id = %[2]s.thread_id::::varchar and m.channel = 'chat'
+                     	UNION ALL
+                      	SELECT mh.queue_id
+                       	FROM call_center.cc_member_attempt_history mh
+                        WHERE mh.member_call_id = %[2]s.thread_id::::varchar and mh.channel = 'chat'
+                        LIMIT 1
+                    ) att
+                    LEFT JOIN call_center.cc_queue %[1]s ON att.queue_id = %[1]s.id
+                    order by %[2]s."join" desc
+                ) %[3]s ON true`,
 				as, left, column,
 			)
 			ctx.Query = ctx.Query.JoinClause(expr)
