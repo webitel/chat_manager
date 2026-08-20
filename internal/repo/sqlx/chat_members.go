@@ -331,29 +331,30 @@ func selectChatQuery(ctx *SELECT, req *app.SearchOptions) (plan dataFetch[*api.C
 			_, _ = joinPeerUser()
 			_, _ = joinPeerContact()
 			expr := CompactSQL(fmt.Sprintf(`LEFT JOIN LATERAL
-	(
-		SELECT
-		--%[1]s.user_id id
-			coalesce(
-		--- external:id ---
-			%[4]s.external_id
-		--- internal:id ---
-		, %[1]s.user_id::::text
-		) id
-		, %[1]s.type
-		, coalesce(
-		--- flow:scheme ---
-			%[2]s.name::::text
-		--- user:agent ---
-		, %[3]s.chat_name
-		, %[3]s.name
-		, %[3]s.username::::text
-		--- contact:ext ---
-		, %[4]s.name
-		--- unknown ---
-		, '[deleted]'
-		) "name"
-	) peer ON true`,
+			(
+				SELECT
+					coalesce(
+				--- external:id ---
+					%[4]s.external_id
+				--- internal:id ---
+				, %[1]s.user_id::::text
+					) id
+				, %[1]s.type
+				, coalesce(
+				--- flow:scheme ---
+					%[2]s.name::::text
+				--- user:agent ---
+				, %[3]s.chat_name
+				, %[3]s.name
+				, %[3]s.username::::text
+				--- contact:ext ---
+				, nullif(%[4]s.name, 'noname')
+				--- fallback: chat title ---
+				, %[1]s.title
+				--- unknown ---
+				, '[deleted]'
+				) "name"
+			) peer ON true`,
 				left,
 				aliasPeerBot,
 				aliasPeerUser,
@@ -362,7 +363,7 @@ func selectChatQuery(ctx *SELECT, req *app.SearchOptions) (plan dataFetch[*api.C
 			ctx.Query = ctx.Query.JoinClause(expr)
 			join["peer"] = sq.Expr(expr)
 
-			expr = "(peer)" // + alias
+			expr = "(peer)"
 			ctx.Query = ctx.Query.Column(expr)
 			cols[alias] = sq.Expr(expr)
 
