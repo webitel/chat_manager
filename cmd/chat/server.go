@@ -248,7 +248,6 @@ func Run(ctx *cli.Context) error {
 			authN.ClientCache(authN.NewLru(4096)),
 		)),
 		AgentChatServiceConversationStore(store),
-		AgentChatServiceContactClient(contactsClient),
 	)
 
 	if err := pb2.RegisterAgentChatServiceHandler(

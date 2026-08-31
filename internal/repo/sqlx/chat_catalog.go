@@ -15,6 +15,7 @@ import (
 	"github.com/webitel/chat_manager/auth"
 	dbx "github.com/webitel/chat_manager/store/database"
 	"github.com/webitel/chat_manager/store/postgres"
+	"github.com/webitel/webitel-go-kit/pkg/etag"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -1756,3 +1757,92 @@ m -- member
 `,
 	)
 )
+
+// fetchContactPeerRow decodes a contact row of (id, type, name, ver).
+func fetchContactPeerRow(value **api.Peer) any {
+	return DecodeText(func(src []byte) error {
+
+		res := *(value) // cache
+		*(value) = nil  // NULLify
+
+		if len(src) == 0 {
+			return nil // NULL
+		}
+
+		if res == nil {
+			// ALLOC
+			res = new(api.Peer)
+		}
+
+		var (
+			ok  bool // false
+			str pgtype.Text
+			ver pgtype.Int4
+			row = []TextDecoder{
+				DecodeText(func(src []byte) error {
+					err := str.DecodeText(nil, src)
+					if err != nil {
+						return err
+					}
+					res.Id = str.String
+					ok = ok || (str.String != "" && str.String != "0")
+					return nil
+				}),
+				DecodeText(func(src []byte) error {
+					err := str.DecodeText(nil, src)
+					if err != nil {
+						return err
+					}
+					res.Type = str.String
+					ok = ok || (str.String != "" && str.String != "unknown")
+					return nil
+				}),
+				DecodeText(func(src []byte) error {
+					err := str.DecodeText(nil, src)
+					if err != nil {
+						return err
+					}
+					res.Name = str.String
+					ok = ok || (str.String != "" && str.String != "[deleted]")
+					return nil
+				}),
+				DecodeText(func(src []byte) error {
+					return ver.DecodeText(nil, src)
+				}),
+			}
+			raw = pgtype.NewCompositeTextScanner(nil, src)
+		)
+
+		var err error
+		for _, col := range row {
+
+			raw.ScanDecoder(col)
+
+			err = raw.Err()
+			if err != nil {
+				return err
+			}
+		}
+
+		if ok {
+			res.Etag = contactEtag(res.GetId(), ver)
+			*(value) = res
+		}
+
+		return nil
+	})
+}
+
+// contactEtag encodes the contact etag; an unusable row yields no etag
+// instead of failing the whole listing.
+func contactEtag(id string, ver pgtype.Int4) string {
+	oid, err := strconv.ParseInt(id, 10, 64)
+	if err != nil || ver.Status != pgtype.Present {
+		return ""
+	}
+	tag, err := etag.EncodeEtag(etag.EtagContact, oid, ver.Int)
+	if err != nil {
+		return ""
+	}
+	return tag
+}
