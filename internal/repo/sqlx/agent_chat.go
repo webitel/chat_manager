@@ -420,7 +420,7 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
 				return postgres.BoolValue{Value: &node.UnprocessedClose}
 			})
 		case "contact":
-			ctx.Query = ctx.Query.Column(CompactSQL(`(SELECT ROW (ct.id, null, ct.common_name)
+			ctx.Query = ctx.Query.Column(CompactSQL(`(SELECT ROW (ct.id, null, ct.common_name, ct.ver)
                        FROM contacts.contact_imclient im
                                 LEFT JOIN contacts.contact ct ON im.contact_id = ct.id
                        WHERE im.user_id = ANY
@@ -428,7 +428,7 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
                        LIMIT 1) contact`),
 			)
 			plan = append(plan, func(node *messages.AgentChat) any {
-				return fetchPeerRow(&node.Contact)
+				return fetchContactPeerRow(&node.Contact)
 			})
 		case "queue":
 			joinQueue()

@@ -64,6 +64,9 @@ message Peer {
   
   // Contact display **name**.
   string name = 3;
+
+  // Contact source identifier.
+  string etag = 4;
 }
 
 // InputPeer identity.

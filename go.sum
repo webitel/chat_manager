@@ -570,6 +570,8 @@ github.com/webitel/webitel-go-kit v0.0.21-0.20241119150325-b21de048f596 h1:bv4/P
 github.com/webitel/webitel-go-kit v0.0.21-0.20241119150325-b21de048f596/go.mod h1:CMnTRWZ9NoMAPdDyj9d19O3tC/kYJmub6qEDVPV59FM=
 github.com/webitel/webitel-go-kit/infra/httpproxy v0.0.0-20260707115612-427dabf84692 h1:3D3EXyPbZSEgtVUQ0k6GY7reZooJ8o7AaNm2Z66diuc=
 github.com/webitel/webitel-go-kit/infra/httpproxy v0.0.0-20260707115612-427dabf84692/go.mod h1:lT5enykvkI6K5Y+OKs8vKwNeUuPDBGlGO16msti72Fg=
+github.com/webitel/webitel-go-kit/pkg/etag v0.2.1-0.20260831105408-579ee14b4865 h1:afwscpskeuOn0DcHMsunFvukACHgrb5EU1EHXRL6jLY=
+github.com/webitel/webitel-go-kit/pkg/etag v0.2.1-0.20260831105408-579ee14b4865/go.mod h1:jECs1S0f31Wjc0ziRFnqoHLZW659QVsz1UFcxgS+8CE=
 github.com/xanzy/go-gitlab v0.35.1/go.mod h1:sPLojNBn68fMUWSxIJtdVVIP8uSBYqesTfDUseX11Ug=
 github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f/go.mod h1:N2zxlSyiKSe5eX1tZViRH5QA0qijqEDrYZiPEAiq3wU=
 github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415/go.mod h1:GwrjFmJcFw6At/Gs6z4yjiIwzuJ1/+UwLxMQDVQXShQ=

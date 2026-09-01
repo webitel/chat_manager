@@ -31,6 +31,7 @@ require (
 	github.com/webitel/protos v1.0.1-0.20240401102913-c962ca253de4
 	github.com/webitel/webitel-go-kit v0.0.21-0.20241119150325-b21de048f596
 	github.com/webitel/webitel-go-kit/infra/httpproxy v0.0.0-20260707115612-427dabf84692
+	github.com/webitel/webitel-go-kit/pkg/etag v0.2.1-0.20260831105408-579ee14b4865
 	github.com/yuin/goldmark v1.4.13
 	go.opentelemetry.io/contrib/bridges/otelslog v0.3.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.57.0
