@@ -331,29 +331,30 @@ func selectChatQuery(ctx *SELECT, req *app.SearchOptions) (plan dataFetch[*api.C
 			_, _ = joinPeerUser()
 			_, _ = joinPeerContact()
 			expr := CompactSQL(fmt.Sprintf(`LEFT JOIN LATERAL
-	(
-		SELECT
-		--%[1]s.user_id id
-			coalesce(
-		--- external:id ---
-			%[4]s.external_id
-		--- internal:id ---
-		, %[1]s.user_id::::text
-		) id
-		, %[1]s.type
-		, coalesce(
-		--- flow:scheme ---
-			%[2]s.name::::text
-		--- user:agent ---
-		, %[3]s.chat_name
-		, %[3]s.name
-		, %[3]s.username::::text
-		--- contact:ext ---
-		, %[4]s.name
-		--- unknown ---
-		, '[deleted]'
-		) "name"
-	) peer ON true`,
+			(
+				SELECT
+					coalesce(
+				--- external:id ---
+					%[4]s.external_id
+				--- internal:id ---
+				, %[1]s.user_id::::text
+					) id
+				, %[1]s.type
+				, coalesce(
+				--- flow:scheme ---
+					%[2]s.name::::text
+				--- user:agent ---
+				, %[3]s.chat_name
+				, %[3]s.name
+				, %[3]s.username::::text
+				--- contact:ext ---
+				, nullif(%[4]s.name, 'noname')
+				--- fallback: chat title ---
+				, %[1]s.title
+				--- unknown ---
+				, '[deleted]'
+				) "name"
+			) peer ON true`,
 				left,
 				aliasPeerBot,
 				aliasPeerUser,
@@ -362,7 +363,7 @@ func selectChatQuery(ctx *SELECT, req *app.SearchOptions) (plan dataFetch[*api.C
 			ctx.Query = ctx.Query.JoinClause(expr)
 			join["peer"] = sq.Expr(expr)
 
-			expr = "(peer)" // + alias
+			expr = "(peer)"
 			ctx.Query = ctx.Query.Column(expr)
 			cols[alias] = sq.Expr(expr)
 
@@ -393,13 +394,23 @@ func selectChatQuery(ctx *SELECT, req *app.SearchOptions) (plan dataFetch[*api.C
 			if _, ok := cols[column]; ok {
 				return false // duplicate; ignore
 			}
+
 			expr := fmt.Sprintf(
-				`LEFT JOIN LATERAL (SELECT %[1]s.id, %[1]s.strategy, %[1]s.name
-							FROM call_center.cc_member_attempt_history m
-								LEFT JOIN call_center.cc_queue %[1]s ON m.queue_id = %[1]s.id
-							WHERE m.member_call_id = %[2]s.thread_id::::varchar
-							ORDER BY %[2]s."join" desc
-							LIMIT 1) %[3]s ON true`,
+				`LEFT JOIN LATERAL (
+            		SELECT %[1]s.id, %[1]s.strategy, %[1]s.name
+              		FROM (
+                		SELECT m.queue_id
+                  		FROM call_center.cc_member_attempt m
+                    	WHERE m.member_call_id = %[2]s.thread_id::::varchar and m.channel = 'chat'
+                     	UNION ALL
+                      	SELECT mh.queue_id
+                       	FROM call_center.cc_member_attempt_history mh
+                        WHERE mh.member_call_id = %[2]s.thread_id::::varchar and mh.channel = 'chat'
+                        LIMIT 1
+                    ) att
+                    LEFT JOIN call_center.cc_queue %[1]s ON att.queue_id = %[1]s.id
+                    order by %[2]s."join" desc
+                ) %[3]s ON true`,
 				as, left, column,
 			)
 			ctx.Query = ctx.Query.JoinClause(expr)
@@ -911,6 +922,19 @@ func selectChatMember(req searchChatArgs, params params) (cte chatMemberQ, err e
 		}
 		cte.JOIN.Kind = join
 	}
+	// chat( rated: bool ) -- WTEL-9850
+	if req.Rated != nil {
+		exists := "EXISTS"
+		if !(*(req.Rated)) {
+			exists = "NOT EXISTS"
+		}
+		cond := fmt.Sprintf(
+			"%s (SELECT 1 FROM call_center.cc_audit_rate WHERE conversation_id = %s.conversation_id)",
+			exists, left,
+		)
+		cte.member.query = cte.member.query.Where(cond)
+		cte.invite.query = cte.invite.query.Where(cond)
+	}
 
 	return
 }
@@ -942,12 +966,19 @@ func selectChatThread(req searchChatArgs, params params) (cte sq.SelectBuilder, 
 		JoinClause( // host
 			"LEFT JOIN chat.conversation_node h ON h.conversation_id = c.id",
 		).
-		// Where(
-		// 	"c.domain_id = :pdc",
-		// ).
+		JoinClause(CompactSQL(`
+			left join lateral (
+				select m.created_at as date
+				from chat.message m
+				where m.conversation_id = c.id
+				order by m.id desc
+				limit 1
+			) top on true
+		`)).
 		OrderBy(
 			"c.closed_at NOTNULL", // ONLINE FIRST
-			"c.created_at DESC",   // NEWest..to..OLDest
+			"coalesce(c.closed_at, top.date, c.created_at) desc",
+			"c.id desc",
 		).
 		Limit(
 			64,
@@ -990,6 +1021,14 @@ func selectChatThread(req searchChatArgs, params params) (cte sq.SelectBuilder, 
 		if !(*vs) { // NOT ?
 			// NOTE: Allways JOINED !
 			cte = cte.Where("false") // EXCLUDE
+		}
+	}
+	// chat( rated: bool ) -- WTEL-9850
+	if vs := req.Rated; vs != nil {
+		if *(vs) {
+			cte = cte.Where("EXISTS (SELECT 1 FROM call_center.cc_audit_rate WHERE conversation_id = c.id)")
+		} else {
+			cte = cte.Where("NOT EXISTS (SELECT 1 FROM call_center.cc_audit_rate WHERE conversation_id = c.id)")
 		}
 	}
 

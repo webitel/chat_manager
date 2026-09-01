@@ -213,6 +213,7 @@ func (srv *Catalog) GetDialogs(ctx context.Context, req *pb.ChatDialogsRequest, 
 					"closed",
 					"started",
 					"message",
+					"rate_id",
 				},
 				// extra
 				[]string{
@@ -251,6 +252,10 @@ func (srv *Catalog) GetDialogs(ctx context.Context, req *pb.ChatDialogsRequest, 
 	if vs := req.Online; vs != nil {
 		online := vs.GetValue()
 		search.FilterAND("online", &online)
+	}
+	if vs := req.Rated; vs != nil {
+		rated := vs.GetValue()
+		search.FilterAND("rated", &rated)
 	}
 	if vs := req.Group; len(vs) > 0 {
 		if delete(vs, ""); len(vs) > 0 {
@@ -474,12 +479,12 @@ func (srv *Catalog) GetHistory(ctx context.Context, req *pb.ChatMessagesRequest,
 					"kind",
 					"text",
 					"file",
+					"context", // message variables, e.g.: file_policy_fail marker
 				},
 				// extra
 				[]string{
 					"chat",   // chat dialog, that this message belongs to ..
 					"sender", // chat member, on behalf of the "chat" (dialog)
-					"context",
 				},
 			),
 		),
@@ -657,12 +662,12 @@ func (srv *Catalog) GetUpdates(ctx context.Context, req *pb.ChatMessagesRequest,
 					"kind",
 					"text",
 					"file",
+					"context", // message variables, e.g.: file_policy_fail marker
 				},
 				// extra
 				[]string{
 					"chat",   // chat dialog, that this message belongs to ..
 					"sender", // chat member, on behalf of the "chat" (dialog)
-					"context",
 				},
 			),
 		),

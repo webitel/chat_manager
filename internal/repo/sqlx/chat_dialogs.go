@@ -41,6 +41,11 @@ type searchChatArgs struct {
 	// <true> -- IS|WAS connected; ( join: + )
 	// <false> -- NEVER connected; ( join: 0 )
 	Joined *bool
+	// Rated dialogs ONLY that have [not] been rated (WTEL-9850).
+	// <nil> -- any; whatever
+	// <true> -- HAS an audit rate
+	// <false> -- has NO audit rate
+	Rated *bool
 
 	// Chat (thread|member) IDs
 	// Combined
@@ -195,6 +200,30 @@ func searchChatRequest(req *app.SearchOptions) (args searchChatArgs, err error) 
 					err = errors.BadRequest(
 						"chat.query.joined.input",
 						"chat( joined: %v ) convert %[1]T into bool",
+						input,
+					)
+					return // err
+				}
+			}
+		case "rated":
+			{
+				switch data := input.(type) {
+				case *wrapperspb.BoolValue:
+					{
+						if data == nil {
+							break // omitted
+						}
+						is := data.GetValue()
+						args.Rated = &is
+					}
+				case *bool:
+					args.Rated = data
+				case bool:
+					args.Rated = &data
+				default:
+					err = errors.BadRequest(
+						"chat.query.rated.input",
+						"chat( rated: %v ) convert %[1]T into bool",
 						input,
 					)
 					return // err
@@ -458,15 +487,16 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 		},
 	}
 
+	// ALREADY PAGED ON THREAD CTE!
 	// [OFFSET|LIMIT]: paging
-	if size := req.GetSize(); size > 0 {
-		// OFFSET (page-1)*size -- omit same-sized previous page(s) from result
-		if page := req.GetPage(); page > 1 {
-			ctx.Query = ctx.Query.Offset((uint64)((page - 1) * size))
-		}
-		// LIMIT (size+1) -- to indicate whether there are more result entries
-		ctx.Query = ctx.Query.Limit((uint64)(size + 1))
-	}
+	// if size := req.GetSize(); size > 0 {
+	// 	// OFFSET (page-1)*size -- omit same-sized previous page(s) from result
+	// 	if page := req.GetPage(); page > 1 {
+	// 		ctx.Query = ctx.Query.Offset((uint64)((page - 1) * size))
+	// 	}
+	// 	// LIMIT (size+1) -- to indicate whether there are more result entries
+	// 	ctx.Query = ctx.Query.Limit((uint64)(size + 1))
+	// }
 	// Arguments
 	var (
 		// temporary
@@ -537,6 +567,21 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
                             ORDER BY m.created_at DESC
                             LIMIT 1) closed_cause ON true`,
 			))
+			return alias
+		}
+		rateAlias     string
+		joinAuditRate = func() string {
+			alias := rateAlias
+			if alias != "" {
+				return alias
+			}
+			// once
+			alias = "ar"
+			rateAlias = alias
+			ctx.Query = ctx.Query.JoinClause(CompactSQL(fmt.Sprintf(
+				` LEFT JOIN call_center.cc_audit_rate %s ON %s.conversation_id = %s.thread_id`,
+				alias, alias, left,
+			)))
 			return alias
 		}
 		needsProcessingAlias string
@@ -984,6 +1029,16 @@ func searchChatDialogsQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetch
 				)
 				plan = append(plan, func(node *api.Dialog) any {
 					return fetchQueueRow(&node.Queue)
+				})
+			}
+		case "rate_id":
+			{
+				ar := joinAuditRate()
+				ctx.Query = ctx.Query.Column(
+					ident(ar, "id"),
+				)
+				plan = append(plan, func(node *api.Dialog) any {
+					return postgres.Int8{Value: &node.RateId}
 				})
 			}
 

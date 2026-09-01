@@ -2409,7 +2409,9 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 
 	case "text":
 
-		text := sendMessage.Text
+		// blank, unless one of the candidates below has some non-whitespace text;
+		// so whitespace-only input is rejected the same way as empty input
+		text := ""
 		postback := sendMessage.Postback
 		// coalesce(...)
 		for _, vs := range []string{
@@ -2425,10 +2427,15 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		}
 
 		if text == "" {
-			return nil, errors.BadRequest(
-				"chat.send.message.text.missing",
-				"send: message text is missing",
-			)
+			// allow empty text for the file_policy_fail placeholder marker so the
+			// FE can render its own stub (no template configured on the gateway)
+			vars := sendMessage.GetVariables()
+			if vars["from"] != "bot" || vars["template"] != FilePolicyFailType {
+				return nil, errors.BadRequest(
+					"chat.send.message.text.missing",
+					"send: message text is missing",
+				)
+			}
 		}
 		// reset: normalized !
 		sendMessage.Text = text
@@ -3168,8 +3175,19 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, sender *app.Ch
 				}
 				channelID := member.Chat.ID
 				vars := notify.GetVariables()
-				if vars != nil && vars["from"] == "bot" && vars["template"] == FilePolicyFailType {
-					channelID = "" // hide channelId to mark system messages
+				var marker map[string]string
+				if vars["from"] == "bot" && vars["template"] == FilePolicyFailType {
+					if notify.Text == "" {
+						marker = map[string]string{
+							"from":     "bot",
+							"template": FilePolicyFailType,
+						}
+						channelID = vars["chat"]
+					} else {
+						// templated text: keep the pre-marker payload shape —
+						// a bot message with hidden channelId, no variables
+						channelID = ""
+					}
 				}
 				notice := events.MessageEvent{
 					BaseEvent: events.BaseEvent{
@@ -3181,6 +3199,7 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, sender *app.Ch
 						ChannelID: channelID,
 						Type:      notify.Type,
 						Text:      notify.Text,
+						Variables: marker,
 						// File:   notify.File,
 						CreatedAt: notify.CreatedAt, // NEW
 						UpdatedAt: notify.UpdatedAt, // EDITED
@@ -3242,6 +3261,13 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, sender *app.Ch
 			// skip: chatflow is not supported for system-level messages
 		default: // TO: webitel.chat.bot (external)
 			if member == sender {
+				continue
+			}
+			// empty-text bot service marker (e.g. file_policy_fail placeholder)
+			// is an FE-only signal; do not re-deliver to external chat providers
+			// because they reject empty text and break the webhook ACK chain
+			vars := notify.GetVariables()
+			if notify.Text == "" && vars["from"] == "bot" {
 				continue
 			}
 			err = c.eventRouter.SendMessageToGateway(sender, member, notify)

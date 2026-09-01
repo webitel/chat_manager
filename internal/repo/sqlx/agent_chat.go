@@ -71,7 +71,7 @@ func getAgentChatCounterQuery(args *agentChatArgs) (query sq.SelectBuilder, err 
 	query = postgres.PGSQL.
 		Select("COUNT(*)").
 		From("chat.channel ch").
-		InnerJoin(fmt.Sprintf("chat.conversation conv ON conv.id = ch.conversation_id AND conv.props ->> '%s' ISNULL", MeetingIDVariableName))	
+		InnerJoin(fmt.Sprintf("chat.conversation conv ON conv.id = ch.conversation_id AND conv.props ->> '%s' ISNULL", MeetingIDVariableName))
 	if args.AgentId >= 0 {
 		query = query.Where("ch.user_id = ?", args.AgentId).Where("ch.internal")
 	}
@@ -229,7 +229,11 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
 			})
 		case "gateway":
 			ctx.Query = ctx.Query.Column(
-				CompactSQL(`(SELECT ROW (via.id, via.provider, via.name)
+				CompactSQL(`(SELECT ROW (
+								via.id,
+								coalesce(via.provider, main.props->>'chat'),
+								coalesce(via.name, main.props->>'portal.client.app')
+							)
 							FROM chat.channel ext
 									 LEFT JOIN chat.bot via ON via.id::::text = ext.connection
 							WHERE ext.conversation_id = ` + ident(left, "id") + `
@@ -290,6 +294,7 @@ func constructAgentChatQuery(req *app.SearchOptions) (ctx *SELECT, plan dataFetc
                  LEFT JOIN LATERAL (SELECT m.file_id, m.file_size, m.file_type, m.file_name, m.file_url, false
                                     WHERE m.file_id NOTNULL OR m.file_url NOTNULL) file ON true
         WHERE m.conversation_id = ` + ident(left, "id") + `
+          AND (agent.closed_at ISNULL OR m.created_at <= agent.closed_at)
         ORDER BY m.id DESC
         LIMIT 1) `, // check malware  exists(select 1 from storage.files files where files.id = m.file_id and cast(files.malware->'found' as bool)
 			)
@@ -464,7 +469,9 @@ func selectAgentChatThread(args *agentChatArgs, params params) (cte sq.SelectBui
 		err = errors.BadRequest("sqlxrepo.agent_chat.select_agent_chat_thread.check_args.agent", "agent id required")
 		return
 	}
+
 	params.set("agent", args.AgentId)
+
 	if args.Timerange == nil || (args.Timerange.Since <= 0 && args.Timerange.Until <= 0) {
 		err = errors.BadRequest("sqlxrepo.agent_chat.select_agent_chat_thread.check_args.timerange", "time range required")
 		return

@@ -1065,7 +1065,7 @@ func (c *Gateway) Read(ctx context.Context, notify *Update) (err error) {
 			if chatId == "" {
 				chatId = channel.ChannelID
 			}
-			sendErr := c.SendServiceMessageByTemplate(ctx, FilePolicyFailType, chatId, nil)
+			sendErr := c.SendServiceMessageByTemplate(ctx, FilePolicyFailType, chatId, channel.ChannelID, nil)
 			if sendErr != nil {
 				return sendErr
 			}
@@ -1094,7 +1094,7 @@ func (c *Gateway) SendServiceMessage(ctx context.Context, text string, chatId st
 	return nil
 }
 
-func (c *Gateway) SendServiceMessageByTemplate(ctx context.Context, templateName string, chatId string, context any) error {
+func (c *Gateway) SendServiceMessageByTemplate(ctx context.Context, templateName string, chatId string, senderChatID string, context any) error {
 	if chatId == "" {
 		return fmt.Errorf("empty chat id")
 	}
@@ -1102,16 +1102,21 @@ func (c *Gateway) SendServiceMessageByTemplate(ctx context.Context, templateName
 	if err != nil {
 		return err
 	}
-	if text == "" {
+	if text == "" && templateName != FilePolicyFailType {
+		// file_policy_fail must always emit a marker so the FE can render its placeholder
 		return nil
 	}
+	vars := map[string]string{
+		"from":     "bot",
+		"template": templateName,
+	}
+	if senderChatID != "" {
+		vars["chat"] = senderChatID
+	}
 	msg := &chat.Message{
-		Type: "text",
-		Text: text,
-		Variables: map[string]string{
-			"from":     "bot",
-			"template": templateName,
-		},
+		Type:      "text",
+		Text:      text,
+		Variables: vars,
 	}
 
 	_, err = c.Internal.Client.SendServiceMessage(ctx, &chat.SendServiceMessageRequest{Message: msg, ChatId: chatId})

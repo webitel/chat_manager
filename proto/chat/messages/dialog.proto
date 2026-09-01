@@ -57,6 +57,8 @@ message Dialog {
   string closed_cause = 13;
   // OPTIONAL. Last dialog queue
   Peer queue = 14;
+  // Zero value means - NOT rated yet.
+  int64 rate_id = 15;
 
 }
 
@@ -102,6 +104,9 @@ message ChatDialogsRequest {
   
   // Dialogs ONLY that are currently [not] active( closed: ? ).
   google.protobuf.BoolValue online = 10;
+
+  // Dialogs ONLY that have [not] been rated.
+  google.protobuf.BoolValue rated = 14;
 
   // // Joined filters only those participants
   // // who have [not] been connected to the chat.

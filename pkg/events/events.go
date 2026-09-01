@@ -121,7 +121,8 @@ type Message struct {
 	Postback *Postback `json:"postback,omitempty"`
 
 	ReplyToMessageID int64 `json:"reply_to_message_id,omitempty"`
-	MessageForwarded       // embedded
+	Variables        map[string]string `json:"variables,omitempty"`
+	MessageForwarded // embedded
 }
 
 // MessageForwarded event arguments

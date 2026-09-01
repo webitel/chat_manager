@@ -269,7 +269,7 @@ func (c *Client) whatsAppRestoreAccounts() error {
 		}
 	)
 
-	for i := 0; i < len(data); i++ {
+	for i := range data {
 		if b = data[i]; b == delim {
 			grabID()
 			continue
@@ -882,8 +882,27 @@ func (c *Client) getSharedWhatsAppBusinessAccounts(userToken *oauth2.Token) ([]*
 	return c.fetchWhatsAppBusinessAccounts(context.TODO(), WABAID)
 }
 
-func (c *Client) fetchWhatsAppBusinessAccounts(ctx context.Context, WABAID []string) ([]*whatsapp.WhatsAppBusinessAccount, error) {
+func (c *Client) supportBatchRequests() bool {
+	v, err := ParseAPIVersion(c.Version)
+	if err != nil {
+		return false
+	}
 
+	return v.GreaterOrEqual(&RequireBatchAPIVersion)
+}
+
+var whatsAppBusinessAccountFields = strings.Join([]string{
+	"id", // default
+	"name",
+	"country",
+	"ownership_type",
+	"account_review_status",
+	"business_verification_status",
+	"subscribed_apps{whatsapp_business_api_data{id}}",
+	"phone_numbers{id,verified_name,display_phone_number,is_official_business_account,is_pin_enabled,messaging_limit_tier,account_mode,name_status,status}",
+}, ",")
+
+func (c *Client) fetchWhatsAppBusinessAccountsDeprecated(ctx context.Context, WABAID []string) ([]*whatsapp.WhatsAppBusinessAccount, error) {
 	n := len(WABAID)
 	if n == 0 {
 		return nil, nil
@@ -891,17 +910,8 @@ func (c *Client) fetchWhatsAppBusinessAccounts(ctx context.Context, WABAID []str
 
 	// return WABAID, nil
 	form := url.Values{
-		"ids": []string{strings.Join(WABAID, ",")},
-		"fields": []string{strings.Join([]string{
-			"id", // default
-			"name",
-			"country",
-			"ownership_type",
-			"account_review_status",
-			"business_verification_status",
-			"subscribed_apps{whatsapp_business_api_data{id}}",
-			"phone_numbers{id,verified_name,display_phone_number,is_official_business_account,is_pin_enabled,messaging_limit_tier,account_mode,name_status,status}",
-		}, ",")},
+		"ids":    []string{strings.Join(WABAID, ",")},
+		"fields": []string{whatsAppBusinessAccountFields},
 	}
 	accessToken := c.whatsApp.AccessToken
 	form = c.requestForm(form, accessToken)
@@ -1008,6 +1018,168 @@ func (c *Client) fetchWhatsAppBusinessAccounts(ctx context.Context, WABAID []str
 	return list, nil
 }
 
+func (c *Client) fetchWhatsAppBusinessAccounts(ctx context.Context, WABAID []string) ([]*whatsapp.WhatsAppBusinessAccount, error) {
+	if len(WABAID) == 0 {
+		return nil, nil
+	}
+
+	if c.supportBatchRequests() {
+		return c.fetchWhatsAppBusinessAccountsBatch(ctx, WABAID)
+	}
+
+	return c.fetchWhatsAppBusinessAccountsLegacy(ctx, WABAID)
+}
+
+func (c *Client) fetchWhatsAppBusinessAccountsLegacy(ctx context.Context, WABAID []string) ([]*whatsapp.WhatsAppBusinessAccount, error) {
+	accessToken := c.whatsApp.AccessToken
+
+	form := c.requestForm(url.Values{
+		"ids":    []string{strings.Join(WABAID, ",")},
+		"fields": []string{whatsAppBusinessAccountFields},
+	}, accessToken)
+	delete(form, graph.ParamAccessToken)
+
+	req, err := http.NewRequestWithContext(ctx,
+		http.MethodGet, "https://graph.facebook.com"+
+			path.Join("/", c.Version, "/")+
+			"?"+form.Encode(),
+		http.NoBody,
+	)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("Authorization", "Bearer "+accessToken)
+
+	res, err := c.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	raw, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	nodes := make(map[string]*whatsAppBusinessAccountNode, len(WABAID))
+	if err := decodeGraphRPC(raw, &nodes); err != nil {
+		return nil, err
+	}
+	return collectWABAAccounts(nodes, c.ClientID, c.whatsApp.SubscribedFields), nil
+}
+
+func (c *Client) fetchWhatsAppBusinessAccountsBatch(ctx context.Context, WABAID []string) ([]*whatsapp.WhatsAppBusinessAccount, error) {
+	accessToken := c.whatsApp.AccessToken
+
+	requests := make([]*SubRequest, len(WABAID))
+	for i, id := range WABAID {
+		relURL := id + "?fields=" + url.QueryEscape(whatsAppBusinessAccountFields)
+		requests[i] = NewSubRequest(http.MethodGet, relURL, "")
+	}
+
+	batchReq := NewBatchRequest(false, requests...)
+
+	version := MustPareGraphAPIVersion(c.Version)
+	var batcher Batcher = NewBatchClient(c.Client, &version)
+	responses, err := batcher.DoParallel(ctx, batchReq, accessToken)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(responses) != len(WABAID) {
+		return nil, microerr.InternalServerError(
+			"facebook.whatsapp.batch.mismatch",
+			"expected %d sub-responses, received %d",
+			len(WABAID), len(responses),
+		)
+	}
+
+	nodes := make(map[string]*whatsAppBusinessAccountNode, len(WABAID))
+
+	for i, sub := range responses {
+		id := WABAID[i]
+
+		if sub.Code != http.StatusOK {
+			return nil, microerr.InternalServerError(
+				"facebook.whatsapp.batch.sub_status",
+				"WABA %s: meta API sub-response status %d; body: %s",
+				id, sub.Code, sub.Body,
+			)
+		}
+
+		var node whatsAppBusinessAccountNode
+		if err := decodeGraphRPC([]byte(sub.Body), &node); err != nil {
+			return nil, err
+		}
+
+		nodes[id] = &node
+	}
+
+	return collectWABAAccounts(nodes, c.ClientID, c.whatsApp.SubscribedFields), nil
+}
+
+type (
+	whatsAppPhoneNumbersEdge struct {
+		Data          []*whatsapp.WhatsAppBusinessAccountToNumberCurrentStatus `json:"data,omitempty"`
+		*graph.Paging `json:"paging,omitempty"`
+	}
+	whatsAppBusinessApiData struct {
+		ID   string `json:"id"`
+		Name string `json:"name,omitempty"`
+		Link string `json:"link,omitempty"`
+	}
+	whatsAppApplication struct {
+		whatsAppBusinessApiData `json:"whatsapp_business_api_data"`
+	}
+	whatsAppSubscribedAppsEdge struct {
+		Data []whatsAppApplication `json:"data,omitempty"`
+	}
+	whatsAppBusinessAccountNode struct {
+		PhoneNumbers                      *whatsAppPhoneNumbersEdge   `json:"phone_numbers,omitempty"`
+		SubscribedApps                    *whatsAppSubscribedAppsEdge `json:"subscribed_apps,omitempty"`
+		*whatsapp.WhatsAppBusinessAccount                             // embedded
+	}
+)
+
+func decodeGraphRPC(raw []byte, target any) error {
+	var errWrap struct {
+		Error *graph.Error `json:"error,omitempty"`
+	}
+	if err := json.Unmarshal(raw, &errWrap); err != nil {
+		return err
+	}
+	if errWrap.Error != nil {
+		return errWrap.Error
+	}
+	return json.Unmarshal(raw, target)
+}
+
+func collectWABAAccounts(nodes map[string]*whatsAppBusinessAccountNode, clientID string, subscribedFields []string) []*whatsapp.WhatsAppBusinessAccount {
+	list := make([]*whatsapp.WhatsAppBusinessAccount, 0, len(nodes))
+
+	for _, item := range nodes {
+		if item == nil || item.WhatsAppBusinessAccount == nil {
+			continue
+		}
+		account := item.WhatsAppBusinessAccount
+		if item.PhoneNumbers != nil {
+			account.PhoneNumbers = item.PhoneNumbers.Data
+		}
+		account.SubscribedFields = nil
+		if apps := item.SubscribedApps; apps != nil {
+			for _, app := range apps.Data {
+				if app.ID == clientID {
+					account.SubscribedFields = subscribedFields
+					break
+				}
+			}
+		}
+		list = append(list, account)
+	}
+
+	return list
+}
+
 func (c *Client) SetupWhatsAppBusinessAccounts(rsp http.ResponseWriter, req *http.Request) {
 
 	// USER_ACCESS_TOKEN
@@ -1023,14 +1195,6 @@ func (c *Client) SetupWhatsAppBusinessAccounts(rsp http.ResponseWriter, req *htt
 
 	if err != nil {
 		// http.Error(rsp, err.Error(), http.StatusBadGateway)
-		_ = writeCompleteOAuthHTML(rsp, err)
-		return
-	}
-
-	// _, err = c.subscribeWhatsAppBusinessAccounts(req.Context(), accounts)
-
-	if err != nil {
-		// _ = c.unsubscribeWhatsAppBusinessAccounts(req.Context(), accounts) // FIXME
 		_ = writeCompleteOAuthHTML(rsp, err)
 		return
 	}
@@ -1558,7 +1722,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 
 			if err != nil {
 				if errors.Is(err, bot.FileUploadPolicyError) { // if file policy error occured - send system warning message
-					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
+					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, channel.ChannelID, nil)
 				}
 				c.Gateway.Log.Error("whatsApp.onMediaMessage",
 					slog.Any("error", err),
@@ -1585,7 +1749,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 
 			if err != nil {
 				if errors.Is(err, bot.FileUploadPolicyError) { // if file policy error occured - send system warning message
-					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
+					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, channel.ChannelID, nil)
 				}
 				c.Gateway.Log.Error("whatsApp.onMediaMessage",
 					slog.Any("error", err),
@@ -1613,7 +1777,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 
 			if err != nil {
 				if errors.Is(err, bot.FileUploadPolicyError) { // if file policy error occured - send system warning message
-					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
+					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, channel.ChannelID, nil)
 				}
 				c.Gateway.Log.Error("whatsApp.onMediaMessage",
 					slog.Any("error", err),
@@ -1641,7 +1805,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 
 			if err != nil {
 				if errors.Is(err, bot.FileUploadPolicyError) { // if file policy error occured - send system warning message
-					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
+					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, channel.ChannelID, nil)
 				}
 				c.Gateway.Log.Error("whatsApp.onMediaMessage",
 					slog.Any("error", err),
@@ -1668,7 +1832,7 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 
 			if err != nil {
 				if errors.Is(err, bot.FileUploadPolicyError) { // if file policy error occured - send system warning message
-					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, nil)
+					err = c.SendServiceMessageByTemplate(ctx, bot.FilePolicyFailType, channel.SessionID, channel.ChannelID, nil)
 				}
 				c.Gateway.Log.Error("whatsApp.onMediaMessage",
 					slog.Any("error", err),
@@ -1739,6 +1903,20 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 				}
 			}
 
+			// Interactive object MAY NOT be provided
+			if interactive == nil {
+				c.Gateway.Log.Warn("whatsApp.onMessage",
+					slog.String("error", "interactive: missing object"),
+					slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+					slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+					slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+					slog.String("chat", update.Product),        // "whatsapp"
+					slog.String("from", contact.Contact),       // PHONE_NUMBER
+					slog.String("user", contact.DisplayName()),
+				)
+				continue // next: message(s)
+			}
+
 			switch interactive.Type {
 			case "button_reply":
 				// "interactive": {
@@ -1749,6 +1927,19 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 				// 	}
 				// }
 				reply := interactive.QuickReply
+				if reply == nil {
+					c.Gateway.Log.Warn("whatsApp.onMessageReply",
+						slog.String("interactive", interactive.Type),
+						slog.String("error", "button_reply: missing object"),
+						slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+						slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+						slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+						slog.String("chat", update.Product),        // "whatsapp"
+						slog.String("from", contact.Contact),       // PHONE_NUMBER
+						slog.String("user", contact.DisplayName()),
+					)
+					continue // next: message(s)
+				}
 				text := reply.ID // button.code
 
 				sendMsg.Type = "text"
@@ -1764,6 +1955,19 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 				// 	}
 				// }
 				reply := interactive.ListReply
+				if reply == nil {
+					c.Gateway.Log.Warn("whatsApp.onMessageReply",
+						slog.String("interactive", interactive.Type),
+						slog.String("error", "list_reply: missing object"),
+						slog.String("to", recipient.PhoneNumber),   // WhatsApp [PhoneNumber] Display
+						slog.String("to:wa", recipient.ID),         // WhatsApp [PhoneNumber] ID
+						slog.String("to:ba", recipient.Account.ID), // WhatsApp [BusinessAccount] ID
+						slog.String("chat", update.Product),        // "whatsapp"
+						slog.String("from", contact.Contact),       // PHONE_NUMBER
+						slog.String("user", contact.DisplayName()),
+					)
+					continue // next: message(s)
+				}
 				text := reply.ID // button.code
 
 				sendMsg.Type = "text"
@@ -2267,10 +2471,11 @@ func (c *Client) whatsAppUploadMedia(ctx context.Context, from *whatsapp.WhatsAp
 			if err == nil && rpcErr.Message != "" {
 				err = &rpcErr
 			}
-			if err != nil {
-				formWriter.CloseWithError(err)
-				return
+			if err == nil {
+				err = fmt.Errorf("whatsapp: media source: %s", res.Status)
 			}
+			formWriter.CloseWithError(err)
+			return
 		}
 		// MIMEType from source
 		mediaType, _, err := mime.ParseMediaType(
@@ -2367,6 +2572,10 @@ func (c *Client) whatsAppUploadMedia(ctx context.Context, from *whatsapp.WhatsAp
 
 	if err != nil {
 		return nil, err
+	}
+
+	if rpc.Document == nil || rpc.Document.ID == "" {
+		return nil, fmt.Errorf("whatsapp: upload media %q; no document id returned", media.Name)
 	}
 
 	return rpc.Document, nil
@@ -2487,55 +2696,44 @@ func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) err
 			MediaVideo = "video"
 		)
 
-		var (
-			src = sentMsg.File
-			dst *whatsapp.Document
-		)
+		src := sentMsg.File
+		if src == nil {
+			return microerr.BadRequest(
+				"chat.bot.whatsapp.send.file.missing",
+				"whatsapp: send: message type=file; file is missing",
+			)
+		}
 		for _, mediaType := range []string{
 			MediaImage, MediaAudio, MediaVideo,
 		} {
 			if strings.HasPrefix(src.Mime, mediaType) {
 				if len(src.Mime) == len(mediaType) || src.Mime[len(mediaType)] == '/' {
-					dst, err = c.whatsAppUploadMedia(ctx, sender, src)
-					if err != nil {
-						return err
-					}
 					sendMsg.Type = mediaType
 					break
 				}
 			}
 		}
+		// NOT image/audio/video ? => document (pdf, docx, xlsx, ...)
+		if sendMsg.Type == "" {
+			sendMsg.Type = "document"
+		}
+		dst, err := c.whatsAppUploadMedia(ctx, sender, src)
+		if err != nil {
+			return err
+		}
 		switch sendMsg.Type {
 		case MediaImage:
 			// https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media#upload-media
 			sendMsg.Image = &dst.Media
-			// sendMsg.Image = &whatsapp.Media{
-			// 	ID:      "",
-			// 	Link:    doc.Url,
-			// 	Caption: sentMsg.Text,
-			// }
 		case MediaAudio:
 			sendMsg.Audio = &dst.Media
-			// sendMsg.Audio = &whatsapp.Media{
-			// 	ID:   "",
-			// 	Link: doc.Url,
-			// }
 		case MediaVideo:
 			sendMsg.Video = &dst.Media
-			// sendMsg.Video = &whatsapp.Media{
-			// 	ID:      "",
-			// 	Link:    doc.Url,
-			// 	Caption: sentMsg.Text,
-			// }
-		default:
-			sendMsg.Type = "document"
+		default: // "document"
 			sendMsg.Document = &dst.Media
-			// sendMsg.Document = &whatsapp.Media{
-			// 	ID:       "",
-			// 	Link:     doc.Url,
-			// 	Caption:  sentMsg.Text,
-			// 	Filename: doc.Name,
-			// }
+			// The extension of the filename specifies what format
+			// the document is displayed as in WhatsApp
+			sendMsg.Document.Filename = src.Name
 		}
 
 	case "joined": // ACK: ChatService.JoinConversation()
@@ -2633,7 +2831,7 @@ func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) err
 	}
 
 	// TARGET[chat_id]: MESSAGE[message_id]
-	if len(res.Messages) == 1 {
+	if res != nil && len(res.Messages) == 1 {
 		WAMID := res.Messages[0].ID
 		setVar(chatId, WAMID)
 	}
