@@ -1833,14 +1833,19 @@ func fetchContactPeerRow(value **api.Peer) any {
 	})
 }
 
-// contactEtag encodes the contact etag; an unusable row yields no etag
+// contactEtag encodes the contact etag the same way the contacts service
+// does: a missing version counts as zero. An unusable row yields no etag
 // instead of failing the whole listing.
 func contactEtag(id string, ver pgtype.Int4) string {
 	oid, err := strconv.ParseInt(id, 10, 64)
-	if err != nil || ver.Status != pgtype.Present {
+	if err != nil {
 		return ""
 	}
-	tag, err := etag.EncodeEtag(etag.EtagContact, oid, ver.Int)
+	var rev int32 // NULL version reads as zero
+	if ver.Status == pgtype.Present {
+		rev = ver.Int
+	}
+	tag, err := etag.EncodeEtag(etag.EtagContact, oid, rev)
 	if err != nil {
 		return ""
 	}
