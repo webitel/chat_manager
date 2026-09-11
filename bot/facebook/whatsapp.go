@@ -1018,12 +1018,9 @@ func (c *Client) fetchWhatsAppBusinessAccountsDeprecated(ctx context.Context, WA
 	return list, nil
 }
 
-var ErrEmptyWhatsaAppBusinessAccountIDs = microerr.BadRequest("facebook.whatsapp.empty_business_accounts_ids", "received call with empty business account slice")
-
 func (c *Client) fetchWhatsAppBusinessAccounts(ctx context.Context, WABAID []string) ([]*whatsapp.WhatsAppBusinessAccount, error) {
-	n := len(WABAID)
-	if n == 0 {
-		return nil, ErrEmptyWhatsaAppBusinessAccountIDs
+	if len(WABAID) == 0 {
+		return nil, nil
 	}
 
 	if c.supportBatchRequests() {
