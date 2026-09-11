@@ -2,7 +2,6 @@ package facebook
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -182,7 +181,7 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 				// err = res.Error
 				err = errors.BadGateway(
 					"chat.bot.messenger.oauth.error",
-					"MetaApp: "+res.Error.Message,
+					"MetaApp: %s", res.Error.Message,
 				)
 			}
 		}
@@ -242,8 +241,7 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 			metadata = agent.Bot.Metadata
 		}
 		if s := metadata["fb"]; s != "" {
-			encoding := base64.RawURLEncoding
-			data, err := encoding.DecodeString(s)
+			data, err := restoreData(s)
 			if err == nil {
 				err = app.pages.restore(data)
 			}
@@ -254,8 +252,7 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 			}
 		}
 		if s := metadata["ig"]; s != "" {
-			encoding := base64.RawURLEncoding
-			data, err := encoding.DecodeString(s)
+			data, err := restoreData(s)
 			if err == nil {
 				err = app.instagram.restore(data)
 			}
