@@ -181,7 +181,7 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 				// err = res.Error
 				err = errors.BadGateway(
 					"chat.bot.messenger.oauth.error",
-					"MetaApp: "+res.Error.Message,
+					"MetaApp: %s", res.Error.Message,
 				)
 			}
 		}

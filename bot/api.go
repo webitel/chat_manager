@@ -119,22 +119,10 @@ func (srv *Service) SearchBot(ctx context.Context, req *pbbot.SearchBotRequest, 
 	if err != nil {
 		return err
 	}
-	// Prepare results page
-	var (
-		size  = len(list)
-		limit = search.GetSize()
-	)
 
-	// normalized
-	rsp.Page = int32(search.GetPage())
-	rsp.Next = 0 < limit && limit < size // returned MORE than LIMIT requested
-
-	if rsp.Next {
-		size = limit
-	}
-
-	rsp.Items = list[0:size]
-
+	// prepare result(s)..
+	marshalTextGateList(rsp, list, &search)
+	// OK
 	return nil
 }
 
@@ -242,8 +230,7 @@ func (srv *Service) SelectBot(ctx context.Context, req *pbbot.SelectBotRequest, 
 		)
 	}
 
-	// *(rsp) = *(obj)
-	app.MergeProto(rsp, obj, lookup.Fields...)
+	marshalTextGateView(rsp, obj, lookup.Fields)
 
 	return nil
 
@@ -400,7 +387,7 @@ func (srv *Service) CreateBot(ctx context.Context, add *pbbot.Bot, obj *pbbot.Bo
 		// TODO: nothing more ...
 		agent.External = nil
 		// Result: shallowcopy !
-		*(obj) = *(add)
+		marshalTextGateView(obj, add, nil)
 		// Sanitize
 		obj.Dc = nil
 		// Success
@@ -431,7 +418,7 @@ func (srv *Service) CreateBot(ctx context.Context, add *pbbot.Bot, obj *pbbot.Bo
 	}
 
 	// Prepare Result: shallowcopy !
-	*(obj) = *(add)
+	marshalTextGateView(obj, add, nil)
 
 	srv.LogAction(ctx, audit.NewCreateMessage(authN, getClientIp(ctx), objclassBots).One(&audit.Record{Id: obj.Id, NewState: obj}))
 	// Sanitize Result
@@ -624,6 +611,8 @@ func (srv *Service) UpdateBot(ctx context.Context, req *pbbot.UpdateBotRequest, 
 
 	// Prepare RESULT object !
 	res := proto.Clone(src).(*pbbot.Bot) // NEW Target !
+	// merge changes [dst] with internal [src] metadata state
+	mergeMetadata(dst.Metadata, res.Metadata)
 	// DO: Merge changes ...
 	app.MergeProto(res, dst, fields...)
 
@@ -840,8 +829,7 @@ func (srv *Service) UpdateBot(ctx context.Context, req *pbbot.UpdateBotRequest, 
 	*/
 
 	// Show RESULT !
-	// *(rsp) = *(obj)
-	app.MergeProto(rsp, res) // ALL
+	marshalTextGateView(rsp, res, nil) // ALL
 	// Sanitize
 	rsp.Dc = nil // == authN.Creds.GetDc()
 	srv.LogAction(ctx, audit.NewUpdateMessage(authN, getClientIp(ctx), objclassBots).One(&audit.Record{Id: rsp.Id, NewState: rsp}))
