@@ -2,7 +2,6 @@ package gotd
 
 import (
 	"context"
-	goerr "errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -27,30 +26,21 @@ import (
 
 // Telegram Account session runtime
 type session struct {
-	App *app
-	// guard
-	sync sync.Mutex
-	// internal
-	log *zap.Logger
 	*telegram.Client
 	*message.Sender
+
+	App   *app
+	sync  sync.Mutex // guard
+	log   *zap.Logger
 	login *sessionAuth // *tg.User
-	// updates/peers
-	// gaps  *updates.Manager // chat.state.updates
 	store *InmemoryStore
 	cache *InmemoryCache
 	peers *peers.Manager
-	// runtime
-	data []byte // cache: session data encoded
-	stop func() error
-}
-
-func newSession(c *app) *session {
-	return &session{App: c}
+	data  []byte // cache: session data encoded
+	stop  func() error
 }
 
 func (c *session) init() {
-
 	var (
 		debug   = false
 		profile = c.App.Gateway.Bot.GetMetadata()
@@ -90,30 +80,14 @@ func (c *session) init() {
 				return handler.Handle(ctx, u)
 			}),
 			Middlewares: []telegram.Middleware{
-				// updhook.UpdateHook(gapsManager.Handle),
-				// updhook.UpdateHook(peersManager.Handle),
-				// updhook.UpdateHook(handler.Handle),
 				telegram.MiddlewareFunc(func(next tg.Invoker) telegram.InvokeFunc {
 					return func(ctx context.Context, input bin.Encoder, output bin.Decoder) error {
 						// PERFORM request !
 						err := next.Invoke(ctx, input, output)
 						if err != nil {
-							// c.Login.MiddlewareHook(!)
 							if tgerr.Is(err, "AUTH_KEY_UNREGISTERED") { // auth.IsKeyUnregistered(err) { // 401 ?
-								// if auth.IsUnauthorized(err) {
-								// NOTE: rpc error code 401: SESSION_PASSWORD_NEEDED
-								// c.Gateway.Log.Warn().Err(err).Msg("telegram.loggedOut")
 								if login := c.login; login != nil {
-
 									login.Auth(nil)
-									// login.Lock()
-									// defer login.Unlock()
-
-									// login.resetUser(nil)
-
-									// // login.user = nil
-									// // login.session = nil
-									// // login.signal()
 								}
 							}
 							return err
@@ -180,9 +154,7 @@ func (c *session) init() {
 		)
 	}
 
-	c.Client = telegram.NewClient(
-		c.App.apiId, c.App.apiHash, options,
-	)
+	c.Client = telegram.NewClient(c.App.apiId, c.App.apiHash, options)
 
 	api := c.Client.API()
 
@@ -198,79 +170,22 @@ func (c *session) init() {
 		c.store = &InmemoryStore{}
 	}
 
-	// c.cache = &InmemoryCache{}
-	// c.store = &InmemoryStorage{}
-	// if err := c.restoreHash(); err != nil {
-	// 	c.Gateway.Log.Warn().Err(err).Msg("RESTORE: HASH")
-	// }
-
 	c.peers = peers.Options{
 		Logger:  c.log.Named("peers"),
 		Storage: c.store,
 		Cache:   c.cache,
 	}.Build(api)
 
-	// c.gaps = updates.New(
-	// 	updates.Config{
-	// 		Logger:       c.log.Named("gaps"),
-	// 		Handler:      dispatcher,
-	// 		AccessHasher: c.peers,
-	// 	},
-	// )
-	// Chain peers/gaps handlers ...
-	// handler = c.peers.UpdateHook(c.gaps)
 	handler = c.peers.UpdateHook(dispatcher)
 
 	// Bind Receiver
-	dispatcher.OnNewMessage(c.onNewMessage) //
-	// dispatcher.OnPeerSettings(c.onPeerSettings) // newInboundUser access from here ...
+	dispatcher.OnNewMessage(c.onNewMessage)
 	dispatcher.OnServiceNotification(c.onServiceNotification)
-	// Once telegram/message.Sender state init
-	c.Sender = message.NewSender(api)
 
-	// c.onClose = []func(){
-	// 	func() {
-	// 		// Flush logs ...
-	// 		_ = c.log.Sync()
-	// 		// // Flush cached data ...
-	// 		// sessionStore.StoreSession(context.TODO(), nil)
-	// 		// Save logoutTokens...
-	// 		c.backup()
-	// 	},
-	// }
+	c.Sender = message.NewSender(api)
 
 	if c.login == nil {
 		c.login = newSessionAuth(c)
-	}
-
-	// var err error // GET self(me) error
-	// c.login, err = newSessionLogin(
-	// 	c.App.apiId, c.App.apiHash, c.peers, c.log.Named("login"),
-	// )
-	// if err != nil {
-	// 	c.App.Gateway.Log.Err(err).Msg("telegram/app.login.self")
-	// }
-}
-
-// backup auth.logoutTokens
-func (c *session) backup() {
-
-	var textValue string // remove
-	if login := c.login; login != nil {
-		if data, _ := login.backup(); len(data) != 0 {
-			textValue = binaryText.EncodeToString(data)
-		}
-	}
-	// PERFORM:
-	err := c.App.Gateway.SetMetadata(
-		context.TODO(), map[string]string{
-			optionSessionAuth: textValue,
-		},
-	)
-	if err != nil {
-		c.App.Gateway.Log.Warn("BACKUP: AUTH",
-			slog.Any("error", err),
-		)
 	}
 }
 
@@ -287,84 +202,55 @@ func (c *session) restore() error {
 	return nil
 }
 
-// connect runtime routine
 func (c *session) connect() error {
-
 	c.init()
 
-	ctx, cancel := context.WithCancel(
-		context.Background(),
-	)
-
-	init := make(chan struct{})
-	exit := make(chan error, 1)
+	cancelCtx, cancel := context.WithCancel(context.Background())
+	exitChan := make(chan error, 1)
 
 	c.stop = func() error {
-		c.stop = func() error {
-			return nil
-		}
+		c.stop = func() error { return nil }
+
 		cancel()
-		return <-exit
+
+		return <-exitChan
 	}
 
-	go func() {
-		defer close(exit)
-		exit <- c.Client.Run(ctx,
-			func(ctx context.Context) error {
-				close(init)
-				// TODO: runtime
-				// <-ctx.Done()
-				// err = ctx.Err()
-				err := c.runtime(ctx)
-				if goerr.Is(err, context.Canceled) {
-					err = nil
-				}
-				return err
-			},
-		)
-	}()
-
-	select {
-	case <-ctx.Done(): // context canceled
-		cancel()
-		c.stop = func() error {
-			return nil
-		}
-		return ctx.Err()
-	case err := <-exit: // startup timeout
-		c.stop = func() error {
-			return nil
-		}
-		return err
-	case <-init: // connected; init done
-	}
+	go c.startBackground(cancelCtx, exitChan)
 
 	return nil
 }
 
-func (c *session) runtime(ctx context.Context) error {
+func (c *session) startBackground(ctx context.Context, exitChan chan<- error) {
+	defer close(exitChan)
 
-	// c.login.restore()
+	exitChan <- c.Client.Run(ctx, func(clientCtx context.Context) error {
+		go func() {
+			if err := c.runtime(clientCtx); err != nil && !errors.Is(err, context.Canceled) {
+				c.log.Error("[Telegram APP] Runtime stopped", zap.Error(err))
+			}
+		}()
+
+		<-clientCtx.Done()
+		if errors.Is(clientCtx.Err(), context.Canceled) {
+			return nil
+		}
+
+		return clientCtx.Err()
+	})
+}
+
+func (c *session) runtime(ctx context.Context) error {
 	c.App.restore()
+
 	// FIXME: To avoid users.getUsers call twice
 	// we will get a sleep for a while to give a chance
 	// to cache session user while subscribing for updates on startup
 	// https://github.com/gotd/td/blob/7b7dc0206dbf6f5a3525fe656b92d1c282d17e66/telegram/connect.go#L26
-	//
-	// runtime.Gosched()
 	time.Sleep(time.Second / 2)
 	onAuthZstate := c.login.Subscribe()
-	// // // NOTE: PUSH immediately -if- authorized
-	// // // isAuthorized := len(onAuthZstate) == 1
-	// // self, _ := c.peers.Self(context.TODO())
-	// // c.me = self.Raw()
-	// c.me = c.login.User() // sync.Load()
-	// // isAuthorized := self.Raw().GetID() != 0
 	defer func() {
-		//
 		c.login.Unsubscribe(onAuthZstate)
-		// _ = c.backup()
-		// Flush logs ...
 		_ = c.log.Sync()
 	}()
 
@@ -374,54 +260,35 @@ func (c *session) runtime(ctx context.Context) error {
 	)
 
 	for {
-		// remember
-		// sessionUser := c.me
 		sessionUser = c.login.User()
 
 		select {
-		// onAuthorizationState changed
 		case currentUser = <-onAuthZstate:
 			if currentUser == nil {
 				_ = c.onLoggedOut(ctx)
-				continue // loop // for
+				continue
 			}
-			// SignedIn (Authorized)
-			// CHECK: whether this is session restore
+
 			if currentUser.GetID() != sessionUser.GetID() {
-				// _ = c.session.doSave(ctx, false)
 				_ = c.saveSession(ctx, false)
 			}
-		// onRuntimeCancel
+
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-		// Authorized; New Login (!)
+
 		_ = c.onNewLogin(ctx, currentUser)
-		// continue; listen to authorizationState changes
 	}
 }
 
-func (c *session) onNewLogin(ctx context.Context, auth *tg.User) error {
-	// // Notify update manager about authentication.
-	// err := c.gaps.Auth(
-	// 	ctx, c.App.Client.API(),
-	// 	auth.ID, auth.Bot, true,
-	// )
-
-	// if err != nil {
-	// 	return err
-	// }
-
+func (c *session) onNewLogin(ctx context.Context, _ *tg.User) error {
 	return c.loadDialogs(ctx)
 }
 
-func (c *session) onLoggedOut(ctx context.Context) error {
-	// // TODO: clear cache, peers and so on ...
-	// _ = c.gaps.Logout()
-	// FIXME: c.peers.me.Store(nil)
+func (c *session) onLoggedOut(_ context.Context) error {
 	c.cache.Purge()
 	c.store.Purge()
-	// c.peers.Logout() // FIXME: clear cache entities ...
+
 	return nil
 }
 
@@ -446,9 +313,9 @@ next: // paging
 				// return block{}, errors.Wrap(err, "get next chunk")
 				return err
 			}
-			c.App.Gateway.Log.Warn("messages.getDialogs",
-				slog.Any("error", err),
-			)
+
+			c.App.Gateway.Log.Warn("messages.getDialogs", slog.Any("error", err))
+
 			break next
 
 		} else {
@@ -473,9 +340,7 @@ next: // paging
 			}
 		}
 	}
-	// c.Gateway.Log.Debug().Int("pages", i+1).Msg(
-	// 	"messages.getDialogs -------------------------------------",
-	// )
+
 	return nil
 }
 
@@ -515,22 +380,8 @@ func (c *session) saveSession(ctx context.Context, drop bool) error {
 var _ telegram.SessionStorage = (*session)(nil)
 
 func (c *session) LoadSession(ctx context.Context) (data []byte, err error) {
-	// defer c.App.Gateway.Log.Trace().Msg("session.Load")
 	defer func() {
-		// buf := bytes.NewBuffer(
-		// 	make([]byte, 0, len(data)),
-		// )
-		// err := json.Indent(buf, data, "", "  ")
-		//log := c.App.Gateway.Log.Trace
-		// if err != nil {
-		// 	log = func() *zerolog.Event {
-		// 		return c.App.Gateway.Log.Err(err)
-		// 	}
-		// 	buf.Reset()
-		// 	_, _ = buf.Write(data)
-		// }
 		c.App.Gateway.TraceLog("session.Load")
-		// fmt.Printf("%s\n", buf.String())
 	}()
 	// RESTORE Session configuration
 	c.sync.Lock()
@@ -539,41 +390,22 @@ func (c *session) LoadSession(ctx context.Context) (data []byte, err error) {
 	if len(data) != 0 {
 		return data, nil
 	}
-	// if !c.canWrite() {
-	// 	return nil, nil // Bot NOT created !
-	// }
+
 	profile := c.App.Gateway.Bot.GetMetadata()
 	text, _ := profile[optionSessionData]
 	data, err = binaryText.DecodeString(text)
 	if err == nil {
 		c.data = data // cache
 	}
+
 	return // data, err
 }
 
 func (c *session) StoreSession(ctx context.Context, data []byte) error {
 	defer func() {
-		// var (
-		// 	buf = bytes.NewBuffer(
-		// 		make([]byte, 0, len(data)),
-		// 	)
-		// 	log = c.App.Gateway.Log.Trace
-		// )
-		// if len(data) != 0 {
-		// 	err := json.Indent(buf, data, "", "  ")
-		// 	if err != nil {
-		// 		log = func() *zerolog.Event {
-		// 			return c.App.Gateway.Log.Err(err)
-		// 		}
-		// 		buf.Reset()
-		// 		_, _ = buf.Write(data)
-		// 	}
-		// }
-		// // log().Msg("session.Store")
-		// log().Msg("session.Cache")
-		// fmt.Printf("%s\n", buf.String())
 		c.App.Gateway.TraceLog("session.Cache")
 	}()
+
 	// BACKUP Session configuration
 	if data == nil {
 		c.sync.Lock()
@@ -583,33 +415,13 @@ func (c *session) StoreSession(ctx context.Context, data []byte) error {
 		if data == nil {
 			return nil // no cache data
 		}
-		// } else if !c.canWrite() { // && data != nil
-		// 	// Bot profile NOT created
-		// 	c.sync.Lock()
-		// 	c.data = make([]byte, len(data))
-		// 	copy(c.data, data)
-		// 	c.sync.Unlock()
-		// 	return nil
-		// }
-		// // json.Compact(data)
-		// c.sync.Lock()
-		// c.data = nil // clear cache
-		// c.sync.Unlock()
 	} else {
 		c.sync.Lock() // cache: latest !
 		c.data = make([]byte, len(data))
 		copy(c.data, data)
 		c.sync.Unlock()
 	}
-	// // Is BOT created ?
-	// if !c.canWrite() {
-	// 	return nil
-	// }
-	// return c.App.Gateway.SetMetadata(
-	// 	ctx, map[string]string{
-	// 		metadataSession: sessionEncoding.EncodeToString(data),
-	// 	},
-	// )
+
 	return nil
 }
 
@@ -654,12 +466,7 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 		return nil // IGNORE Unable to resolve sender
 	}
 
-	// ECHO
-	// _, err := c.Sender.Answer(e, update).Text(ctx, sentMessage.GetMessage())
-	// return err
-
 	peer, err := c.peers.ResolveUserID(ctx, fromId)
-
 	if err != nil {
 		log.Error("telegram/updateNewMessage.peer",
 			slog.Any("error", err),
@@ -691,42 +498,21 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 	// region: contact
 	chatId := strconv.FormatInt(fromId, 10)
 	contact := &bot.Account{
-
-		ID: 0, // LOOKUP
-
-		Channel: "telegram",
-		Contact: strconv.FormatInt(fromId, 10),
-
+		ID:        0, // LOOKUP
+		Channel:   "telegram",
+		Contact:   strconv.FormatInt(fromId, 10),
 		FirstName: user.FirstName,
 		LastName:  user.LastName,
 		Username:  user.Username,
 	}
 
-	channel, err := c.App.Gateway.GetChannel(
-		ctx, chatId, contact,
-	)
-
-	if err != nil {
-		// Failed locate chat channel !
+	channel, err := c.App.Gateway.GetChannel(ctx, chatId, contact)
+	if err != nil { // Failed locate chat channel !
 		log.Error("telegram/updateNewMessage",
 			slog.Any("error", err),
 		)
-		// re := errors.FromError(err)
-		// if re.Code == 0 {
-		// 	re.Code = (int32)(http.StatusBadGateway)
-		// 	// HTTP 503 Bad Gateway
-		// }
-		return err
-		// // FIXME: Reply with 200 OK to NOT receive this message again ?!.
-		// _ = telegram.WriteToHTTPResponse(
-		// 	reply, telegram.NewMessage(senderChat.ID, re.Detail),
-		// )
-		// // reply := telegram.NewMessage(senderChat.ID, re.Detail)
-		// // defer func() {
-		// // 	_, _ = c.BotAPI.Send(reply)
-		// // } ()
-		// // // http.Error(reply, re.Detail, (int)(re.Code))
-		// return // HTTP 200 OK; WITH reply error message
+
+		return err // // FIXME: Reply with 200 OK to NOT receive this message again ?!.
 	}
 
 	// TODO: messages.reedHistory(message.id)
@@ -745,13 +531,9 @@ func (c *session) onNewMessage(ctx context.Context, e tg.Entities, update *tg.Up
 	}()
 
 	sendUpdate := bot.Update{
-
-		// ChatID: strconv.FormatInt(recvMessage.Chat.ID, 10),
-
-		User:  contact,
-		Chat:  channel,
-		Title: channel.Title,
-
+		User:    contact,
+		Chat:    channel,
+		Title:   channel.Title,
 		Message: new(chat.Message),
 	}
 
@@ -1029,9 +811,8 @@ func (c *session) onServiceNotification(ctx context.Context, e tg.Entities, upda
 			slog.String("backoff", (time.Second*time.Duration(tgWarn.Argument)).String()),
 		)
 	}
+
 	fmt.Printf("\n%s\n\n", update.GetMessage())
-	// notice.Msg("updateServiceNotification")
-	// fmt.Printf("Telegram Notifications (777000):\n\n%s\n\n", update.GetMessage())
 
 	if tgWarn.IsType("AUTH_KEY_DROP_DUPLICATE") {
 		// stop; await !
@@ -1040,25 +821,7 @@ func (c *session) onServiceNotification(ctx context.Context, e tg.Entities, upda
 			c.dropSession()
 			_ = c.connect() // await: start
 		}()
-		// c.restart = func() {
-		// 	todo := TODO{c}
-		// 	todo.dropSession()
-		// 	todo.reinit(true) // .Client.Options.SessionStore(new)
-		// 	_ = c.start()
-		// }
-		// _ = c.stop() // await
-
-		// // Authorization error. Use the "Log out" button to log out, then log in again with your phone number. We apologize for the inconvenience.
-		// // Note: Logging out will remove your Secret Chats. Use the "Cancel" button if you'd like to save some data from your secret chats before proceeding.
-		// err := c.Login.LogOut(ctx)
-		// if err != nil {
-		// 	notice = c.Gateway.Log.Err(err)
-		// } else {
-		// 	notice = c.Gateway.Log.Info()
-		// }
-		// notice.Bool("force", true).Msg("telegram/auth.logOut(!)")
 	}
 
-	// c.stop()
 	return nil
 }
