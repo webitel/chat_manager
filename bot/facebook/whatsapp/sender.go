@@ -1,7 +1,13 @@
 package whatsapp
 
 import (
+	"regexp"
+
 	"github.com/webitel/chat_manager/internal/util"
+)
+
+var (
+	waidRg = regexp.MustCompile(`^\d{7,15}$`)
 )
 
 // SendMessage request
@@ -105,6 +111,26 @@ type SendMessage struct {
 	// //
 	// // Cloud API users should not use this field.
 	// HSM interface{} `json:"hsm,omitempty"`
+	//
+	Recipient string `json:"recipient,omitempty"`
+}
+
+func NewDefaultSendMessage() *SendMessage {
+	return &SendMessage{
+		MessagingProduct: "whatsapp",
+		RecipientType:    "individual",
+	}
+}
+
+func (m *SendMessage) FillReceiver(receiverID string) *SendMessage {
+	if waidRg.MatchString(receiverID) {
+		m.TO = receiverID
+		return m
+	}
+
+	m.Recipient = receiverID
+
+	return m
 }
 
 // https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages#template-object
