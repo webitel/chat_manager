@@ -1,5 +1,7 @@
 package whatsapp
 
+import "cmp"
+
 // Contact information for the customer who sent a message to the business.
 // See Update.Contacts.
 type Sender struct {
@@ -15,6 +17,41 @@ type Sender struct {
 	// Can contain the following field:
 	// – name; The customer’s name
 	Profile map[string]string `json:"profile,omitempty"`
+
+	// WhatsApp business scoper user id
+	UserID string `json:"user_id"`
+}
+
+func (e *Sender) EqualsWAIDIfExists(compared string) bool {
+	if e == nil {
+		return false
+	}
+
+	if e.WAID == "" || compared == "" {
+		return false
+	}
+
+	return e.WAID == compared
+}
+
+func (e *Sender) EqualsBSUIDIfExists(compared string) bool {
+	if e == nil {
+		return false
+	}
+
+	if e.UserID == "" || compared == "" {
+		return false
+	}
+
+	return e.UserID == compared
+}
+
+func (e *Sender) Contact() string {
+	if e == nil {
+		return ""
+	}
+
+	return cmp.Or(e.WAID, e.UserID)
 }
 
 func (e *Sender) GetName() string {
