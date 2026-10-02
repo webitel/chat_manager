@@ -54,6 +54,9 @@ message ChatMessagesRequest {
 
   // Exclude messages filter options
   FilterMessageExclude exclude = 11;
+
+  // Sort the result: "date" | "+date" (OLDest..to..NEWest), "-date" (default, NEWest..to..OLDest)
+  repeated string sort = 12;
 }
 
 message FilterMessageExclude {
