@@ -55,9 +55,9 @@ jobs:
       binary-name: webitel-messages
       ldflags: >
         -s -w
-        -X github.com/webitel/chat_manager/cmd.GitTag=${{ github.ref_name }}
-        -X github.com/webitel/chat_manager/cmd.GitCommit=${{ github.sha }}
-        -X github.com/webitel/chat_manager/cmd.BuildDate=${{ github.event.head_commit.timestamp }}
+        -X github.com/webitel/chat_manager/cmd.GitTag=${{ needs.prepare.outputs.full-version }}
+        -X github.com/webitel/chat_manager/cmd.GitCommit=${{ needs.prepare.outputs.commit }}
+        -X github.com/webitel/chat_manager/cmd.BuildDate=${{ needs.prepare.outputs.build-timestamp }}
         
 
       version: ${{ needs.prepare.outputs.version }}
