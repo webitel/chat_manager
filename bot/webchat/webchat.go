@@ -22,6 +22,7 @@ import (
 
 	errs "github.com/micro/micro/v3/service/errors"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/gorilla/websocket"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
@@ -51,6 +52,67 @@ type webChat struct {
 	msgi map[int64]int   // index[msg.id]
 	msgs []*chat.Message // ordinal
 
+	// Media files uploaded by this chat's external client.
+	// The client may only send files from this set.
+	filesMx sync.Mutex
+	files   map[int64]*chat.File // index[file.id]
+}
+
+// rememberFile registers media, uploaded by this chat's external client,
+// so it may be referenced by the client's file message later.
+func (c *webChat) rememberFile(media *chat.File) {
+	if media.GetId() == 0 {
+		return
+	}
+	c.filesMx.Lock()
+	defer c.filesMx.Unlock()
+	if c.files == nil {
+		c.files = make(map[int64]*chat.File)
+	}
+	c.files[media.Id] = proto.Clone(media).(*chat.File)
+}
+
+// uploadedFile returns a copy of the media file with the given id,
+// uploaded by this chat's external client, or nil if there is no such.
+func (c *webChat) uploadedFile(id int64) *chat.File {
+	c.filesMx.Lock()
+	defer c.filesMx.Unlock()
+
+	media, ok := c.files[id]
+	if !ok {
+		return nil
+	}
+
+	return proto.Clone(media).(*chat.File)
+}
+
+var errFileNotUploaded = errs.Forbidden(
+	"chat.web.media.not_uploaded",
+	"webchat: send: file must be uploaded within this chat first",
+)
+
+// sanitizeMessage resets client-controlled fields of the message
+// that the chat service trusts. The file is accepted only by ID of the
+// media uploaded within this chat; client's URL, MIME and name are ignored.
+// Otherwise the client could get a download link to any file in the domain
+// by its ID, or make the storage service fetch an arbitrary URL.
+func (c *webChat) sanitizeMessage(msg *chat.Message) error {
+	msg.ForwardFromChatId = ""
+	msg.ForwardFromMessageId = 0
+	msg.ForwardFromVariables = nil
+
+	if msg.File == nil {
+		return nil
+	}
+
+	media := c.uploadedFile(msg.File.GetId())
+	if media == nil {
+		return errFileNotUploaded
+	}
+
+	msg.File = media
+
+	return nil
 }
 
 // save given *chat.Message m to this *webChat c local history store
@@ -730,6 +792,11 @@ func (c *WebChatBot) uploadMediaFile(sender *bot.Channel, media *chat.File, cont
 	if media.Name != "" {
 		filename += "_" + media.Name
 	}
+	// Drop client's MIME parameters, e.g. "; source=...",
+	// which selects the storage source of the file by ID.
+	if mediaType, _, err := mime.ParseMediaType(media.Mime); err == nil {
+		media.Mime = mediaType
+	}
 	metadata, err := c.Gateway.UploadFile(context.TODO(), 4096, media.Mime, media.GetName(), sender.ChannelID, content)
 	if err != nil {
 		return nil, err
@@ -898,6 +965,10 @@ func (c *WebChatBot) uploadMultiMedia(rsp http.ResponseWriter, req *http.Request
 		// http.Error(rsp, err.Error(), http.StatusBadRequest)
 		respondError(rsp, err)
 		return
+	}
+
+	for _, media := range multiMedia {
+		room.rememberFile(media)
 	}
 
 	respondJson(rsp, multiMedia, http.StatusOK)
@@ -1353,6 +1424,8 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 		case "send", "": // default: "send"
 			if msg = req.Message; msg == nil {
 				err = fmt.Errorf("send: message is missing")
+			} else {
+				err = c.sanitizeMessage(msg)
 			}
 		default:
 			// SEND: {"error": "method not allowed"}
