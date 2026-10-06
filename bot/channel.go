@@ -366,14 +366,15 @@ func (c *Channel) startWithFilePolicyFallback(ctx context.Context, message *chat
 	if terr != nil {
 		return terr
 	}
-	if text == "" {
-		text = DefaultFilePolicyMessage
-	}
 	copied := *message
-	copied.Text = text
+	copied.Text = ""
 	copied.File = nil
 	copied.Type = TextType
-	return c.Start(ctx, &copied)
+	copied.Variables = botServiceVars(FilePolicyFailType, message.Variables)
+	if err = c.Start(ctx, &copied); err != nil || text == "" {
+		return err
+	}
+	return c.Gateway.SendServiceMessageByTemplate(ctx, FilePolicyFailType, c.SessionID, "", nil)
 }
 
 // SendMessage [FROM] .provider [TO] flow-bot@chat.server

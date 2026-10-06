@@ -37,10 +37,6 @@ const (
 	FileType = "file"
 )
 
-const (
-	DefaultFilePolicyMessage = "Forbidden file format"
-)
-
 // Service intercomunnication proxy
 type Service struct {
 	// cmd/bot.Service
