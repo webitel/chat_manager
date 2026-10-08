@@ -6,8 +6,8 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
-User=webitel
-Group=webitel
+User=webitel-svc
+Group=webitel-svc
 LogsDirectory=webitel
 StateDirectory=webitel/webitel-messages-bot
 
