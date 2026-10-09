@@ -16,6 +16,8 @@ type Message struct {
 	// The customer's phone number who sent the message to the business.
 	From string `json:"from,omitempty"`
 
+	FromUserID string `json:"from_user_id,omitempty"`
+
 	// The type of message that has been received by the business that has subscribed to Webhooks.
 	// Possible value can be one of the following:
 	//
