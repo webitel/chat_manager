@@ -42,6 +42,11 @@ const (
 	FilePolicyFailType = "file_policy_fail"
 )
 
+// isFilePolicyMarker reports whether message vars mark the bot file policy notice
+func isFilePolicyMarker(vars map[string]string) bool {
+	return vars["from"] == "bot" && vars["template"] == FilePolicyFailType
+}
+
 type Service interface {
 	GetConversations(ctx context.Context, req *pbchat.GetConversationsRequest, res *pbchat.GetConversationsResponse) error
 	GetConversationByID(ctx context.Context, req *pbchat.GetConversationByIDRequest, res *pbchat.GetConversationByIDResponse) error
@@ -337,6 +342,15 @@ func (s *chatService) SendServiceMessage(ctx context.Context, req *pbchat.SendSe
 		sender = agent
 		if sender == nil {
 			sender = flow
+		}
+	}
+	// file policy placeholder belongs to the client who sent the file
+	if sendMessage.GetText() == "" && isFilePolicyMarker(vars) {
+		for _, member := range allMembers {
+			if member.Chat.ID == vars["chat"] && !member.IsClosed() {
+				sender = member
+				break
+			}
 		}
 	}
 
@@ -2429,8 +2443,7 @@ func (c *chatService) saveMessage(ctx context.Context, dcx sqlx.ExtContext, send
 		if text == "" {
 			// allow empty text for the file_policy_fail placeholder marker so the
 			// FE can render its own stub (no template configured on the gateway)
-			vars := sendMessage.GetVariables()
-			if vars["from"] != "bot" || vars["template"] != FilePolicyFailType {
+			if !isFilePolicyMarker(sendMessage.GetVariables()) {
 				return nil, errors.BadRequest(
 					"chat.send.message.text.missing",
 					"send: message text is missing",
@@ -3176,7 +3189,7 @@ func (c *chatService) sendSystemLevelMessage(ctx context.Context, sender *app.Ch
 				channelID := member.Chat.ID
 				vars := notify.GetVariables()
 				var marker map[string]string
-				if vars["from"] == "bot" && vars["template"] == FilePolicyFailType {
+				if isFilePolicyMarker(vars) {
 					if notify.Text == "" {
 						marker = map[string]string{
 							"from":     "bot",
