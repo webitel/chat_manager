@@ -679,6 +679,39 @@ func getHistoryQuery(req *app.SearchOptions, updates bool) (ctx chatMessagesQuer
 		}
 		offsetOp = ">"   // forward offset
 		resOrder = "ASC" // OLDest..to..NEWest
+	} else {
+		for _, ref := range req.Order {
+			if ref == "" {
+				continue
+			}
+
+			asc := true
+
+			switch ref[0] {
+			case '+':
+				ref = ref[1:]
+			case '-', '!':
+				asc = false
+				ref = ref[1:]
+			}
+
+			switch ref {
+			case "id", "date":
+			default:
+				err = errors.BadRequest(
+					"messages.query.sort.input",
+					"messages( sort: [%s] ) input: no field support",
+					ref,
+				)
+
+				return ctx, err
+			}
+
+			offsetOp, resOrder = "<", "DESC"
+			if asc {
+				offsetOp, resOrder = ">", "ASC"
+			}
+		}
 	}
 
 	ctx.Params = params{
