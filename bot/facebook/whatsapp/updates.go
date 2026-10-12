@@ -1,6 +1,8 @@
 package whatsapp
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 // Update Entry of event notification.
 // The Update value object contains details for the change that triggered the webhook.
@@ -52,13 +54,16 @@ type Update struct {
 }
 
 // Find Contact by WAID string
-func (e *Update) GetContact(WAID string) *Sender {
-	if e != nil {
-		for _, sender := range e.Contacts {
-			if sender.WAID == WAID {
-				return sender
-			}
+func (e *Update) GetContact(WAID, bsuid string) *Sender {
+	if e == nil {
+		return nil
+	}
+
+	for _, sender := range e.Contacts {
+		if sender.EqualsBSUIDIfExists(bsuid) || sender.EqualsWAIDIfExists(WAID) {
+			return sender
 		}
 	}
+
 	return nil
 }

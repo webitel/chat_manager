@@ -2,6 +2,7 @@ package facebook
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -1455,13 +1456,11 @@ func (c *Client) whatsAppOnUnknown(
 				log = log.With(
 					slog.String("from-waid", message.From),
 					slog.String("msg-type", message.Type),
+					slog.String("from-bsuid", message.FromUserID),
 				)
 
-				contact = update.GetContact(message.From)
-				if contact != nil {
-					log = log.With(
-						slog.String("from-name", contact.GetName()),
-					)
+				if contact = update.GetContact(message.From, message.FromUserID); contact != nil {
+					log = log.With(slog.String("from-name", contact.GetName()))
 				}
 			}
 		}
@@ -1484,27 +1483,11 @@ func (c *Client) whatsAppOnSystemMsg(
 	account *whatsapp.WhatsAppPhoneNumber, // TO: WABA
 	message *whatsapp.Message, // FROM: WABA
 ) {
-
-	// Example:
-	// {
-	// 	"from": "94742181320",
-	// 	"id": "wamid.HBgLOTQ3NDIxODEzMjAVAgASGBJFRDk3MDRFMEM1MTNCQjA2NkMA",
-	// 	"timestamp": "1685957943",
-	// 	"system": {
-	// 		"body": "User A changed from \u200e94742181320 to 94774211984\u200e",
-	// 		"wa_id": "94774211984",
-	// 		"type": "user_changed_number"
-	// 	},
-	// 	"type": "system"
-	// }
-
 	sender := message.System
 	fromWAID := message.From // FROM_WA_ID
+
 	// system:customer_changed_number
-	chatWAID := sender.WAID // NEW_WA_ID; v12.0+
-	if chatWAID == "" {
-		chatWAID = sender.NewWAID // NEW_WA_ID; v11.0-
-	}
+	chatWAID := cmp.Or(sender.WAID, sender.NewWAID)
 	if chatWAID == "" {
 		// FIXME: How to handle that ?
 		// This is NOT {type:[customer|user]_changed_number}
@@ -1522,21 +1505,12 @@ func (c *Client) whatsAppOnSystemMsg(
 
 	// Update Customer profile
 	// input: will create chat.client -if- not exists yet
-	channel, err := c.Gateway.GetChannel(
-		ctx, fromWAID, &customer,
-	)
-
+	channel, err := c.Gateway.GetChannel(ctx, fromWAID, &customer)
 	if err != nil {
-		// LOG: -ed by Gateway.GetChannel
 		return // OK: ignore
 	}
 
 	return // OK: TODO nothing more !
-
-	// Customer inactive ? NO dialog !
-	if channel.IsNew() {
-		return // OK: ignore
-	}
 
 	// output: merged
 	customer = channel.Account
@@ -1646,15 +1620,12 @@ func (c *Client) whatsAppOnMessages(ctx context.Context, update *whatsapp.Update
 			continue // OK: handled !
 		}
 		// GET Sender as WA Customer contact name
-		sender := update.GetContact(message.From)
-		// if sender == nil {
-		// 	panic("WhatsAppBusinessAccount: update.Contacts(message.From(" + message.From + ")) NOT Found")
-		// }
+		sender := update.GetContact(message.From, message.FromUserID)
 		contact := bot.Account{
 			ID:        0,                // LOOKUP
 			FirstName: sender.GetName(), // contacts[message.from] ? profile.name : "noname"
 			Channel:   update.Product,   // "whatsapp",
-			Contact:   sender.WAID,      // PHONE_NUMBER
+			Contact:   sender.Contact(), // PHONE_NUMBER or BSID
 		}
 
 		// GET Chat channel dialog
@@ -2582,7 +2553,6 @@ func (c *Client) whatsAppUploadMedia(ctx context.Context, from *whatsapp.WhatsAp
 }
 
 func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) error {
-
 	sender, err := c.whatsAppDialogPhoneNumber(notice.Chat)
 	if err != nil {
 		return err
@@ -2594,14 +2564,8 @@ func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) err
 		chatId  = channel.ChatID // channel.Account.Contact
 
 		sentMsg = notice.Message
-		sendMsg = &whatsapp.SendMessage{
-			MessagingProduct: "whatsapp",
-			RecipientType:    "individual",
-			Status:           "",
-			TO:               chatId,
-		}
-		enVars map[string]string //TODO
-		setVar = func(key, val string) {
+		enVars  map[string]string //TODO
+		setVar  = func(key, val string) {
 			if enVars == nil {
 				enVars = make(map[string]string)
 			}
@@ -2609,10 +2573,12 @@ func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) err
 		}
 	)
 
+	sendMsg := whatsapp.NewDefaultSendMessage().
+		FillReceiver(chatId)
+
 	// Transform from internal to external message structure
 	switch sentMsg.Type {
 	case "text", "":
-
 		sendMsg.Type = "text"
 		sendMsg.Text = &whatsapp.Text{
 			Body: sentMsg.Text,
@@ -2849,14 +2815,11 @@ func (c *Client) whatsAppSendUpdate(ctx context.Context, notice *bot.Update) err
 }
 
 func (c *Client) whatsAppSendMessage(ctx context.Context, sender *whatsapp.WhatsAppPhoneNumber, update *whatsapp.SendMessage) (*whatsapp.Update, error) {
-
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
-	err := enc.Encode(update)
 
-	if err != nil {
-		// ERR: Failed to encode JSON request
+	if err := enc.Encode(update); err != nil { // ERR: Failed to encode JSON request
 		return nil, err
 	}
 
