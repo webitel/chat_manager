@@ -1094,6 +1094,17 @@ func (c *Gateway) SendServiceMessage(ctx context.Context, text string, chatId st
 	return nil
 }
 
+// botServiceVars marks a copy of vars as the bot service message of templateName
+func botServiceVars(templateName string, vars map[string]string) map[string]string {
+	marked := make(map[string]string, len(vars)+2)
+	for key, val := range vars {
+		marked[key] = val
+	}
+	marked["from"] = "bot"
+	marked["template"] = templateName
+	return marked
+}
+
 func (c *Gateway) SendServiceMessageByTemplate(ctx context.Context, templateName string, chatId string, senderChatID string, context any) error {
 	if chatId == "" {
 		return fmt.Errorf("empty chat id")
@@ -1106,10 +1117,7 @@ func (c *Gateway) SendServiceMessageByTemplate(ctx context.Context, templateName
 		// file_policy_fail must always emit a marker so the FE can render its placeholder
 		return nil
 	}
-	vars := map[string]string{
-		"from":     "bot",
-		"template": templateName,
-	}
+	vars := botServiceVars(templateName, nil)
 	if senderChatID != "" {
 		vars["chat"] = senderChatID
 	}
