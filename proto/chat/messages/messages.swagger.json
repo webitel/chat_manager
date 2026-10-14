@@ -814,6 +814,17 @@
               "type": "string"
             },
             "collectionFormat": "multi"
+          },
+          {
+            "name": "sort",
+            "description": "Sort the result: \"date\" | \"+date\" (OLDest..to..NEWest), \"-date\" (default, NEWest..to..OLDest)",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
           }
         ],
         "tags": [
@@ -1018,6 +1029,17 @@
           {
             "name": "exclude.kind",
             "description": "Kind of messages to exclude from results",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "sort",
+            "description": "Sort the result: \"date\" | \"+date\" (OLDest..to..NEWest), \"-date\" (default, NEWest..to..OLDest)",
             "in": "query",
             "required": false,
             "type": "array",

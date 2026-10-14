@@ -488,9 +488,9 @@ func (srv *Catalog) GetHistory(ctx context.Context, req *pb.ChatMessagesRequest,
 				},
 			),
 		),
-		// Order: app.FieldsFunc(
-		// 	req.Sort, app.InlineFields,
-		// ),
+		Order: app.FieldsFunc(
+			req.GetSort(), app.InlineFields,
+		),
 		// Size: int(req.GetSize()),
 		// Page: int(req.GetPage()),
 		Size: int(req.GetLimit()),
