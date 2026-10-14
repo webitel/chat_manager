@@ -9,7 +9,6 @@
       "program": "${workspaceFolder}",
       "args": ["app"],
       "envFile": "${workspaceFolder}/.env.app",
-      "console": "integratedTerminal",
       "hideSystemGoroutines": true,
       "presentation": { "group": "1-run" }
     },
@@ -21,7 +20,6 @@
       "program": "${workspaceFolder}",
       "args": ["bot"],
       "envFile": "${workspaceFolder}/.env.bot",
-      "console": "integratedTerminal",
       "hideSystemGoroutines": true,
       "presentation": { "group": "1-run" }
     },
@@ -35,7 +33,6 @@
       "envFile": "${workspaceFolder}/.env.app",
       "env": { "CGO_ENABLED": "1" },
       "buildFlags": "-race",
-      "console": "integratedTerminal",
       "hideSystemGoroutines": true,
       "presentation": { "group": "2-race" }
     },
@@ -49,7 +46,6 @@
       "envFile": "${workspaceFolder}/.env.bot",
       "env": { "CGO_ENABLED": "1" },
       "buildFlags": "-race",
-      "console": "integratedTerminal",
       "hideSystemGoroutines": true,
       "presentation": { "group": "2-race" }
     },
@@ -60,7 +56,6 @@
       "mode": "test",
       "program": "${fileDirname}",
       "envFile": "${workspaceFolder}/.env.app",
-      "console": "integratedTerminal",
       "hideSystemGoroutines": true,
       "presentation": { "group": "3-debug" }
     },
