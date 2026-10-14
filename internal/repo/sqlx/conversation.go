@@ -204,7 +204,8 @@ func (repo *sqlxRepository) GetConversations(
 								json_build_object('id',m.file_id,'url',m.file_url,'size',m.file_size,'type',m.file_type,'name',m.file_name)
 							end) as file,
 							m.reply_to as reply_to_message_id,
-							m.forward_id as forward_from_message_id
+							m.forward_id as forward_from_message_id,
+							(case when m.variables->>'template' notnull then m.variables end) as variables
 						FROM chat.message m
 						where m.conversation_id = c.id
 						order by m.created_at desc

@@ -283,6 +283,7 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 	// const precision = (int64)(time.Millisecond)
 
 	mergedVariables := make(map[string]string)
+	messageMarkers := make(map[int64]map[string]string)
 
 	conv, err := e.repo.GetConversationByID(context.Background(), conversation.Id)
 	if err != nil {
@@ -290,6 +291,11 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 			slog.String("conversation_id", conversation.Id),
 			slog.Any("error", err))
 	} else if conv != nil {
+		for _, msg := range conv.Messages {
+			if marker := botServiceMarker(msg.Text, msg.Variables); marker != nil {
+				messageMarkers[msg.ID] = marker
+			}
+		}
 		// Filter out system keys
 		for key, val := range conv.Variables {
 			if val == "" {
@@ -387,6 +393,7 @@ func (e *eventRouter) SendInviteToWebitelUser(conversation *chat.Conversation, i
 			dst.UpdatedAt = src.UpdatedAt
 			dst.Type = src.Type
 			dst.Text = src.Text
+			dst.Variables = messageMarkers[src.Id]
 
 			if doc := src.File; doc != nil {
 				dst.File = &events.File{
@@ -1047,3 +1054,14 @@ func (c *eventRouter) SendMessage(chatRoom *app.Session, notify *chat.Message) (
 	return sent, err
 }
 */
+
+// botServiceMarker returns the marker of an empty text bot service message, like the live message event
+func botServiceMarker(text string, vars map[string]string) map[string]string {
+	if text != "" || vars["from"] != "bot" || vars["template"] == "" {
+		return nil
+	}
+	return map[string]string{
+		"from":     vars["from"],
+		"template": vars["template"],
+	}
+}
