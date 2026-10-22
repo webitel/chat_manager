@@ -6,12 +6,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
 
+	microerr "github.com/micro/micro/v3/service/errors"
 	graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
 	"golang.org/x/oauth2"
 )
@@ -257,90 +259,120 @@ func (c *Client) getSubscribedFields(token *oauth2.Token, pages []*Page) error {
 	return nil
 }
 
-func (c *Client) fetchFacebookAccountPages(ctx context.Context, userToken string, pageID []string) ([]*Page, error) {
+var facebookPagesFields = strings.Join([]string{
+	"id",
+	"name",
+	"access_token",
+}, ",")
 
-	n := len(pageID)
-	if n == 0 {
+func (c *Client) fetchFacebookAccountPages(ctx context.Context, userToken string, pageID []string) ([]*Page, error) {
+	if len(pageID) == 0 {
 		return nil, nil
 	}
 
-	form := url.Values{
-		"ids": []string{strings.Join(pageID, ",")},
-		"fields": []string{strings.Join([]string{
-			"id", // default:core
-			"name",
-			"access_token",
-			// "subscribed_fields.as(fields)", // PAGE_TOKEN required(!)
-		}, ",")},
+	if c.supportBatchRequests() {
+		return c.fetchFacebookAccountPagesBatch(ctx, userToken, pageID)
 	}
-	accessToken := userToken
-	form = c.requestForm(form, accessToken)
-	// Hide ?access_token= from query ...
-	delete(form, graph.ParamAccessToken)
-	// Add Authorization header BELOW ...
 
-	// https://developers.facebook.com/docs/graph-api/reference/whats-app-business-account/phone_numbers/#Reading
+	return c.fetchFacebookAccountPagesLegacy(ctx, userToken, pageID)
+}
+
+func (c *Client) fetchFacebookAccountPagesLegacy(ctx context.Context, userToken string, pageID []string) ([]*Page, error) {
+	form := c.requestForm(url.Values{
+		"ids":    []string{strings.Join(pageID, ",")},
+		"fields": []string{facebookPagesFields},
+	}, userToken)
+	// Hide ?access_token= from query, token goes to Authorization header
+	delete(form, graph.ParamAccessToken)
+
 	req, err := http.NewRequestWithContext(ctx,
 		http.MethodGet, "https://graph.facebook.com"+
 			path.Join("/", c.Version, "/")+
 			"?"+form.Encode(),
 		http.NoBody,
 	)
-
 	if err != nil {
 		return nil, err
 	}
-	// Authorize GraphAPI Request
-	req.Header.Add("Authorization", "Bearer "+accessToken)
+	req.Header.Add("Authorization", "Bearer "+userToken)
 
-	rsp, err := c.Client.Do(req)
+	res, err := c.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
 
+	raw, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	defer rsp.Body.Close()
+	nodes := make(map[string]*Page, len(pageID))
+	if err := decodeGraphRPC(raw, &nodes); err != nil {
+		return nil, err
+	}
 
-	var (
-		res = struct {
-			// Private JSON result
-			raw json.RawMessage
-			// data map[id]node
-			data map[string]*Page
-			// Public JSON result
-			Error *graph.Error `json:"error,omitempty"`
-		}{
-			data: make(map[string]*Page, n),
-			// raw:  make(json.RawMessage, 0, res.ContentLength), // NO Content-Length Header provided !  =(
+	return collectPages(nodes), nil
+}
+
+func (c *Client) fetchFacebookAccountPagesBatch(ctx context.Context, userToken string, pageID []string) ([]*Page, error) {
+	requests := make([]*SubRequest, len(pageID))
+	for i, id := range pageID {
+		relURL := id + "?fields=" + url.QueryEscape(facebookPagesFields)
+		requests[i] = NewSubRequest(http.MethodGet, relURL, "")
+	}
+
+	batchReq := NewBatchRequest(false, requests...)
+
+	version := MustPareGraphAPIVersion(c.Version)
+	var batcher Batcher = NewBatchClient(c.Client, &version)
+
+	responses, err := batcher.DoParallel(ctx, batchReq, userToken)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(responses) != len(pageID) {
+		return nil, microerr.InternalServerError(
+			"facebook.pages.batch.mismatch",
+			"expected %d sub-responses, received %d",
+			len(pageID), len(responses),
+		)
+	}
+
+	nodes := make(map[string]*Page, len(pageID))
+
+	for i, sub := range responses {
+		id := pageID[i]
+
+		if sub.Code != http.StatusOK {
+			return nil, microerr.InternalServerError(
+				"facebook.pages.batch.sub_status",
+				"page %s: meta API sub-response status %d; body: %s",
+				id, sub.Code, sub.Body,
+			)
 		}
-	)
 
-	err = json.NewDecoder(rsp.Body).Decode(&res.raw)
-	if err != nil {
-		// ERR: Invalid JSON
-		return nil, err
-	}
-	// CHECK: for RPC `error` first
-	err = json.Unmarshal(res.raw, &res) // {"error"}
-	if err == nil && res.Error != nil {
-		// RPC: Result Error
-		err = res.Error
-	}
-	if err != nil {
-		return nil, err
+		var node Page
+		if err := decodeGraphRPC([]byte(sub.Body), &node); err != nil {
+			return nil, err
+		}
+
+		nodes[id] = &node
 	}
 
-	err = json.Unmarshal(res.raw, &res.data)
-	if err != nil {
-		// ERR: Unexpected JSON result
-		return nil, err
-	}
+	return collectPages(nodes), nil
+}
 
-	data := make([]*Page, 0, len(res.data))
-	for _, node := range res.data {
-		data = append(data, node)
+func collectPages(nodes map[string]*Page) []*Page {
+	list := make([]*Page, 0, len(nodes))
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		list = append(list, node)
 	}
-	return data, nil
+	return list
 }
 
 // e.g.: https://developers.facebook.com/docs/whatsapp/embedded-signup/manage-accounts#get-shared-waba-id-with-access-token
