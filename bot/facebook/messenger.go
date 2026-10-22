@@ -3,7 +3,6 @@ package facebook
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -58,8 +57,7 @@ func (c *Client) SetupMessengerPages(rsp http.ResponseWriter, req *http.Request)
 	)
 
 	if data := c.pages.backup(); len(data) != 0 {
-		encoding := base64.RawURLEncoding
-		dataset = encoding.EncodeToString(data)
+		dataset = backupData(data)
 	}
 	// OVERRIDE OR DELETE
 	err = agent.SetMetadata(
@@ -584,11 +582,10 @@ func (c *Client) subscribePages(pages []*Page, fields []string) error {
 		var (
 			data  string
 			agent = c.Gateway
-			enc   = base64.RawURLEncoding
 		)
 
 		if bak := c.pages.backup(); len(bak) != 0 {
-			data = enc.EncodeToString(bak)
+			data = backupData(bak)
 		}
 		// BACKUP NEW Internal State
 		_ = agent.SetMetadata(

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
-	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -54,10 +53,6 @@ const (
 
 	optionSessionData = ".gotd"
 	optionSessionAuth = ".auth"
-)
-
-var (
-	binaryText = base64.RawStdEncoding
 )
 
 // calc hash sum of the api(Id+Hash) identification
