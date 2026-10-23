@@ -306,5 +306,6 @@ func init() {
 		Flags:  Flags,
 		Action: Run,
 	}
+	cmd.CommandPlugin(app, cmd.PluginPprof)
 	cmd.Register(app)
 }

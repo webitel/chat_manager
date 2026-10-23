@@ -13,8 +13,6 @@ import (
 	"strings"
 	"sync"
 
-	"net/http/pprof"
-
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/api/proto/chat"
 	pbstorage "github.com/webitel/chat_manager/api/proto/storage"
@@ -249,28 +247,17 @@ func (srv *Service) Start() error {
 		}),
 	)
 
-	rmux := http.NewServeMux()
-	rmux.HandleFunc("/debug/pprof/", pprof.Index)
-	rmux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	rmux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	rmux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	rmux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	rmux.Handle("/", srv)
-
-	// // handler := srv
-	// // handler := dumpMiddleware(srv)
-	// handler := dumpMiddleware(rmux)
-	// // handler := rmux
-	handler := traceMiddleware(rmux)
+	handler := traceMiddleware(srv)
+	sh := &http.Server{Handler: handler}
 
 	go func() {
 
-		err := http.Serve(ln, handler)
+		err := sh.Serve(ln)
 		if err == http.ErrServerClosed {
 			err = nil
 		}
 
-		emit := slog.LevelWarn
+		emit := slog.LevelInfo
 		if err != nil {
 			emit = slog.LevelError
 		}
@@ -291,7 +278,7 @@ func (srv *Service) Start() error {
 
 	go func() {
 		ch := <-srv.exit
-		ch <- ln.Close()
+		ch <- sh.Close()
 	}()
 
 	// TODO: onStartup()
