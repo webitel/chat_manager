@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -78,6 +79,11 @@ type chatService struct {
 	botClient     pbbot.BotsService
 	storageClient pbstorage.FileService
 	eventRouter   event.Router
+
+	// closing is the set of conversation IDs being closed right now
+	// by CloseConversation(), so a concurrent LeaveConversation()
+	// must NOT close their channels with its own cause (WTEL-10713).
+	closing sync.Map
 }
 
 var _ pbchat.ChatServiceHandler = (*chatService)(nil)
@@ -92,13 +98,13 @@ func NewChatService(
 	eventRouter event.Router,
 ) Service {
 	return &chatService{
-		repo,
-		log,
-		flowClient,
-		authClient,
-		botClient,
-		storageClient,
-		eventRouter,
+		repo:          repo,
+		log:           log,
+		flowClient:    flowClient,
+		authClient:    authClient,
+		botClient:     botClient,
+		storageClient: storageClient,
+		eventRouter:   eventRouter,
 	}
 }
 
@@ -904,6 +910,18 @@ func (s *chatService) CloseConversation(
 	// sender := chat.Channel
 	// endregion
 
+	// Guard members notification until ALL chat channels are CLOSED !
+	// The chat@workflow .Break() below makes call_center cancel the queue attempt,
+	// which may .LeaveConversation(agent_leave) for the agent channel
+	// before the conversation is closed here with the given cause.
+	if _, busy := s.closing.LoadOrStore(chat.Invite, struct{}{}); busy {
+		// Concurrent close of the same conversation is in progress
+		// Make idempotent !
+		return nil
+	}
+
+	defer s.closing.Delete(chat.Invite)
+
 	_, err = s.sendChatClosed(ctx, chat, cause)
 	if err != nil {
 		log.Error("FAILED Notify Chat Members",
@@ -1205,6 +1223,14 @@ func (s *chatService) leaveChat(ctx context.Context, req *pbchat.LeaveConversati
 			"chat: leave FROM channel ID=%s user ID=%d not found or been closed",
 			channelChatID, channelFromID,
 		)
+	}
+
+	if _, closing := s.closing.Load(sender.ConversationID); closing {
+		log.Debug("SKIP Leave: conversation is being closed",
+			slog.String("cause", leaveCause.String()),
+		)
+
+		return nil
 	}
 
 	// if conversationID != "" {
