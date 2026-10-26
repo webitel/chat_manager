@@ -26,9 +26,10 @@ require (
 	github.com/samber/slog-formatter v1.1.1
 	github.com/streadway/amqp v1.1.0
 	github.com/urfave/cli/v2 v2.3.0
-	github.com/webitel/crypto/cryptobox v0.2.0
-	github.com/webitel/crypto/cryptostore v0.2.1
+	github.com/webitel/crypto/cryptobox v0.3.0
+	github.com/webitel/crypto/cryptostore v0.3.0
 	github.com/webitel/protos v1.0.1-0.20240401102913-c962ca253de4
+	github.com/webitel/webitel-cryptoctl/schema v0.1.0
 	github.com/webitel/webitel-go-kit v0.0.21-0.20241119150325-b21de048f596
 	github.com/webitel/webitel-go-kit/infra/httpproxy v0.0.0-20260707115612-427dabf84692
 	github.com/yuin/goldmark v1.4.13
@@ -58,7 +59,7 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.3.5 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/webitel/crypto/encoding/jsonc v0.1.0 // indirect
-	github.com/webitel/crypto/env v0.1.0 // indirect
+	github.com/webitel/crypto/env v0.2.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.0.0-20240805233418-127d068751eb // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.4.0 // indirect
