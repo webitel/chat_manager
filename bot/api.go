@@ -15,6 +15,7 @@ import (
 	"github.com/micro/micro/v3/service/errors"
 	"google.golang.org/protobuf/proto"
 
+	authN "github.com/webitel/chat_manager/api/proto/auth"
 	pbbot "github.com/webitel/chat_manager/api/proto/bot"
 	pbchat "github.com/webitel/chat_manager/api/proto/chat"
 	"github.com/webitel/chat_manager/app"
@@ -1498,4 +1499,145 @@ func getClientIp(ctx context.Context) string {
 	}
 
 	return ip
+}
+
+// GetCallCredentials resolves the business phone number a call is placed
+// from into what the provider's calling API needs to authorise it.
+//
+// The number alone is not enough to place a call: the provider addresses
+// its API by an identifier of its own, and the token belongs to the bot
+// that registered the number. Both live here, so the lookup does too.
+//
+// It takes no authorization. The caller is another service placing a call
+// on the cluster's behalf, with no user behind it and so no domain to be
+// scoped to: it knows a number, not where that number lives. The method is
+// reachable only over the service bus and has deliberately no HTTP
+// binding, so whoever can call it is already inside the cluster. Keep it
+// that way: it hands back a token.
+func (srv *Service) GetCallCredentials(ctx context.Context, req *pbbot.GetCallCredentialsRequest, rsp *pbbot.GetCallCredentialsResponse) error {
+
+	number := strings.TrimSpace(req.GetNumber())
+	if number == "" {
+		return errors.BadRequest(
+			"chat.bot.call.number.required",
+			"chatbot: call credentials; number is missing",
+		)
+	}
+
+	// The same internal authorization the webhook path uses to locate a bot
+	// it has only a URI for: no credentials, so the store applies no domain
+	// filter.
+	search := app.SearchOptions{
+		Context: app.Context{
+			Context: ctx,
+			Authorization: auth.Authorization{
+				Service: "webitel.chat.bot",
+				Method:  "internal",
+			},
+		},
+		// metadata is what makes this a read rather than a storm of
+		// provider round trips: it already holds the number and the token.
+		Fields: []string{"id", "name", "enabled", "provider", "metadata"},
+		Size:   -1, // every bot that might serve the number
+	}
+
+	// dc narrows the search to one domain. Callers that know it should send
+	// it: without it the whole cluster is scanned.
+	if dc := req.GetDc(); dc != 0 {
+		search.Creds = &authN.Userinfo{Dc: dc}
+	}
+
+	search.FilterAND("enabled", true)
+
+	bots, err := srv.store.Search(&search)
+	if err != nil {
+		return err
+	}
+
+	// Bots whose metadata cannot answer. They are asked only if they
+	// happen to be running already, which costs nothing; a bot that is not
+	// running stays that way. Starting one means a round trip to the
+	// provider, and a number nobody serves would start every candidate.
+	var unknown []*Bot
+
+	for _, profile := range bots {
+		if profile == nil {
+			continue
+		}
+
+		md, ok := CallingMetadata(profile.GetProvider())
+		if !ok {
+			continue // this provider places no calls at all
+		}
+
+		metadata := profile.GetMetadata()
+
+		if creds, found := md.Lookup(metadata, number); found {
+			answer(rsp, profile, creds)
+
+			return nil
+		}
+
+		// A bot that has never stored its numbers cannot be ruled out from
+		// its metadata alone.
+		if !md.Stored(metadata) {
+			unknown = append(unknown, profile)
+		}
+	}
+
+	for _, profile := range unknown {
+		creds, ok := srv.runningCallCredentials(profile.GetId(), number)
+		if !ok {
+			continue
+		}
+
+		answer(rsp, profile, creds)
+
+		return nil
+	}
+
+	return errors.NotFound(
+		"chat.bot.call.number.not_found",
+		"chatbot: call credentials; no bot serves number %s", number,
+	)
+}
+
+func answer(rsp *pbbot.GetCallCredentialsResponse, profile *Bot, creds NumberCredentials) {
+
+	rsp.Bot = &pbbot.Refer{
+		Id:   profile.GetId(),
+		Name: profile.GetName(),
+	}
+	rsp.Provider = profile.GetProvider()
+	rsp.PhoneNumberId = creds.PhoneNumberID
+	rsp.AccessToken = creds.AccessToken
+	rsp.ExpiresAt = creds.ExpiresAt
+}
+
+// runningCallCredentials asks a bot that is already loaded, for the one
+// case the stored metadata cannot answer: a bot whose numbers have never
+// been written there.
+//
+// It deliberately does not use Gateway, which would start the bot. That is
+// a round trip to the provider and it can fail for reasons of its own -- a
+// deleted app, an expired token -- none of which has anything to do with
+// the number being asked about. A bot that is running has its numbers in
+// memory already, and its next start writes them to metadata, which is how
+// this case stops happening.
+func (srv *Service) runningCallCredentials(pid int64, number string) (NumberCredentials, bool) {
+
+	srv.indexMx.RLock()           // +R
+	gate, ok := srv.profiles[pid] // runtime; never started here
+	srv.indexMx.RUnlock()         // -R
+
+	if !ok || gate == nil {
+		return NumberCredentials{}, false
+	}
+
+	caller, ok := gate.External.(CallCredentialsProvider)
+	if !ok {
+		return NumberCredentials{}, false
+	}
+
+	return caller.CallCredentials(number)
 }
