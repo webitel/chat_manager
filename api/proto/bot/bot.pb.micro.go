@@ -5,9 +5,9 @@ package bot
 
 import (
 	fmt "fmt"
+	proto "github.com/golang/protobuf/proto"
 	chat "github.com/webitel/chat_manager/api/proto/chat"
 	_ "google.golang.org/genproto/googleapis/rpc/status"
-	proto "google.golang.org/protobuf/proto"
 	math "math"
 )
 
@@ -22,6 +22,12 @@ import (
 var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the proto package it is being compiled against.
+// A compilation error at this line likely means your copy of the
+// proto package needs to be updated.
+const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ api.Endpoint
@@ -54,6 +60,19 @@ type BotsService interface {
 	SendUserAction(ctx context.Context, in *SendUserActionRequest, opts ...client.CallOption) (*chat.SendUserActionResponse, error)
 	// Broadcast message `from` given bot profile to `peer` recipient(s)
 	BroadcastMessage(ctx context.Context, in *BroadcastMessageRequest, opts ...client.CallOption) (*BroadcastMessageResponse, error)
+	// GetCallCredentials resolves the business phone number a call is placed
+	// from into what the provider's calling API needs to authorise it.
+	//
+	// A caller placing a call knows the number it is calling from; it does not
+	// know the provider's identifier for that number, nor the token, and for
+	// WhatsApp neither can be derived from the number: both live in this
+	// service's bot metadata.
+	//
+	// Cluster-internal: it takes no authorization, because the caller is
+	// another service with no user behind it and so no domain to be scoped
+	// to. The response carries a secret, so this method has deliberately no
+	// HTTP binding and must never be exposed through the gateway.
+	GetCallCredentials(ctx context.Context, in *GetCallCredentialsRequest, opts ...client.CallOption) (*GetCallCredentialsResponse, error)
 }
 
 type botsService struct {
@@ -148,6 +167,16 @@ func (c *botsService) BroadcastMessage(ctx context.Context, in *BroadcastMessage
 	return out, nil
 }
 
+func (c *botsService) GetCallCredentials(ctx context.Context, in *GetCallCredentialsRequest, opts ...client.CallOption) (*GetCallCredentialsResponse, error) {
+	req := c.c.NewRequest(c.name, "Bots.GetCallCredentials", in)
+	out := new(GetCallCredentialsResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for Bots service
 
 type BotsHandler interface {
@@ -167,6 +196,19 @@ type BotsHandler interface {
 	SendUserAction(context.Context, *SendUserActionRequest, *chat.SendUserActionResponse) error
 	// Broadcast message `from` given bot profile to `peer` recipient(s)
 	BroadcastMessage(context.Context, *BroadcastMessageRequest, *BroadcastMessageResponse) error
+	// GetCallCredentials resolves the business phone number a call is placed
+	// from into what the provider's calling API needs to authorise it.
+	//
+	// A caller placing a call knows the number it is calling from; it does not
+	// know the provider's identifier for that number, nor the token, and for
+	// WhatsApp neither can be derived from the number: both live in this
+	// service's bot metadata.
+	//
+	// Cluster-internal: it takes no authorization, because the caller is
+	// another service with no user behind it and so no domain to be scoped
+	// to. The response carries a secret, so this method has deliberately no
+	// HTTP binding and must never be exposed through the gateway.
+	GetCallCredentials(context.Context, *GetCallCredentialsRequest, *GetCallCredentialsResponse) error
 }
 
 func RegisterBotsHandler(s server.Server, hdlr BotsHandler, opts ...server.HandlerOption) error {
@@ -179,6 +221,7 @@ func RegisterBotsHandler(s server.Server, hdlr BotsHandler, opts ...server.Handl
 		SearchBot(ctx context.Context, in *SearchBotRequest, out *SearchBotResponse) error
 		SendUserAction(ctx context.Context, in *SendUserActionRequest, out *chat.SendUserActionResponse) error
 		BroadcastMessage(ctx context.Context, in *BroadcastMessageRequest, out *BroadcastMessageResponse) error
+		GetCallCredentials(ctx context.Context, in *GetCallCredentialsRequest, out *GetCallCredentialsResponse) error
 	}
 	type Bots struct {
 		bots
@@ -221,4 +264,8 @@ func (h *botsHandler) SendUserAction(ctx context.Context, in *SendUserActionRequ
 
 func (h *botsHandler) BroadcastMessage(ctx context.Context, in *BroadcastMessageRequest, out *BroadcastMessageResponse) error {
 	return h.BotsHandler.BroadcastMessage(ctx, in, out)
+}
+
+func (h *botsHandler) GetCallCredentials(ctx context.Context, in *GetCallCredentialsRequest, out *GetCallCredentialsResponse) error {
+	return h.BotsHandler.GetCallCredentials(ctx, in, out)
 }

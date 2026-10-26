@@ -200,6 +200,9 @@ func (c *Client) whatsAppBackupAccounts(ctx context.Context) error {
 	return agent.SetMetadata(
 		ctx, map[string]string{
 			"wa": bak,
+			// The numbers too, so that resolving one into a phone_number_id
+			// is a read of this row and not a start of this bot.
+			metaWhatsAppNumbers: whatsAppNumbersMetadata(c.whatsApp),
 		},
 	)
 
@@ -295,6 +298,9 @@ func (c *Client) whatsAppRestoreAccounts() error {
 	}
 	// Cache fetched accounts
 	c.whatsApp.Register(accounts)
+	// The numbers are known again; store them if they are not there
+	// already, so the next lookup needs none of this.
+	c.whatsAppStoreNumbers(context.TODO())
 	return nil
 
 	// ---------------------------------------------
@@ -3053,4 +3059,142 @@ func whatsAppSendButtons(keyboard []*chat.Buttons) []*whatsapp.QuickReply {
 	}
 
 	return replies
+}
+
+// CallCredentials resolves a WhatsApp Business number this client serves
+// into what the Cloud Calling API needs to authorise a call from it.
+//
+// Neither half can be derived from the number: the id comes from the
+// business account this bot has registered, and the token is the one this
+// bot was configured with.
+func (c *Client) CallCredentials(number string) (bot.NumberCredentials, bool) {
+	phone := c.whatsApp.LookupPhoneNumber(number)
+	if phone == nil {
+		return bot.NumberCredentials{}, false
+	}
+
+	token := c.whatsApp.AccessToken
+	if phone.ID == "" || token == "" {
+		return bot.NumberCredentials{}, false
+	}
+
+	return bot.NumberCredentials{
+		PhoneNumberID: phone.ID,
+		AccessToken:   token,
+		// The business token is long-lived and carries no expiry here, so
+		// a caller must apply a refresh interval of its own.
+		ExpiresAt: 0,
+	}, true
+}
+
+// Metadata keys holding what a call needs. The token has always been
+// stored; the numbers are stored so that resolving one does not mean
+// starting every bot that might serve it.
+const (
+	metaWhatsAppToken   = "whatsapp_token"
+	metaWhatsAppNumbers = "wa_numbers"
+)
+
+// whatsAppNumbersMetadata renders the registered numbers as
+// "digits=phone_number_id", comma separated, for metaWhatsAppNumbers.
+//
+// Numbers are kept as digits so a lookup need not know how Meta formats
+// them, and an empty result clears the key rather than leaving a stale one.
+func whatsAppNumbersMetadata(manager *whatsapp.Manager) string {
+	var keys []string
+
+	manager.EachPhoneNumber(func(phone *whatsapp.WhatsAppPhoneNumber) {
+		if phone == nil || phone.WhatsAppBusinessAccountToNumberCurrentStatus == nil {
+			return
+		}
+
+		digits := whatsAppNumberDigits(phone.PhoneNumber)
+		if digits == "" || phone.ID == "" {
+			return
+		}
+
+		keys = append(keys, digits+"="+phone.ID)
+	})
+
+	// The map iterates in a random order, and metadata is compared as a
+	// string before it is written back.
+	sort.Strings(keys)
+
+	return strings.Join(keys, ",")
+}
+
+// whatsAppCallCredentials reads a bot's stored metadata, which is what lets
+// a number be resolved without loading the bot.
+//
+// It reports false when the bot serves no WhatsApp numbers, when its
+// numbers have not been stored yet, or when the number is not among them.
+func whatsAppCallCredentials(metadata map[string]string, number string) (bot.NumberCredentials, bool) {
+	token := metadata[metaWhatsAppToken]
+	stored := metadata[metaWhatsAppNumbers]
+
+	if token == "" || stored == "" {
+		return bot.NumberCredentials{}, false
+	}
+
+	digits := whatsAppNumberDigits(number)
+	if digits == "" {
+		return bot.NumberCredentials{}, false
+	}
+
+	for _, entry := range strings.Split(stored, ",") {
+		name, id, ok := strings.Cut(entry, "=")
+		if !ok || name != digits || id == "" {
+			continue
+		}
+
+		return bot.NumberCredentials{
+			PhoneNumberID: id,
+			AccessToken:   token,
+			// The business token is long-lived and carries no expiry, so a
+			// caller must apply a refresh interval of its own.
+			ExpiresAt: 0,
+		}, true
+	}
+
+	return bot.NumberCredentials{}, false
+}
+
+// whatsAppNumbersStored reports whether this bot's numbers are in its
+// metadata already. Without them the bot has to be started to be asked.
+func whatsAppNumbersStored(metadata map[string]string) bool {
+	return metadata[metaWhatsAppNumbers] != ""
+}
+
+// whatsAppNumberDigits reduces a number to the digits that identify it, so
+// "+1 555-090-7777" and "15550907777" are the same number.
+func whatsAppNumberDigits(number string) string {
+	var b strings.Builder
+	b.Grow(len(number))
+
+	for _, r := range number {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+
+	return b.String()
+}
+
+// whatsAppStoreNumbers writes the registered numbers into the bot's
+// metadata, and only when they changed: this runs on every start, and the
+// point of storing them is to avoid work, not to add a write to it.
+func (c *Client) whatsAppStoreNumbers(ctx context.Context) {
+
+	numbers := whatsAppNumbersMetadata(c.whatsApp)
+	if numbers == c.Gateway.GetMetadata()[metaWhatsAppNumbers] {
+		return
+	}
+
+	if err := c.Gateway.SetMetadata(
+		ctx, map[string]string{metaWhatsAppNumbers: numbers},
+	); err != nil {
+		c.Gateway.Log.Error("WHATSAPP: NUMBERS",
+			slog.String("error", "store: "+err.Error()),
+		)
+	}
 }

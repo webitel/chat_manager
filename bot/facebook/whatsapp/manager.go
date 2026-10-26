@@ -1,6 +1,7 @@
 package whatsapp
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/golang/protobuf/proto"
@@ -328,4 +329,64 @@ func (c *Manager) Restore(data []byte) error {
 		}
 	}
 	return nil
+}
+
+// digitsOnly reduces a phone number to the digits that identify it, so a
+// caller passing "+1 555-090-7777" matches a number Meta reports as
+// "+1 555 090 7777".
+func digitsOnly(number string) string {
+	var b strings.Builder
+	b.Grow(len(number))
+
+	for _, r := range number {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+
+	return b.String()
+}
+
+// LookupPhoneNumber finds a registered number by the number itself, rather
+// than by the provider's id for it. Formatting and a leading plus are
+// ignored on both sides.
+//
+// The index is keyed by id, so this is a scan; the set is the numbers of one
+// business account and is small.
+func (c *Manager) LookupPhoneNumber(number string) *WhatsAppPhoneNumber {
+	digits := digitsOnly(number)
+	if digits == "" || c == nil {
+		return nil
+	}
+
+	c.mx.RLock()         // +R
+	defer c.mx.RUnlock() // -R
+
+	for _, phone := range c.PhoneNumbers {
+		if phone == nil || phone.WhatsAppBusinessAccountToNumberCurrentStatus == nil {
+			continue
+		}
+
+		if digitsOnly(phone.PhoneNumber) == digits {
+			return phone
+		}
+	}
+
+	return nil
+}
+
+// EachPhoneNumber calls fn for every registered number, holding the read
+// lock. It exists so a caller can render the set without copying it or
+// reaching into the map unguarded.
+func (c *Manager) EachPhoneNumber(fn func(*WhatsAppPhoneNumber)) {
+	if c == nil {
+		return
+	}
+
+	c.mx.RLock()         // +R
+	defer c.mx.RUnlock() // -R
+
+	for _, phone := range c.PhoneNumbers {
+		fn(phone)
+	}
 }

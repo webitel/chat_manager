@@ -34,6 +34,20 @@ service Bots {
 
   // Broadcast message `from` given bot profile to `peer` recipient(s)
   rpc BroadcastMessage(BroadcastMessageRequest) returns (BroadcastMessageResponse) {}
+
+  // GetCallCredentials resolves the business phone number a call is placed
+  // from into what the provider's calling API needs to authorise it.
+  //
+  // A caller placing a call knows the number it is calling from; it does not
+  // know the provider's identifier for that number, nor the token, and for
+  // WhatsApp neither can be derived from the number: both live in this
+  // service's bot metadata.
+  //
+  // Cluster-internal: it takes no authorization, because the caller is
+  // another service with no user behind it and so no domain to be scoped
+  // to. The response carries a secret, so this method has deliberately no
+  // HTTP binding and must never be exposed through the gateway.
+  rpc GetCallCredentials(GetCallCredentialsRequest) returns (GetCallCredentialsResponse) {}
 }
 
 // Reference
@@ -204,4 +218,33 @@ message BroadcastMessageResponse {
   //
   // Key-Value format
   map<string, string> variables = 2;
+}
+
+// GetCallCredentials: request
+message GetCallCredentialsRequest {
+  // Required. The business phone number the call is placed from, as the
+  // provider knows it: digits only, no leading plus, e.g. "15550907777".
+  string number = 1;
+  // Optional. Narrow the lookup to a single domain. Without it the number
+  // must resolve to exactly one bot among those the caller may see.
+  int64 dc = 2;
+}
+
+// GetCallCredentials: response
+message GetCallCredentialsResponse {
+  // Bot profile that owns the number.
+  Refer bot = 1;
+  // Provider serving it, e.g. "whatsapp", so the caller knows which API the
+  // rest of this message belongs to.
+  string provider = 2;
+  // The provider's own identifier for the number, which its calling API is
+  // addressed by. For WhatsApp this is the phone_number_id and is not the
+  // number itself.
+  string phone_number_id = 3;
+  // Bearer token for that number, without the scheme.
+  string access_token = 4;
+  // Unix seconds after which the token stops working, or 0 when it does not
+  // expire on a schedule. A caller may hold the credentials until then, and
+  // must not keep them past it.
+  int64 expires_at = 5;
 }
