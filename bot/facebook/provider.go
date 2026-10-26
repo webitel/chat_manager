@@ -61,6 +61,12 @@ const (
 func init() {
 	// Register Facebook Messenger Application provider
 	bot.Register(providerType, New)
+	// WhatsApp numbers served here can place calls, and the stored
+	// metadata is enough to resolve one.
+	bot.RegisterCalling(providerType, bot.CallCredentialsMetadata{
+		Lookup: whatsAppCallCredentials,
+		Stored: whatsAppNumbersStored,
+	})
 }
 
 // Implementation
@@ -68,6 +74,8 @@ var (
 	_ bot.Sender   = (*Client)(nil)
 	_ bot.Receiver = (*Client)(nil)
 	_ bot.Provider = (*Client)(nil)
+	// Optional: WhatsApp numbers served here can place calls.
+	_ bot.CallCredentialsProvider = (*Client)(nil)
 )
 
 func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
