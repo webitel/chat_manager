@@ -1533,7 +1533,6 @@ func (srv *Service) GetCallCredentials(ctx context.Context, req *pbbot.GetCallCr
 			Authorization: auth.Authorization{
 				Service: "webitel.chat.bot",
 				Method:  "internal",
-				Token:   "webitel.chat.bot",
 			},
 		},
 		// metadata is what makes this a read rather than a storm of
