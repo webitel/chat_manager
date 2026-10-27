@@ -372,14 +372,13 @@ func (c *Client) Deauthorize(signedRequest string) error {
 
 	var (
 		fb, ig string
-		enc    = base64.RawURLEncoding
 	)
 	// if data := backupAccounts(c); len(data) != 0 {
 	if data := c.pages.backup(); len(data) != 0 {
-		fb = enc.EncodeToString(data)
+		fb = backupData(data)
 	}
 	if data := c.instagram.backup(); len(data) != 0 {
-		ig = enc.EncodeToString(data)
+		ig = backupData(data)
 	}
 	// OVERRIDE !
 	err = agent.SetMetadata(
