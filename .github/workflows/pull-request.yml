@@ -57,7 +57,7 @@ jobs:
         -X github.com/webitel/chat_manager/cmd.GitTag=${{ needs.prepare.outputs.full-version }}
         -X github.com/webitel/chat_manager/cmd.GitCommit=${{ needs.prepare.outputs.commit }}
         -X github.com/webitel/chat_manager/cmd.BuildDate=${{ needs.prepare.outputs.build-timestamp }}
-        
+        -X github.com/webitel/crypto/cryptobox.defaultSystemDir=/var/lib/webitel/crypto
 
       version: ${{ needs.prepare.outputs.version }}
       version-build: ${{ needs.prepare.outputs.version-build }}
