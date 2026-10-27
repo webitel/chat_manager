@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -173,7 +172,6 @@ func (c *Client) whatsAppBackupAccounts(ctx context.Context) error {
 		i, n   int
 		WABAID string
 		agent  = c.Gateway
-		codec  = base64.RawURLEncoding
 		WABAs  = c.whatsApp.GetAccounts()
 		count  = len(WABAs)
 		data   = make([]byte, 0, 16*count)
@@ -193,7 +191,7 @@ func (c *Client) whatsAppBackupAccounts(ctx context.Context) error {
 		}
 	}
 
-	bak := codec.EncodeToString(data)
+	bak := backupData(data)
 	// BACKUP NEW Internal State
 	// c.Log.Info().Str("bak", bak).Msg("WHATSAPP: BACKUP")
 	// return nil
@@ -228,7 +226,6 @@ func (c *Client) whatsAppRestoreAccounts() error {
 	var (
 		bak      string
 		agent    = c.Gateway
-		codec    = base64.RawURLEncoding
 		metadata = agent.GetMetadata()
 	)
 
@@ -241,10 +238,7 @@ func (c *Client) whatsAppRestoreAccounts() error {
 		return nil
 	}
 
-	data, err := codec.DecodeString(bak)
-	// if err == nil {
-	// 	err = c.whatsApp.Restore(data)
-	// }
+	data, err := restoreData(bak)
 	if err != nil {
 		c.Log.Error("WHATSAPP: ACCOUNTS",
 			slog.String("error", "restore: invalid data sequence; "+err.Error()),

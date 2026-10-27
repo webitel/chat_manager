@@ -2,9 +2,7 @@ package facebook
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
-	log2 "github.com/webitel/chat_manager/log"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -12,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	log2 "github.com/webitel/chat_manager/log"
 
 	"github.com/micro/micro/v3/service/errors"
 	"github.com/webitel/chat_manager/api/proto/chat"
@@ -291,8 +291,7 @@ func (c *Client) SetupInstagramPages(rsp http.ResponseWriter, req *http.Request)
 	)
 
 	if data := c.instagram.backup(); len(data) != 0 {
-		encoding := base64.RawURLEncoding
-		dataset = encoding.EncodeToString(data)
+		dataset = backupData(data)
 	}
 	// OVERRIDE OR DELETE
 	err = agent.SetMetadata(
