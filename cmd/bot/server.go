@@ -194,6 +194,10 @@ func Run(ctx *cli.Context) error {
 		micro.AfterStop(func() error { return srv.Close() }),
 	)
 
+	if err = cmd.InitServerAddress(service.Server()); err != nil {
+		return err
+	}
+
 	// logsLvl := ctx.String("log_level")
 	baseURL := ctx.String("site_url")
 	webRoot := ctx.String("web_root")
@@ -257,7 +261,7 @@ func Run(ctx *cli.Context) error {
 	// }
 
 	// configure
-	
+
 	// failfast: load cryptostore/schema.Codec from environment
 	if err = sqlxrepo.CryptoInit(); err != nil {
 		return err
