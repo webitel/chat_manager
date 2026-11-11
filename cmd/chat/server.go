@@ -154,6 +154,10 @@ func Run(ctx *cli.Context) error {
 		micro.WrapHandler(log.HandlerWrapper(stdlog)),
 	)
 
+	if err = cmd.InitServerAddress(service.Server()); err != nil {
+		return err
+	}
+
 	// Setup DSN; Persistant store
 	dbopts := []postgres.Option{
 		postgres.WithMaxOpenConns(ctx.Int("db-max-open-conns")),
