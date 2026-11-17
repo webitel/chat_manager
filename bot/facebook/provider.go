@@ -23,6 +23,7 @@ import (
 	"github.com/micro/micro/v3/service/errors"
 	pbbot "github.com/webitel/chat_manager/api/proto/bot"
 	pbchat "github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/webitel/chat_manager/auth"
 	"github.com/webitel/chat_manager/bot"
 	graph "github.com/webitel/chat_manager/bot/facebook/graph/v12.0"
 	"github.com/webitel/chat_manager/bot/facebook/messenger"
@@ -846,7 +847,7 @@ func (c *Client) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			query.Get("instagram") == "setup" ||
 			query.Get("whatsapp") == "setup")
 		// Authorize (!)
-		if !dmz && c.Gateway.AdminAuthorization(rsp, req) != nil {
+		if !dmz && c.Gateway.AdminAuthorization(rsp, req, auth.READ) != nil {
 			return // Authorization FAILED(!)
 		}
 		// endregion: --- AdminAuthorization(!) ---
