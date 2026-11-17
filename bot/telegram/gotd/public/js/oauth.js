@@ -7,6 +7,14 @@ function ajax(url, data, callback, fallback) {
     var req = new XMLHttpRequest();
     req.open(data ? 'POST' : 'GET', url);
     req.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    try {
+      var token = window.localStorage.getItem('access-token');
+      if (token) {
+        req.setRequestHeader('X-Webitel-Access', token);
+      }
+    } catch (err) {
+      console.log(err);
+    }
     req.onreadystatechange = function() {
       if (req.readyState == XMLHttpRequest.DONE) {
         try {
