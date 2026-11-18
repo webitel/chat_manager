@@ -119,7 +119,7 @@ func (c *webChat) sanitizeMessage(msg *chat.Message) error {
 	return nil
 }
 
-// stop asks writePump to drop all connections, keeping the chat open.
+// stop asks writePump to drop all connections and close the chat.
 func (c *webChat) stop() {
 	c.stopOnce.Do(func() { close(c.done) })
 }
@@ -229,18 +229,11 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 				rsp.Header().Set("Sec-Websocket-Version", "13")
 				http.Error(rsp, err.Error() /*http.StatusText(code)*/, code) // err.Error(), code)
 
-				if err == nil {
-					agent.Log.Error(http.StatusText(code),
-						slog.Int("code", code),
-						slog.String("peer", webChatRemoteIP(req)),
-					)
-				} else {
-					agent.Log.Error(http.StatusText(code),
-						slog.Int("code", code),
-						slog.Any("error", err),
-						slog.String("peer", webChatRemoteIP(req)),
-					)
-				}
+				agent.Log.Error(http.StatusText(code),
+					slog.Int("code", code),
+					slog.Any("error", err),
+					slog.String("peer", webChatRemoteIP(req)),
+				)
 			},
 		},
 		ReadTimeout:    time.Second * 30, // 30s (PING)
@@ -1547,8 +1540,6 @@ func (c *webChat) writePump() {
 	// Must be less than c.Bot.ReadTimeout.
 	pingInterval := (c.Bot.ReadTimeout * 9) / 10
 	pingTracker := time.NewTicker(pingInterval)
-	// bot shutdown: chat stays open, client reconnects later
-	stopped := false
 
 	defer func() {
 		pingTracker.Stop()
@@ -1564,7 +1555,7 @@ func (c *webChat) writePump() {
 		}
 		c.Bot.RWMutex.Unlock() // -RW
 		// Ensure service closed this chat !
-		if c.Channel.Closed == 0 && !stopped {
+		if c.Channel.Closed == 0 {
 			_ = c.Channel.Close()
 		}
 		if found {
@@ -1583,7 +1574,6 @@ func (c *webChat) writePump() {
 			send()
 
 		case <-c.done:
-			stopped = true
 			for i := 0; i < len(c.conn); i++ {
 				conn := c.conn[i]
 				_ = conn.SetWriteDeadline(
