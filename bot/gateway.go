@@ -476,7 +476,7 @@ func (c *Gateway) AdminAuthorization(rsp http.ResponseWriter, req *http.Request,
 		// ERR: Has NO access to objclass been GRANTED !
 		err = microerr.Forbidden(
 			"chat.bot.access.forbidden",
-			"chatbot: objclass %s privilege NOT GRANTED !", privilegeName(mode),
+			"chatbot: objclass %s privilege NOT GRANTED !", access.ModeName(mode),
 		)
 		re := microerr.FromError(err)
 		http.Error(rsp, re.Error(), int(re.Code))
@@ -493,19 +493,6 @@ func (c *Gateway) AdminAuthorization(rsp http.ResponseWriter, req *http.Request,
 	}
 	// OK
 	return nil
-}
-
-func privilegeName(mode access.AccessMode) string {
-	switch mode {
-	case access.ADD, access.READ | access.ADD:
-		return "ADD"
-	case access.WRITE, access.READ | access.WRITE:
-		return "WRITE"
-	case access.DELETE, access.READ | access.DELETE:
-		return "DELETE"
-	default:
-		return "READ"
-	}
 }
 
 // WebHook implements basic provider.Receiver interface

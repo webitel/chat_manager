@@ -2,18 +2,86 @@ function getEl(id) {
   return document.getElementById(id);
 }
 
+var accessTokenRequest = 'webitel.access-token.request';
+var accessTokenResponse = 'webitel.access-token';
+var accessTokenTimeout = 3000;
+var accessTokenState = {resolved: false, token: null, waiters: []};
+
+function storedAccessToken() {
+  try {
+    return window.localStorage.getItem('access-token');
+  } catch (err) {
+    console.log(err);
+    return null;
+  }
+}
+
+function resolveAccessToken(token) {
+  if (accessTokenState.resolved) {
+    return;
+  }
+  accessTokenState.resolved = true;
+  accessTokenState.token = token || storedAccessToken();
+  var waiters = accessTokenState.waiters;
+  accessTokenState.waiters = [];
+  for (var i = 0; i < waiters.length; i++) {
+    waiters[i](accessTokenState.token);
+  }
+}
+
+function requestAccessToken() {
+  var opener = window.opener;
+  if (!opener) {
+    resolveAccessToken(null);
+    return;
+  }
+  var timer;
+  function onMessage(e) {
+    if (e.source !== opener || !e.data || e.data.type !== accessTokenResponse) {
+      return;
+    }
+    clearTimeout(timer);
+    window.removeEventListener('message', onMessage);
+    resolveAccessToken(typeof e.data.token === 'string' ? e.data.token : null);
+  }
+  window.addEventListener('message', onMessage);
+  timer = setTimeout(function() {
+    window.removeEventListener('message', onMessage);
+    resolveAccessToken(null);
+  }, accessTokenTimeout);
+  try {
+    opener.postMessage({type: accessTokenRequest}, '*');
+  } catch (err) {
+    console.log(err);
+    clearTimeout(timer);
+    window.removeEventListener('message', onMessage);
+    resolveAccessToken(null);
+  }
+}
+
+function withAccessToken(callback) {
+  if (accessTokenState.resolved) {
+    callback(accessTokenState.token);
+    return;
+  }
+  accessTokenState.waiters.push(callback);
+}
+
+requestAccessToken();
+
 function ajax(url, data, callback, fallback) {
+  withAccessToken(function(token) {
+    send(url, data, token, callback, fallback);
+  });
+}
+
+function send(url, data, token, callback, fallback) {
   try {
     var req = new XMLHttpRequest();
     req.open(data ? 'POST' : 'GET', url);
     req.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-    try {
-      var token = window.localStorage.getItem('access-token');
-      if (token) {
-        req.setRequestHeader('X-Webitel-Access', token);
-      }
-    } catch (err) {
-      console.log(err);
+    if (token) {
+      req.setRequestHeader('X-Webitel-Access', token);
     }
     req.onreadystatechange = function() {
       if (req.readyState == XMLHttpRequest.DONE) {
