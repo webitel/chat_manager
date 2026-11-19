@@ -427,7 +427,7 @@ func (c *Gateway) Remove() bool {
 // Used to protect provider's WebHook API extensions
 // Non <nil> error means that the Authorization failed
 // and an error was returned. Further execution must be terminated.
-func (c *Gateway) AdminAuthorization(rsp http.ResponseWriter, req *http.Request) error {
+func (c *Gateway) AdminAuthorization(rsp http.ResponseWriter, req *http.Request, mode access.AccessMode) error {
 	// Transform http.Header to micro.Metadata
 	// Than we can use existing methods here ..
 	hd := req.Header
@@ -472,12 +472,20 @@ func (c *Gateway) AdminAuthorization(rsp http.ResponseWriter, req *http.Request)
 		return err
 	}
 	// CHECK Access granted ?
-	const mode = access.READ
 	if !authN.CanAccess(scope, mode) {
 		// ERR: Has NO access to objclass been GRANTED !
 		err = microerr.Forbidden(
 			"chat.bot.access.forbidden",
-			"chatbot: objclass READ privilege NOT GRANTED !",
+			"chatbot: objclass %s privilege NOT GRANTED !", access.ModeName(mode),
+		)
+		re := microerr.FromError(err)
+		http.Error(rsp, re.Error(), int(re.Code))
+		return err
+	}
+	if authN.Creds.GetDc() != c.DomainID() {
+		err = microerr.Forbidden(
+			"chat.bot.access.forbidden",
+			"chatbot: domain access DENIED !",
 		)
 		re := microerr.FromError(err)
 		http.Error(rsp, re.Error(), int(re.Code))

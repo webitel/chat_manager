@@ -65,20 +65,7 @@ func (authZ *Authorization) CanAccess(scope *authN.Objclass, mode AccessMode) bo
 		return false
 	}
 
-	var (
-		bypass, require string
-	)
-
-	switch mode {
-	case ADD, READ | ADD:
-		require, bypass = "x", "add"
-	case READ, NONE: // default
-		require, bypass = "r", "read"
-	case WRITE, READ | WRITE:
-		require, bypass = "w", "write"
-	case DELETE, READ | DELETE:
-		require, bypass = "d", "delete"
-	}
+	require, bypass := modePrivilege(mode)
 
 	// Check can BYPASS Security Policy(-ies) ?
 	if bypass != "" && authZ.HasPermission(bypass) {

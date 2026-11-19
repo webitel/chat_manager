@@ -24,6 +24,7 @@ import (
 	"github.com/micro/micro/v3/service/errors"
 	pbbot "github.com/webitel/chat_manager/api/proto/bot"
 	pbchat "github.com/webitel/chat_manager/api/proto/chat"
+	"github.com/webitel/chat_manager/auth"
 	"github.com/webitel/chat_manager/bot"
 	"github.com/webitel/chat_manager/bot/telegram/internal/markdown"
 	"google.golang.org/grpc/codes"
@@ -540,7 +541,7 @@ func (c *app) WebHook(rsp http.ResponseWriter, req *http.Request) {
 		}
 
 		// region: --- AdminAuthorization(!) ---
-		if c.Gateway.AdminAuthorization(rsp, req) != nil {
+		if c.Gateway.AdminAuthorization(rsp, req, auth.READ) != nil {
 			return // Authorization FAILED(!)
 		}
 		// endregion: --- AdminAuthorization(!) ---
@@ -591,6 +592,9 @@ func (c *app) WebHook(rsp http.ResponseWriter, req *http.Request) {
 		// POST /${uri}?phone=+10005553311
 		// POST /${uri}?code=123456
 		// POST /${uri}?2fa=my_secret_cloud_password
+		if c.Gateway.AdminAuthorization(rsp, req, auth.WRITE) != nil {
+			return
+		}
 		var (
 			_    = req.ParseForm()
 			form = req.Form
