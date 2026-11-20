@@ -46,8 +46,12 @@ type webChat struct {
 	conn   []*websocket.Conn
 	closed bool
 	// Buffered channel for sync write operations.
+	// Never closed: readPump(s) and notifications may still send to it.
 	send chan func()  // [sync] write(!)
 	wbuf bytes.Buffer // codec write buffer: size = Bot.options.WriteBufferSize
+	// Closed by stop() when the bot shuts down.
+	done     chan struct{}
+	stopOnce sync.Once
 	// Chat history: messages
 	msgi map[int64]int   // index[msg.id]
 	msgs []*chat.Message // ordinal
@@ -113,6 +117,21 @@ func (c *webChat) sanitizeMessage(msg *chat.Message) error {
 	msg.File = media
 
 	return nil
+}
+
+// stop asks writePump to drop all connections and close the chat.
+func (c *webChat) stop() {
+	c.stopOnce.Do(func() { close(c.done) })
+}
+
+// post queues fn to writePump; false if the room is stopped.
+func (c *webChat) post(fn func()) bool {
+	select {
+	case c.send <- fn:
+		return true
+	case <-c.done:
+		return false
+	}
 }
 
 // save given *chat.Message m to this *webChat c local history store
@@ -202,21 +221,16 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 			Error: func(rsp http.ResponseWriter, req *http.Request, code int, err error) {
 				// panic("not implemented")
 				if err == nil {
-					err = fmt.Errorf(http.StatusText(code))
+					err = errors.New(http.StatusText(code))
 				}
 				rsp.Header().Set("Sec-Websocket-Version", "13")
 				http.Error(rsp, err.Error() /*http.StatusText(code)*/, code) // err.Error(), code)
 
-				if err == nil {
-					agent.Log.Error("%d %s", code, http.StatusText(code),
-						slog.String("peer", webChatRemoteIP(req)),
-					)
-				} else {
-					agent.Log.Error("%d %s", code, http.StatusText(code),
-						slog.Any("error", err),
-						slog.String("peer", webChatRemoteIP(req)),
-					)
-				}
+				agent.Log.Error(http.StatusText(code),
+					slog.Int("code", code),
+					slog.Any("error", err),
+					slog.String("peer", webChatRemoteIP(req)),
+				)
 			},
 		},
 		ReadTimeout:    time.Second * 30, // 30s (PING)
@@ -249,7 +263,7 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 	if err != nil {
 		return nil, errs.BadRequest(
 			"chat.bot.webchat.updates.invalid",
-			err.Error(),
+			"%s", err.Error(),
 		)
 	}
 
@@ -545,7 +559,7 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 			// // delete(c.chat, chat.ChatID)
 			// // c.Unlock() // -RW
 			// close(room.send)
-			room.send <- func() {
+			room.post(func() {
 				for i := len(room.conn) - 1; i >= 0; i-- {
 					conn := room.conn[i]
 					_ = conn.SetWriteDeadline(
@@ -572,7 +586,7 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 				}
 				room.conn = room.conn[:0]
 				room.closed = true
-			}
+			})
 		}()
 
 		updates := c.Gateway.Template
@@ -603,10 +617,10 @@ func (c *WebChatBot) SendNotify(ctx context.Context, notify *bot.Update) error {
 		Message: message,
 	}
 
-	room.send <- func() {
+	room.post(func() {
 		room.pushMessage(message)
 		room.broadcast(update)
-	}
+	})
 
 	return nil // err
 }
@@ -707,7 +721,7 @@ func (c *WebChatBot) Close() error {
 
 	c.Lock() // +RW
 	for _, room := range c.chat {
-		close(room.send)
+		room.stop()
 	}
 	c.Unlock() // -RW
 
@@ -1107,6 +1121,7 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			Channel: channel,
 
 			send: make(chan func(), 1), // buffered
+			done: make(chan struct{}),
 
 			msgi: make(map[int64]int, 32),
 			msgs: make([]*chat.Message, 0, 32),
@@ -1190,7 +1205,7 @@ func (c *WebChatBot) join(client *webChat, conn *websocket.Conn) {
 	chatID := client.ChatID
 	primary := len(client.conn) == 0
 	// PUSH: chatInfo !
-	client.send <- func() {
+	posted := client.post(func() {
 		// build
 		chatInfo := webChatInfo{
 			Id:   client.ChannelID,
@@ -1210,6 +1225,11 @@ func (c *WebChatBot) join(client *webChat, conn *websocket.Conn) {
 			// PUSH: to .writePump()
 			client.conn = append(client.conn, conn)
 		}
+	})
+	if !posted {
+		// bot is stopping
+		_ = conn.Close()
+		return
 	}
 	// conn.SetCloseHandler(func(code int, text string) error {
 	// 	for i := 0; i < len(client.conn); i++ {
@@ -1326,6 +1346,8 @@ func (c *webChat) readPump(conn *websocket.Conn) {
 			// // NOTE: DO NOT c.closed = true due to
 			// // page reloaded conn may return !
 		}:
+		case <-c.done:
+			// writePump drops all connections itself
 		default:
 			c.Log.Error("[WS] >>> READ.Close(!) <<< OMITTED",
 				slog.String("ws", conn.RemoteAddr().String()),
@@ -1536,39 +1558,37 @@ func (c *webChat) writePump() {
 
 	for {
 		select {
-		case send, ok := <-c.send:
-			if !ok {
-				// NOTE: (send == nil)
-				for i := 0; i < len(c.conn); i++ {
-					conn := c.conn[i]
-					_ = conn.SetWriteDeadline(
-						time.Now().Add(c.Bot.WriteTimeout),
-					)
-					err := conn.WriteMessage(
-						websocket.CloseMessage, // []byte{},
-						websocket.FormatCloseMessage(
-							websocket.CloseNormalClosure,
-							"BYE",
-						),
-					)
-					if err != nil {
-						c.Log.Error("WRITE.Close(!)",
-							slog.Any("error", err),
-							slog.String("ws", conn.RemoteAddr().String()),
-						)
-					} else {
-						c.Log.Warn("WRITE.Close(!)",
-							slog.String("ws", conn.RemoteAddr().String()),
-						)
-					}
-					defer conn.Close()
-				}
-				c.conn = c.conn[:0]
-				c.closed = true
-				break // select
-			}
+		case send := <-c.send:
 			// sync
 			send()
+
+		case <-c.done:
+			for i := 0; i < len(c.conn); i++ {
+				conn := c.conn[i]
+				_ = conn.SetWriteDeadline(
+					time.Now().Add(c.Bot.WriteTimeout),
+				)
+				err := conn.WriteMessage(
+					websocket.CloseMessage, // []byte{},
+					websocket.FormatCloseMessage(
+						websocket.CloseNormalClosure,
+						"BYE",
+					),
+				)
+				if err != nil {
+					c.Log.Error("WRITE.Close(!)",
+						slog.Any("error", err),
+						slog.String("ws", conn.RemoteAddr().String()),
+					)
+				} else {
+					c.Log.Warn("WRITE.Close(!)",
+						slog.String("ws", conn.RemoteAddr().String()),
+					)
+				}
+				defer conn.Close()
+			}
+			c.conn = c.conn[:0]
+			c.closed = true
 
 		case <-pingTracker.C:
 
