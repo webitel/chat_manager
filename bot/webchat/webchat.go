@@ -138,7 +138,7 @@ type originPattern interface {
 type originAny bool
 
 func (pttn originAny) match(origin string) bool {
-	return origin != "" && (bool)(pttn)
+	return (bool)(pttn)
 }
 
 type originString string
@@ -199,9 +199,6 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 			},
 			Subprotocols:      nil,
 			EnableCompression: false,
-			CheckOrigin: func(req *http.Request) bool {
-				return true // Default: NO check at all (!)
-			},
 			Error: func(rsp http.ResponseWriter, req *http.Request, code int, err error) {
 				// panic("not implemented")
 				if err == nil {
@@ -401,7 +398,7 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 	allowedOrigins := make([]originPattern, 0, len(allowOrigins))
 	for _, origin := range allowOrigins {
 		// Normalize
-		origin = strings.ToLower(origin)
+		origin = strings.ToLower(strings.TrimSpace(origin))
 		if origin == "*" {
 			// If "*" is present in the list, turn the whole list into a match all
 			allowedOrigins = append(allowedOrigins[:0], originAny(true))
@@ -413,23 +410,15 @@ func New(agent *bot.Gateway, state bot.Provider) (bot.Provider, error) {
 			allowedOrigins = append(allowedOrigins, originString(origin))
 		}
 	}
-	// // Default value is ["*"]
-	// if allowOrigin == "" && len(allowedOrigins) == 0 {
-	// 	allowedOrigins = append(allowedOrigins, originAny(true))
-	// }
-	if len(allowedOrigins) != 0 {
-		// X-Access-Control-Allow-Origin
-		opts.CheckOrigin = func(req *http.Request) bool {
-			// return true
-			origin := req.Header.Get(hdrOrigin)
-			origin = strings.ToLower(origin)
-			for _, allowedOrigin := range allowedOrigins {
-				if allowedOrigin.match(origin) {
-					return true
-				}
+	opts.CheckOrigin = func(req *http.Request) bool {
+		origin := req.Header.Get(hdrOrigin)
+		origin = strings.ToLower(origin)
+		for _, allowedOrigin := range allowedOrigins {
+			if allowedOrigin.match(origin) {
+				return true
 			}
-			return false
 		}
+		return false
 	}
 
 	if state, ok := state.(*WebChatBot); ok && state != nil {
