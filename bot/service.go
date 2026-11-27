@@ -745,6 +745,7 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if gate, err := srv.Gateway(r.Context(), 0, uri); err == nil && gate != nil {
 				if provider, ok := gate.External.(Preflighter); ok {
 					provider.Preflight(w, r)
+
 					return
 				}
 			}

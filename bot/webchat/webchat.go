@@ -1003,8 +1003,10 @@ func (c *WebChatBot) Preflight(rsp http.ResponseWriter, req *http.Request) {
 	if !c.Websocket.CheckOrigin(req) {
 		delCORSHeaders(header)
 		rsp.WriteHeader(http.StatusForbidden)
+
 		return
 	}
+
 	setCORSHeaders(header, req.Header.Get(hdrOrigin))
 	rsp.WriteHeader(http.StatusOK)
 }
