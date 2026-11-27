@@ -38,6 +38,11 @@ type Receiver interface {
 	Deregister(ctx context.Context) error
 }
 
+// Preflighter is an optional Provider that answers CORS preflight (OPTIONS) requests itself
+type Preflighter interface {
+	Preflight(reply http.ResponseWriter, notice *http.Request)
+}
+
 
 type Provider interface {
 	 // String provider's code name

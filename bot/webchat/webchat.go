@@ -977,6 +977,40 @@ func (c *WebChatBot) uploadMultiMedia(rsp http.ResponseWriter, req *http.Request
 	respondJson(rsp, multiMedia, http.StatusOK)
 }
 
+// setCORSHeaders allows the cross-origin request from the origin, with credentials
+func setCORSHeaders(h http.Header, origin string) {
+	h.Set("Access-Control-Allow-Credentials", "true")
+	h.Set("Access-Control-Allow-Methods", "OPTIONS, GET, POST")
+	h.Set("Access-Control-Allow-Headers", "Authorization, X-Webitel-Access, Cookie, Content-Type, "+
+		"Connection, Upgrade, Sec-Websocket-Version, Sec-Websocket-Extensions, Sec-Websocket-Key, Sec-Websocket-Protocol, "+
+		"X-XSRF-Token, "+ // Axios frontend
+		"X-Requested-With",
+	)
+	h.Set("Access-Control-Allow-Origin", origin)
+}
+
+// delCORSHeaders removes the cross-origin permission headers
+func delCORSHeaders(h http.Header) {
+	h.Del("Access-Control-Allow-Credentials")
+	h.Del("Access-Control-Allow-Methods")
+	h.Del("Access-Control-Allow-Headers")
+	h.Del("Access-Control-Allow-Origin")
+}
+
+// Preflight answers the CORS preflight request against the gateway's allow origin list
+func (c *WebChatBot) Preflight(rsp http.ResponseWriter, req *http.Request) {
+	header := rsp.Header()
+	if !c.Websocket.CheckOrigin(req) {
+		delCORSHeaders(header)
+		rsp.WriteHeader(http.StatusForbidden)
+
+		return
+	}
+
+	setCORSHeaders(header, req.Header.Get(hdrOrigin))
+	rsp.WriteHeader(http.StatusOK)
+}
+
 // Receiver
 // WebHook callback http.Handler
 //
@@ -1009,23 +1043,14 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 	responseHeader := rsp.Header()
 	if !c.Websocket.CheckOrigin(req) {
 		// Sanitize from HTTP Gateway Main Handler
-		responseHeader.Del("Access-Control-Allow-Credentials")
-		responseHeader.Del("Access-Control-Allow-Methods")
-		responseHeader.Del("Access-Control-Allow-Headers")
-		responseHeader.Del("Access-Control-Allow-Origin")
+		delCORSHeaders(responseHeader)
 		c.Websocket.Error(rsp, req, http.StatusForbidden,
 			fmt.Errorf("Origin: %s; Not Allowed", origin),
 		)
 		return
 	}
 
-	responseHeader.Set("Access-Control-Allow-Credentials", "true")
-	responseHeader.Set("Access-Control-Allow-Methods", "OPTIONS, GET, POST")
-	responseHeader.Set("Access-Control-Allow-Headers", "Authorization, X-Webitel-Access, Cookie, Content-Type, "+
-		"Connection, Upgrade, Sec-Websocket-Version, Sec-Websocket-Extensions, Sec-Websocket-Key, Sec-Websocket-Protocol, "+
-		"X-XSRF-Token", // Axios frontend
-	)
-	responseHeader.Set("Access-Control-Allow-Origin", origin)
+	setCORSHeaders(responseHeader, origin)
 
 	if strings.HasSuffix(req.URL.Path, bot.CaptchaSuffix) {
 		if c.Captcha != nil && c.Captcha.Enabled() {
@@ -1133,14 +1158,26 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			room.wbuf.Reset()
 		}
 	}
-	// Set-Cookie: cid=; IF not provided
-	if !ok {
+	// Set-Cookie: cid=; IF not provided, or reissue as Partitioned over TLS
+	if secure := httpIsSecure(req); !ok || secure {
 		// Proxy-Path:
 		cookiePath := "/"
 		if siteURL, err := url.Parse(c.Gateway.Internal.URL); err == nil {
 			cookiePath = siteURL.Path // Resolve path prefix from public URL
 		}
 		cookiePath = strings.TrimRight(cookiePath, "/") + req.URL.Path
+		if ok {
+			// Drop the unpartitioned cid, shared by all sites
+			unpartitioned := &http.Cookie{
+				Name:     "cid",
+				Path:     cookiePath,
+				MaxAge:   -1,
+				Secure:   true,
+				HttpOnly: true,
+				SameSite: http.SameSiteNoneMode,
+			}
+			responseHeader.Add(hdrSetCookie, unpartitioned.String())
+		}
 		// Set-Cookie:
 		cookie := &http.Cookie{
 			Name:  "cid",
@@ -1150,11 +1187,13 @@ func (c *WebChatBot) WebHook(rsp http.ResponseWriter, req *http.Request) {
 			Expires: cookieNeverExp, // 2147483648 (2^31)
 			// RawExpires: "",
 			MaxAge:   0,
-			Secure:   httpIsSecure(req), // req.URL.Schema == "https"
+			Secure:   secure, // req.URL.Schema == "https"
 			HttpOnly: true,
 			// Cross-origin ([site]: example.com <-> [chat]: webitel.com) Set-Cookie
 			// NOTE: https://developer.mozilla.org/de/docs/Web/HTTP/Headers/Set-Cookie/SameSite#none
 			SameSite: http.SameSiteNoneMode, // http.SameSiteLaxMode,
+			// Separate cid per top-level site
+			Partitioned: secure,
 			// Raw:        "",
 			// Unparsed:   nil,
 		}

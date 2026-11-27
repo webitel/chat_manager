@@ -740,6 +740,15 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		header.Set("Access-Control-Allow-Origin", origin)
 		if r.Method == http.MethodOptions {
+			// Gateway's own CORS policy, if provided
+			uri := strings.TrimSuffix(r.URL.Path, CaptchaSuffix)
+			if gate, err := srv.Gateway(r.Context(), 0, uri); err == nil && gate != nil {
+				if provider, ok := gate.External.(Preflighter); ok {
+					provider.Preflight(w, r)
+
+					return
+				}
+			}
 			w.WriteHeader(http.StatusOK)
 			return // 200 OK
 		}
